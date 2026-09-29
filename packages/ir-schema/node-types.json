@@ -1,0 +1,573 @@
+[
+  {
+    "type": "core.llm",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "LLM call",
+    "category": "AI",
+    "icon": "sparkles",
+    "color": "#2563EB",
+    "description": "One chat-model call: renders the prompt from state and writes the answer text to a channel.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "Chat model to call"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "output"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "title": "Prompt",
+          "format": "prompt",
+          "minLength": 1,
+          "description": "Jinja template; use {{ state.<channel> }} to insert state values."
+        },
+        "output": {
+          "type": "string",
+          "title": "Output channel",
+          "format": "channel"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "template_fields": [
+      "prompt"
+    ],
+    "interrupts": false,
+    "side_effects": [
+      "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.agent",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Agent",
+    "category": "Agents",
+    "icon": "bot",
+    "color": "#7C3AED",
+    "description": "A tool-using agent (LangChain create_agent). Reads and writes the `messages` channel.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      },
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": "Tools the agent may call"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "system_prompt": {
+          "type": "string",
+          "title": "System prompt",
+          "format": "prompt",
+          "default": ""
+        },
+        "approve_tools": {
+          "type": "array",
+          "title": "Tools that need approval",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Pause for a human before these tools run (approve / edit / reject)."
+        }
+      }
+    },
+    "reads": [
+      "messages"
+    ],
+    "writes": [
+      "messages"
+    ],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "template_fields": [],
+    "interrupts": true,
+    "side_effects": [
+      "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.script",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Python script",
+    "category": "Code",
+    "icon": "code",
+    "color": "#475569",
+    "description": "Runs a function from the Workspace: `def run(state) -> dict` (sync or async).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "import_path"
+      ],
+      "properties": {
+        "import_path": {
+          "type": "string",
+          "title": "Function",
+          "format": "import_path",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "writes": {
+          "type": "array",
+          "title": "Channels written",
+          "items": {
+            "type": "string",
+            "format": "channel"
+          }
+        },
+        "side_effects": {
+          "type": "array",
+          "title": "Side effects",
+          "items": {
+            "enum": [
+              "external_write",
+              "message_send",
+              "code_exec",
+              "spend",
+              "pii_read"
+            ]
+          }
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [
+      "writes"
+    ],
+    "template_fields": [],
+    "interrupts": false,
+    "side_effects": [
+      "code_exec"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.set",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Set values",
+    "category": "Data",
+    "icon": "pencil",
+    "color": "#059669",
+    "description": "Writes templated values into channels, e.g. summary = \"Ticket: {{ state.ticket }}\".",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "values"
+      ],
+      "properties": {
+        "values": {
+          "type": "object",
+          "title": "Values",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "format": "template"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [
+      "values"
+    ],
+    "list_write_fields": [],
+    "template_fields": [
+      "values"
+    ],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.approval",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Approval",
+    "category": "Human-in-the-loop",
+    "icon": "user-check",
+    "color": "#D97706",
+    "description": "Pauses for a human to approve or reject (optionally editing the shown value).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "show",
+        "output"
+      ],
+      "properties": {
+        "show": {
+          "type": "string",
+          "title": "Channel to review",
+          "format": "channel"
+        },
+        "output": {
+          "type": "string",
+          "title": "Decision channel (bool)",
+          "format": "channel"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [
+      "show"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "template_fields": [],
+    "interrupts": true,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.router",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Router",
+    "category": "Logic",
+    "icon": "split",
+    "color": "#0891B2",
+    "description": "Chooses the next step: the first case whose CEL condition is true wins, otherwise `default`.",
+    "inputs": [],
+    "outputs": [],
+    "dynamic_outputs": "routes",
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "type": "array",
+          "title": "Cases",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "when",
+              "route"
+            ],
+            "properties": {
+              "when": {
+                "type": "string",
+                "title": "Condition (CEL)",
+                "format": "cel"
+              },
+              "route": {
+                "type": "string",
+                "title": "Route",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              }
+            }
+          }
+        },
+        "default": {
+          "type": "string",
+          "title": "Default route",
+          "default": "default",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "template_fields": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "model.chat",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Chat model",
+    "category": "Models",
+    "icon": "cpu",
+    "color": "#1D4ED8",
+    "description": "A chat model created with init_chat_model(\"provider:model\").",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "title": "Model",
+          "format": "model",
+          "pattern": "^[a-z0-9_\\-]+:.+$",
+          "description": "provider:model, e.g. anthropic:claude-sonnet-5-5"
+        },
+        "temperature": {
+          "type": "number",
+          "title": "Temperature",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_tokens": {
+          "type": "integer",
+          "title": "Max output tokens",
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "number",
+          "title": "Timeout (s)",
+          "exclusiveMinimum": 0
+        },
+        "base_url": {
+          "type": "string",
+          "title": "Base URL",
+          "format": "uri"
+        },
+        "api_key": {
+          "title": "API key (secret reference)",
+          "type": "object",
+          "required": [
+            "$secret"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "$secret": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "template_fields": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "tool.python",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Python tool",
+    "category": "Tools",
+    "icon": "wrench",
+    "color": "#4B5563",
+    "description": "A LangChain @tool function from the Workspace.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "tool",
+        "type": "Tool",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "import_path"
+      ],
+      "properties": {
+        "import_path": {
+          "type": "string",
+          "title": "Tool function",
+          "format": "import_path",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "side_effects": {
+          "type": "array",
+          "title": "Side effects",
+          "items": {
+            "enum": [
+              "external_write",
+              "message_send",
+              "code_exec",
+              "spend",
+              "pii_read"
+            ]
+          }
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "template_fields": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  }
+]

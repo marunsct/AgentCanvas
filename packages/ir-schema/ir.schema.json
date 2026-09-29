@@ -1,0 +1,653 @@
+{
+  "$defs": {
+    "CachePolicySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "ttl": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttl"
+        }
+      },
+      "title": "CachePolicySpec",
+      "type": "object"
+    },
+    "Channel": {
+      "additionalProperties": false,
+      "description": "One field of the shared graph state.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "additionalProperties": true,
+          "title": "Type",
+          "type": "object"
+        },
+        "reducer": {
+          "default": "replace",
+          "enum": [
+            "replace",
+            "append",
+            "add_messages",
+            "sum",
+            "merge"
+          ],
+          "title": "Reducer",
+          "type": "string"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "storage": {
+          "default": "full",
+          "enum": [
+            "full",
+            "delta"
+          ],
+          "title": "Storage",
+          "type": "string"
+        },
+        "io": {
+          "default": "inout",
+          "enum": [
+            "inout",
+            "in",
+            "out",
+            "private"
+          ],
+          "title": "Io",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Channel",
+      "type": "object"
+    },
+    "ContextField": {
+      "additionalProperties": false,
+      "description": "Run-scoped, immutable value (LangGraph ``Runtime.context``), e.g. user_id, tenant_id.\n\n``source=\"user\"`` means the runner fills it from the authenticated identity \u2014 never from\nmodel output or client input (spec doc 08 rule 2).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "additionalProperties": true,
+          "title": "Type",
+          "type": "object"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source": {
+          "default": "input",
+          "enum": [
+            "input",
+            "user",
+            "tenant"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ContextField",
+      "type": "object"
+    },
+    "ContextSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/ContextField"
+          },
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "title": "ContextSchema",
+      "type": "object"
+    },
+    "Edge": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "flow",
+            "wiring",
+            "data"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "target": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "target"
+      ],
+      "title": "Edge",
+      "type": "object"
+    },
+    "Endpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "title": "Node",
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        }
+      },
+      "required": [
+        "node"
+      ],
+      "title": "Endpoint",
+      "type": "object"
+    },
+    "Node": {
+      "additionalProperties": false,
+      "description": "A runtime step in the graph.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "policies": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodePolicies"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "disabled": {
+          "default": false,
+          "title": "Disabled",
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "name"
+      ],
+      "title": "Node",
+      "type": "object"
+    },
+    "NodePolicies": {
+      "additionalProperties": false,
+      "properties": {
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryPolicySpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeoutPolicySpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cache": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CachePolicySpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error_route": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Route"
+        },
+        "trace": {
+          "default": "full",
+          "enum": [
+            "full",
+            "omit_inputs",
+            "omit_outputs",
+            "omit"
+          ],
+          "title": "Trace",
+          "type": "string"
+        }
+      },
+      "title": "NodePolicies",
+      "type": "object"
+    },
+    "Resource": {
+      "additionalProperties": false,
+      "description": "Constructed once and injected into nodes by wiring edges (models, tools, middleware...).",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "name"
+      ],
+      "title": "Resource",
+      "type": "object"
+    },
+    "RetryPolicySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {
+          "default": 3,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "initial_interval": {
+          "default": 0.5,
+          "minimum": 0,
+          "title": "Initial Interval",
+          "type": "number"
+        },
+        "backoff_factor": {
+          "default": 2.0,
+          "minimum": 1,
+          "title": "Backoff Factor",
+          "type": "number"
+        },
+        "max_interval": {
+          "default": 128.0,
+          "minimum": 0,
+          "title": "Max Interval",
+          "type": "number"
+        },
+        "jitter": {
+          "default": true,
+          "title": "Jitter",
+          "type": "boolean"
+        },
+        "retry_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Retry On",
+          "type": "array"
+        }
+      },
+      "title": "RetryPolicySpec",
+      "type": "object"
+    },
+    "StateSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "items": {
+            "$ref": "#/$defs/Channel"
+          },
+          "title": "Channels",
+          "type": "array"
+        }
+      },
+      "title": "StateSchema",
+      "type": "object"
+    },
+    "TimeoutPolicySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "run_timeout": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Timeout"
+        },
+        "idle_timeout": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Idle Timeout"
+        },
+        "refresh_on": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "heartbeat"
+          ],
+          "title": "Refresh On",
+          "type": "string"
+        }
+      },
+      "title": "TimeoutPolicySpec",
+      "type": "object"
+    },
+    "WorkflowSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "recursion_limit": {
+          "default": 50,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Recursion Limit",
+          "type": "integer"
+        },
+        "durability": {
+          "default": "async",
+          "enum": [
+            "exit",
+            "async",
+            "sync"
+          ],
+          "title": "Durability",
+          "type": "string"
+        },
+        "node_defaults": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodePolicies"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "input_channels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Channels"
+        },
+        "output_channels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Channels"
+        },
+        "experimental": {
+          "default": false,
+          "title": "Experimental",
+          "type": "boolean"
+        }
+      },
+      "title": "WorkflowSettings",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "ir_version": {
+      "default": "1.1",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
+      "title": "Ir Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "kind": {
+      "default": "workflow",
+      "enum": [
+        "workflow",
+        "component"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "framework": {
+      "default": "langchain",
+      "title": "Framework",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/StateSchema"
+    },
+    "context": {
+      "$ref": "#/$defs/ContextSchema"
+    },
+    "resources": {
+      "items": {
+        "$ref": "#/$defs/Resource"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/Node"
+      },
+      "title": "Nodes",
+      "type": "array"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/Edge"
+      },
+      "title": "Edges",
+      "type": "array"
+    },
+    "settings": {
+      "$ref": "#/$defs/WorkflowSettings"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "Workflow",
+  "type": "object"
+}

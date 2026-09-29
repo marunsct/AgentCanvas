@@ -1,9 +1,10 @@
+"""Walking-skeleton (un-versioned) runner endpoints; replaced by /v1 runs in Sprint 2."""
+
 import json
 
-import httpx
 import pytest
 
-from agentcanvas.api import app as api
+from agentcanvas.api import legacy as api
 from agentcanvas.runtime.nodes import Resources
 from agentcanvas.testing import scripted, tool_call
 
@@ -13,7 +14,7 @@ def parse_sse(text: str) -> list[dict]:
 
 
 @pytest.fixture
-async def client(triage):
+async def client(triage, api_client):
     per_thread: dict[str, Resources] = {}
 
     def factory(thread_id: str) -> Resources:
@@ -27,12 +28,9 @@ async def client(triage):
         return per_thread[thread_id]
 
     api.S.resources_factory = factory
-    async with api.lifespan(api.app):
-        transport = httpx.ASGITransport(app=api.app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-            r = await c.post("/workflows", json=triage.model_dump())
-            assert r.status_code == 200 and r.json()["diagnostics"] == []
-            yield c
+    r = await api_client.post("/workflows", json=triage.model_dump())
+    assert r.status_code == 200 and r.json()["diagnostics"] == []
+    yield api_client
 
 
 async def test_run_pause_resume(client):
@@ -75,4 +73,4 @@ async def test_invalid_workflow_is_rejected(client, triage):
     bad.edges = [e for e in bad.edges if e.id != "w1"]  # classify has no model
     await client.post("/workflows", json=bad.model_dump())
     r = await client.post("/workflows/wf_bad/runs/stream", json={"input": {}})
-    assert r.status_code == 422 and r.json()["detail"][0]["code"] == "E001"
+    assert r.status_code == 422 and r.json()["errors"][0]["code"] == "E001"

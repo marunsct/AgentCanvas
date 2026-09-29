@@ -12,7 +12,7 @@ infra:      ## start local Postgres + Redis (Docker)
 	docker compose -f infra/docker-compose.yml up -d postgres redis
 
 dev-api:    ## API with real models (needs provider keys)
-	cd apps/api && uv run uvicorn agentcanvas.api.app:app --reload --port 8000
+	cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000
 
 dev-fake:   ## API with scripted fake models (no keys)
 	cd apps/api && uv run uvicorn agentcanvas.dev.fake_server:app --reload --port 8000
@@ -37,3 +37,9 @@ lint:       ## ruff, pyright, tsc
 
 fmt:        ## format Python
 	cd apps/api && uv run ruff format . && uv run ruff check --fix .
+
+schema:     ## export IR JSON Schema + node manifests to packages/ir-schema
+	cd apps/api && uv run python scripts/export_ir_schema.py
+
+migrate:    ## apply database migrations (DATABASE_URL)
+	cd apps/api && uv run alembic upgrade head

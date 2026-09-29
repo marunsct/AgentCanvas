@@ -51,6 +51,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "RUF", "BLE", "PLW"]
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 

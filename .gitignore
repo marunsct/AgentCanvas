@@ -7,3 +7,5 @@ __pycache__/
 .ruff_cache/
 test-results/
 playwright-report/
+*.db
+*.db-journal

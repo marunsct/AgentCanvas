@@ -8,7 +8,8 @@ The example workflows in `examples/*.ir.json` are preloaded.
 import json
 import pathlib
 
-from agentcanvas.api import app as api
+from agentcanvas.api import legacy as api
+from agentcanvas.api.main import app as _app
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.nodes import Resources
 from agentcanvas.testing import scripted, tool_call
@@ -34,4 +35,4 @@ api.S.resources_factory = fake_resources
 for path in sorted(EXAMPLES.glob("*.ir.json")):
     wf = Workflow.model_validate(json.loads(path.read_text()))
     api.S.workflows[wf.id] = wf
-app = api.app
+app = _app

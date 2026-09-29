@@ -163,5 +163,5 @@ Updated at the end of each sprint (and as work lands). Commit references are on 
 |--------|--------|-------------|-------|
 | Spec v0.6 | ✅ done | docs 14, 15, v0.6 corrections, this plan | review verified against PyPI + official docs (2026-09-29) |
 | S0 | ✅ done | monorepo seeded from `reference/` (`apps/api`, `apps/web`, `infra/`), Makefile, CI (api/web/e2e jobs), ADRs 0001–0017, root README, stack pins `stack-2026.09`, async node library (ADR 0015) with timeout regression tests, `examples.` imports dev-only, Playwright spec `e2e/skeleton.spec.ts` | 32 API tests, 2 web tests, 1 e2e pass; ruff/pyright/tsc clean |
-| S1 | ⏳ in progress | — | — |
-| S2 | ⏳ planned | — | — |
+| S1 | ✅ done | IR v1.1 (storage mode, context, policies, settings, data edges); canonical hash; node registry (8 manifests) + model catalog; rule-based validator (26 codes incl. E041/E042/E080); invertible command API with Hypothesis property test; SQLAlchemy models for the 14 control tables + Alembic migration (Postgres & SQLite); settings, prefixed ULIDs, structlog request ids, problem+json; `/v1` projects, workflows CRUD with `If-Match`/409/428, commands, layout, validate, code, node-types, models, templates, IR schema, expression check; IR JSON Schema exported to `packages/ir-schema` | 89 API tests green on SQLite **and** Postgres 16; 200-node validation < 150 ms; e2e still green. Deviation: SQLite supported as the local-edition control DB (no Docker needed) |
+| S2 | ⏳ in progress | — | — |
