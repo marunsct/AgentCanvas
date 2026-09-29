@@ -53,6 +53,24 @@ class RunHandle:
     origin: str = "user"
     emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
+    input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
+
+
+def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
+    """The run as a cassette (FR-X-13): replaying its model replies should reproduce status, route and output."""
+    if h.input is None or status not in ("success", "interrupted"):
+        return None
+    mocks: dict[str, list[Any]] = {}
+    route: list[str] = []
+    output: dict[str, Any] = {}
+    for ev in h.events:
+        if ev["type"] == "CUSTOM" and ev.get("name") == "ac.model_reply":
+            mocks.setdefault(ev["value"]["resource"], []).append(ev["value"]["reply"])
+        elif ev["type"] == "STEP_STARTED" and ev.get("canvas_node_id") not in route:
+            route.append(ev["canvas_node_id"])
+        elif ev["type"] == "RUN_FINISHED":
+            output = ev.get("output") or {}
+    return {"input": h.input, "mocks": mocks, "status": status, "route": route, "output": output}
 
 
 class BudgetExceeded(Exception):
@@ -193,6 +211,8 @@ class Runner:
         )
         handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin)
         handle.traced = trace_ref(run_id) is not None
+        if input is not None and resume is None and checkpoint_id is None and origin != "test":
+            handle.input = input
         self.handles[run_id] = handle
         self.active_by_thread[thread_id] = run_id
         handle.task = asyncio.create_task(self._pump(handle, spec), name=f"run:{run_id}")
@@ -329,6 +349,7 @@ class Runner:
                         tokens_in=h.usage["input_tokens"],
                         tokens_out=h.usage["output_tokens"],
                         cost_usd=h.usage["cost_usd"],
+                        recording=_recording(h, status),
                     )
                 )
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))

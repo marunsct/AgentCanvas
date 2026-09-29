@@ -7,15 +7,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.adapters import get_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, if_match
 from agentcanvas.api.v1.runs import _context
 from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
-from agentcanvas.db.models import TestCase, WorkflowVersion
+from agentcanvas.db.models import Run, TestCase, Thread, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
-from agentcanvas.errors import WorkflowHasErrors
+from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
+from agentcanvas.ir.contract import Contract, ContractChange, breaking_changes, contract
 from agentcanvas.ir.diff import WorkflowDiff
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.projects import PROJECT_OF
@@ -239,3 +241,79 @@ async def run_test_cases(
     )
     passed = sum(r.passed for r in results)
     return TestRunOut(passed=passed, failed=len(results) - passed, results=results)
+
+
+class FromRunIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/runs/{run_id}/test-case", response_model=TestCaseOut, status_code=201)
+async def test_case_from_run(
+    run_id: str,
+    body: FromRunIn,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> TestCaseOut:
+    """Record/replay (FR-X-13): a run (e.g. from production) becomes a regression test replaying its model replies."""
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise NotFound(f"run '{run_id}' not found")
+    rec = run.recording
+    if not rec:
+        raise InvalidInput("this run has no recording (only fresh runs that succeeded or paused are recorded)")
+    thread = await session.get(Thread, run.thread_id)
+    assert thread is not None
+    row = await WorkflowRepo(session).require(thread.workflow_id)
+    chats = {c.name for c in Workflow.model_validate(row.draft_ir).state.channels if c.reducer == "add_messages"}
+    expect = Expect(
+        status=rec["status"],
+        channels={k: v for k, v in (rec.get("output") or {}).items() if k not in chats},
+        route=rec.get("route"),
+    )
+    case = await TestCaseService(session).add(
+        row.id, name=body.name, input=rec["input"], expect=expect, mocks=rec.get("mocks") or {},
+        context=run.context, created_by=user.id,
+    )  # fmt: skip
+    return _case(case)
+
+
+# -------------------------------------------------------------------------------------- contract (FR-X-14) ----
+class Surface(BaseModel):
+    kind: str  # http | sse | webhook | cron | export
+    detail: str
+
+
+class ContractOut(Contract):
+    surfaces: list[Surface] = Field(default_factory=list)
+
+
+@router.get("/workflows/{wf_id}/contract", response_model=ContractOut)
+async def get_contract(
+    wf_id: str, version: str | None = None, session: AsyncSession = Depends(get_session)
+) -> ContractOut:
+    """What callers depend on: input/output fields, required context, pause points, and where it is exposed."""
+    from agentcanvas.db.models import Deployment, Trigger
+
+    wf = await VersionService(session).workflow_at(wf_id, version or "draft")
+    out = ContractOut(**contract(wf).model_dump())
+    deps = (await session.scalars(select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.active))).all()
+    for d in deps:
+        v = await session.get(WorkflowVersion, d.version_id)
+        out.surfaces.append(Surface(kind="http", detail=f"{d.environment} v{v.semver if v else '?'}: "
+                                    f"POST /v1/deployments/{d.id}/runs/wait|stream (Bearer key)"))  # fmt: skip
+    for t in (await session.scalars(select(Trigger).where(Trigger.workflow_id == wf_id, Trigger.enabled))).all():
+        detail = f"POST /v1/hooks/{t.id} (HMAC signed)" if t.kind == "webhook" else f"cron {t.config.get('schedule')}"
+        out.surfaces.append(Surface(kind=t.kind, detail=detail))
+    out.surfaces.append(Surface(kind="export", detail=f"GET /v1/workflows/{wf_id}/export.zip (Python project)"))
+    return out
+
+
+@router.get("/workflows/{wf_id}/versions/{a}/contract-diff/{b}", response_model=list[ContractChange])
+async def contract_diff(
+    wf_id: str, a: str, b: str, session: AsyncSession = Depends(get_session)
+) -> list[ContractChange]:
+    """Contract changes from `a` to `b` (version or `draft`); `breaking` ones affect existing callers."""
+    versions = VersionService(session)
+    return breaking_changes(
+        contract(await versions.workflow_at(wf_id, a)), contract(await versions.workflow_at(wf_id, b))
+    )

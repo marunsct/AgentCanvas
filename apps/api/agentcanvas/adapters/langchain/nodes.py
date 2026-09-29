@@ -250,10 +250,13 @@ def apply_node_defaults(builder: StateGraph, defaults: dict[str, Any] | None) ->
 
 
 # -------------------------------------------------------------- resources ----
-def tag_model(model: Any, model_id: str | None) -> Any:
-    """Record the catalog id (provider:model) in the model's callback metadata, so usage can be priced (M4-T11)."""
-    if model_id and isinstance(model, BaseChatModel):
-        model.metadata = {**(model.metadata or {}), "ac_model": model_id}
+def tag_model(model: Any, model_id: str | None, resource: str | None = None) -> Any:
+    """Record the catalog id (provider:model) in the model's callback metadata, so usage can be priced (M4-T11),
+    and the canvas resource name, so a run's model replies can be recorded as a cassette (FR-X-13)."""
+    if isinstance(model, BaseChatModel):
+        extra = {k: v for k, v in (("ac_model", model_id), ("ac_resource", resource)) if v}
+        if extra:
+            model.metadata = {**(model.metadata or {}), **extra}
     return model
 
 
@@ -284,10 +287,10 @@ class Resources:
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
-            return tag_model(self._overrides[name], config.get("model"))
+            return tag_model(self._overrides[name], config.get("model"), name)
         if name not in self._cache:
             params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
-            self._cache[name] = tag_model(init_chat_model(config["model"], **params), config["model"])
+            self._cache[name] = tag_model(init_chat_model(config["model"], **params), config["model"], name)
         return self._cache[name]
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:

@@ -5,6 +5,7 @@ import { API_BASE, apiFetch } from "../api/client";
 import type { DiffOut, ElementDiff, VersionOut } from "../api/generated";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
+import { ContractSection } from "./ContractSection";
 import { PublishSection } from "./PublishSection";
 import { TriggersSection } from "./TriggersSection";
 
@@ -13,6 +14,7 @@ export function VersionsPanel() {
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
   const [diff, setDiff] = useState<DiffOut | null>(null);
+  const uiDiff = useUi((s) => s.diff);
   const key = ["versions", wf?.id];
   const versions = useQuery({ queryKey: key, enabled: Boolean(wf), queryFn: () => apiFetch<VersionOut[]>(`/workflows/${wf!.id}/versions`) });
   const save = useMutation({
@@ -53,7 +55,7 @@ export function VersionsPanel() {
       </p>
       {diff && (
         <div className="diff-box" data-testid="diff-summary">
-          <div className="row gap"><b>Draft vs v{useUi.getState().diff?.against}</b>: {diff.summary}
+          <div className="row gap"><b>Draft vs v{uiDiff?.against}</b>: {diff.summary}
             <span className="spacer" /><button type="button" className="link small" onClick={clear}>clear</button></div>
           <ul className="small">
             {(diff.nodes?.changed ?? []).map((c) => (
@@ -78,6 +80,7 @@ export function VersionsPanel() {
         ))}
       </ul>
       {versions.data?.length === 0 && <p className="muted">No versions yet. A version freezes the workflow and its workspace code.</p>}
+      <ContractSection wfId={wf.id} against={uiDiff?.against ?? null} />
       <PublishSection wfId={wf.id} />
       <TriggersSection wfId={wf.id} />
     </div>

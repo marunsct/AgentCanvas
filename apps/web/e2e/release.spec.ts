@@ -45,6 +45,7 @@ test("saved test case turns red after an edit; the diff shows the edited step", 
   await page.getByTestId("version-1.0.0").getByRole("button", { name: "Compare" }).click();
   await expect(page.getByTestId("diff-summary")).toContainText("1 step changed");
   await expect(page.getByTestId("node-greet")).toHaveClass(/diff-changed/);
+  await expect(page.getByTestId("contract-diff")).toContainText("Compatible with v1.0.0");
 });
 
 test("export the draft as a zip", async ({ page }) => {

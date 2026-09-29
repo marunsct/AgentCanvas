@@ -175,6 +175,8 @@ class Run(Base):
     # run context (Runtime.context) — resumes reuse it: LangGraph does not checkpoint the context, and a
     # reviewer resuming someone else's run must not become the run's user (per-user memory namespaces)
     context: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # FR-X-13 cassette of a fresh run: its input, each model resource's replies, status, route and output
+    recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

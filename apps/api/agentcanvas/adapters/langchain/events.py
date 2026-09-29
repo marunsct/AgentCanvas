@@ -102,7 +102,9 @@ class UsageTracker(BaseCallbackHandler):
     def __init__(self, names: dict[str, str]):
         self.names = names
         self._calls: dict[UUID, tuple[str | None, str | None]] = {}
+        self._resources: dict[UUID, str] = {}
         self._records: list[dict[str, Any]] = []
+        self._replies: list[dict[str, Any]] = []  # FR-X-13: what each model resource answered, in order
 
     def on_chat_model_start(self, serialized: Any, messages: Any, *, run_id: UUID, **kw: Any) -> None:
         md = kw.get("metadata") or {}
@@ -112,9 +114,18 @@ class UsageTracker(BaseCallbackHandler):
             f"{md['ls_provider']}:{md['ls_model_name']}" if md.get("ls_provider") and md.get("ls_model_name") else None
         )
         self._calls[run_id] = (self.names.get(str(node)), model)
+        if md.get("ac_resource"):
+            self._resources[run_id] = str(md["ac_resource"])
 
     def on_llm_end(self, response: Any, *, run_id: UUID, **kw: Any) -> None:
         node_id, model = self._calls.pop(run_id, (None, None))
+        resource = self._resources.pop(run_id, None)
+        message = next((getattr(g, "message", None) for gens in response.generations for g in gens), None)
+        if resource and message is not None:
+            content = message.content if isinstance(message.content, str) else str(message.content)
+            calls = [{"name": c["name"], "args": c.get("args", {})} for c in getattr(message, "tool_calls", []) or []]
+            reply = {"content": content, "tool_calls": calls} if calls else content
+            self._replies.append({"resource": resource, "canvas_node_id": node_id, "reply": reply})
         tokens_in = tokens_out = 0
         for gens in response.generations:
             for g in gens:
@@ -131,7 +142,12 @@ class UsageTracker(BaseCallbackHandler):
 
     def on_llm_error(self, error: BaseException, *, run_id: UUID, **kw: Any) -> None:
         self._calls.pop(run_id, None)
+        self._resources.pop(run_id, None)
 
     def drain(self) -> list[dict[str, Any]]:
         out, self._records = self._records, []
+        return out
+
+    def drain_replies(self) -> list[dict[str, Any]]:
+        out, self._replies = self._replies, []
         return out

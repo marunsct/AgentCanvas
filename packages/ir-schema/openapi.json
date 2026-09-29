@@ -759,6 +759,95 @@
         "title": "ContextField",
         "type": "object"
       },
+      "ContractChange": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "breaking",
+              "compatible"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "where": {
+            "enum": [
+              "input",
+              "output",
+              "context",
+              "pauses"
+            ],
+            "title": "Where",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "where",
+          "field",
+          "message"
+        ],
+        "title": "ContractChange",
+        "type": "object"
+      },
+      "ContractOut": {
+        "properties": {
+          "context": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Input",
+            "type": "object"
+          },
+          "output": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Output",
+            "type": "object"
+          },
+          "pauses": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Pauses",
+            "type": "object"
+          },
+          "required_context": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Context",
+            "type": "array"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/Surface"
+            },
+            "title": "Surfaces",
+            "type": "array"
+          }
+        },
+        "title": "ContractOut",
+        "type": "object"
+      },
       "CreateWorkflow": {
         "properties": {
           "name": {
@@ -1454,6 +1543,21 @@
           "checkpoint_id"
         ],
         "title": "ForkRequest",
+        "type": "object"
+      },
+      "FromRunIn": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "FromRunIn",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3002,6 +3106,24 @@
           "node_ids"
         ],
         "title": "SubgraphRequest",
+        "type": "object"
+      },
+      "Surface": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "detail"
+        ],
+        "title": "Surface",
         "type": "object"
       },
       "TemplateInfo": {
@@ -5763,6 +5885,59 @@
         ]
       }
     },
+    "/v1/runs/{run_id}/test-case": {
+      "post": {
+        "description": "Record/replay (FR-X-13): a run (e.g. from production) becomes a regression test replaying its model replies.",
+        "operationId": "test_case_from_run_v1_runs__run_id__test_case_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FromRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestCaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Case From Run",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
     "/v1/runs/{run_id}/trace": {
       "get": {
         "description": "Redirect to the run's LangSmith trace (M6-T6).",
@@ -6733,6 +6908,65 @@
         ]
       }
     },
+    "/v1/workflows/{wf_id}/contract": {
+      "get": {
+        "description": "What callers depend on: input/output fields, required context, pause points, and where it is exposed.",
+        "operationId": "get_contract_v1_workflows__wf_id__contract_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Contract",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
     "/v1/workflows/{wf_id}/deployments": {
       "get": {
         "operationId": "list_deployments_v1_workflows__wf_id__deployments_get",
@@ -7520,6 +7754,71 @@
           }
         },
         "summary": "Create Version",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/versions/{a}/contract-diff/{b}": {
+      "get": {
+        "description": "Contract changes from `a` to `b` (version or `draft`); `breaking` ones affect existing callers.",
+        "operationId": "contract_diff_v1_workflows__wf_id__versions__a__contract_diff__b__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "title": "B",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContractChange"
+                  },
+                  "title": "Response Contract Diff V1 Workflows  Wf Id  Versions  A  Contract Diff  B  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Contract Diff",
         "tags": [
           "versions"
         ]

@@ -138,10 +138,13 @@ class DemoResources(Resources):
 
     def __init__(self, **kw: Any) -> None:
         super().__init__(**kw)
-        self._demos: dict[str, DemoChatModel] = {}  # one per catalog id, so usage is attributed to the right model
+        # one per resource: usage is attributed to the right catalog model, replies to the right resource
+        self._demos: dict[str, DemoChatModel] = {}
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
+        if name in self._overrides:
+            return super().model(name, config)
         model_id = str(config.get("model", "demo"))
-        if model_id not in self._demos:
-            self._demos[model_id] = tag_model(DemoChatModel(), model_id)
-        return self._demos[model_id]
+        if name not in self._demos:
+            self._demos[name] = tag_model(DemoChatModel(), model_id, name)
+        return self._demos[name]

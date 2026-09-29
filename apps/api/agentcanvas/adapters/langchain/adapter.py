@@ -235,6 +235,8 @@ class LangChainAdapter:
                     yield _redacted(ev, hidden)
                 for record in usage.drain():
                     yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
+                for reply in usage.drain_replies():
+                    yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
         except GraphRecursionError as exc:
             yield {
                 "type": "RUN_ERROR",
@@ -252,6 +254,8 @@ class LangChainAdapter:
 
         for record in usage.drain():
             yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
+        for reply in usage.drain_replies():
+            yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
         state = await self._state(graph, self._config(wf, spec.thread_id), names)
         for intr in state.interrupts:
             yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}

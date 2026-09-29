@@ -20,6 +20,7 @@ from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Deployment, Project, WorkflowVersion
 from agentcanvas.errors import InvalidInput
+from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
@@ -88,6 +89,7 @@ async def publish(
 
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests)
+    checks.append(await _contract_check(session, wf_id, body.environment, wf))
     failed = [c for c in checks if not c.ok]
     if failed:
         raise InvalidInput(
@@ -101,6 +103,25 @@ async def publish(
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version)
     return PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+
+
+async def _contract_check(session: AsyncSession, wf_id: str, environment: str, wf: Workflow) -> Check:
+    """Informational (FR-X-14): breaking contract changes against what this environment serves now."""
+    from sqlalchemy import select
+
+    dep = await session.scalar(
+        select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.environment == environment)
+    )
+    live = await session.get(WorkflowVersion, dep.version_id) if dep and dep.active else None
+    if live is None:
+        return Check(name="contract", ok=True, detail="first publish of this environment")
+    breaking = [
+        c
+        for c in breaking_changes(contract(Workflow.model_validate(live.ir)), contract(wf))
+        if c.severity == "breaking"
+    ]
+    detail = f"{len(breaking)} breaking change(s) vs v{live.semver}" if breaking else f"compatible with v{live.semver}"
+    return Check(name="contract", ok=True, detail=detail, items=[c.message for c in breaking])
 
 
 @router.get("/workflows/{wf_id}/deployments", response_model=list[DeploymentOut])

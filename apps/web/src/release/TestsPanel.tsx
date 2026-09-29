@@ -1,5 +1,6 @@
 /** Saved test cases (M6-T9): list, run against the draft, see which assertion failed. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { apiFetch } from "../api/client";
 import type { CaseResult, TestCaseOut, TestRunOut } from "../api/generated";
 import { useEditor } from "../editor/store";
@@ -20,6 +21,11 @@ export function TestsPanel() {
     mutationFn: (id: string) => apiFetch(`/workflows/${wf!.id}/test-cases/${id}`, { method: "DELETE" }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
   });
+  const [runId, setRunId] = useState("");
+  const record = useMutation({
+    mutationFn: () => apiFetch(`/runs/${runId.trim()}/test-case`, { method: "POST", json: { name: `recorded ${runId.trim().slice(-6)}` } }),
+    onSuccess: () => { setRunId(""); void qc.invalidateQueries({ queryKey: key }); },
+  });
   if (!wf) return null;
   const list = cases.data ?? [];
   return (
@@ -37,6 +43,11 @@ export function TestsPanel() {
       </div>
       {run.error && <p className="error-text">{(run.error as Error).message}</p>}
       {list.length === 0 && <p className="muted">Run the workflow, then “Save as test case” in the Run tab.</p>}
+      <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (runId.trim()) record.mutate(); }}>
+        <input placeholder="run_… (e.g. a production run)" value={runId} onChange={(e) => setRunId(e.target.value)} aria-label="record run id" />
+        <button type="submit" className="small">Record as test</button>
+      </form>
+      {record.error && <p className="error-text small">{(record.error as Error).message}</p>}
       <ul className="case-list">
         {list.map((c) => <CaseRow key={c.id} c={c} onDelete={() => remove.mutate(c.id)} />)}
       </ul>
