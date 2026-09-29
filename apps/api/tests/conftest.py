@@ -15,6 +15,8 @@ from agentcanvas.settings import Settings
 ROOT = pathlib.Path(__file__).parents[1]
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")  # set in CI to run against Postgres
 TABLES = [
+    "event_dedup",
+    "event_log",
     "audit_log",
     "interrupt_task",
     "run",
@@ -30,7 +32,14 @@ TABLES = [
     "app_user",
     "organization",
 ]
-RUNTIME_TABLES = ["checkpoints", "checkpoint_writes", "checkpoint_blobs", "store"]  # LangGraph persistence data
+RUNTIME_TABLES = [
+    "event_dedup",
+    "event_log",
+    "checkpoints",
+    "checkpoint_writes",
+    "checkpoint_blobs",
+    "store",
+]  # LangGraph persistence data
 
 
 @pytest.fixture

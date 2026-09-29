@@ -51,6 +51,11 @@ class ProjectRegistry:
             )
         return self._resources[project_id]
 
+    def has_handlers(self, project_id: str) -> bool:
+        """True when the project's workspace has event handler code (without creating the workspace)."""
+        events = Path(self.settings.workspaces_dir) / project_id / "events"
+        return events.is_dir() and any(p.name != "__init__.py" for p in events.glob("*.py"))
+
     def catalog(self, project_id: str) -> Catalog:
         return self._scan(project_id)[1]
 

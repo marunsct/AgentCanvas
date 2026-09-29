@@ -19,8 +19,9 @@ export interface WorkspaceCatalog {
   tools: { name: string; import_path: string; description: string }[];
   nodes: string[];
   scripts: { name: string; import_path: string; description: string }[];
-  handlers: { name: string; type: string; filter: string | null; import_path: string; targets: string[] }[];
-  problems: { path: string; message: string }[];
+  handlers: { name: string; type: string; filter: string | null; dedup_key: string | null; import_path: string; targets: string[] }[];
+  problems: { path: string; message: string; code?: string }[];
+  schemas: string[];
 }
 
 export function useWorkspaceCatalog() {

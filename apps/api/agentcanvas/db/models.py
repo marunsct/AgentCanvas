@@ -225,3 +225,31 @@ class AuditLog(Base):
     detail: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     ip: Mapped[str | None] = mapped_column(String(45))
     created_at: Mapped[datetime] = _now()
+
+
+class EventLog(Base):
+    """Events delivered to a project's handlers (FR-X-22): what came in, what the handlers asked for."""
+
+    __tablename__ = "event_log"
+    __table_args__ = (Index("event_log_project_idx", "project_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    type: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, server_default=text("'api'"), default="api")
+    data: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    status: Mapped[str] = mapped_column(Text)  # handled | ignored | error
+    results: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    created_at: Mapped[datetime] = _now()
+
+
+class EventDedup(Base):
+    """One row per (handler, dedup value): a redelivered event does not run the handler twice."""
+
+    __tablename__ = "event_dedup"
+    __table_args__ = (UniqueConstraint("project_id", "handler", "value"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    handler: Mapped[str] = mapped_column(Text)
+    value: Mapped[str] = mapped_column(Text)
+    event_id: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()

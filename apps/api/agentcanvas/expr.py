@@ -41,6 +41,15 @@ def eval_condition(source: str, state: dict[str, Any]) -> bool:
     return bool(result)
 
 
+def eval_expression(source: str, variables: dict[str, Any]) -> Any:
+    """Evaluate CEL over named variables, e.g. `event.data.amount > 100` with {"event": {...}} (event filters)."""
+    program = _compile_cel(source)
+    try:
+        return program.evaluate({k: json_to_cel(_jsonable(v)) for k, v in variables.items()})
+    except Exception as exc:  # missing fields, type errors
+        raise ExpressionError(f"cannot evaluate '{source}': {exc}") from exc
+
+
 def render_template(source: str, state: dict[str, Any], **names: Any) -> str:
     """Render a sandboxed Jinja template with `state` (and extra names, e.g. `args` for HTTP tool URLs)."""
     try:

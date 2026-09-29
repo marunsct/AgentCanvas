@@ -34,6 +34,7 @@ export type Nodes = string[];
 export type Problems = {
   [k: string]: string;
 }[];
+export type Schemas = string[];
 export type Scripts = {
   [k: string]: unknown;
 }[];
@@ -168,8 +169,17 @@ export type Pins = {
     [k: string]: unknown;
   };
 } | null;
-export type Kind1 = "cel" | "template";
+export type Type4 = string;
+export type CreatedAt1 = string;
+export type Id10 = string;
+export type Results = {
+  [k: string]: unknown;
+}[];
 export type Source1 = string;
+export type Status = string;
+export type Type5 = string;
+export type Kind1 = "cel" | "template";
+export type Source2 = string;
 export type Error = string | null;
 export type Ok = boolean;
 export type Content = string;
@@ -198,15 +208,15 @@ export type ErrorType = string;
 export type Detail = ValidationError[];
 export type NodeId1 = string;
 export type CanvasNodeId = string;
-export type CreatedAt1 = string;
+export type CreatedAt2 = string;
 export type DecidedAt = string | null;
 export type Decision1 = {
   [k: string]: unknown;
 } | null;
-export type Id10 = string;
+export type Id11 = string;
 export type Kind2 = string;
 export type RunId = string;
-export type Status = string;
+export type Status1 = string;
 export type ThreadId = string;
 export type WorkflowId = string | null;
 export type WorkflowName = string | null;
@@ -219,12 +229,12 @@ export type Description3 = string;
 export type Destructive = boolean;
 export type Name9 = string;
 export type ReadOnly = boolean;
-export type CreatedAt2 = string | null;
+export type CreatedAt3 = string | null;
 export type Key = string;
 export type Namespace = string[];
 export type UpdatedAt1 = string | null;
 export type ContextWindow = number | null;
-export type Id11 = string;
+export type Id12 = string;
 export type Label3 = string;
 export type PriceInPerMtok = number | null;
 export type PriceOutPerMtok = number | null;
@@ -253,7 +263,7 @@ export type Multi = boolean;
 export type Name11 = string;
 export type Ordered = boolean;
 export type Required1 = boolean;
-export type Type4 = string;
+export type Type6 = string;
 export type Inputs = PortSpec[];
 export type Interrupts = boolean;
 export type Kind3 = "runtime" | "resource" | "middleware" | "trigger";
@@ -267,11 +277,11 @@ export type Reads = string[];
 export type SideEffects = ("external_write" | "message_send" | "code_exec" | "spend" | "pii_read" | "host_exec")[];
 export type Stability = "stable" | "beta" | "experimental";
 export type TemplateFields = string[];
-export type Type5 = string;
+export type Type7 = string;
 export type Version1 = string;
 export type Writes1 = string[];
-export type CreatedAt3 = string;
-export type Id12 = string;
+export type CreatedAt4 = string;
+export type Id13 = string;
 export type Name12 = string;
 export type Commands1 = {
   [k: string]: unknown;
@@ -289,11 +299,11 @@ export type Stream1 = boolean;
 export type CostUsd = number;
 export type EndedAt = string | null;
 export type Error1 = string | null;
-export type Id13 = string;
+export type Id14 = string;
 export type IrHash1 = string;
 export type Mode1 = string;
 export type StartedAt = string;
-export type Status1 = string;
+export type Status2 = string;
 export type ThreadId1 = string;
 export type TokensIn = number;
 export type TokensOut = number;
@@ -314,7 +324,7 @@ export type Modified1 = number;
 export type Path3 = string;
 export type Size1 = number;
 export type Value3 = string;
-export type CreatedAt4 = string;
+export type CreatedAt5 = string;
 export type Name13 = string;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
@@ -324,26 +334,26 @@ export type Name14 = string | null;
  */
 export type NodeIds = [string, ...string[]];
 export type Description6 = string;
-export type Id14 = string;
+export type Id15 = string;
 export type Name15 = string;
 export type NodeCount = number;
-export type CreatedAt5 = string;
-export type Id15 = string;
-export type Status2 = string;
+export type CreatedAt6 = string;
+export type Id16 = string;
+export type Status3 = string;
 export type Title = string | null;
 export type UpdatedAt2 = string;
 export type WorkflowId1 = string;
 export type Items = ThreadOut[];
 export type NextCursor = string | null;
-export type CreatedAt6 = string;
+export type CreatedAt7 = string;
 export type Diagnostics3 = Diagnostic[];
-export type Id16 = string;
+export type Id17 = string;
 export type IrHash2 = string;
 export type Name16 = string;
 export type ProjectId1 = string;
 export type UpdatedAt3 = string;
 export type Version2 = number;
-export type Id17 = string;
+export type Id18 = string;
 export type Name17 = string;
 export type UpdatedAt4 = string;
 export type Version3 = number;
@@ -368,6 +378,8 @@ export interface ApiSchemas {
   Disconnect?: Disconnect;
   Edge?: Edge;
   Endpoint?: Endpoint;
+  EventIn?: EventIn;
+  EventLogOut?: EventLogOut;
   ExpressionCheck?: ExpressionCheck;
   ExpressionResult?: ExpressionResult;
   FileContent?: FileContent;
@@ -534,6 +546,7 @@ export interface CatalogOut {
   handlers: Handlers;
   nodes: Nodes;
   problems: Problems;
+  schemas?: Schemas;
   scripts: Scripts;
   tools: Tools;
 }
@@ -806,11 +819,38 @@ export interface Value {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "EventIn".
+ */
+export interface EventIn {
+  data?: Data;
+  type: Type4;
+}
+export interface Data {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "EventLogOut".
+ */
+export interface EventLogOut {
+  created_at: CreatedAt1;
+  data: Data1;
+  id: Id10;
+  results: Results;
+  source: Source1;
+  status: Status;
+  type: Type5;
+}
+export interface Data1 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ExpressionCheck".
  */
 export interface ExpressionCheck {
   kind: Kind1;
-  source: Source1;
+  source: Source2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -903,14 +943,14 @@ export interface InlineRequest {
  */
 export interface InterruptOut {
   canvas_node_id: CanvasNodeId;
-  created_at: CreatedAt1;
+  created_at: CreatedAt2;
   decided_at: DecidedAt;
   decision: Decision1;
-  id: Id10;
+  id: Id11;
   kind: Kind2;
   payload: Payload;
   run_id: RunId;
-  status: Status;
+  status: Status1;
   thread_id: ThreadId;
   workflow_id?: WorkflowId;
   workflow_name?: WorkflowName;
@@ -957,7 +997,7 @@ export interface McpToolInfo {
  * via the `definition` "MemoryItem".
  */
 export interface MemoryItem {
-  created_at?: CreatedAt2;
+  created_at?: CreatedAt3;
   key: Key;
   namespace: Namespace;
   updated_at?: UpdatedAt1;
@@ -972,7 +1012,7 @@ export interface Value1 {
  */
 export interface ModelInfo {
   context_window?: ContextWindow;
-  id: Id11;
+  id: Id12;
   label: Label3;
   price_in_per_mtok?: PriceInPerMtok;
   price_out_per_mtok?: PriceOutPerMtok;
@@ -1030,7 +1070,7 @@ export interface NodeManifest {
   stability?: Stability;
   targets?: Targets;
   template_fields?: TemplateFields;
-  type: Type5;
+  type: Type7;
   version?: Version1;
   writes?: Writes1;
 }
@@ -1050,7 +1090,7 @@ export interface PortSpec {
   name: Name11;
   ordered?: Ordered;
   required?: Required1;
-  type: Type4;
+  type: Type6;
 }
 export interface Targets {
   [k: string]: "full" | "partial" | "none";
@@ -1060,8 +1100,8 @@ export interface Targets {
  * via the `definition` "ProjectOut".
  */
 export interface ProjectOut {
-  created_at: CreatedAt3;
-  id: Id12;
+  created_at: CreatedAt4;
+  id: Id13;
   name: Name12;
 }
 /**
@@ -1105,11 +1145,11 @@ export interface RunOut {
   cost_usd?: CostUsd;
   ended_at: EndedAt;
   error: Error1;
-  id: Id13;
+  id: Id14;
   ir_hash: IrHash1;
   mode: Mode1;
   started_at: StartedAt;
-  status: Status1;
+  status: Status2;
   thread_id: ThreadId1;
   tokens_in?: TokensIn;
   tokens_out?: TokensOut;
@@ -1157,7 +1197,7 @@ export interface SecretIn {
  * via the `definition` "SecretOut".
  */
 export interface SecretOut {
-  created_at: CreatedAt4;
+  created_at: CreatedAt5;
   name: Name13;
 }
 /**
@@ -1186,7 +1226,7 @@ export interface SubgraphRequest {
  */
 export interface TemplateInfo {
   description: Description6;
-  id: Id14;
+  id: Id15;
   name: Name15;
   node_count: NodeCount;
 }
@@ -1195,9 +1235,9 @@ export interface TemplateInfo {
  * via the `definition` "ThreadOut".
  */
 export interface ThreadOut {
-  created_at: CreatedAt5;
-  id: Id15;
-  status: Status2;
+  created_at: CreatedAt6;
+  id: Id16;
+  status: Status3;
   title: Title;
   updated_at: UpdatedAt2;
   workflow_id: WorkflowId1;
@@ -1215,9 +1255,9 @@ export interface ThreadPage {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt6;
+  created_at: CreatedAt7;
   diagnostics: Diagnostics3;
-  id: Id16;
+  id: Id17;
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
@@ -1245,7 +1285,7 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id17;
+  id: Id18;
   name: Name17;
   updated_at: UpdatedAt4;
   version: Version3;

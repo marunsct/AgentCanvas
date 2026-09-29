@@ -44,12 +44,48 @@ def _load(import_path: str):
     return getattr(mod, attr)
 
 
+class _Event:
+    def __init__(self, e: dict):
+        self.id, self.type, self.data, self.source = (
+            e.get("id", ""),
+            e["type"],
+            e.get("data") or {},
+            e.get("source", ""),
+        )
+
+
+class _Actions:
+    """Same surface as agentcanvas.sdk.Actions: handlers only record what should happen."""
+
+    def __init__(self):
+        self.recorded: list[dict] = []
+
+    def start_workflow(self, workflow, *, input=None, thread_id=None):
+        self.recorded.append(
+            {"action": "start_workflow", "workflow": workflow, "input": input or {}, "thread_id": thread_id}
+        )
+
+    def resume(self, thread_id, value=None):
+        self.recorded.append({"action": "resume", "thread_id": thread_id, "value": value})
+
+    def emit(self, event_type, data=None):
+        self.recorded.append({"action": "emit", "type": event_type, "data": data or {}})
+
+
 def main() -> int:
     if os.environ.get("AC_BLOCK_NETWORK") == "1":
         _block_network()
     out = sys.stdout
     try:
         payload = json.loads(sys.stdin.read() or "{}")
+        if "event" in payload:  # an event handler: return the actions it recorded
+            act = _Actions()
+            with contextlib.redirect_stdout(sys.stderr):
+                done = _load(sys.argv[1])(_Event(payload["event"]), act)
+                if inspect.isawaitable(done):
+                    asyncio.run(done)  # type: ignore[arg-type]
+            out.write(json.dumps({"ok": True, "actions": act.recorded}, default=str) + "\n")
+            return 0
         state, config = payload.get("state", {}), payload.get("config")
         with contextlib.redirect_stdout(sys.stderr):  # user prints must not corrupt the result
             fn = _load(sys.argv[1])

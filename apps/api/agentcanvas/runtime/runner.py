@@ -47,6 +47,9 @@ class RunHandle:
     usage: dict[str, Any] = field(
         default_factory=lambda: {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "priced": True}
     )
+    workflow_name: str = ""
+    origin: str = "user"  # "event": started by an event handler (its lifecycle events are not re-delivered)
+    emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
 
 
 class BudgetExceeded(Exception):
@@ -91,6 +94,8 @@ class Runner:
         self.handles: OrderedDict[str, RunHandle] = OrderedDict()
         self.active_by_thread: dict[str, str] = {}
         self._keep = keep_finished
+        # called after every run (event delivery: run.completed / run.failed / interrupt.raised, sdk.emit events)
+        self.finish_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
 
     def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
@@ -114,6 +119,7 @@ class Runner:
         context_from: str | None = None,
         pins: dict[str, dict[str, Any]] | None = None,
         mocks: dict[str, list[Any]] | None = None,
+        origin: str = "user",
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         thread_id = thread_id or new_id("th")
@@ -155,7 +161,7 @@ class Runner:
             pins=pins or {},
             mocks=mocks or {},
         )
-        handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id)
+        handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin)
         self.handles[run_id] = handle
         self.active_by_thread[thread_id] = run_id
         handle.task = asyncio.create_task(self._pump(handle, spec), name=f"run:{run_id}")
@@ -210,6 +216,8 @@ class Runner:
                         check_budget(budget, h.usage, before)
                         continue
                     ev = raw
+                    if ev["type"] == "CUSTOM" and isinstance(ev.get("value"), dict) and "ac_event" in ev["value"]:
+                        h.emitted.append(ev["value"])
                     if ev["type"] == "RUN_FINISHED":
                         interrupts = ev.get("interrupts", [])
                         status = "interrupted" if ev["outcome"] == "interrupt" else "success"
@@ -264,6 +272,11 @@ class Runner:
                 await events.aclose()  # stops the graph if we left early (budget, cancel)
             h.status = status
             await self._finish(h, status, error, interrupts)
+            for hook in self.finish_hooks:
+                try:
+                    await hook(h, status, error, interrupts)
+                except Exception:
+                    log.exception("run.finish_hook_failed", run_id=h.run_id)
             h.finished_at = time.monotonic()
             self.active_by_thread.pop(h.thread_id, None)
             h.done.set()

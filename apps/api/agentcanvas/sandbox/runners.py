@@ -55,17 +55,9 @@ def docker_command(image: str, workspace: Path, import_path: str) -> list[str]:
     ]  # fmt: skip
 
 
-async def run_in_sandbox(
-    mode: str,
-    workspace: Path,
-    import_path: str,
-    state: dict[str, Any],
-    *,
-    image: str,
-    timeout: float = TIMEOUT_S,
-    config: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Run `import_path(state)` in the sandbox and return its channel update."""
+async def _exchange(
+    mode: str, workspace: Path, import_path: str, payload: dict[str, Any], image: str, timeout: float
+) -> dict:
     if mode == "docker":
         argv, env, cwd = docker_command(image, workspace, import_path), None, None
     else:
@@ -79,23 +71,50 @@ async def run_in_sandbox(
         cwd=cwd,
         preexec_fn=_limits if mode == "subprocess" and os.name == "posix" else None,
     )
-    payload = json.dumps(
-        {"state": _jsonable(state), "config": _jsonable(config) if config is not None else None}
-    ).encode()
     try:
-        out, err = await asyncio.wait_for(proc.communicate(payload), timeout)
+        out, err = await asyncio.wait_for(proc.communicate(json.dumps(payload).encode()), timeout)
     except TimeoutError:
         proc.kill()
         await proc.wait()
-        raise TimeoutError(f"script {import_path} ran longer than {timeout:g} s") from None
+        raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
     lines = [ln for ln in out.decode(errors="replace").splitlines() if ln.strip()]
     try:
         result = json.loads(lines[-1])
     except (IndexError, json.JSONDecodeError):
         tail = err.decode(errors="replace")[-500:]
-        raise ScriptError(f"script {import_path} crashed (exit {proc.returncode}): {tail}") from None
+        raise ScriptError(f"{import_path} crashed (exit {proc.returncode}): {tail}") from None
     if not result.get("ok"):
-        raise ScriptError(f"script {import_path} failed: {result.get('error')}")
+        raise ScriptError(f"{import_path} failed: {result.get('error')}")
+    return result
+
+
+async def run_handler(settings: Settings, workspace: Path, import_path: str, event: dict[str, Any]) -> list[dict]:
+    """Run an event handler in the sandbox; returns the actions it recorded (FR-X-22)."""
+    mode = settings.script_execution
+    result = await _exchange(
+        mode, workspace, import_path, {"event": _jsonable(event)}, settings.sandbox_image, TIMEOUT_S
+    )
+    return list(result.get("actions") or [])
+
+
+async def run_in_sandbox(
+    mode: str,
+    workspace: Path,
+    import_path: str,
+    state: dict[str, Any],
+    *,
+    image: str,
+    timeout: float = TIMEOUT_S,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run `import_path(state)` in the sandbox and return its channel update."""
+    payload = {"state": _jsonable(state), "config": _jsonable(config) if config is not None else None}
+    try:
+        result = await _exchange(mode, workspace, import_path, payload, image, timeout)
+    except TimeoutError as exc:
+        raise TimeoutError(f"script {exc}") from None
+    except ScriptError as exc:
+        raise ScriptError(f"script {exc}") from None
     return result.get("update") or {}
 
 

@@ -126,7 +126,33 @@ def scan(root: Path, *, import_code: bool = False) -> Catalog:
                         "name": fn.name, "type": etype, "filter": kw.get("filter"), "dedup_key": kw.get("dedup_key"),
                         "import_path": f"{module}:{fn.name}", "targets": _targets(fn),
                     })  # fmt: skip
+    _check_filters(root, cat)
     return cat
+
+
+DATA_REF = re.compile(r"\bevent\.data\.([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _check_filters(root: Path, cat: Catalog) -> None:
+    """E081: a handler filter (or dedup key) reads a field its event's schema does not declare."""
+    import json
+
+    for h in cat.handlers:
+        path = root / "events" / "schemas" / f"{h['type']}.json"
+        if not path.is_file():
+            continue
+        try:
+            props = set((json.loads(path.read_text()).get("properties") or {}).keys())
+        except ValueError:
+            cat.problems.append({"path": path.relative_to(root).as_posix(), "message": "schema is not valid JSON"})
+            continue
+        for expr in (h.get("filter"), h.get("dedup_key")):
+            for name in DATA_REF.findall(expr or ""):
+                if name not in props:
+                    cat.problems.append({
+                        "path": f"events/{h['import_path'].split(':')[0].split('.')[-1]}.py", "code": "E081",
+                        "message": f"{h['name']}: event '{h['type']}' has no field '{name}' (schema {path.name})",
+                    })  # fmt: skip
 
 
 def _manifest(root: Path, module: str, fn: Any, meta: dict[str, Any], doc: str, import_code: bool) -> NodeManifest:

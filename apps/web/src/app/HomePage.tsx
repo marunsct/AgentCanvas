@@ -27,6 +27,7 @@ export function HomePage() {
         <Link to="/inbox">Inbox</Link>
         <Link to="/memory" data-testid="memory-link">Memory</Link>
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
+        <Link to="/events" data-testid="events-link">Events</Link>
       </header>
       <section>
         <h2>New workflow</h2>

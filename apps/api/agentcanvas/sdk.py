@@ -91,6 +91,14 @@ class Actions:
         self.recorded.append({"action": "emit", "type": event_type, "data": data or {}})
 
 
+def emit(event_type: str, data: dict[str, Any] | None = None) -> None:
+    """Emit a domain event from inside a run (scripts, custom nodes, tools). It shows on the canvas as a custom
+    event and is delivered to the project's `@on(event_type)` handlers when the run finishes."""
+    from langgraph.config import get_stream_writer
+
+    get_stream_writer()({"ac_event": event_type, "data": data or {}})
+
+
 def secret(name: str) -> str:
     """A project secret inside a run (in-process scripts and custom nodes; not available in sandboxes)."""
     values = _SECRETS.get()

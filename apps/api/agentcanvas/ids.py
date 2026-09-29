@@ -4,7 +4,25 @@ from __future__ import annotations
 
 from ulid import ULID
 
-PREFIXES = {"org", "usr", "prj", "wf", "ver", "dep", "th", "run", "n", "r", "e", "sec", "con", "trg", "req"}
+PREFIXES = {
+    "org",
+    "usr",
+    "prj",
+    "wf",
+    "ver",
+    "dep",
+    "th",
+    "run",
+    "n",
+    "r",
+    "e",
+    "sec",
+    "con",
+    "trg",
+    "req",
+    "evt",
+    "dd",
+}
 
 
 def new_id(prefix: str) -> str:

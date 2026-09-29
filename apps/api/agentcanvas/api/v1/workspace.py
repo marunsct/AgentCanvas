@@ -116,6 +116,7 @@ class CatalogOut(BaseModel):
     scripts: list[dict[str, Any]]
     handlers: list[dict[str, Any]]
     problems: list[dict[str, str]]
+    schemas: list[str] = Field(default_factory=list)  # event types with a schema in events/schemas/
 
 
 @router.get("/workspace/catalog", response_model=CatalogOut)
@@ -128,4 +129,8 @@ async def workspace_catalog(project_id: str, request: Request, _: Workspace = De
         scripts=cat.scripts,
         handlers=cat.handlers,
         problems=cat.problems,
+        schemas=sorted(
+            p.stem
+            for p in (request.app.state.projects.workspace(project_id).root / "events" / "schemas").glob("*.json")
+        ),
     )

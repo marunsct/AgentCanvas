@@ -23,6 +23,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.services import projects as projects_module
+from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
 from agentcanvas.services.secrets import SecretService
 from agentcanvas.settings import Settings, get_settings
@@ -52,6 +53,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     app.state.projects.secrets.setdefault(project, {}).update(values)
             runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, thread_id, wf))
             app.state.runner = runner
+            app.state.events = EventService(db, runner, app.state.projects)
+            runner.finish_hooks.append(app.state.events.on_run_finished)
             log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
             try:
                 yield
