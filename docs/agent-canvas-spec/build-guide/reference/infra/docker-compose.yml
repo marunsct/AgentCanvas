@@ -1,0 +1,36 @@
+# Local infrastructure for AgentCanvas development.
+#   docker compose -f docker-compose.yml up -d
+#   docker compose -f docker-compose.yml --profile auth up -d   # also start Keycloak (M7)
+services:
+  postgres:
+    image: pgvector/pgvector:pg16          # Postgres 16 + pgvector (needed for semantic memory search)
+    environment:
+      POSTGRES_USER: agentcanvas
+      POSTGRES_PASSWORD: agentcanvas        # dev only
+      POSTGRES_DB: agentcanvas
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentcanvas"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:8                          # Redis 8 includes RediSearch + RedisJSON (required by langgraph-checkpoint-redis)
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  keycloak:                                  # OIDC login for M7 (optional before that)
+    profiles: ["auth"]
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin     # dev only
+    ports: ["8080:8080"]
+
+volumes:
+  pgdata:
