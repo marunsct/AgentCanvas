@@ -64,13 +64,13 @@ Ports are written `name: Type`. Inputs ← , outputs → .
 |------|-------------|-----|
 | Human approval (tool-level) | `HumanInTheLoopMiddleware(interrupt_on={...})` | P0 |
 | Summarization | `SummarizationMiddleware(model=…, trigger=…, keep=…)` | P0 |
-| PII guard | `PIIMiddleware(<type>, strategy="redact|mask|hash|block", apply_to_input/output/tool_results)` | P0 |
+| PII guard | `PIIMiddleware(<type>, strategy="redact|mask|hash|block", detector=<regex|callable>?, apply_to_input/output/tool_results)` — custom types via `detector` | P0 |
 | Model retry | `ModelRetryMiddleware(max_retries, backoff…)` | P0 |
 | Model fallback | `ModelFallbackMiddleware(<models…>)` | P0 |
 | Tool retry | `ToolRetryMiddleware(...)` | P0 |
 | Tool error handling | `ToolErrorMiddleware(...)` | P1 |
-| Model call limit | `ModelCallLimitMiddleware(thread_limit, run_limit, exit_behavior)` | P0 |
-| Tool call limit | `ToolCallLimitMiddleware(tool_name?, thread_limit, run_limit)` | P0 |
+| Model call limit | `ModelCallLimitMiddleware(thread_limit, run_limit, exit_behavior="end")` (upstream default `end`) | P0 |
+| Tool call limit | `ToolCallLimitMiddleware(tool_name?, thread_limit, run_limit, exit_behavior="continue")` (upstream default `continue`) | P0 |
 | To-do planning | `TodoListMiddleware()` | P0 |
 | Tool selector | `LLMToolSelectorMiddleware(model, max_tools, always_include)` | P1 |
 | Provider tool search | `ProviderToolSearchMiddleware(...)` (deferred tool loading) | P2 |
@@ -92,7 +92,9 @@ Ports are written `name: Type`. Inputs ← , outputs → .
 | Composite backend | R `Backend` | `CompositeBackend(default=…, routes={prefix: backend})` | P0 |
 | Sandbox backend | R `Backend` | provider sandbox (Daytona, Modal, Runloop, E2B, Vercel, AgentCore, LangSmith Sandboxes); scope thread/assistant; seed files; snapshot | P1 |
 | Context Hub backend | R `Backend` | `ContextHubBackend(...)` (versioned files in LangSmith) | P1 |
-| Local filesystem backend | R `Backend` | `FilesystemBackend(root_dir=…)` (dev/self-host only) | P2 |
+| Local filesystem backend | R `Backend` | `FilesystemBackend(root_dir=…)` (dev/self-host only; E041 in hosted envs) | P2 |
+| Local shell backend | R `Backend` | `LocalShellBackend(root_dir, virtual_mode=True, timeout, max_output_bytes)` — **dev only** (E041) | P2 |
+| LangSmith sandbox backend | R `Backend` | `LangSmithSandbox(sandbox)` from a `langsmith.sandbox.SandboxClient`; policy from the sandbox policy designer (FR-X-08) | P1 |
 | Skills | R `SkillSet` | skill sources (paths on backend) → `skills=[…]` | P1 |
 | Memory files | R `MemorySource` | `memory=["/memories/AGENTS.md"]` | P1 |
 | Long-term memory (Store) | R `Store` + N ops | `store.put/get/search` nodes with namespace templates, semantic index | P1 |
@@ -200,6 +202,18 @@ Ports are written `name: Type`. Inputs ← , outputs → .
 | Evaluator | LLM-judge / code / trajectory / schema match | P1 |
 | Dataset | LangSmith dataset reference | P1 |
 
+## 11b. v0.6 additions (doc 15)
+
+| Node | Kind | Compiles to | Pri |
+|------|------|-------------|-----|
+| Headless (client) tool | R `Tool` | server tool whose body calls `interrupt({"kind": "client_tool", ...})`; chat widget executes and resumes with the result (FR-X-03) | P1 |
+| UI Output (generative UI) | N | writes a UI spec validated against the project's component catalog to a `ui` channel and emits `custom` stream events (FR-X-04) | P1 |
+| Decide (decision model) | N / evaluator | typed decision-model call via LLM Gateway (probability / choice / score), fallback to structured-output LLM (FR-X-05) | P2 |
+| Budget guard | M / policy | `ModelCallLimitMiddleware` + runner budget check on usage metadata (FR-X-15) | P1 |
+| Summarization tool | M | Deep Agents `SummarizationToolMiddleware` — agent-invoked compaction | P1 |
+| Emit event | N | `runtime.emit(event_type, payload)` → `custom` stream + event bus, schema-checked (FR-X-22) | P1 |
+| Wait for event | N | `interrupt({"kind": "wait_event", "event": …, "correlation": …})`; resumed by a trigger handler (`act.resume`) | P1 |
+
 ## 12. Node type manifest (for built-ins and custom nodes)
 
 ```yaml
@@ -221,6 +235,8 @@ reads: [messages, files]
 writes: [messages, files, structured_response]
 config_schema: { $ref: "./schemas/agent.deep.config.json" }
 targets: { python: full, mda: full, typescript: partial }
+side_effects: []          # v0.6: external_write | message_send | code_exec | spend | pii_read (blast-radius map, FR-X-02)
+stability: stable         # v0.6: stable | beta | experimental (upstream API maturity; I010)
 codegen: { template: "./templates/agent_deep.py.j2", runtime_impl: "agentcanvas_runtime.nodes.agent_deep:build" }
 docs: "https://…/nodes/agent-deep"
 ```

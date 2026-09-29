@@ -25,6 +25,18 @@ On resume LangGraph re-runs the interrupted node from the start; `interrupt()` t
 **P-07 ✅ `GraphRecursionError: Recursion limit of N reached without hitting a stop condition`.**
 A loop has no exit or the router never takes it. Add a counter + router exit (tutorial Part 10) or raise `recursion_limit` in the run config for legitimately long workflows.
 
+**P-09 ✅ `ValueError: Node timeouts are only supported for async nodes …` (v0.6).**
+LangGraph cancels timed-out attempts with asyncio, so `timeout=` only works on `async def` nodes. Every AgentCanvas node builder returns an async callable; wrap sync user code with `await asyncio.to_thread(fn, state)` — `interrupt()`, `get_config()` and `get_store()` still work inside it (context is copied).
+
+**P-10 ✅ `ModuleNotFoundError: No module named 'fastmcp'` when importing `langchain.mcp` (v0.6).**
+Install LangChain with the MCP extra: `uv add "langchain[mcp]"`. The namespace is beta and emits `LangChainBetaWarning` on import.
+
+**P-11 ✅ `TypeError: object method can't be used in 'await' expression` with v3 event streaming (v0.6).**
+In async code the v3 run stream's `output` is a method: `await run.output()`. (The docs' sync examples use a property.) The product keeps v2 until v3 is stable (P-05).
+
+**P-12 ✅ Old threads become unreadable after changing a channel to/from `DeltaChannel` (v0.6).**
+Delta and non-delta representations are not interchangeable for persisted threads, and deepagents ≥ 0.6 already stores messages/files as delta channels. Never flip a channel's storage mode on a published workflow with live threads (validator E074), and never downgrade deepagents across 0.6.
+
 **P-08 ✅ Breakpoint run ends with no interrupts but the run is not finished.**
 With `interrupt_before/after`, `get_state().interrupts` is empty and `next` holds the pending node. Treat `next` non-empty as "paused"; continue with `ainvoke(None, config)`.
 

@@ -199,6 +199,14 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `W071` | warning | Concurrent writes to the same entity from parallel branches without a conflict strategy |
 | `W072` | warning | Checkpointer binding has not passed the conformance suite |
 | `W073` | warning | Append-heavy channel without `DeltaChannel` in a long-running chat workflow |
+| `E041` | error | Host-executing backend (`LocalShellBackend`, `FilesystemBackend`) in a hosted environment (v0.6) |
+| `E042` | error | Local/stdio MCP target without `allow_local_mcp` and sandboxed execution (v0.6) |
+| `E074` | error | Channel storage mode changed (delta ↔ full) while the previous version has live threads (v0.6) |
+| `E080` | error | `import_path` outside workspace packages (`scripts.`, `tools.`, `nodes.`; `examples.` in dev only) |
+| `E081` | error | Event handler references a field missing from the event schema (v0.6) |
+| `W074` | warning | Sandbox binding without an egress allow-list (v0.6) |
+| `W080` | warning | Side-effecting node reachable without approval or dry-run stub (v0.6) |
+| `I010` | info | Upstream beta/experimental API in use (v0.6) |
 | `P001` | error | Node type not supported by the workflow's framework adapter |
 | `P002` | warning | Node supported only via emulation on this adapter (e.g. emulated HITL) |
 | `P004` | warning | Node compiled through the Agent Spec bridge path (non-idiomatic generated code) |
@@ -268,7 +276,7 @@ Validation runs incrementally (dependency-tracked per node) and is shared by the
 | Canvas construct | Generated Python |
 |------------------|------------------|
 | Workflow | `builder = StateGraph(State, context_schema=Context, input_schema=InputState, output_schema=OutputState)` … `graph = builder.compile(name="…")` (no checkpointer/store when targeting Agent Server — the server injects them; `InMemorySaver` in standalone scripts) |
-| State channel + reducer | `Annotated[list[AnyMessage], add_messages]`, `Annotated[list[str], operator.add]`, custom reducer fn; `DeltaChannel` where selected |
+| State channel + reducer | `Annotated[list[AnyMessage], add_messages]`, `Annotated[list[str], operator.add]`, custom reducer fn; storage mode `delta` → `Annotated[list, DeltaChannel(batch_reducer, snapshot_frequency=K)]` where the batch reducer receives `(state, [writes…])` (ADR 0016) |
 | Flow edge | `builder.add_edge("a", "b")`; START/END constants |
 | Router node | `builder.add_conditional_edges("src", route_fn, {"high": "escalate", "low": "draft"})` |
 | Command-style routing (node decides) | node returns `Command(goto=…, update=…)`; `add_node(..., destinations=(…))` for graph rendering |
@@ -284,7 +292,7 @@ Validation runs incrementally (dependency-tracked per node) and is shared by the
 | Tool-level approvals | `interrupt_on={…}` (Deep Agent) or `HumanInTheLoopMiddleware(interrupt_on={…})` |
 | Script node | `builder.add_node("x", scripts.x.run, …)` — user function `run(state, runtime) -> dict | Command` |
 | Subgraph group | separate `StateGraph` compiled and added as a node (shared keys) or wrapped in a function (different schema) |
-| Node policies | `add_node(…, retry_policy=RetryPolicy(...), cache_policy=CachePolicy(ttl=…), timeout=TimeoutPolicy(run_timeout=…, idle_timeout=…), error_handler=…, defer=…)`; graph-wide `set_node_defaults(...)`; `compile(cache=…)` |
+| Node policies | `add_node(…, retry_policy=RetryPolicy(...), cache_policy=CachePolicy(ttl=…), timeout=TimeoutPolicy(run_timeout=…, idle_timeout=…, refresh_on="auto"|"heartbeat"), error_handler=…, defer=…, trace_policy=TracePolicy(...))`; graph-wide `set_node_defaults(...)`; `compile(cache=…)`. **Timeouts require async node callables** (verified: sync nodes raise `ValueError`) — every node-library builder returns an `async` function and sync user code is wrapped with `asyncio.to_thread` (ADR 0015). |
 | MCP server | `from langchain.mcp import MCPAdapter` → `tools = await MCPAdapter(<target>).list_tools()` in an async lazy factory |
 | Guardrail widgets | `PIIMiddleware`, `ToolCallLimitMiddleware`, `ModelCallLimitMiddleware`, `ModelFallbackMiddleware`, `ModelRetryMiddleware`, `ToolRetryMiddleware`, `SummarizationMiddleware`, `ContextEditingMiddleware`, `LLMToolSelectorMiddleware`, `ProviderToolSearchMiddleware`, … |
 | Structured output | Pydantic model generated in `state.py`/`schemas.py`; `response_format=Model` (auto strategy) or `ToolStrategy(Model)` / `ProviderStrategy(Model)` |
@@ -301,7 +309,8 @@ Validation runs incrementally (dependency-tracked per node) and is shared by the
 - Overriding a default (e.g. custom summarization thresholds) emits a middleware instance with the same `.name` which replaces the default in place.
 - Backends are emitted as concrete instances (`StateBackend()`, `StoreBackend(namespace=lambda rt: (rt.server_info.user.identity,))`, `CompositeBackend(default=…, routes={…})`) — no deprecated factories.
 - Permissions emitted as `FilesystemPermission(operations=[…], paths=[…], mode=…)` preserving UI order (first-match-wins).
-- Interpreter capability emits the QuickJS `CodeInterpreterMiddleware` with the PTC allow-list; requires Python ≥ 3.11 and `langchain-quickjs>=0.2` pinned.
+- Interpreter capability emits `langchain_quickjs.CodeInterpreterMiddleware` with the PTC allow-list; requires Python ≥ 3.11 and the `deepagents[quickjs]` extra (`langchain-quickjs>=0.3.7`). **Experimental upstream** — capability-flagged (v0.6, doc 14 V-02).
+- `SubAgent(mode="fork")` (forked subagents) is experimental upstream; emitted only when the *experimental features* project flag is on.
 
 ### 6.5 Alternative target: Managed Deep Agents project
 When a workflow is *Agent-tier only* (a single Deep Agent with tools/subagents/skills/memory), the compiler can emit an **MDA project**:
@@ -324,7 +333,8 @@ Each node type's manifest declares `targets: {"python": "full", "mda": "full|par
 `agentcanvas_runtime.build(plan, debug_opts) -> CompiledStateGraph`:
 - Uses the **same node implementation library** as codegen. **Decision (v0.5, review C-03, ADR 0004):** generated code calls the shared node library (`agentcanvas.runtime.nodes` → published as `agentcanvas-runtime`) and assembles the graph with plain LangGraph calls; this is what the reference implementation does and what `test_generated_code_matches_interpreter` verifies. A fully inlined, dependency-free "clean eject" (`--inline`) is a P2 option. (Superseded wording: "Default export uses inlined idiomatic code"); equivalence tested.
 - Debug options: breakpoints → `interrupt_before/after`; pins → wrapper node returning pinned output; mocks → model replaced by `GenericFakeChatModel`/scripted model or `LLMToolEmulator`, tools replaced by cassette players; caches → `InMemoryCache`/Redis cache with `CachePolicy`.
-- **MVP (v0.5):** built per run by the AgentCanvas runner (`build_graph(wf, resources, checkpointer)`), optionally cached by `(workflow_id, ir_hash)`. Registering the factory in a LangGraph Agent Server is a later hosting option.
+- **MVP (v0.5):** built per run by the AgentCanvas runner (`build_graph(wf, resources, checkpointer)`), optionally cached by `(workflow_id, ir_hash)`.
+- **Agent Server hosting (v0.6, ADR 0013):** officially documented graph factories make interpreted mode deployable: `langgraph.json` points to `agentcanvas_runtime.server:make_graph`, an async context manager taking `ServerRuntime` (beta; `langgraph-api>=0.7.31`). It reads the pinned IR (by `ir_hash`) from the assistant config, resolves per-user connections via `runtime.execution_runtime.ensure_user()`, and yields `build_graph(...)`; for introspection calls (`execution_runtime is None`) it yields the same topology without opening connections.
 
 ## 8. Source maps & trace mapping
 - `_canvas_sourcemap.json`: `{ "n_7f3a": { "identifier": "reply_drafter", "file": "agents/reply_drafter.py", "lines": [12, 58] } }`.
@@ -350,7 +360,7 @@ Each node type's manifest declares `targets: {"python": "full", "mda": "full|par
 | TR-COMP-04 | No secrets in output; `.env.example` lists required variables. |
 | TR-COMP-05 | Every graph node and agent carries `canvas_node_id` metadata. |
 | TR-COMP-10 | Incremental: re-compiling after a single-node change touches only that node's module + graph assembly. |
-| TR-COMP-20 | Dependency pinning: lockfile (`uv.lock`) generated; versions from a curated, tested "stack" (e.g. `stack-2026.09`: langgraph 1.2.x, langchain 1.4.x, deepagents 0.7.x). |
+| TR-COMP-20 | Dependency pinning: lockfile (`uv.lock`) generated; versions from a curated, tested "stack" (`stack-2026.09`: `langgraph 1.2.12`, `langchain[mcp] 1.4.3`, `langchain-core 1.6.5`, `deepagents 0.7.19`, `langsmith 0.14.1`; ADR 0017). Stack upgrades refuse downgrades across a `DeltaChannel` format boundary (e.g. deepagents < 0.6). |
 | TR-COMP-30 | Target capability checks before generation. |
 | TR-COMP-40 | Interpreted ≡ compiled: differential tests over templates + fuzzed IRs in CI. |
 | TR-COMP-50 | Generated smoke tests: import graph, render mermaid, run with fake model through each route. |

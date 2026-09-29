@@ -62,8 +62,8 @@ def run(inp: In, runtime: Runtime) -> Out | Command:
 |----|-------------|-----|
 | FR-SCR-01 | Creating a Script node on canvas scaffolds the file with ports matching the connected state channels; editing ports in code updates the node (and vice-versa). | P0 |
 | FR-SCR-02 | Signatures accepted: plain LangGraph node `def run(state: State, runtime: Runtime[Context]) -> dict | Command`, or typed `@script` form above (sugar that compiles to the plain form). Async supported. | P0 |
-| FR-SCR-03 | Execution modes: **trusted in-process** (runs inside the Agent Server worker; requires admin-approved project setting) or **sandboxed** (each call proxied to a sandbox; higher latency, strong isolation). Default: sandboxed for shared-tenant, in-process for dedicated. | P0 |
-| FR-SCR-04 | Access to `runtime.context`, `runtime.store`, `runtime.stream_writer`, secrets (`runtime.secrets["NAME"]` resolved at run time), and the platform HTTP client with egress policy. | P0 |
+| FR-SCR-03 | Execution modes: **trusted in-process** (runs inside the runner/Agent Server worker; requires admin-approved project setting) or **sandboxed** (each call proxied to a sandbox; higher latency, strong isolation). Sandbox providers: local **Docker** runner (`--network none`, read-only FS) or **LangSmith Sandboxes** (`langsmith.sandbox`, v0.6) with the auth proxy injecting secrets into outbound HTTPS (secrets never enter the sandbox), egress allow-lists, mounts (S3/GCS/Git/Context Hub) and snapshots keyed by `uv.lock` hash (FR-X-08). Default: sandboxed for shared-tenant, in-process for dedicated. | P0 |
+| FR-SCR-04 | Access to `runtime.context`, `runtime.store`, `runtime.stream_writer`, `runtime.heartbeat()` (keeps `idle_timeout` alive in long scripts, v0.6), `runtime.emit(event, payload)` (typed custom events, v0.6), secrets (`runtime.secrets["NAME"]` resolved at run time), and the platform HTTP client with egress policy. | P0 |
 | FR-SCR-05 | Inline "Quick script" for small expressions (single function edited in a node popover) — still stored as a file. | P1 |
 | FR-SCR-06 | Unit test scaffold per script (`tests/scripts/test_score_lead.py`) with fixtures from pinned node inputs. | P1 |
 | FR-SCR-07 | Other languages via sandbox: JavaScript/TypeScript (QuickJS in-process for pure transforms; Node in sandbox), SQL nodes (parameterized query against a connection). | P2 |
@@ -165,6 +165,9 @@ Delivery targets: event handlers (`@on("node.failed", workflow="support_triage")
 
 ### 5.3 Custom UI events (generative UI)
 Scripts/tools can emit typed UI payloads (e.g. `{"ui": "chart", "props": {...}}`) through the custom stream; the chat widget renders registered components (AG-UI / LangGraph generative UI pattern). Custom React components are registered per project (sandboxed iframe, P2).
+
+### 5.4 Events as code (v0.6)
+The three kinds above plus custom **stream projections** (v3 transformers, P2) are unified in one typed event catalog (`events/schemas/`), with handler replay/dry-run and an **Event Map** view generated from code and IR. Full model: [doc 15 §6](./15-concept-evolution-and-new-features.md#6-workspaces-and-custom-events-deepened-events-as-code).
 
 ## 6. Workspace ↔ canvas synchronization
 

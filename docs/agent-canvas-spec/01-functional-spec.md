@@ -93,7 +93,7 @@ Three switchable main views (same IR): **Canvas**, **Code** (read-only generated
 | FR-NODE-04 | Prompt fields use a rich prompt editor: Mustache/f-string variables with autocomplete from the state schema, token counter, version history, link to LangSmith prompt/Context Hub commits, test-in-playground button. | P0 |
 | FR-NODE-05 | Node versioning: each node type is semver'd; workflows pin node versions; upgrade assistant shows breaking changes. | P1 |
 | FR-NODE-06 | Custom nodes from the Workspace and the marketplace appear in the palette with a provenance badge (built-in / org / community / local). | P0 |
-| FR-NODE-07 | Per-node runtime policies (Graph-tier runtime nodes): retry policy, cache policy, timeout (run/idle), error handler route, concurrency limit, tags/metadata for tracing. | P0 |
+| FR-NODE-07 | Per-node runtime policies (Graph-tier runtime nodes): retry policy, cache policy, timeout (run/idle, idle refreshed automatically or by `runtime.heartbeat()`), error handler route, concurrency limit, tags/metadata for tracing, **trace policy** (full / omit inputs / omit outputs — FR-X-07). Graph-wide defaults compile to `set_node_defaults(...)`. | P0 |
 
 ### 4.3 Type system & live validation (FR-TYPE)
 
@@ -110,7 +110,7 @@ Three switchable main views (same IR): **Canvas**, **Code** (read-only generated
 
 | ID | Requirement | Pri |
 |----|-------------|-----|
-| FR-STATE-01 | Visual editor for the graph's state schema: channels with name, type (JSON Schema / Pydantic-like), default, reducer (`replace`, `append`, `add_messages`, `merge_dict`, `sum`, `max`, `DeltaChannel` (append-optimized), `custom` (script)), visibility (input/output/private). | P0 |
+| FR-STATE-01 | Visual editor for the graph's state schema: channels with name, type (JSON Schema / Pydantic-like), default, reducer (`replace`, `append`, `add_messages`, `merge_dict`, `sum`, `max`, `custom` (script)), **storage mode** (`full` default, or `delta` = LangGraph `DeltaChannel` for append-heavy channels; only with batch-safe reducers — see doc 14 V-06), visibility (input/output/private). | P0 |
 | FR-STATE-02 | Separate **Input schema**, **Output schema**, and **Context schema** (run-scoped, immutable config such as `user_id`, `tenant`, feature flags — compiles to `context_schema`/`Runtime.context`). | P0 |
 | FR-STATE-03 | Presets: *Chat* (`messages` with `add_messages`), *Agent* (Deep Agents state incl. `files`, optional `todos`), *Pipeline* (typed fields). | P0 |
 | FR-STATE-04 | Each node declares which channels it reads and writes; the canvas shows read/write badges; the validator warns about channels never written or never read. | P1 |
@@ -126,7 +126,7 @@ The **Deep Agent** widget is the flagship. It exposes every `create_deep_agent` 
 | FR-AGENT-01 | Slots (wiring ports): `model` (ChatModel), `tools` (Tool[] — multi-connect), `middleware` (Middleware[] — ordered), `subagents` (Subagent[]), `skills` (SkillSet), `memory` (MemorySource[]), `backend` (Backend), `store` (Store), `response_format` (Schema). | P0 |
 | FR-AGENT-02 | Config panel: name, system prompt (rich editor), `interrupt_on` table (per tool: approve / edit / reject / respond allowed decisions), permissions rule table (`operations`, `paths`, `mode` = allow/deny/interrupt; first-match-wins with reorder handles), debug flag, recursion limit. | P0 |
 | FR-AGENT-03 | Built-in capabilities toggles with explanations: Planning (adds `TodoListMiddleware` — opt-in since deepagents 0.7), Filesystem tools, General-purpose subagent (on/off/override), Summarization (trigger thresholds), Prompt caching (auto), Code interpreter (QuickJS; PTC tool allow-list), Dynamic subagents, Rubric self-grading. | P0 |
-| FR-AGENT-04 | Subagents editor: add *Declarative subagent* (name, description, system prompt, model, tools, middleware, skills, permissions, interrupt_on, response_format), *Compiled subagent* (link any sub-workflow on the canvas), *Forked subagent* (inherits parent context), *Async subagent* (remote/ASGI deployment; launch/check/update/cancel/list tools). Each subagent is also visible as a nested canvas. | P0 (sync), P1 (async/forked/dynamic) |
+| FR-AGENT-04 | Subagents editor: add *Declarative subagent* (name, description, system prompt, model, tools, middleware, skills, permissions, interrupt_on, response_format), *Compiled subagent* (link any sub-workflow on the canvas), *Forked subagent* (continues the parent's conversation; `SubAgent(mode="fork")`, **experimental** upstream — capability-flagged, v0.6), *Async subagent* (remote/ASGI deployment; launch/check/update/cancel/list tools). Each subagent is also visible as a nested canvas. | P0 (sync), P1 (async/forked/dynamic) |
 | FR-AGENT-05 | Backend chooser: *State* (ephemeral per thread), *Store* (persistent; namespace per user / assistant / thread / org), *Local filesystem* (dev only), *Sandbox* (Daytona, Modal, Runloop, E2B, Vercel, AWS AgentCore, LangSmith Sandboxes, Docker; thread- or assistant-scoped), *Context Hub* (versioned in LangSmith), *Composite* (route path prefixes to backends, e.g. `/memories/` → Store, `/workspace/` → Sandbox). | P0 (State/Store/Composite), P1 (sandboxes, Context Hub) |
 | FR-AGENT-06 | Skills manager: attach skills (folders with `SKILL.md` + `scripts/`, `references/`, `assets/`) from the Workspace, Context Hub or marketplace; per-subagent skill selection; read-only vs writable; write-approval. | P1 |
 | FR-AGENT-07 | Memory manager: `AGENTS.md`-style memory files; scope (agent / user / org); read-only vs writable; episodic memory search toggle; background consolidation schedule. Memory is configured through **Memory Spaces** (doc 08 §3) so the same spaces are shared by agent file routes, memory tools and Recall/Remember nodes. | P1 |
@@ -292,6 +292,12 @@ ER-style polyglot modelling (entities, relations, indexes, vector fields, PII & 
 ### 4.23 Self-improving agents (FR-LRN) — summary; full spec in doc 09
 
 Feedback schema & capture (incl. automatic capture of HITL edits), Learning Center, Learning Loop nodes (Trace Query, Memory Extractor, Example Curator, Few-shot Selector, Prompt Optimizer, Skill Writer, Variant Router, Fine-tune Job, Eval Gate, Human Review, Promote/Canary/Rollback), versioned & revertible learned artifacts, learning budgets and safety. Requirements FR-LRN-01…10.
+
+---
+
+### 4.24 v0.6 additions (FR-X) — summary; full spec in doc 15
+
+Live Code Mirror, blast-radius map & dry run, headless client-side tools, generative UI designer, decision-model nodes, LangSmith Engine bridge, per-node trace policy, sandbox policy designer, custom stream projections, safe redeploy, ACP exposure, trace-to-canvas import, record/replay from production, contract view & API diff, budgets, multimodal I/O, explain mode, channel lineage, policy-as-code lint profiles, PR visual diffs, per-user runtime connections, events-as-code, budget-aware model routing, guided build. Requirements FR-X-01…24 with priorities and target sprints in [doc 15 §7](./15-concept-evolution-and-new-features.md#7-new-requirements-fr-x).
 
 ---
 

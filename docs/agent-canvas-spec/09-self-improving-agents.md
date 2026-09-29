@@ -89,6 +89,7 @@ Deep Agent with `/memories/` routed to a per-user Store space; memory tools with
 - **Gate evaluation**: experiments run candidate vs baseline on pinned dataset versions with repetitions; significance via bootstrap CI; results posted to the review card.
 - **Canary**: two assistants (baseline/candidate) behind the published endpoint with weighted routing in the Run Orchestrator; online evaluators tag by variant.
 - Upstream note: the LangMem SDK provides memory managers and prompt optimisers; AgentCanvas wraps these behind stable node interfaces so the implementation can be swapped (LangMem, Deep Agents consolidation agent, custom) as the ecosystem evolves.
+- **v0.6 (ADR 0014):** `langmem` has not been released since 2025-10-27. The default implementations of Memory Extractor, Consolidator and Prompt Optimizer are **AgentCanvas learning-loop workflows built on core primitives** (`create_agent` + structured output, `BaseStore`, LangSmith datasets/prompts). A `langmem`-backed implementation is an optional adapter, never a hard dependency.
 
 ## 6. Risks specific to self-improvement
 
