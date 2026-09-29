@@ -24,6 +24,7 @@ from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.projects import ProjectRegistry
+from agentcanvas.services.secrets import SecretService
 from agentcanvas.settings import Settings, get_settings
 
 log = get_logger(__name__)
@@ -46,6 +47,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with adapter.persistence(settings.persistence_url or settings.database_url):
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
+            async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
+                for project, values in (await SecretService(s, settings.secret_key).values()).items():
+                    app.state.projects.secrets.setdefault(project, {}).update(values)
             runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, thread_id, wf))
             app.state.runner = runner
             log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)

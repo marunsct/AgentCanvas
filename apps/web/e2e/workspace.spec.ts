@@ -104,3 +104,15 @@ test("custom node from the workspace appears in the palette and runs", async ({ 
   await page.getByRole("button", { name: "▶ Run" }).click();
   await expect(page.getByTestId("run-output")).toContainText("Hi, Ada!", { timeout: 10_000 });
 });
+
+test("secrets are write-only in the workspace", async ({ page }) => {
+  const name = `E2E_TOKEN_${Date.now()}`;
+  await page.goto("/workspace");
+  await page.getByLabel("secret name").fill(name);
+  await page.getByLabel("secret value").fill("s3cr3t-value-e2e");
+  await page.getByRole("button", { name: "Save secret" }).click();
+  await expect(page.getByRole("region", { name: "secrets" })).toContainText(name);
+  await expect(page.locator("body")).not.toContainText("s3cr3t-value-e2e");
+  await page.getByRole("button", { name: `delete secret ${name}` }).click();
+  await expect(page.getByRole("region", { name: "secrets" })).not.toContainText(name);
+});

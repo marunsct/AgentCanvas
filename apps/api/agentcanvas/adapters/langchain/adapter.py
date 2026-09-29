@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import time
 import warnings
 from collections import OrderedDict
@@ -23,6 +25,8 @@ from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
+from agentcanvas.sdk import _SECRETS
+from agentcanvas.services.secrets import redact
 
 STREAM_MODES = ["tasks", "updates", "messages", "custom"]
 # langgraph 1.2.12 skips node `error_handler`s when streaming "messages"/"custom" or with subgraphs=True
@@ -194,6 +198,9 @@ class LangChainAdapter:
             kwargs["interrupt_after"] = [id2name[i] for i in spec.breakpoints_after if i in id2name] or None
         usage = UsageTracker(names)
         cfg["callbacks"] = [usage]
+        secrets = getattr(resources, "_secrets", None) or {}
+        token = _SECRETS.set(secrets)  # sdk.secret() in in-process scripts and custom nodes
+        hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
         started: dict[str, float] = {}
         try:
             async for part in graph.astream(graph_input, cfg, **kwargs):
@@ -202,7 +209,7 @@ class LangChainAdapter:
                         started[ev["task_id"]] = time.perf_counter()
                     elif ev["type"] == "STEP_FINISHED" and ev["task_id"] in started:
                         ev["duration_ms"] = round((time.perf_counter() - started.pop(ev["task_id"])) * 1000)
-                    yield ev
+                    yield _redacted(ev, hidden)
                 for record in usage.drain():
                     yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         except GraphRecursionError as exc:
@@ -214,8 +221,11 @@ class LangChainAdapter:
             }
             return
         except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
-            yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
+            yield _redacted({"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}, hidden)
             return
+        finally:
+            with contextlib.suppress(ValueError):  # closed from another context (e.g. cancelled run)
+                _SECRETS.reset(token)
 
         for record in usage.drain():
             yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
@@ -223,15 +233,18 @@ class LangChainAdapter:
         for intr in state.interrupts:
             yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}
         paused = bool(state.interrupts or state.next)
-        yield {
-            "type": "RUN_FINISHED",
-            "outcome": "interrupt" if paused else "success",
-            "breakpoint": paused and not state.interrupts,
-            "interrupts": [asdict(i) for i in state.interrupts],
-            "next": state.next,
-            "checkpoint_id": state.checkpoint_id,
-            "output": _outputs(wf, state.values),
-        }
+        yield _redacted(
+            {
+                "type": "RUN_FINISHED",
+                "outcome": "interrupt" if paused else "success",
+                "breakpoint": paused and not state.interrupts,
+                "interrupts": [asdict(i) for i in state.interrupts],
+                "next": state.next,
+                "checkpoint_id": state.checkpoint_id,
+                "output": _outputs(wf, state.values),
+            },
+            hidden,
+        )
 
     # --------------------------------------------------------------- state ----
     async def _state(self, graph: Any, cfg: RunnableConfig, names: dict[str, str]) -> ThreadState:
@@ -303,6 +316,16 @@ class LangChainAdapter:
 
     async def delete_thread(self, thread_id: str) -> None:
         await self._persist().checkpointer.adelete_thread(thread_id)
+
+
+def _redacted(event: dict[str, Any], hidden: list[str]) -> dict[str, Any]:
+    """Mask project secret values wherever they show up in an event (e.g. an error echoing a header)."""
+    if not hidden:
+        return event
+    text = json.dumps(event, default=str)
+    if not any(v in text for v in hidden):
+        return event
+    return json.loads(redact(text, hidden))
 
 
 def _registry(resources: Any) -> Any:

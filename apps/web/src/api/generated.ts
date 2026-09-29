@@ -313,18 +313,21 @@ export type Diagnostics2 = LintItem[];
 export type Modified1 = number;
 export type Path3 = string;
 export type Size1 = number;
+export type Value3 = string;
+export type CreatedAt4 = string;
+export type Name13 = string;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
-export type Name13 = string | null;
+export type Name14 = string | null;
 /**
  * @minItems 1
  */
 export type NodeIds = [string, ...string[]];
 export type Description6 = string;
 export type Id14 = string;
-export type Name14 = string;
+export type Name15 = string;
 export type NodeCount = number;
-export type CreatedAt4 = string;
+export type CreatedAt5 = string;
 export type Id15 = string;
 export type Status2 = string;
 export type Title = string | null;
@@ -332,16 +335,16 @@ export type UpdatedAt2 = string;
 export type WorkflowId1 = string;
 export type Items = ThreadOut[];
 export type NextCursor = string | null;
-export type CreatedAt5 = string;
+export type CreatedAt6 = string;
 export type Diagnostics3 = Diagnostic[];
 export type Id16 = string;
 export type IrHash2 = string;
-export type Name15 = string;
+export type Name16 = string;
 export type ProjectId1 = string;
 export type UpdatedAt3 = string;
 export type Version2 = number;
 export type Id17 = string;
-export type Name16 = string;
+export type Name17 = string;
 export type UpdatedAt4 = string;
 export type Version3 = number;
 export type Items1 = WorkflowSummary[];
@@ -401,6 +404,8 @@ export interface ApiSchemas {
   RunOut?: RunOut;
   RunRequest?: RunRequest;
   SavedFile?: SavedFile;
+  SecretIn?: SecretIn;
+  SecretOut?: SecretOut;
   SetChannels?: SetChannels;
   SetContext?: SetContext;
   StateEdit?: StateEdit;
@@ -1142,6 +1147,21 @@ export interface SavedFile {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SecretIn".
+ */
+export interface SecretIn {
+  value: Value3;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SecretOut".
+ */
+export interface SecretOut {
+  created_at: CreatedAt4;
+  name: Name13;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "StateEdit".
  */
 export interface StateEdit {
@@ -1157,7 +1177,7 @@ export interface Values1 {
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
-  name?: Name13;
+  name?: Name14;
   node_ids: NodeIds;
 }
 /**
@@ -1167,7 +1187,7 @@ export interface SubgraphRequest {
 export interface TemplateInfo {
   description: Description6;
   id: Id14;
-  name: Name14;
+  name: Name15;
   node_count: NodeCount;
 }
 /**
@@ -1175,7 +1195,7 @@ export interface TemplateInfo {
  * via the `definition` "ThreadOut".
  */
 export interface ThreadOut {
-  created_at: CreatedAt4;
+  created_at: CreatedAt5;
   id: Id15;
   status: Status2;
   title: Title;
@@ -1195,13 +1215,13 @@ export interface ThreadPage {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt5;
+  created_at: CreatedAt6;
   diagnostics: Diagnostics3;
   id: Id16;
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
-  name: Name15;
+  name: Name16;
   project_id: ProjectId1;
   updated_at: UpdatedAt3;
   version: Version2;
@@ -1226,7 +1246,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id17;
-  name: Name16;
+  name: Name17;
   updated_at: UpdatedAt4;
   version: Version3;
 }

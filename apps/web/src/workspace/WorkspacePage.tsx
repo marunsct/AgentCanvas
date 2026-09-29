@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type LintItem } from "./CodeEditor";
+import { SecretsPanel } from "./SecretsPanel";
 
 interface FileOut {
   path: string;
@@ -76,6 +77,7 @@ export function WorkspacePage() {
               </li>
             ))}
           </ul>
+          <SecretsPanel />
         </aside>
         <section aria-label="editor">
           {selected && file.data ? (
