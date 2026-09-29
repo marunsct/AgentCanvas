@@ -46,3 +46,13 @@ test("saved test case turns red after an edit; the diff shows the edited step", 
   await expect(page.getByTestId("diff-summary")).toContainText("1 step changed");
   await expect(page.getByTestId("node-greet")).toHaveClass(/diff-changed/);
 });
+
+test("export the draft as a zip", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Export ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("tab", { name: "Versions" }).click();
+  const download = page.waitForEvent("download");
+  await page.getByTestId("export-draft").click();
+  expect((await download).suggestedFilename()).toMatch(/^export-\d+\.zip$/);
+});

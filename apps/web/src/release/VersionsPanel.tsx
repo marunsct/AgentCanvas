@@ -1,7 +1,7 @@
 /** Versions (M6-T1): save the draft as a version, compare a version with the draft on the canvas, restore it. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { apiFetch } from "../api/client";
+import { API_BASE, apiFetch } from "../api/client";
 import type { DiffOut, ElementDiff, VersionOut } from "../api/generated";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
@@ -46,6 +46,9 @@ export function VersionsPanel() {
         <button type="submit" className="primary" disabled={save.isPending}>Save version</button>
       </form>
       {save.error && <p className="error-text small">{(save.error as Error).message}</p>}
+      <p className="small">
+        <a href={`${API_BASE}/workflows/${wf.id}/export.zip`} download data-testid="export-draft">⬇ Export draft as a Python project</a>
+      </p>
       {diff && (
         <div className="diff-box" data-testid="diff-summary">
           <div className="row gap"><b>Draft vs v{useUi.getState().diff?.against}</b>: {diff.summary}
@@ -66,6 +69,7 @@ export function VersionsPanel() {
               <span className="spacer" />
               <button type="button" className="small" onClick={() => void compare(v)}>Compare</button>
               <button type="button" className="small" onClick={() => void restore(v)}>Restore</button>
+              <a className="small" href={`${API_BASE}/workflows/${wf.id}/export.zip?version=${v.semver}`} download>⬇ zip</a>
             </div>
             {v.message && <p className="small">{v.message}</p>}
           </li>

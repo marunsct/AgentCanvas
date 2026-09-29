@@ -23,6 +23,18 @@ class FrameworkAdapter(Protocol):
         """Generated source of the workflow (raises agentcanvas.errors.WorkflowHasErrors when invalid)."""
         ...
 
+    def package(
+        self,
+        wf: Workflow,
+        registry: Any = None,
+        *,
+        workspace: Any = None,
+        test_cases: list[dict[str, Any]] | None = None,
+        version: str = "0.0.0",
+    ) -> tuple[str, bytes]:
+        """(file name, zip) of a standalone project running the workflow (M6-T2)."""
+        ...
+
     # ---- persistence (opened once per process)
     def persistence(self, database_url: str | None) -> AbstractAsyncContextManager[None]: ...
 

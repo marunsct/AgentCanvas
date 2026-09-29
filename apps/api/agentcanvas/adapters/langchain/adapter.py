@@ -157,6 +157,20 @@ class LangChainAdapter:
     def generate(self, wf: Workflow, registry: Any = None) -> str:
         return generate(wf, registry=registry)
 
+    def package(
+        self,
+        wf: Workflow,
+        registry: Any = None,
+        *,
+        workspace: Any = None,
+        test_cases: list[dict[str, Any]] | None = None,
+        version: str = "0.0.0",
+    ) -> tuple[str, bytes]:
+        from agentcanvas.adapters.langchain.packager import package
+
+        source = generate(wf, registry=registry)
+        return package(wf, source, workspace=workspace, test_cases=test_cases, version=version)
+
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
         wf = spec.workflow

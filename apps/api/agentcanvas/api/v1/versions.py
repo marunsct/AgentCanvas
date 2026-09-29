@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.adapters import get_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, if_match
 from agentcanvas.api.v1.runs import _context
 from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
@@ -16,6 +17,7 @@ from agentcanvas.db.models import TestCase, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.diff import WorkflowDiff
+from agentcanvas.ir.models import Workflow
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.testcases import CaseResult, Expect, TestCaseService
 from agentcanvas.services.versions import Bump, VersionService
@@ -107,6 +109,37 @@ async def restore_version(
     await svc.replace(wf_id, {**v.ir, "id": wf_id}, version)
     await svc.repo.save_layout(wf_id, v.layout or {})
     return _out(await svc.get(wf_id), response)
+
+
+@router.get("/workflows/{wf_id}/export.zip", response_class=Response)
+async def export_zip(
+    wf_id: str,
+    request: Request,
+    version: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    svc: WorkflowService = Depends(service),
+) -> Response:
+    """The workflow (draft, or `?version=`) as a standalone Python project (M6-T2/T3)."""
+    view = await svc.get(wf_id)
+    semver = "0.0.0"
+    wf = view.workflow
+    if version is not None:
+        v = await VersionService(session).get(wf_id, version)
+        wf, semver = Workflow.model_validate(v.ir), v.semver
+    cases = [
+        {"name": c.name, "input": c.input, "context": c.context, "mocks": c.mocks, "pins": c.pins, "expect": c.expect}
+        for c in await TestCaseService(session).list(wf_id)
+    ]
+    name, data = get_adapter(wf.framework).package(
+        wf,
+        svc.registry(view.row.project_id),
+        workspace=request.app.state.projects.workspace(view.row.project_id).root,
+        test_cases=cases,
+        version=semver,
+    )
+    return Response(
+        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
+    )
 
 
 # ---------------------------------------------------------------------------------------------- test cases ----
