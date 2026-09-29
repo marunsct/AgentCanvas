@@ -2715,6 +2715,11 @@
             "default": 0,
             "title": "Tokens Out",
             "type": "integer"
+          },
+          "traced": {
+            "default": false,
+            "title": "Traced",
+            "type": "boolean"
           }
         },
         "required": [
@@ -5753,6 +5758,47 @@
           }
         },
         "summary": "Run Events",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/trace": {
+      "get": {
+        "description": "Redirect to the run's LangSmith trace (M6-T6).",
+        "operationId": "open_trace_v1_runs__run_id__trace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "307": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Trace",
         "tags": [
           "runs"
         ]

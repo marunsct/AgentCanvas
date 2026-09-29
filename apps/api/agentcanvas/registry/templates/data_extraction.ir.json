@@ -1,0 +1,103 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_data_extraction",
+  "name": "Data extraction",
+  "description": "Turn free text (an email, an invoice) into validated structured fields with an agent's structured output.",
+  "state": {
+    "channels": [
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "in"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_extract",
+      "type": "core.agent",
+      "name": "extract",
+      "label": "Extract fields",
+      "config": {
+        "system_prompt": "Extract the invoice fields from the user's text. Use null for anything missing.",
+        "response_format": {
+          "title": "Invoice",
+          "type": "object",
+          "required": [
+            "vendor",
+            "total"
+          ],
+          "properties": {
+            "vendor": {
+              "type": "string"
+            },
+            "total": {
+              "type": "number"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "due_date": {
+              "type": "string",
+              "description": "ISO date"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_extract"
+      }
+    },
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "n_extract"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w100",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_extract",
+        "port": "model"
+      }
+    }
+  ]
+}

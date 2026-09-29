@@ -1,7 +1,7 @@
 {
   "ir_version": "1.0",
   "id": "wf_support_triage",
-  "name": "Support triage",
+  "name": "Support triage (demo tools)",
   "state": {"channels": [
     {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"},
     {"name": "ticket",   "type": {"type": "string"}},

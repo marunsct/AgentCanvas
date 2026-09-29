@@ -19,7 +19,7 @@ export type RunEvent = { seq?: number } & (
   | {
       type: "RUN_FINISHED"; runId?: string; threadId: string; outcome: "success" | "interrupt"; status?: string;
       breakpoint?: boolean; interrupts?: InterruptInfo[]; next?: string[]; output?: Record<string, unknown>;
-      duration_ms?: number; usage?: Usage;
+      duration_ms?: number; usage?: Usage; traced?: boolean;
     }
   | { type: "RUN_ERROR"; message: string; code?: string; usage?: Usage }
   | { type: "STEP_STARTED"; stepName: string; canvas_node_id: string }

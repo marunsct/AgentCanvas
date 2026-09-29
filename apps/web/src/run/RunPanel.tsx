@@ -80,6 +80,9 @@ export function RunPanel() {
           {!run.usage.priced && <span title="a model has no catalog price"> (cost incomplete)</span>}
         </p>
       )}
+      {run.traced && run.runId && !run.running && (
+        <p className="small"><a href={`/api/v1/runs/${run.runId}/trace`} target="_blank" rel="noreferrer">Open trace in LangSmith ↗</a></p>
+      )}
       {run.warnings.map((w, i) => <p key={i} className="warn-text">⚠ {w}</p>)}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}
       {!run.running && run.interrupts.map((intr) => (

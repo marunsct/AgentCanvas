@@ -6,6 +6,7 @@ background run: disconnecting does not stop it, `GET /v1/runs/{id}/events?after=
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -19,9 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowRow, WorkflowVersion
-from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
+from agentcanvas.errors import InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle, Runner
+from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.explain import explain
 from agentcanvas.services.workflows import WorkflowService
@@ -91,6 +93,7 @@ class RunOut(BaseModel):
     tokens_in: int = 0
     tokens_out: int = 0
     cost_usd: float = 0.0
+    traced: bool = False  # GET /v1/runs/{id}/trace opens it in LangSmith
 
 
 def _run_out(run: Run) -> RunOut:
@@ -106,6 +109,7 @@ def _run_out(run: Run) -> RunOut:
         tokens_in=run.tokens_in or 0,
         tokens_out=run.tokens_out or 0,
         cost_usd=float(run.cost_usd or 0),
+        traced=bool(run.trace_url),
     )
 
 
@@ -271,6 +275,19 @@ async def get_run(run_id: str, session: AsyncSession = Depends(get_session)) -> 
     if run is None:
         raise NotFound(f"run '{run_id}' not found")
     return _run_out(run)
+
+
+@router.get("/runs/{run_id}/trace", status_code=307)
+async def open_trace(run_id: str, session: AsyncSession = Depends(get_session)) -> Response:
+    """Redirect to the run's LangSmith trace (M6-T6)."""
+    run = await session.get(Run, run_id)
+    if run is None or not run.trace_url:
+        raise NotFound(f"run '{run_id}' was not traced (set LANGSMITH_TRACING=true and LANGSMITH_API_KEY)")
+    try:
+        url = await asyncio.to_thread(web_url, run.trace_url)
+    except Exception as exc:  # noqa: BLE001 - LangSmith unreachable or misconfigured
+        raise UpstreamError(f"could not reach LangSmith: {exc}") from None
+    return Response(status_code=307, headers={"Location": url})
 
 
 @router.get("/runs/{run_id}/events")

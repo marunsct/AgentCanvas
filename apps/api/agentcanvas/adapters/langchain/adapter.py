@@ -24,6 +24,7 @@ from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread,
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.tracing import trace_id
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
 from agentcanvas.sdk import _SECRETS
 from agentcanvas.services.secrets import redact
@@ -104,7 +105,11 @@ class LangChainAdapter:
 
     @staticmethod
     def _config(
-        wf: Workflow, thread_id: str, checkpoint_id: str | None = None, run_id: str | None = None
+        wf: Workflow,
+        thread_id: str,
+        checkpoint_id: str | None = None,
+        run_id: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> RunnableConfig:
         configurable: dict[str, Any] = {"thread_id": thread_id}
         if checkpoint_id:
@@ -112,9 +117,13 @@ class LangChainAdapter:
             configurable["checkpoint_ns"] = ""  # AsyncSqliteSaver.aput_writes needs it for past checkpoints (FAQ P-13)
         cfg: RunnableConfig = {"configurable": configurable, "recursion_limit": wf.settings.recursion_limit}
         if run_id:
-            cfg["metadata"] = {"workflow_id": wf.id, "run_id": run_id, "ir_hash": ir_hash(wf)}
-            cfg["tags"] = ["agentcanvas", f"workflow:{wf.id}"]
+            labels = labels or {}
+            cfg["metadata"] = {
+                "workflow_id": wf.id, "run_id": run_id, "thread_id": thread_id, "ir_hash": ir_hash(wf), **labels
+            }  # fmt: skip
+            cfg["tags"] = ["agentcanvas", f"workflow:{wf.id}", *(f"{k}:{v}" for k, v in sorted(labels.items()))]
             cfg["run_name"] = wf.name
+            cfg["run_id"] = trace_id(run_id)  # the LangSmith root run: "Open trace" finds it (M6-T6)
         return cfg
 
     # --------------------------------------------------------- compilation ----
@@ -181,7 +190,7 @@ class LangChainAdapter:
         else:
             graph = await self.graph(wf, resources)
         names, nested = node_index(wf), nested_index(wf)
-        cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id)
+        cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id, spec.labels)
         if spec.resume is not None:
             value = {spec.resume.interrupt_id: spec.resume.value} if spec.resume.interrupt_id else spec.resume.value
             graph_input: Any = Command(resume=value)

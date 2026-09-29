@@ -27,6 +27,7 @@ from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
+from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.types import ResumeSpec, RunMode, RunSpec
 
 log = get_logger(__name__)
@@ -51,6 +52,7 @@ class RunHandle:
     # "event": started by an event handler (its lifecycle events are not re-delivered); "test": a saved test case
     origin: str = "user"
     emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
+    traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
 
 
 class BudgetExceeded(Exception):
@@ -162,6 +164,7 @@ class Runner:
                     mode=mode,
                     status="running",
                     context=context,
+                    trace_url=trace_ref(run_id),
                 )
             )
             if resume is not None:
@@ -182,8 +185,14 @@ class Runner:
             checkpoint_id=checkpoint_id,
             pins=pins or {},
             mocks=mocks or {},
+            labels={
+                k: v
+                for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
+                if v
+            },
         )
         handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin)
+        handle.traced = trace_ref(run_id) is not None
         self.handles[run_id] = handle
         self.active_by_thread[thread_id] = run_id
         handle.task = asyncio.create_task(self._pump(handle, spec), name=f"run:{run_id}")
@@ -250,6 +259,7 @@ class Runner:
                             "status": status,
                             "duration_ms": round((time.perf_counter() - started) * 1000),
                             "usage": dict(h.usage),
+                            "traced": h.traced,
                         }
                     elif ev["type"] == "RUN_ERROR":
                         status, error = "error", ev.get("message")

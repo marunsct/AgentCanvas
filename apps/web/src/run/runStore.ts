@@ -33,6 +33,7 @@ export interface RunState {
   durationMs: number | null;
   route: string[]; // canvas node ids in the order they started (saved test cases, M6-T9)
   input: Record<string, unknown> | null; // input of a fresh run (null after resume/continue)
+  traced: boolean; // the last run went to LangSmith ("Open trace", M6-T6)
   reset: () => void;
   apply: (ev: RunEvent) => void;
   setHighlight: (ids: string[]) => void;
@@ -43,7 +44,7 @@ export interface RunState {
 const empty = {
   status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], error: null, breakpoint: false,
   highlight: [], next: [], metrics: {}, usage: null, durationMs: null, deltas: {}, route: [] as string[],
-  input: null as Record<string, unknown> | null,
+  input: null as Record<string, unknown> | null, traced: false,
 };
 
 export const useRun = create<RunState>((set) => ({
@@ -98,7 +99,7 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
       return {};
     case "RUN_FINISHED":
       return { running: false, finalOutput: ev.output ?? null, breakpoint: Boolean(ev.breakpoint), next: ev.next ?? [],
-        runSeq: s.runSeq + 1, usage: ev.usage ?? null, durationMs: ev.duration_ms ?? null };
+        runSeq: s.runSeq + 1, usage: ev.usage ?? null, durationMs: ev.duration_ms ?? null, traced: Boolean(ev.traced) };
     case "RUN_ERROR":
       return { running: false, error: ev.message, runSeq: s.runSeq + 1, usage: ev.usage ?? s.usage };
     default:

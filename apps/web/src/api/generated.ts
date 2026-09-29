@@ -372,6 +372,7 @@ export type Status5 = string;
 export type ThreadId4 = string;
 export type TokensIn = number;
 export type TokensOut = number;
+export type Traced = boolean;
 export type Durability = ("exit" | "async" | "sync") | null;
 export type Mocks2 = {
   [k: string]: unknown[];
@@ -1466,6 +1467,7 @@ export interface RunOut {
   thread_id: ThreadId4;
   tokens_in?: TokensIn;
   tokens_out?: TokensOut;
+  traced?: Traced;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
