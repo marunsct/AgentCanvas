@@ -168,7 +168,20 @@ def _omit(_: Any) -> dict[str, Any]:
     return {}
 
 
+def _summarize(payload: Any) -> dict[str, Any]:
+    """Trace shapes, not contents: `{"ticket": "str(142)", "messages": "list(6)"}` (FR-X-07 "summarize")."""
+
+    def shape(v: Any) -> str:
+        n = len(v) if isinstance(v, str | list | tuple | dict) else None
+        return f"{type(v).__name__}({n})" if n is not None else type(v).__name__
+
+    if isinstance(payload, dict):
+        return {str(k): shape(v) for k, v in payload.items()}
+    return {"value": shape(payload)}
+
+
 _TRACE = {
+    "summarize": {"process_inputs": _summarize, "process_outputs": _summarize},
     "omit_inputs": {"process_inputs": _omit},
     "omit_outputs": {"process_outputs": _omit},
     "omit": {"process_inputs": _omit, "process_outputs": _omit},

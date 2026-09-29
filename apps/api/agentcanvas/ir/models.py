@@ -118,7 +118,7 @@ class CachePolicySpec(_Base):
     ttl: int | None = Field(default=None, ge=1)  # seconds; None = never expires
 
 
-TracePolicy = Literal["full", "omit_inputs", "omit_outputs", "omit"]  # FR-X-07
+TracePolicy = Literal["full", "summarize", "omit_inputs", "omit_outputs", "omit"]  # FR-X-07
 
 
 class NodePolicies(_Base):

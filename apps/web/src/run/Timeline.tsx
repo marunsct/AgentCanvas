@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
 import { useEditor } from "../editor/store";
+import { lineageAt } from "./lineage";
 import { useRun } from "./runStore";
 import { editState, forkRun } from "./session";
 
@@ -84,8 +85,37 @@ export function Timeline() {
           </div>
           <textarea className={`mono${draft && !parsed ? " invalid" : ""}`} rows={5} value={draft}
             onChange={(e) => setDraft(e.target.value)} aria-label="checkpoint state" />
+          <Lineage ticks={ticks} index={index} name={name} onPick={(id) => setHighlight([id])} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** "Written by" per channel at the selected checkpoint (FR-X-18); clicking a writer highlights it. */
+function Lineage({ ticks, index, name, onPick }: {
+  ticks: Checkpoint[]; index: number; name: (id: string) => string; onPick: (id: string) => void;
+}) {
+  const lineage = useMemo(() => lineageAt(ticks, index), [ticks, index]);
+  const channels = Object.keys(lineage).sort();
+  if (!channels.length) return null;
+  return (
+    <div className="lineage" aria-label="channel lineage">
+      <small className="muted">Written by</small>
+      <ul>
+        {channels.map((ch) => {
+          const w = lineage[ch];
+          return (
+            <li key={ch} data-testid={`lineage-${ch}`}>
+              <code>{ch}</code> ←{" "}
+              {w.writer === "input"
+                ? <span>run input</span>
+                : <button type="button" className="link" onClick={() => onPick(w.writer)}>{name(w.writer)}</button>}
+              <small className="muted"> · step {w.step ?? "?"}</small>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

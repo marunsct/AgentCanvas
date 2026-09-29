@@ -1467,6 +1467,7 @@
             "default": "full",
             "enum": [
               "full",
+              "summarize",
               "omit_inputs",
               "omit_outputs",
               "omit"

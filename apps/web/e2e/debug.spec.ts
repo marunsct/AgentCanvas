@@ -37,6 +37,8 @@ test("timeline: edit a past checkpoint and fork into the other branch; explain n
   await page.getByRole("option", { name: /→ route_urgency/ }).click();
   const state = page.getByLabel("checkpoint state");
   await expect(state).toHaveValue(/"urgency": "low"/);
+  await expect(page.getByTestId("lineage-urgency")).toContainText("classify"); // FR-X-18
+  await expect(page.getByTestId("lineage-ticket")).toContainText("run input");
   await state.fill((await state.inputValue()).replace('"urgency": "low"', '"urgency": "high"'));
   await page.getByRole("button", { name: "⑂ Fork from here" }).click();
   await expect(page.getByTestId("node-escalate")).toHaveClass(/status-ok/, { timeout: 10_000 });

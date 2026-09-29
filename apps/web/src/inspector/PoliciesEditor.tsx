@@ -40,6 +40,7 @@ export function PoliciesEditor({ node }: { node: IRNode }) {
         Tracing
         <select value={p.trace ?? "full"} onChange={(e) => update({ trace: e.target.value })}>
           <option value="full">full inputs & outputs</option>
+          <option value="summarize">summarize (shapes, no content)</option>
           <option value="omit_inputs">omit inputs</option>
           <option value="omit_outputs">omit outputs</option>
           <option value="omit">omit both</option>
