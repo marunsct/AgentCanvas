@@ -63,12 +63,14 @@ test("inbox shows pending approvals across workflows and resumes the run", async
   await openTriage(page);
   await run(page, "Inbox please");
   await expect(page.getByRole("group", { name: "Approval needed" })).toBeVisible({ timeout: 10_000 });
+  // the inbox is shared with tests running in parallel: follow this run's thread, never a count
+  const thread = (await page.locator("label.row code").first().textContent())!.trim();
+  expect(thread).toMatch(/^th_/);
   await page.getByTestId("inbox-link").click();
-  const items = page.getByTestId("inbox-item");
-  await expect(items.first()).toBeVisible();
-  const before = await items.count();
-  await items.filter({ hasText: "send_reply" }).first().getByRole("button", { name: "Approve" }).click();
-  await expect(items).toHaveCount(before - 1, { timeout: 10_000 });
+  const mine = page.getByTestId("inbox-item").filter({ hasText: `thread ${thread}` });
+  await expect(mine).toHaveCount(1);
+  await mine.getByRole("button", { name: "Approve" }).click();
+  await expect(mine).toHaveCount(0, { timeout: 10_000 });
 });
 
 test("tidy, live code diff, copy/paste and command palette", async ({ page }) => {

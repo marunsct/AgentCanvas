@@ -182,12 +182,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!persist) return;
     layoutDirty = { ...layoutDirty, ...positions };
     if (layoutTimer) clearTimeout(layoutTimer);
-    layoutTimer = setTimeout(() => {
-      const { workflowId } = get();
+    const save = () => {
+      const { workflowId, pending, inflight } = get();
+      // the server drops positions of elements it does not know yet: let queued AddNode/AddResource land first
+      if (pending.length || inflight) {
+        layoutTimer = setTimeout(save, 150);
+        return;
+      }
       const body = layoutDirty;
       layoutDirty = {};
       if (workflowId) void apiFetch(`/workflows/${workflowId}/layout`, { method: "PUT", json: { positions: body } });
-    }, 400);
+    };
+    layoutTimer = setTimeout(save, 400);
   },
 
   setNotice: (notice) => set({ notice }),

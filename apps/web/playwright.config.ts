@@ -7,7 +7,11 @@ const executablePath = process.env.PW_CHROMIUM_PATH;
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
-  use: { baseURL: "http://localhost:5173", viewport: { width: 1300, height: 800 }, launchOptions: executablePath ? { executablePath } : {} },
+  use: {
+    baseURL: "http://localhost:5173", viewport: { width: 1300, height: 800 },
+    launchOptions: executablePath ? { executablePath } : {},
+    trace: "retain-on-failure", screenshot: "only-on-failure",
+  },
   webServer: [
     {
       command: "uv run uvicorn agentcanvas.dev.fake_server:app --port 8000",

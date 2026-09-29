@@ -138,10 +138,12 @@ label.row input { width: auto; margin: 0; }
 .h-flow { width: 10px !important; height: 10px !important; background: #334155 !important; border: 2px solid #fff !important; }
 .h-port { width: 9px !important; height: 9px !important; border-radius: 2px !important; border: 1px solid #fff !important; }
 .resource {
+  /* fixed width: a badge appearing or clearing must not move the output handle (it would jump under the cursor) */
   position: relative; padding: 6px 14px 6px 8px; background: var(--panel);
-  border: 2px dashed; border-radius: 16px; font-size: 12px; min-width: 150px;
+  border: 2px dashed; border-radius: 16px; font-size: 12px; width: 200px; box-sizing: border-box;
 }
 .resource-head { display: flex; align-items: center; gap: 6px; }
+.resource-head .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resource.with-inputs { border-radius: 10px; padding-bottom: 4px; }
 .resource-port { position: relative; margin-left: -8px; padding: 2px 0 2px 12px; font-size: 11px; }
 .resource em { color: var(--muted); font-style: normal; font-size: 11px; }

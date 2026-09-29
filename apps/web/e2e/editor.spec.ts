@@ -6,6 +6,8 @@ const handle = (page: Page, node: string, id: string) =>
   page.locator(`[data-testid="node-${node}"] .react-flow__handle[data-handleid="${id}"]`);
 
 async function connect(page: Page, from: Locator, to: Locator) {
+  // measure handles only once edits have landed: server diagnostics add/remove badges and can move handles
+  await expect(page.locator(".save-state")).toHaveText("Saved");
   const a = (await from.boundingBox())!;
   const b = (await to.boundingBox())!;
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
