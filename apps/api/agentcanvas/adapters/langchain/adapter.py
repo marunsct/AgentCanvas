@@ -37,13 +37,17 @@ class LangChainAdapter:
 
     def __init__(self, graph_cache_size: int = 128):
         self._p: Persistence | None = None
-        self._graphs: OrderedDict[tuple[str, int], tuple[Any, Any]] = OrderedDict()
+        self._graphs: OrderedDict[tuple[str, int, str], tuple[Any, Any]] = OrderedDict()
         self._cache_size = graph_cache_size
         self._shared = ac.Resources()
 
     # ------------------------------------------------------------ plumbing ----
     def default_resources(self) -> ac.Resources:
         return self._shared
+
+    def new_resources(self, *, resources_class: Any = None, **kw: Any) -> ac.Resources:
+        """A resolver for one project: its workspace (scripts/tools/nodes), secrets and script sandbox."""
+        return (resources_class or ac.Resources)(**kw)
 
     @asynccontextmanager
     async def persistence(self, database_url: str | None) -> AsyncIterator[None]:
@@ -71,7 +75,8 @@ class LangChainAdapter:
 
     async def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
         """Compiled graph for (IR, resources), cached: rebuilding per run is wasteful for real models."""
-        key = (ir_hash(wf), id(resources))  # the entry keeps `resources` alive, so its id cannot be reused
+        # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does
+        key = (ir_hash(wf), id(resources), resources.revision())
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key][1]

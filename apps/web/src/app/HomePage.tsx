@@ -26,6 +26,7 @@ export function HomePage() {
         <span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span><span className="spacer" />
         <Link to="/inbox">Inbox</Link>
         <Link to="/memory" data-testid="memory-link">Memory</Link>
+        <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
       </header>
       <section>
         <h2>New workflow</h2>

@@ -5,6 +5,7 @@ import { findElement, isResource } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
 import { MockPanel, PinPanel } from "./DebugAids";
 import { McpBrowser } from "./McpBrowser";
+import { ScriptPanel } from "./ScriptPanel";
 import { PoliciesEditor } from "./PoliciesEditor";
 import { WiredPorts } from "./WiredPorts";
 import { WorkflowPanel } from "./WorkflowPanel";
@@ -49,6 +50,7 @@ export function Inspector() {
         </ul>
       )}
       {res && el.type === "mcp.server" && <McpBrowser resource={el} />}
+      {!res && el.type === "core.script" && <ScriptPanel node={el} />}
       {m && <ConfigForm element={el} manifest={m} isResource={res} />}
       {m && <WiredPorts element={el} manifest={m} />}
       {!res && (

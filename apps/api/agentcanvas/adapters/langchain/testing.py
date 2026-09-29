@@ -136,8 +136,8 @@ def _demo_value(schema: dict[str, Any], name: str = "", asked: str = "") -> Any:
 class DemoResources(Resources):
     """Every chat model resolves to the stateless demo model; tools stay real (workspace code)."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, **kw: Any) -> None:
+        super().__init__(**kw)
         self._demos: dict[str, DemoChatModel] = {}  # one per catalog id, so usage is attributed to the right model
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:

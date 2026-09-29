@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
     secret_key: str = "dev-only-change-me"
     allow_local_mcp: bool = False
+    workspaces_dir: str = "./workspaces"  # one git repository per project (M5-T1)
+    # how workspace scripts run (M5-T4): in the API process (dev), in a child process, or in a Docker sandbox
+    script_execution: Literal["inprocess", "subprocess", "docker"] = "inprocess"
+    sandbox_image: str = "python:3.12-slim"
     recursion_limit: int = 50
     cors_origins: list[str] = ["http://localhost:5173"]
     log_json: bool = False

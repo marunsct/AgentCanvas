@@ -22,6 +22,7 @@ from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime.runner import Runner
+from agentcanvas.services.projects import ProjectRegistry
 from agentcanvas.settings import Settings, get_settings
 
 log = get_logger(__name__)
@@ -42,7 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db = db
         adapter = get_adapter("langchain")
         async with adapter.persistence(settings.persistence_url or settings.database_url):
-            runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, adapter, thread_id, wf))
+            app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
+            runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, thread_id, wf))
             app.state.runner = runner
             log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
             try:
@@ -95,10 +97,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-def _resources(app: FastAPI, adapter, thread_id: str, wf):
-    """Model/tool resolver for a thread. Dev/test hosts may install `app.state.resources_factory`."""
+def _resources(app: FastAPI, thread_id: str, wf):
+    """Model/tool/script resolver for a thread: the workflow's project context. Tests may install
+    `app.state.resources_factory`; the key-less dev server sets `app.state.resources_class`."""
     factory = getattr(app.state, "resources_factory", None)
-    return factory(thread_id, wf) if factory else adapter.default_resources()
+    return factory(thread_id, wf) if factory else app.state.projects.for_workflow(wf)
 
 
 app = create_app()

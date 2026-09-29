@@ -279,3 +279,12 @@ label.row input { width: auto; margin: 0; }
 .lineage ul { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
 .subgraph-crumbs { position: absolute; top: 8px; left: 8px; z-index: 5; background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 10px; font-size: 13px; box-shadow: 0 1px 3px #0002; }
+/* workspace */
+.workspace-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+.file-tree { list-style: none; padding: 0; margin: 8px 0; }
+.file-tree button { width: 100%; text-align: left; font-family: ui-monospace, monospace; font-size: 12px; border: none; padding: 3px 6px; }
+.file-tree button.active { background: #7c3aed14; font-weight: 600; }
+.code-editor { border: 1px solid var(--border); border-radius: 6px; margin: 8px 0; min-height: 360px; background: var(--panel); }
+.code-editor .cm-editor { min-height: 360px; font-size: 13px; }
+.lint-list { font-size: 12px; margin: 4px 0; padding-left: 18px; }
+@media (max-width: 700px) { .workspace-layout { grid-template-columns: 1fr; } }

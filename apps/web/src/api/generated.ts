@@ -159,6 +159,19 @@ export type Kind1 = "cel" | "template";
 export type Source1 = string;
 export type Error = string | null;
 export type Ok = boolean;
+export type Content = string;
+export type Code1 = string;
+export type Column = number;
+export type EndColumn = number;
+export type EndLine = number;
+export type Line = number;
+export type Message1 = string;
+export type Diagnostics1 = LintItem[];
+export type Path1 = string;
+export type Modified = number;
+export type Path2 = string;
+export type Size = number;
+export type Content1 = string;
 export type AsNode = string | null;
 export type CheckpointId = string;
 export type Mode = "branch" | "copy";
@@ -167,7 +180,7 @@ export type Values = {
   [k: string]: unknown;
 } | null;
 export type Location = (string | number)[];
-export type Message1 = string;
+export type Message2 = string;
 export type ErrorType = string;
 export type Detail = ValidationError[];
 export type NodeId1 = string;
@@ -209,6 +222,8 @@ export type Tools = boolean;
 export type Vision = boolean;
 export type Namespace1 = string;
 export type Parts = string[];
+export type Name10 = string;
+export type Writes = string[];
 export type BuiltinTools = string[];
 export type Category = string;
 export type ChannelFields = string[];
@@ -221,7 +236,7 @@ export type HostedForbidden = boolean;
 export type Icon = string;
 export type Description5 = string | null;
 export type Multi = boolean;
-export type Name10 = string;
+export type Name11 = string;
 export type Ordered = boolean;
 export type Required1 = boolean;
 export type Type4 = string;
@@ -239,10 +254,10 @@ export type Stability = "stable" | "beta" | "experimental";
 export type TemplateFields = string[];
 export type Type5 = string;
 export type Version1 = string;
-export type Writes = string[];
+export type Writes1 = string[];
 export type CreatedAt3 = string;
 export type Id12 = string;
-export type Name11 = string;
+export type Name12 = string;
 export type Commands1 = {
   [k: string]: unknown;
 }[];
@@ -279,16 +294,20 @@ export type Pins2 = {
 } | null;
 export type Stream2 = boolean;
 export type ThreadId2 = string | null;
+export type Diagnostics2 = LintItem[];
+export type Modified1 = number;
+export type Path3 = string;
+export type Size1 = number;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
-export type Name12 = string | null;
+export type Name13 = string | null;
 /**
  * @minItems 1
  */
 export type NodeIds = [string, ...string[]];
 export type Description6 = string;
 export type Id14 = string;
-export type Name13 = string;
+export type Name14 = string;
 export type NodeCount = number;
 export type CreatedAt4 = string;
 export type Id15 = string;
@@ -299,15 +318,15 @@ export type WorkflowId1 = string;
 export type Items = ThreadOut[];
 export type NextCursor = string | null;
 export type CreatedAt5 = string;
-export type Diagnostics1 = Diagnostic[];
+export type Diagnostics3 = Diagnostic[];
 export type Id16 = string;
 export type IrHash2 = string;
-export type Name14 = string;
+export type Name15 = string;
 export type ProjectId1 = string;
 export type UpdatedAt3 = string;
 export type Version2 = number;
 export type Id17 = string;
-export type Name15 = string;
+export type Name16 = string;
 export type UpdatedAt4 = string;
 export type Version3 = number;
 export type Items1 = WorkflowSummary[];
@@ -332,16 +351,21 @@ export interface ApiSchemas {
   Endpoint?: Endpoint;
   ExpressionCheck?: ExpressionCheck;
   ExpressionResult?: ExpressionResult;
+  FileContent?: FileContent;
+  FileOut?: FileOut;
+  FileSave?: FileSave;
   ForkRequest?: ForkRequest;
   HTTPValidationError?: HTTPValidationError;
   InlineRequest?: InlineRequest;
   InterruptOut?: InterruptOut;
   LayoutUpdate?: LayoutUpdate;
+  LintItem?: LintItem;
   McpInspectRequest?: McpInspectRequest;
   McpToolInfo?: McpToolInfo;
   MemoryItem?: MemoryItem;
   ModelInfo?: ModelInfo;
   NamespaceOut?: NamespaceOut;
+  NewScript?: NewScript;
   Node?: Node;
   NodeManifest?: NodeManifest;
   NodePolicies?: NodePolicies;
@@ -360,6 +384,7 @@ export interface ApiSchemas {
   RetryPolicySpec?: RetryPolicySpec;
   RunOut?: RunOut;
   RunRequest?: RunRequest;
+  SavedFile?: SavedFile;
   SetChannels?: SetChannels;
   SetContext?: SetContext;
   StateEdit?: StateEdit;
@@ -765,6 +790,43 @@ export interface ExpressionResult {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FileContent".
+ */
+export interface FileContent {
+  content: Content;
+  diagnostics?: Diagnostics1;
+  path: Path1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "LintItem".
+ */
+export interface LintItem {
+  code: Code1;
+  column: Column;
+  end_column: EndColumn;
+  end_line: EndLine;
+  line: Line;
+  message: Message1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FileOut".
+ */
+export interface FileOut {
+  modified: Modified;
+  path: Path2;
+  size: Size;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FileSave".
+ */
+export interface FileSave {
+  content: Content1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ForkRequest".
  */
 export interface ForkRequest {
@@ -789,7 +851,7 @@ export interface ValidationError {
   ctx?: Context;
   input?: Input;
   loc: Location;
-  msg: Message1;
+  msg: Message2;
   type: ErrorType;
 }
 export interface Context {}
@@ -898,6 +960,14 @@ export interface NamespaceOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "NewScript".
+ */
+export interface NewScript {
+  name: Name10;
+  writes?: Writes;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "NodeManifest".
  */
 export interface NodeManifest {
@@ -928,7 +998,7 @@ export interface NodeManifest {
   template_fields?: TemplateFields;
   type: Type5;
   version?: Version1;
-  writes?: Writes;
+  writes?: Writes1;
 }
 export interface ConditionalWrites {
   [k: string]: string[];
@@ -943,7 +1013,7 @@ export interface ConfigSchema {
 export interface PortSpec {
   description?: Description5;
   multi?: Multi;
-  name: Name10;
+  name: Name11;
   ordered?: Ordered;
   required?: Required1;
   type: Type4;
@@ -958,7 +1028,7 @@ export interface Targets {
 export interface ProjectOut {
   created_at: CreatedAt3;
   id: Id12;
-  name: Name11;
+  name: Name12;
 }
 /**
  * Commands the editor dispatches like its own edits (optimistic, autosaved, undoable).
@@ -1033,6 +1103,16 @@ export interface Input1 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SavedFile".
+ */
+export interface SavedFile {
+  diagnostics?: Diagnostics2;
+  modified: Modified1;
+  path: Path3;
+  size: Size1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "StateEdit".
  */
 export interface StateEdit {
@@ -1048,7 +1128,7 @@ export interface Values1 {
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
-  name?: Name12;
+  name?: Name13;
   node_ids: NodeIds;
 }
 /**
@@ -1058,7 +1138,7 @@ export interface SubgraphRequest {
 export interface TemplateInfo {
   description: Description6;
   id: Id14;
-  name: Name13;
+  name: Name14;
   node_count: NodeCount;
 }
 /**
@@ -1087,12 +1167,12 @@ export interface ThreadPage {
  */
 export interface WorkflowOut {
   created_at: CreatedAt5;
-  diagnostics: Diagnostics1;
+  diagnostics: Diagnostics3;
   id: Id16;
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
-  name: Name14;
+  name: Name15;
   project_id: ProjectId1;
   updated_at: UpdatedAt3;
   version: Version2;
@@ -1117,7 +1197,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id17;
-  name: Name15;
+  name: Name16;
   updated_at: UpdatedAt4;
   version: Version3;
 }

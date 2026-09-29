@@ -17,6 +17,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.commands import Command, CommandError, apply_batch
 from agentcanvas.ir.models import Workflow
+from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic, validate
 
@@ -51,6 +52,7 @@ class WorkflowService:
 
     def _view(self, row: WorkflowRow) -> WorkflowView:
         wf = Workflow.model_validate(row.draft_ir)
+        PROJECT_OF[wf.id] = row.project_id  # lets the runner resolve workspace code for this workflow
         return WorkflowView(row, wf, self._validate(wf))
 
     async def create(self, project_id: str, name: str, template: str | None, created_by: str | None) -> WorkflowView:

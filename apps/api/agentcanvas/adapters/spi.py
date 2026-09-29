@@ -69,3 +69,7 @@ class FrameworkAdapter(Protocol):
     def default_resources(self) -> Any:
         """Resources (models/tools resolver) used when the host installs no override."""
         ...
+
+    def new_resources(self, *, resources_class: Any = None, **kw: Any) -> Any:
+        """A resolver for one project (workspace, secrets, script_runner keyword arguments)."""
+        ...

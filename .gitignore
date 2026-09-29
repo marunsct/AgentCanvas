@@ -12,3 +12,4 @@ playwright-report/
 *.db-shm
 *.db-wal
 *.tsbuildinfo
+apps/api/workspaces/

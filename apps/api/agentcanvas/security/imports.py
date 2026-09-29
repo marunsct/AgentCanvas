@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 
-WORKSPACE_IMPORT_PREFIXES = ("scripts.", "tools.", "nodes.")
+WORKSPACE_IMPORT_PREFIXES = ("scripts.", "tools.", "nodes.", "events.")
 DEV_ONLY_IMPORT_PREFIXES = ("examples.",)  # demo code: importable only in dev/test (review v0.6 V-10)
 
 

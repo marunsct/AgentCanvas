@@ -57,7 +57,7 @@ async def settings(tmp_path) -> Settings:
         url = TEST_DATABASE_URL
     else:
         url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
-    return Settings(env="test", database_url=url)
+    return Settings(env="test", database_url=url, workspaces_dir=str(tmp_path / "workspaces"))
 
 
 @pytest.fixture

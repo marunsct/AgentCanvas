@@ -172,7 +172,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         elif n.type == "core.set":
             fn = ac.set_node(values=cfg["values"])
         elif n.type == "core.script":
-            fn = ac.script_node(import_path=cfg["import_path"])
+            fn = ac.script_node(import_path=cfg["import_path"], resources=resources)
         else:  # pragma: no cover - the validator rejects unknown types first
             raise ValueError(f"unsupported node type {n.type}")
         builder.add_node(n.name, fn, metadata={"canvas_node_id": n.id}, **ac.node_options(**p.options))

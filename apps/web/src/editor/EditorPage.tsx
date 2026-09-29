@@ -73,6 +73,7 @@ export function EditorPage() {
         <span className="crumb">/ {wf.name}</span>
         <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
         <span className="spacer" />
+        <Link to="/workspace" className="inbox-link" data-testid="workspace-link">Workspace</Link>
         <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}

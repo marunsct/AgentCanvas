@@ -1,0 +1,65 @@
+import { expect, type Locator, type Page, test } from "@playwright/test";
+
+// Sprint 7 acceptance (J3 part 1): a Script node backed by a workspace file, edited in the browser, runs.
+
+const handle = (page: Page, node: string, id: string) =>
+  page.locator(`[data-testid="node-${node}"] .react-flow__handle[data-handleid="${id}"]`);
+
+async function connect(page: Page, from: Locator, to: Locator) {
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+  const a = (await from.boundingBox())!;
+  const b = (await to.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+  await page.mouse.up();
+}
+
+async function typeCode(page: Page, code: string) {
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("Delete");
+  await page.keyboard.insertText(code);
+}
+
+test("script node: scaffold its file, edit it with ruff feedback, run the new code", async ({ page }) => {
+  const stamp = Date.now();
+  await page.goto("/");
+  await page.getByLabel("workflow name").fill(`Script ${stamp}`);
+  await page.getByRole("button", { name: "Create empty" }).click();
+  await page.getByRole("button", { name: "+ Channel" }).click();
+  await page.getByLabel("channel name").first().fill("text");
+  await page.getByLabel("channel name").first().blur();
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+
+  await page.getByTestId("palette-core.script").dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 330, y: 180 } });
+  await expect(page.getByTestId("node-python_script")).toBeVisible();
+  await page.locator("input[id$='_import_path']").fill("");
+  await page.locator("input[id$='_import_path']").blur();
+  // a unique node name keeps parallel runs of this journey apart (one shared workspace)
+  await page.getByLabel("node name").fill(`shout_${stamp}`);
+  await page.getByLabel("node name").blur();
+  await page.getByRole("button", { name: `+ Create scripts/shout_${stamp}.py` }).click();
+  await expect(page.getByTestId("open-script")).toBeVisible();
+
+  await connect(page, handle(page, "START", "next"), handle(page, `shout_${stamp}`, "in"));
+  await connect(page, handle(page, `shout_${stamp}`, "next"), handle(page, "END", "in"));
+  await expect(page.locator(".react-flow__edge")).toHaveCount(2);
+  const editorUrl = page.url();
+
+  // edit in the workspace: ruff flags the undefined name, the fix clears it
+  await page.getByTestId("open-script").click();
+  await expect(page.getByTestId("code-editor")).toContainText("def run(state: dict) -> dict:");
+  await typeCode(page, "def run(state):\n    return {'text': state['text'].upper() + suffix}\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("lint")).toContainText("F821");
+  await typeCode(page, "def run(state):\n    return {'text': state['text'].upper() + '!'}\n");
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("lint")).toContainText("ruff: no problems");
+
+  await page.goto(editorUrl);
+  await page.getByRole("tab", { name: "Run" }).click();
+  await page.getByLabel("run input").fill('{"text": "hello"}');
+  await page.getByRole("button", { name: "▶ Run" }).click();
+  await expect(page.getByTestId("run-output")).toContainText("HELLO!", { timeout: 10_000 });
+});

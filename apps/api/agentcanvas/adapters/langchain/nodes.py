@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
-import importlib
 import inspect
 import json
 import operator
@@ -22,6 +21,7 @@ import re
 import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any
 
 from jsonschema import Draft202012Validator
@@ -53,15 +53,13 @@ from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPoli
 from typing_extensions import TypedDict
 
 from agentcanvas.expr import eval_condition, render_template
-from agentcanvas.security.imports import is_allowed_import_path
+from agentcanvas.workspace.loader import load_attr
 
 
-def safe_import(import_path: str) -> Any:
-    """Import `package.module:attr`, refusing anything outside the workspace packages (never "os:system")."""
-    if not is_allowed_import_path(import_path):
-        raise PermissionError(f"import path '{import_path}' is not allowed")
-    module, _, attr = import_path.partition(":")
-    return getattr(importlib.import_module(module), attr)
+def safe_import(import_path: str, workspace: Path | None = None) -> Any:
+    """Import `package.module:attr` from the project workspace (or installed packages in dev), refusing anything
+    outside the workspace packages (never "os:system"). Workspace files are hot-reloaded when they change."""
+    return load_attr(import_path, workspace)
 
 
 def ensure_async(fn: Callable) -> Callable:
@@ -271,10 +269,14 @@ class Resources:
         overrides: dict[str, Any] | None = None,
         secrets: dict[str, str] | None = None,
         http_transport: Any = None,
+        workspace: Path | None = None,
+        script_runner: Callable[[str], Callable] | None = None,
     ):
         self._overrides = overrides or {}
-        self._secrets = secrets or {}
+        self._secrets = secrets if secrets is not None else {}
         self._http_transport = http_transport
+        self.workspace = workspace  # project workspace root: scripts./tools./nodes. resolve here
+        self.script_runner = script_runner  # sandboxed execution of workspace scripts (M5-T4); None = in-process
         self._cache: dict[str, Any] = {}
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
 
@@ -297,7 +299,13 @@ class Resources:
             return self._overrides[name]
         if type_ == "tool.http":
             return http_tool(name=name, config=config, resolve=self._resolve, transport=self._http_transport)
-        return safe_import(config["import_path"])
+        return safe_import(config["import_path"], self.workspace)
+
+    def revision(self) -> str:
+        """Identifies the workspace code a graph was built from (graphs are rebuilt when it changes)."""
+        from agentcanvas.workspace import Workspace
+
+        return Workspace(self.workspace).revision() if self.workspace and self.workspace.exists() else ""
 
     def with_mocks(self, mocks: dict[str, list[Any]]) -> Resources:
         """A copy whose named chat models answer with scripted replies (debug "mock mode", M4-T9).
@@ -316,7 +324,7 @@ class Resources:
                 return AIMessage(content=str(reply.get("content", "")), tool_calls=calls)
             return AIMessage(content=str(reply))
 
-        clone = Resources({**self._overrides}, self._secrets, self._http_transport)
+        clone = Resources({**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner)
         clone._mcp = self._mcp
         for name, replies in mocks.items():
             clone._overrides[name] = MockChatModel(replies=[message(i, r) for i, r in enumerate(replies or [""])])
@@ -822,9 +830,14 @@ def set_node(*, values: dict[str, str]) -> Callable:
     return run
 
 
-def script_node(*, import_path: str) -> Callable:
-    """User code from the Workspace: 'package.module:function', signature (state) -> dict (sync or async)."""
-    return ensure_async(safe_import(import_path))
+def script_node(*, import_path: str, resources: Resources | None = None) -> Callable:
+    """User code from the Workspace: 'package.module:function', signature (state) -> dict (sync or async).
+
+    With a sandbox configured (M5-T4) each call runs in an isolated process instead of in this one.
+    """
+    if resources is not None and resources.script_runner is not None and import_path.startswith("scripts."):
+        return resources.script_runner(import_path)
+    return ensure_async(safe_import(import_path, resources.workspace if resources else None))
 
 
 def subgraph_node(*, graph: Any, inputs: Sequence[str], outputs: Sequence[str], append: Sequence[str] = ()) -> Callable:

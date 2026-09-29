@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router";
 import { EditorPage } from "../editor/EditorPage";
 import { InboxPage } from "../inbox/InboxPage";
 import { MemoryPage } from "../memory/MemoryPage";
+import { WorkspacePage } from "../workspace/WorkspacePage";
 import { HomePage } from "./HomePage";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
@@ -20,6 +21,7 @@ export function App() {
           <Route path="/workflows/:id" element={<EditorPage />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/memory" element={<MemoryPage />} />
+          <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
