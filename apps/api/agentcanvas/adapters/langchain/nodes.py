@@ -495,6 +495,7 @@ def keyword_rank(items: list[Any], query: str, limit: int) -> list[Any]:
     words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 2]
     if not words:
         return items[:limit]
+
     def text(i: Any) -> str:
         return f"{i.key} {json.dumps(i.value, default=str)}".lower()
 
