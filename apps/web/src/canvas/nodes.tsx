@@ -44,7 +44,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
   const rows = Math.max(wiring.length, outs.length, 1);
   return (
     <div
-      className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}${data.highlight ? " highlight" : ""}`}
+      className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}${data.highlight ? " highlight" : ""}${data.diff ? ` diff-${data.diff}` : ""}`}
       style={{ borderTopColor: m?.color ?? "#64748b", minHeight: HEAD + rows * ROW + 8 + (data.preview ? 34 : 0) }}
       data-testid={`node-${data.name}`}
     >
@@ -86,7 +86,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data, selected }: N
   const inputs = data.manifest?.inputs ?? []; // e.g. fallback models, a subagent's model and tools
   useHandleSync(id, [out?.name ?? "", ...inputs.map((p) => p.name)].join("|"));
   return (
-    <div className={`resource${selected ? " selected" : ""}${inputs.length ? " with-inputs" : ""}`}
+    <div className={`resource${selected ? " selected" : ""}${inputs.length ? " with-inputs" : ""}${data.diff ? ` diff-${data.diff}` : ""}`}
       style={{ borderColor: PORT_COLORS[out?.type ?? ""] ?? "#94a3b8" }} data-testid={`node-${data.name}`}>
       <div className="resource-head">
         <span className="icon">{ICONS[data.manifest?.icon ?? "box"] ?? "▪"}</span>

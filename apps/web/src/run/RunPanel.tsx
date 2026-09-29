@@ -1,12 +1,13 @@
 /** Test-run panel (M4-T1): JSON input or chat, debug runs with breakpoints, approvals, continue/stop. */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
 import { useEditor } from "../editor/store";
 import { DecisionCard } from "../inbox/DecisionCard";
 import type { WF } from "../ir/model";
 import { formatMetrics, useRun } from "./runStore";
-import { cancelRun, continueRun, resumeRun, startRun } from "./session";
+import { testCaseFromRun } from "../release/testcases";
+import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
 
 interface ChatMessage {
   type?: string;
@@ -98,6 +99,7 @@ export function RunPanel() {
           <pre className="json" data-testid="run-output">{JSON.stringify(run.finalOutput, null, 2)}</pre>
         </>
       )}
+      <SaveAsTest />
     </div>
   );
 }
@@ -172,5 +174,29 @@ function ChatBubble({ m }: { m: ChatMessage }) {
       {role === "tool" && <small className="muted">{m.name} → </small>}
       {content}
     </div>
+  );
+}
+
+/** "Save as test case" (M6-T9): this input must keep producing this status, route and output. */
+function SaveAsTest() {
+  const wf = useEditor((s) => s.wf);
+  const run = useRun();
+  const qc = useQueryClient();
+  const [saved, setSaved] = useState<string | null>(null);
+  if (!wf) return null;
+  const draft = testCaseFromRun(wf, run, debugAids(), "");
+  if (!draft) return null;
+  const save = async () => {
+    const name = window.prompt("Test case name", `case ${new Date().toLocaleTimeString()}`);
+    if (!name) return;
+    await apiFetch(`/workflows/${wf.id}/test-cases`, { method: "POST", json: { ...draft, name } });
+    void qc.invalidateQueries({ queryKey: ["test-cases", wf.id] });
+    setSaved(name);
+  };
+  return (
+    <p className="row gap">
+      <button type="button" onClick={() => void save()}>Save as test case</button>
+      {saved && <span className="muted small" role="status">saved “{saved}”</span>}
+    </p>
   );
 }

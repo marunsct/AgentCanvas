@@ -35,6 +35,7 @@ export function Canvas() {
   const metrics = useRun((s) => s.metrics);
   const breakpoints = useEditor((s) => s.breakpoints);
   const pins = useEditor((s) => s.pins);
+  const diff = useUi((s) => s.diff);
   const manifests = useManifests();
   const rf = useReactFlow();
 
@@ -48,9 +49,9 @@ export function Canvas() {
   const derived = useMemo(
     () => (view
       ? irToFlow(view, readOnly ? {} : layout, manifests, readOnly ? [] : diagnostics, status, readOnly ? null : selected,
-        { highlight, breakpoints, output, metrics, pins })
+        { highlight, breakpoints, output, metrics, pins, diff: readOnly ? null : diff })
       : { nodes: [], edges: [] }),
-    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins],
+    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);

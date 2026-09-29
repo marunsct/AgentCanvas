@@ -155,6 +155,11 @@ class Workspace:
         ]
 
     # -------------------------------------------------------------------- git ----
+    def head(self) -> str | None:
+        """The commit of the current workspace code (recorded with each workflow version, M6-T1)."""
+        proc = self._git("rev-parse", "HEAD")
+        return proc.stdout.strip() or None if proc.returncode == 0 else None
+
     def _git(self, *args: str) -> subprocess.CompletedProcess[str]:
         env = {"GIT_AUTHOR_NAME": "AgentCanvas", "GIT_AUTHOR_EMAIL": "workspace@agentcanvas.local"}
         env |= {"GIT_COMMITTER_NAME": "AgentCanvas", "GIT_COMMITTER_EMAIL": "workspace@agentcanvas.local"}

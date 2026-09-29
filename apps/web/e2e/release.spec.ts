@@ -1,0 +1,48 @@
+import { expect, test } from "@playwright/test";
+
+// Sprint 8 (M6-T1, M6-T9): save a run as a test case, version the workflow, break it, see red + the diff.
+
+test("saved test case turns red after an edit; the diff shows the edited step", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Release ${Date.now()}` } })).json();
+  const ir = (out: string) => ({
+    ...wf.ir, state: { channels: [{ name: "who" }, { name: "out" }] },
+    nodes: [{ id: "n_g", type: "core.set", name: "greet", config: { values: { out } } }],
+    edges: [
+      { id: "e1", kind: "flow", source: { node: "START" }, target: { node: "n_g" } },
+      { id: "e2", kind: "flow", source: { node: "n_g" }, target: { node: "END" } },
+    ],
+  });
+  expect((await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir: ir("Hi {{ state.who }}") }, headers: { "If-Match": "1" } })).ok()).toBeTruthy();
+
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("tab", { name: "Run" }).click();
+  await page.getByLabel("run input").fill('{"who": "Ada"}');
+  await page.getByRole("button", { name: "▶ Run" }).click();
+  await expect(page.getByTestId("run-output")).toContainText("Hi Ada");
+  page.once("dialog", (d) => void d.accept("greets Ada"));
+  await page.getByRole("button", { name: "Save as test case" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "saved" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Tests" }).click();
+  await page.getByRole("button", { name: "▶ Run tests" }).click();
+  await expect(page.getByTestId("test-summary")).toHaveText("1 passed · 0 failed");
+
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByLabel("version message").fill("first");
+  await page.getByRole("button", { name: "Save version" }).click();
+  await expect(page.getByTestId("version-1.0.0")).toContainText("first");
+
+  const cur = await (await api.get(`/api/v1/workflows/${wf.id}`)).json();
+  await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir: ir("Bye {{ state.who }}") }, headers: { "If-Match": String(cur.version) } });
+  await page.reload();
+  await page.getByRole("tab", { name: "Tests" }).click();
+  await page.getByRole("button", { name: "▶ Run tests" }).click();
+  await expect(page.getByTestId("test-summary")).toHaveText("0 passed · 1 failed");
+  await expect(page.getByTestId("case-greets Ada")).toContainText("channel 'out'");
+
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByTestId("version-1.0.0").getByRole("button", { name: "Compare" }).click();
+  await expect(page.getByTestId("diff-summary")).toContainText("1 step changed");
+  await expect(page.getByTestId("node-greet")).toHaveClass(/diff-changed/);
+});

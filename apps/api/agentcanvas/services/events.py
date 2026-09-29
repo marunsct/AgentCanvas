@@ -220,6 +220,8 @@ class EventService:
         """run.completed / run.failed / interrupt.raised, and events emitted inside the run (sdk.emit)."""
         from agentcanvas.services.projects import PROJECT_OF
 
+        if h.origin == "test":
+            return  # saved test cases run without side effects on the project's handlers
         project_id = PROJECT_OF.get(h.workflow_id)
         if project_id is None or not self.projects.has_handlers(project_id):
             return  # cheap: no workspace (or no events/ code) -> nothing can subscribe

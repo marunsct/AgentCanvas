@@ -48,7 +48,8 @@ class RunHandle:
         default_factory=lambda: {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "priced": True}
     )
     workflow_name: str = ""
-    origin: str = "user"  # "event": started by an event handler (its lifecycle events are not re-delivered)
+    # "event": started by an event handler (its lifecycle events are not re-delivered); "test": a saved test case
+    origin: str = "user"
     emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
 
 

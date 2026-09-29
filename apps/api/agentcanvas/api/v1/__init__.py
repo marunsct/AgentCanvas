@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from agentcanvas.api.v1 import catalog, events, memory, projects, runs, secrets, tools, workflows, workspace
+from agentcanvas.api.v1 import catalog, events, memory, projects, runs, secrets, tools, versions, workflows, workspace
 
 router = APIRouter(prefix="/v1")
 router.include_router(catalog.router)
@@ -14,3 +14,4 @@ router.include_router(memory.router)
 router.include_router(workspace.router)
 router.include_router(secrets.router)
 router.include_router(events.router)
+router.include_router(versions.router)

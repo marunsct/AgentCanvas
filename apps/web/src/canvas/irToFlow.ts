@@ -22,6 +22,7 @@ export interface CanvasData extends Record<string, unknown> {
   preview?: string; // tail of the streamed tokens (M4-T3)
   metrics?: string; // "1.2k tok · $0.003 · 850 ms" for the last run (M4-T11)
   pinned?: boolean; // debug runs replay a pinned output (M4-T9)
+  diff?: "added" | "changed"; // compared with a saved version (M6-T1)
 }
 
 export interface FlowExtras {
@@ -30,6 +31,7 @@ export interface FlowExtras {
   output?: Record<string, string>;
   metrics?: Record<string, NodeMetrics>;
   pins?: Record<string, unknown>;
+  diff?: { added: string[]; changed: string[] } | null;
 }
 
 export const PORT_COLORS: Record<string, string> = {
@@ -85,6 +87,8 @@ export function irToFlow(
 ): { nodes: Node<CanvasData>[]; edges: Edge[] } {
   const hl = new Set(extras.highlight ?? []);
   const bp = new Set(extras.breakpoints ?? []);
+  const added = new Set(extras.diff?.added ?? []);
+  const changed = new Set(extras.diff?.changed ?? []);
   const auto = autoPositions(wf);
   const placed = (id: string) => layout[id] ?? auto[id] ?? { x: 0, y: 0 };
   // START/END without a saved position sit left/right of whatever the user placed, never on top of it
@@ -113,6 +117,7 @@ export function irToFlow(
         breakpoint: bp.has(el.id), highlight: hl.has(el.id), pinned: Boolean(extras.pins?.[el.id]),
         preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
         metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
+        diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : undefined,
       },
     };
   };

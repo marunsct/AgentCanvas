@@ -9,6 +9,8 @@ import { CodePanel } from "../code/CodePanel";
 import { Inspector } from "../inspector/Inspector";
 import { useInbox } from "../inbox/InboxPage";
 import { ProblemsPanel } from "../problems/ProblemsPanel";
+import { TestsPanel } from "../release/TestsPanel";
+import { VersionsPanel } from "../release/VersionsPanel";
 import { ExplainView } from "../run/ExplainView";
 import { RunPanel } from "../run/RunPanel";
 import { useRun } from "../run/runStore";
@@ -17,7 +19,7 @@ import { CommandPalette } from "./CommandPalette";
 import { useEditor } from "./store";
 import { type DockTab, useUi } from "./ui";
 
-type Tab = "inspect" | "run" | "code";
+type Tab = "inspect" | "run" | "tests" | "versions" | "code";
 
 export function EditorPage() {
   const { id } = useParams();
@@ -99,13 +101,15 @@ export function EditorPage() {
       </main>
       <aside className="side">
         <nav className="tabs" role="tablist">
-          {(["inspect", "run", "code"] as Tab[]).map((t) => (
+          {(["inspect", "run", "tests", "versions", "code"] as Tab[]).map((t) => (
             <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
-              onClick={() => setTab(t)}>{{ inspect: "Inspector", run: "Run", code: "Code" }[t]}</button>
+              onClick={() => setTab(t)}>{{ inspect: "Inspector", run: "Run", tests: "Tests", versions: "Versions", code: "Code" }[t]}</button>
           ))}
         </nav>
         {tab === "inspect" && <Inspector />}
         {tab === "run" && <RunPanel />}
+        {tab === "tests" && <TestsPanel />}
+        {tab === "versions" && <VersionsPanel />}
         {tab === "code" && <CodePanel />}
       </aside>
       <footer className="dock">

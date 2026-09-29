@@ -56,6 +56,7 @@ export async function startRun(input: Record<string, unknown>, opts: { continueT
   run.reset();
   const aids = debugAids();
   const debug = breakpoints.length > 0 || Object.keys(aids).length > 0;
+  run.setInput(threadId ? null : input); // a continued thread's result depends on its history
   await stream(`/workflows/${wf.id}/runs/stream`, {
     input, thread_id: threadId, ...aids,
     ...(debug ? { mode: "debug", breakpoints: { before: breakpoints } } : {}),
@@ -65,11 +66,13 @@ export async function startRun(input: Record<string, unknown>, opts: { continueT
 export async function resumeRun(value: unknown, interruptId?: string) {
   const { threadId } = useRun.getState();
   if (!threadId) return;
+  useRun.getState().setInput(null);
   await stream(`/threads/${threadId}/resume`, { value, interrupt_id: interruptId, ...debugAids() });
 }
 
 export async function continueRun() {
   const { threadId } = useRun.getState();
+  useRun.getState().setInput(null);
   if (threadId) await stream(`/threads/${threadId}/continue`, debugAids());
 }
 

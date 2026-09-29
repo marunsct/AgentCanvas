@@ -300,3 +300,12 @@ label.row input { width: auto; margin: 0; }
 .event-result ul { padding-left: 18px; }
 td.status-error { color: var(--err); }
 td.status-handled { color: var(--ok); }
+
+/* versions & tests (Sprint 8) */
+.widget.diff-added, .resource.diff-added { outline: 3px solid #16a34a; outline-offset: 2px; }
+.widget.diff-changed, .resource.diff-changed { outline: 3px solid #d97706; outline-offset: 2px; }
+.badge.ok { background: #dcfce7; color: #166534; }
+.case-list, .version-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
+.case-list > li, .version-list > li { border: 1px solid var(--border, #e2e8f0); border-radius: 6px; padding: 6px 8px; }
+.failures { margin: 4px 0 0 16px; padding: 0; }
+.diff-box { border: 1px dashed #d97706; border-radius: 6px; padding: 6px 8px; margin: 8px 0; }

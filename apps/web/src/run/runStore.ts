@@ -31,15 +31,19 @@ export interface RunState {
   deltas: Record<string, Record<string, unknown>>; // canvas node id -> last state update it wrote (pin source)
   usage: Usage | null; // run totals
   durationMs: number | null;
+  route: string[]; // canvas node ids in the order they started (saved test cases, M6-T9)
+  input: Record<string, unknown> | null; // input of a fresh run (null after resume/continue)
   reset: () => void;
   apply: (ev: RunEvent) => void;
   setHighlight: (ids: string[]) => void;
   setThread: (id: string | null) => void;
+  setInput: (input: Record<string, unknown> | null) => void;
 }
 
 const empty = {
   status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], error: null, breakpoint: false,
-  highlight: [], next: [], metrics: {}, usage: null, durationMs: null, deltas: {},
+  highlight: [], next: [], metrics: {}, usage: null, durationMs: null, deltas: {}, route: [] as string[],
+  input: null as Record<string, unknown> | null,
 };
 
 export const useRun = create<RunState>((set) => ({
@@ -48,6 +52,7 @@ export const useRun = create<RunState>((set) => ({
   apply: (ev) => set((s) => reduce(s, ev)),
   setHighlight: (highlight) => set({ highlight }),
   setThread: (threadId) => set({ threadId, ...empty }),
+  setInput: (input) => set({ input }),
 }));
 
 /** Pure reducer (unit-tested): how each canonical event changes the canvas. */
@@ -55,9 +60,12 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
   switch (ev.type) {
     case "RUN_STARTED":
       return { threadId: ev.threadId, runId: ev.runId ?? null, running: true, error: null, interrupt: null, interrupts: [],
-        breakpoint: false, finalOutput: null, metrics: {}, usage: null, durationMs: null };
+        breakpoint: false, finalOutput: null, metrics: {}, usage: null, durationMs: null, route: [] };
     case "STEP_STARTED":
-      return { status: { ...s.status, [ev.canvas_node_id]: "running" } };
+      return {
+        status: { ...s.status, [ev.canvas_node_id]: "running" },
+        route: s.route.includes(ev.canvas_node_id) ? s.route : [...s.route, ev.canvas_node_id],
+      };
     case "STEP_FINISHED": {
       const m = s.metrics[ev.canvas_node_id] ?? ZERO; // a node that runs several times (loops, map) adds up
       return {

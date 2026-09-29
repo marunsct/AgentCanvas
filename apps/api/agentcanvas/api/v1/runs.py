@@ -492,7 +492,8 @@ async def inbox(
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
-    rows = (await session.execute(q.order_by(InterruptTask.created_at).limit(limit))).all()
+    # newest first: a long backlog must not hide what is waiting right now
+    rows = (await session.execute(q.order_by(InterruptTask.created_at.desc()).limit(limit))).all()
     return [_intr(x, wid, name) for x, wid, name in rows]
 
 

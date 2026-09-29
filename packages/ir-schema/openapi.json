@@ -100,6 +100,81 @@
         "title": "CachePolicySpec",
         "type": "object"
       },
+      "CaseResult": {
+        "properties": {
+          "duration_ms": {
+            "default": 0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "route": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Route",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "passed"
+        ],
+        "title": "CaseResult",
+        "type": "object"
+      },
       "CatalogOut": {
         "properties": {
           "handlers": {
@@ -678,6 +753,48 @@
         "title": "Diagnostic",
         "type": "object"
       },
+      "DiffOut": {
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "string"
+          },
+          "b": {
+            "title": "B",
+            "type": "string"
+          },
+          "channels": {
+            "$ref": "#/components/schemas/ElementDiff"
+          },
+          "edges": {
+            "$ref": "#/components/schemas/ElementDiff"
+          },
+          "nodes": {
+            "$ref": "#/components/schemas/ElementDiff"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ElementDiff"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "workflow": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "title": "Workflow",
+            "type": "array"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "summary"
+        ],
+        "title": "DiffOut",
+        "type": "object"
+      },
       "Disconnect": {
         "additionalProperties": false,
         "properties": {
@@ -750,6 +867,64 @@
           "target"
         ],
         "title": "Edge",
+        "type": "object"
+      },
+      "ElementChange": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ElementChange",
+        "type": "object"
+      },
+      "ElementDiff": {
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/ElementChange"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "title": "ElementDiff",
         "type": "object"
       },
       "Endpoint": {
@@ -848,6 +1023,43 @@
         "title": "EventLogOut",
         "type": "object"
       },
+      "Expect": {
+        "properties": {
+          "channels": {
+            "additionalProperties": true,
+            "description": "exact final values of these channels",
+            "title": "Channels",
+            "type": "object"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "node ids that must run (and no others)",
+            "title": "Route"
+          },
+          "status": {
+            "default": "success",
+            "enum": [
+              "success",
+              "interrupted",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "Expect",
+        "type": "object"
+      },
       "ExpressionCheck": {
         "properties": {
           "kind": {
@@ -892,6 +1104,25 @@
           "ok"
         ],
         "title": "ExpressionResult",
+        "type": "object"
+      },
+      "FieldChange": {
+        "properties": {
+          "after": {
+            "title": "After"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FieldChange",
         "type": "object"
       },
       "FileContent": {
@@ -2513,6 +2744,192 @@
         "title": "TemplateInfo",
         "type": "object"
       },
+      "TestCaseIn": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "expect": {
+            "$ref": "#/components/schemas/Expect"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "mocks": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "description": "model resource name -> replies",
+            "title": "Mocks",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pins": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "description": "node id -> pinned output",
+            "title": "Pins",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TestCaseIn",
+        "type": "object"
+      },
+      "TestCaseOut": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expect": {
+            "$ref": "#/components/schemas/Expect"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaseResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mocks": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "description": "model resource name -> replies",
+            "title": "Mocks",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pins": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "description": "node id -> pinned output",
+            "title": "Pins",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "created_at"
+        ],
+        "title": "TestCaseOut",
+        "type": "object"
+      },
+      "TestRunIn": {
+        "properties": {
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "run only these cases (default: all)",
+            "title": "Ids"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "run against a version instead of the draft",
+            "title": "Version"
+          }
+        },
+        "title": "TestRunIn",
+        "type": "object"
+      },
+      "TestRunOut": {
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/CaseResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "passed",
+          "failed",
+          "results"
+        ],
+        "title": "TestRunOut",
+        "type": "object"
+      },
       "ThreadOut": {
         "properties": {
           "created_at": {
@@ -2788,6 +3205,156 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VersionDetail": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ir": {
+            "additionalProperties": true,
+            "title": "Ir",
+            "type": "object"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "layout": {
+            "additionalProperties": true,
+            "title": "Layout",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "semver": {
+            "title": "Semver",
+            "type": "string"
+          },
+          "workspace_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Commit"
+          }
+        },
+        "required": [
+          "id",
+          "semver",
+          "message",
+          "ir_hash",
+          "workspace_commit",
+          "created_by",
+          "created_at",
+          "ir",
+          "layout"
+        ],
+        "title": "VersionDetail",
+        "type": "object"
+      },
+      "VersionIn": {
+        "properties": {
+          "bump": {
+            "default": "minor",
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "VersionIn",
+        "type": "object"
+      },
+      "VersionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "semver": {
+            "title": "Semver",
+            "type": "string"
+          },
+          "workspace_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Commit"
+          }
+        },
+        "required": [
+          "id",
+          "semver",
+          "message",
+          "ir_hash",
+          "workspace_commit",
+          "created_by",
+          "created_at"
+        ],
+        "title": "VersionOut",
         "type": "object"
       },
       "WorkflowOut": {
@@ -5447,6 +6014,200 @@
         ]
       }
     },
+    "/v1/workflows/{wf_id}/test-cases": {
+      "get": {
+        "operationId": "list_test_cases_v1_workflows__wf_id__test_cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TestCaseOut"
+                  },
+                  "title": "Response List Test Cases V1 Workflows  Wf Id  Test Cases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Test Cases",
+        "tags": [
+          "versions"
+        ]
+      },
+      "post": {
+        "description": "Save an input and what the run must produce (typically from a finished run: \"Save as test case\").",
+        "operationId": "add_test_case_v1_workflows__wf_id__test_cases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestCaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestCaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Test Case",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/test-cases/run": {
+      "post": {
+        "description": "Run the saved cases against the draft (or a version) and report pass/fail per case.",
+        "operationId": "run_test_cases_v1_workflows__wf_id__test_cases_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Test Cases",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/test-cases/{case_id}": {
+      "delete": {
+        "operationId": "delete_test_case_v1_workflows__wf_id__test_cases__case_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Test Case",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
     "/v1/workflows/{wf_id}/validate": {
       "post": {
         "operationId": "validate_workflow_v1_workflows__wf_id__validate_post",
@@ -5490,6 +6251,283 @@
         "summary": "Validate Workflow",
         "tags": [
           "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/versions": {
+      "get": {
+        "operationId": "list_versions_v1_workflows__wf_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VersionOut"
+                  },
+                  "title": "Response List Versions V1 Workflows  Wf Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "versions"
+        ]
+      },
+      "post": {
+        "description": "Snapshot the draft IR, layout and workspace commit as the next semver (409 when nothing changed).",
+        "operationId": "create_version_v1_workflows__wf_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Version",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/versions/{a}/diff/{b}": {
+      "get": {
+        "description": "What changed from `a` to `b` (version id, semver or `draft`): elements added/removed/changed, per field.",
+        "operationId": "diff_versions_v1_workflows__wf_id__versions__a__diff__b__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "title": "B",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff Versions",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/versions/{ref}": {
+      "get": {
+        "operationId": "get_version_v1_workflows__wf_id__versions__ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/versions/{ref}/restore": {
+      "post": {
+        "description": "Replace the draft by a version (an ordinary edit: the version itself never changes).",
+        "operationId": "restore_version_v1_workflows__wf_id__versions__ref__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "title": "Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Version",
+        "tags": [
+          "versions"
         ]
       }
     }

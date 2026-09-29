@@ -22,6 +22,7 @@ PREFIXES = {
     "req",
     "evt",
     "dd",
+    "tc",
 }
 
 

@@ -106,6 +106,24 @@ class WorkflowVersion(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class TestCase(Base):
+    """A saved test case of a workflow (FR-EVAL-01): an input and what the run must produce."""
+
+    __tablename__ = "test_case"
+    __test__ = False  # not a pytest class
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    input: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    context: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    mocks: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    pins: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    expect: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    last_result: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
 class Deployment(Base):
     __tablename__ = "deployment"
     id: Mapped[str] = mapped_column(String, primary_key=True)
