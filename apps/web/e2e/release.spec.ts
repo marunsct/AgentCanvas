@@ -56,3 +56,28 @@ test("export the draft as a zip", async ({ page }) => {
   await page.getByTestId("export-draft").click();
   expect((await download).suggestedFilename()).toMatch(/^export-\d+\.zip$/);
 });
+
+test("publish from the Versions tab, then call the endpoint with the key", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Publish ${Date.now()}` } })).json();
+  const ir = {
+    ...wf.ir, state: { channels: [{ name: "who" }, { name: "out" }] },
+    nodes: [{ id: "n_g", type: "core.set", name: "greet", config: { values: { out: "Hi {{ state.who }}" } } }],
+    edges: [
+      { id: "e1", kind: "flow", source: { node: "START" }, target: { node: "n_g" } },
+      { id: "e2", kind: "flow", source: { node: "n_g" }, target: { node: "END" } },
+    ],
+  };
+  await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir }, headers: { "If-Match": "1" } });
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Publish to prod" }).click();
+  await expect(page.getByTestId("publish-checklist")).toContainText("no test cases");
+  await expect(page.getByTestId("deployment-prod")).toContainText("v1.0.0");
+  const key = (await page.getByTestId("api-key").locator("code").textContent())!.trim();
+  const deps = await (await api.get(`/api/v1/workflows/${wf.id}/deployments`)).json();
+  const res = await api.post(`/api/v1/deployments/${deps[0].id}/runs/wait`, {
+    data: { input: { who: "Ada" } }, headers: { Authorization: `Bearer ${key}` },
+  });
+  expect((await res.json()).output.out).toBe("Hi Ada");
+});

@@ -36,6 +36,10 @@ class WorkflowHasErrors(DomainError):
     status, title, type_ = 422, "Workflow has errors", "https://agentcanvas.dev/errors/validation"
 
 
+class Unauthorized(DomainError):
+    status, title, type_ = 401, "Unauthorized", "https://agentcanvas.dev/errors/unauthorized"
+
+
 class Forbidden(DomainError):
     status, title, type_ = 403, "Forbidden", "https://agentcanvas.dev/errors/forbidden"
 

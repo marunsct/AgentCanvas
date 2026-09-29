@@ -121,6 +121,8 @@ class Runner:
         pins: dict[str, dict[str, Any]] | None = None,
         mocks: dict[str, list[Any]] | None = None,
         origin: str = "user",
+        deployment_id: str | None = None,
+        version_id: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         thread_id = thread_id or new_id("th")
@@ -131,17 +133,36 @@ class Runner:
             thread = await s.get(Thread, thread_id)
             if thread is None:
                 s.add(
-                    Thread(id=thread_id, workflow_id=wf.id, status="running", created_by=user_id, title=_title(input))
+                    Thread(
+                        id=thread_id,
+                        workflow_id=wf.id,
+                        deployment_id=deployment_id,
+                        status="running",
+                        created_by=user_id,
+                        title=_title(input),
+                    )
                 )
             elif thread.workflow_id != wf.id:
                 raise Conflict(f"thread '{thread_id}' belongs to workflow '{thread.workflow_id}'")
+            elif thread.deployment_id != deployment_id:  # published and draft conversations never mix
+                raise Conflict(
+                    f"thread '{thread_id}' belongs to {'a deployment' if thread.deployment_id else 'the draft'}"
+                )
             else:
                 thread.status = "running"
             if context is None:
                 context = await self._last_context(s, context_from or thread_id)
             await s.flush()
             s.add(
-                Run(id=run_id, thread_id=thread_id, ir_hash=ir_hash(wf), mode=mode, status="running", context=context)
+                Run(
+                    id=run_id,
+                    thread_id=thread_id,
+                    workflow_version_id=version_id,
+                    ir_hash=ir_hash(wf),
+                    mode=mode,
+                    status="running",
+                    context=context,
+                )
             )
             if resume is not None:
                 await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)

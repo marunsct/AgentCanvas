@@ -61,6 +61,127 @@
         "title": "AddResource",
         "type": "object"
       },
+      "ApiResult": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "interrupts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Interrupts",
+            "type": "array"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "success",
+              "interrupted",
+              "error",
+              "cancelled",
+              "running"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "status"
+        ],
+        "title": "ApiResult",
+        "type": "object"
+      },
+      "ApiResumeIn": {
+        "properties": {
+          "interrupt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupt Id"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "title": "ApiResumeIn",
+        "type": "object"
+      },
+      "ApiRunIn": {
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "continue a conversation this deployment started",
+            "title": "Thread Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "your end user's id (context fields with source 'user')",
+            "title": "User Id"
+          }
+        },
+        "title": "ApiRunIn",
+        "type": "object"
+      },
       "Breakpoints": {
         "properties": {
           "after": {
@@ -300,6 +421,36 @@
           "name"
         ],
         "title": "Channel",
+        "type": "object"
+      },
+      "Check": {
+        "properties": {
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok"
+        ],
+        "title": "Check",
         "type": "object"
       },
       "CommandBatch": {
@@ -679,6 +830,62 @@
           "value"
         ],
         "title": "Decision",
+        "type": "object"
+      },
+      "DeploymentOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Prefix"
+          },
+          "semver": {
+            "title": "Semver",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "environment",
+          "version_id",
+          "semver",
+          "key_prefix",
+          "active",
+          "created_at",
+          "endpoint"
+        ],
+        "title": "DeploymentOut",
         "type": "object"
       },
       "Diagnostic": {
@@ -1358,6 +1565,19 @@
           "decided_at"
         ],
         "title": "InterruptOut",
+        "type": "object"
+      },
+      "KeyOut": {
+        "properties": {
+          "api_key": {
+            "title": "Api Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
+        ],
+        "title": "KeyOut",
         "type": "object"
       },
       "LayoutUpdate": {
@@ -2069,6 +2289,56 @@
           "created_at"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "PublishIn": {
+        "properties": {
+          "environment": {
+            "default": "prod",
+            "pattern": "^[a-z][a-z0-9-]{0,30}$",
+            "title": "Environment",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "PublishIn",
+        "type": "object"
+      },
+      "PublishOut": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "shown once, when the deployment is created",
+            "title": "Api Key"
+          },
+          "checklist": {
+            "items": {
+              "$ref": "#/components/schemas/Check"
+            },
+            "title": "Checklist",
+            "type": "array"
+          },
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentOut"
+          }
+        },
+        "required": [
+          "deployment",
+          "checklist"
+        ],
+        "title": "PublishOut",
         "type": "object"
       },
       "RefactorOut": {
@@ -3536,6 +3806,298 @@
         "summary": "Readyz",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}": {
+      "delete": {
+        "operationId": "unpublish_v1_deployments__dep_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unpublish",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/rotate-key": {
+      "post": {
+        "description": "A new key; the old one stops working immediately.",
+        "operationId": "rotate_key_v1_deployments__dep_id__rotate_key_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rotate Key",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/runs/stream": {
+      "post": {
+        "description": "Run the published version, streaming canonical events (SSE).",
+        "operationId": "api_run_stream_v1_deployments__dep_id__runs_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Run Stream",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/runs/wait": {
+      "post": {
+        "description": "Run the published version and return its final state (or its pending interrupts).",
+        "operationId": "api_run_wait_v1_deployments__dep_id__runs_wait_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Run Wait",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/threads/{thread_id}/resume": {
+      "post": {
+        "description": "Answer a pending interrupt (approval, input) of a conversation this deployment started.",
+        "operationId": "api_resume_v1_deployments__dep_id__threads__thread_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiResumeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Resume",
+        "tags": [
+          "deployments"
         ]
       }
     },
@@ -5806,6 +6368,52 @@
         ]
       }
     },
+    "/v1/workflows/{wf_id}/deployments": {
+      "get": {
+        "operationId": "list_deployments_v1_workflows__wf_id__deployments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeploymentOut"
+                  },
+                  "title": "Response List Deployments V1 Workflows  Wf Id  Deployments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Deployments",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/v1/workflows/{wf_id}/export.zip": {
       "get": {
         "description": "The workflow (draft, or `?version=`) as a standalone Python project (M6-T2/T3).",
@@ -5909,6 +6517,59 @@
         "summary": "Set Layout",
         "tags": [
           "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/publish": {
+      "post": {
+        "description": "Pre-publish checklist (validation, test cases, secrets), then pin the draft as a version behind a key.",
+        "operationId": "publish_v1_workflows__wf_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish",
+        "tags": [
+          "deployments"
         ]
       }
     },

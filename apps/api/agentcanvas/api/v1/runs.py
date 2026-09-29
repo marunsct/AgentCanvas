@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import InterruptTask, Run, Thread, WorkflowRow
+from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle, Runner
@@ -165,6 +165,23 @@ def _respond(r: Runner, h: RunHandle, stream: bool) -> Response:
     )
 
 
+async def _thread_target(
+    session: AsyncSession, settings: Settings, t: Thread, runnable: bool = True
+) -> tuple[Workflow, dict[str, Any]]:
+    """What a thread runs: its deployment's pinned version (M6-T4), or the draft; plus `Runner.start` kwargs."""
+    svc = _svc(session, settings)
+    if t.deployment_id:
+        dep = await session.get(Deployment, t.deployment_id)
+        ver = await session.get(WorkflowVersion, dep.version_id) if dep else None
+        if ver is None:
+            raise NotFound(f"the deployment of thread '{t.id}' no longer exists")
+        await svc.get(t.workflow_id)  # registers the workflow's project (workspace code)
+        return Workflow.model_validate(ver.ir), {"deployment_id": dep.id, "version_id": ver.id}  # type: ignore[union-attr]
+    if runnable:
+        return await _runnable_workflow(svc, t.workflow_id), {}
+    return (await svc.get(t.workflow_id)).workflow, {}
+
+
 async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:
     view = await svc.get(wf_id)
     if has_errors(view.diagnostics):
@@ -305,7 +322,7 @@ async def get_thread(
     r: Runner = Depends(runner),
 ) -> dict[str, Any]:
     t = await _thread(session, thread_id)
-    wf = (await _svc(session, settings).get(t.workflow_id)).workflow
+    wf, _ = await _thread_target(session, settings, t, runnable=False)
     state = await r.adapter.get_state(wf, thread_id, r.resources(thread_id, wf))
     return {
         "id": t.id,
@@ -331,7 +348,7 @@ async def thread_history(
     r: Runner = Depends(runner),
 ) -> list[dict[str, Any]]:
     t = await _thread(session, thread_id)
-    wf = (await _svc(session, settings).get(t.workflow_id)).workflow
+    wf, _ = await _thread_target(session, settings, t, runnable=False)
     items = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values)
     return [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
 
@@ -346,7 +363,7 @@ async def explain_thread(
 ) -> list[dict[str, Any]]:
     """Explain mode (FR-X-17): what ran at each super-step, what it wrote and why routers chose their route."""
     t = await _thread(session, thread_id)
-    wf = (await _svc(session, settings).get(t.workflow_id)).workflow
+    wf, _ = await _thread_target(session, settings, t, runnable=False)
     history = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values=True)
     return explain(wf, history)
 
@@ -368,7 +385,7 @@ async def resume_thread(
     user: CurrentUser = Depends(current_user),
 ) -> Response:
     t = await _thread(session, thread_id)
-    wf = await _runnable_workflow(_svc(session, settings), t.workflow_id)
+    wf, target_kw = await _thread_target(session, settings, t)
     h = await r.start(
         wf,
         thread_id=thread_id,
@@ -376,6 +393,7 @@ async def resume_thread(
         user_id=user.id,
         mode="debug" if body.pins or body.mocks else "normal",
         **_debug(wf, body, "debug"),
+        **target_kw,
     )
     return _respond(r, h, body.stream)
 
@@ -392,9 +410,9 @@ async def continue_thread(
 ) -> Response:
     """Continue after a breakpoint (input None)."""
     t = await _thread(session, thread_id)
-    wf = await _runnable_workflow(_svc(session, settings), t.workflow_id)
+    wf, target_kw = await _thread_target(session, settings, t)
     debug = _debug(wf, body or DebugOptions(), "debug")
-    h = await r.start(wf, thread_id=thread_id, input=None, mode="debug", user_id=user.id, **debug)
+    h = await r.start(wf, thread_id=thread_id, input=None, mode="debug", user_id=user.id, **debug, **target_kw)
     return _respond(r, h, stream)
 
 
@@ -407,7 +425,7 @@ async def edit_state(
     r: Runner = Depends(runner),
 ) -> dict[str, Any]:
     t = await _thread(session, thread_id)
-    wf = (await _svc(session, settings).get(t.workflow_id)).workflow
+    wf, _ = await _thread_target(session, settings, t, runnable=False)
     cid = await r.adapter.update_state(
         wf, thread_id, r.resources(thread_id, wf), body.values, body.as_node, body.checkpoint_id
     )
@@ -425,14 +443,20 @@ async def fork_thread(
 ) -> Response:
     """Time travel: continue from a past checkpoint, optionally after editing it (M4-T7)."""
     t = await _thread(session, thread_id)
-    wf = await _runnable_workflow(_svc(session, settings), t.workflow_id)
+    wf, target_kw = await _thread_target(session, settings, t)
     target, checkpoint = thread_id, body.checkpoint_id
     if body.mode == "copy":
         from agentcanvas.ids import new_id
 
         target = new_id("th")
         session.add(
-            Thread(id=target, workflow_id=t.workflow_id, title=f"fork of {t.title or t.id}", created_by=user.id)
+            Thread(
+                id=target,
+                workflow_id=t.workflow_id,
+                deployment_id=t.deployment_id,
+                title=f"fork of {t.title or t.id}",
+                created_by=user.id,
+            )
         )
         await session.commit()
         checkpoint = await r.adapter.copy_thread(wf, thread_id, target, r.resources(target, wf), body.checkpoint_id)
@@ -441,7 +465,13 @@ async def fork_thread(
             wf, target, r.resources(target, wf), body.values, body.as_node, checkpoint
         )
     h = await r.start(
-        wf, thread_id=target, input=None, checkpoint_id=checkpoint, user_id=user.id, context_from=thread_id
+        wf,
+        thread_id=target,
+        input=None,
+        checkpoint_id=checkpoint,
+        user_id=user.id,
+        context_from=thread_id,
+        **target_kw,
     )
     return _respond(r, h, body.stream)
 
@@ -513,8 +543,13 @@ async def decide(
     if task.status != "pending":
         raise InvalidInput(f"inbox item '{interrupt_id}' is already {task.status}")
     t = await _thread(session, task.thread_id)
-    wf = await _runnable_workflow(_svc(session, settings), t.workflow_id)
+    wf, target_kw = await _thread_target(session, settings, t)
     h = await r.start(
-        wf, thread_id=t.id, resume=ResumeSpec(body.value, interrupt_id), user_id=user.id, decided_by=user.id
+        wf,
+        thread_id=t.id,
+        resume=ResumeSpec(body.value, interrupt_id),
+        user_id=user.id,
+        decided_by=user.id,
+        **target_kw,
     )
     return _respond(r, h, stream)

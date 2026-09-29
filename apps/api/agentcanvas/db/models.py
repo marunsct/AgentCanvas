@@ -131,6 +131,7 @@ class Deployment(Base):
     version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id"))
     environment: Mapped[str] = mapped_column(Text, server_default=text("'prod'"), default="prod")
     api_key_hash: Mapped[str] = mapped_column(Text)
+    key_prefix: Mapped[str | None] = mapped_column(Text)  # shown in the UI to tell keys apart
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     created_at: Mapped[datetime] = _now()
 

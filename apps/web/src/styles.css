@@ -309,3 +309,5 @@ td.status-handled { color: var(--ok); }
 .case-list > li, .version-list > li { border: 1px solid var(--border, #e2e8f0); border-radius: 6px; padding: 6px 8px; }
 .failures { margin: 4px 0 0 16px; padding: 0; }
 .diff-box { border: 1px dashed #d97706; border-radius: 6px; padding: 6px 8px; margin: 8px 0; }
+.checklist { list-style: none; padding: 0; }
+.key-box { border: 1px solid #16a34a; border-radius: 6px; padding: 6px 8px; margin: 8px 0; overflow-wrap: anywhere; }
