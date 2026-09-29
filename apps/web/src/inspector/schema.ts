@@ -9,6 +9,7 @@ export function uiSchemaFromFormats(schema: Schema): Schema {
   const fmt = schema.format;
   if (typeof fmt === "string" && WIDGET_FORMATS.has(fmt)) ui["ui:widget"] = fmt;
   if (fmt === "json_schema") return { "ui:field": "json_schema" };
+  if (fmt === "subgraph") return { "ui:field": "subgraph" };
   const props = schema.properties as Record<string, Schema> | undefined;
   if (props) for (const [k, sub] of Object.entries(props)) {
     const child = uiSchemaFromFormats(sub);
@@ -28,7 +29,7 @@ export function uiSchemaFromFormats(schema: Schema): Schema {
 }
 
 export const WIDGET_FORMATS = new Set(["prompt", "template", "channel", "cel", "model", "import_path", "regex", "url_template"]);
-export const CUSTOM_FORMATS = [...WIDGET_FORMATS, "json_schema"];
+export const CUSTOM_FORMATS = [...WIDGET_FORMATS, "json_schema", "subgraph"];
 
 const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 

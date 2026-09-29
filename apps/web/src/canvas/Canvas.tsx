@@ -9,7 +9,7 @@ import { ulid } from "ulid";
 import { useManifests } from "../api/queries";
 import type { NodeManifest } from "../api/types";
 import type { Command } from "../ir/commands";
-import { allNames, defaultsFromSchema, uniqueName } from "../ir/model";
+import { allNames, defaultsFromSchema, innerWorkflow, uniqueName } from "../ir/model";
 import { useEditor } from "../editor/store";
 import { useRun } from "../run/runStore";
 import { useUi } from "../editor/ui";
@@ -38,11 +38,19 @@ export function Canvas() {
   const manifests = useManifests();
   const rf = useReactFlow();
 
+  const drill = useEditor((s) => s.drill);
+  // drill-in (M2-T13): the canvas shows a subgraph's steps read-only, with live status from nested events
+  const view = useMemo(() => (wf && drill.length ? innerWorkflow(wf, drill) : wf), [wf, drill]);
+  const readOnly = drill.length > 0;
+  useEffect(() => {
+    if (readOnly && !view) useEditor.getState().setDrill([]); // the subgraph was removed or inlined
+  }, [readOnly, view]);
   const derived = useMemo(
-    () => (wf
-      ? irToFlow(wf, layout, manifests, diagnostics, status, selected, { highlight, breakpoints, output, metrics, pins })
+    () => (view
+      ? irToFlow(view, readOnly ? {} : layout, manifests, readOnly ? [] : diagnostics, status, readOnly ? null : selected,
+        { highlight, breakpoints, output, metrics, pins })
       : { nodes: [], edges: [] }),
-    [wf, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins],
+    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);
@@ -57,14 +65,46 @@ export function Canvas() {
       void rf.fitView({ padding: 0.15, maxZoom: 1 });
     }
   }, [initialized, rf]);
+  // entering or leaving a subgraph shows a different graph: fit it once it is measured
+  useEffect(() => {
+    const t = setTimeout(() => void rf.fitView({ padding: 0.2, maxZoom: 1, duration: 200 }), 60);
+    return () => clearTimeout(t);
+  }, [drill, rf]);
 
-  // keep React Flow's measurements when the IR changes
+  // "Convert to subgraph" (M2-T13): the server computes the refactoring; it lands as ordinary, undoable commands
+  useEffect(() => {
+    useEditor.getState().setGroup(async () => {
+      const st = useEditor.getState();
+      if (st.drill.length || !st.wf) return;
+      const picked = rf.getNodes().filter((n) => n.selected && n.data.kind === "node").map((n) => n.id);
+      const chosen = picked.length ? picked : st.wf.nodes.some((n) => n.id === st.selected) ? [st.selected!] : [];
+      if (!chosen.length) {
+        st.setNotice({ kind: "info", text: "Select the steps to group first (Ctrl/⌘-click them or drag a selection box)." });
+        return;
+      }
+      const at = st.layout[chosen[0]];
+      const cmds = await st.refactor("subgraph", { node_ids: chosen });
+      const add = cmds?.find((c) => c.op === "AddNode");
+      if (add?.op === "AddNode") {
+        if (at) st.setPositions({ [add.node.id]: at }, true);
+        st.select(add.node.id);
+      }
+    });
+    return () => useEditor.getState().setGroup(null);
+  }, [rf]);
+
+  // keep React Flow's measurements and its (multi-)selection when the IR changes; the editor's selected
+  // element is always part of it (it is only ever *added* here: React Flow owns deselection)
   useEffect(() => {
     setNodes((prev) => {
       const byId = new Map(prev.map((n) => [n.id, n]));
       return derived.nodes.map((n) => {
         const old = byId.get(n.id);
-        return old ? { ...n, measured: old.measured, width: old.width, height: old.height, dragging: old.dragging } : n;
+        if (!old) return n;
+        return {
+          ...n, measured: old.measured, width: old.width, height: old.height, dragging: old.dragging,
+          selected: Boolean(old.selected) || n.selected,
+        };
       });
     });
     setEdges((prev) => {
@@ -75,6 +115,7 @@ export function Canvas() {
 
   useEffect(() => {
     setFocusNode((id) => {
+      setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id }))); // focusing from elsewhere: only this one
       select(id);
       void rf.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 });
     });
@@ -113,6 +154,7 @@ export function Canvas() {
 
   const onNodesChange = useCallback((changes: NodeChange<Node<CanvasData>>[]) => {
     setNodes((ns) => applyNodeChanges(changes, ns));
+    if (useEditor.getState().drill.length) return; // read-only view: nothing is saved
     const moved: Record<string, { x: number; y: number }> = {};
     let done = false;
     for (const c of changes) {
@@ -128,6 +170,7 @@ export function Canvas() {
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((es) => applyEdgeChanges(changes, es)), []);
 
   const onDelete = useCallback(({ nodes: ns, edges: es }: { nodes: Node<CanvasData>[]; edges: Edge[] }) => {
+    if (useEditor.getState().drill.length) return;
     const cmds: Command[] = [];
     const removed = new Set(ns.map((n) => n.id));
     for (const n of ns) {
@@ -140,7 +183,7 @@ export function Canvas() {
   }, [dispatch, select]);
 
   const isValidConnection = useCallback((c: Connection | Edge) => {
-    if (!wf) return false;
+    if (!wf || useEditor.getState().drill.length) return false;
     const v = checkConnection(wf, manifests, c as Connection);
     const next = v.ok ? null : v.reason ?? "not allowed";
     if (next !== lastHint.current) {
@@ -151,7 +194,7 @@ export function Canvas() {
   }, [wf, manifests, setConnectHint]);
 
   const onConnect = useCallback((c: Connection) => {
-    if (!wf) return;
+    if (!wf || useEditor.getState().drill.length) return;
     const v = checkConnection(wf, manifests, c);
     if (!v.ok) return;
     const id = `e_${ulid()}`;
@@ -167,7 +210,7 @@ export function Canvas() {
   const onDrop = useCallback((ev: DragEvent) => {
     ev.preventDefault();
     const type = ev.dataTransfer.getData(DND_MIME);
-    if (!wf || !manifests.has(type)) return;
+    if (!wf || !manifests.has(type) || useEditor.getState().drill.length) return;
     addElement(type, rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
   }, [wf, manifests, rf]);
 
@@ -179,18 +222,23 @@ export function Canvas() {
         onConnect={onConnect} isValidConnection={isValidConnection}
         onConnectEnd={() => { lastHint.current = null; setTimeout(() => setConnectHint(null), 1500); }}
         onPaneClick={() => select(null)}
+        onNodeDoubleClick={(_, n) => {
+          if (n.data.type === "core.subgraph") useEditor.getState().setDrill([...useEditor.getState().drill, n.id]);
+        }}
+        nodesDraggable={!readOnly} nodesConnectable={!readOnly}
         onDoubleClick={(e) => {
           if (!(e.target as HTMLElement).classList.contains("react-flow__pane")) return;
           useUi.getState().openPalette(rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
         }}
         zoomOnDoubleClick={false}
-        deleteKeyCode={["Backspace", "Delete"]} minZoom={0.1} proOptions={{ hideAttribution: false }}
+        deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]} minZoom={0.1} proOptions={{ hideAttribution: false }}
       >
         <Background gap={16} />
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
       {hint && <div className="connect-hint" role="status">✋ {hint}</div>}
+      {readOnly && <SubgraphCrumbs />}
       {wf && wf.nodes.length === 0 && (
         <div className="empty-hint">Drag a widget from the palette, or start from a template on the home page.</div>
       )}
@@ -216,3 +264,29 @@ export function addElement(type: string, position?: { x: number; y: number }) {
 
 /** Manifests by type, filled by the palette once node types are loaded. */
 export const manifestCache = new Map<string, NodeManifest>();
+
+/** Breadcrumb of the drill-in view: Workflow › subgraph › … (click to go back up). */
+function SubgraphCrumbs() {
+  const wf = useEditor((s) => s.wf);
+  const drill = useEditor((s) => s.drill);
+  if (!wf) return null;
+  const names = drill.map((_, i) => {
+    const parent = innerWorkflow(wf, drill.slice(0, i));
+    const n = parent?.nodes.find((x) => x.id === drill[i]);
+    return n?.label || n?.name || drill[i];
+  });
+  return (
+    <nav className="subgraph-crumbs" aria-label="subgraph path">
+      <button type="button" className="link" onClick={() => useEditor.getState().setDrill([])}>Workflow</button>
+      {names.map((name, i) => (
+        <span key={drill[i]}>
+          {" › "}
+          {i === names.length - 1
+            ? <b>{name}</b>
+            : <button type="button" className="link" onClick={() => useEditor.getState().setDrill(drill.slice(0, i + 1))}>{name}</button>}
+        </span>
+      ))}
+      <small className="muted"> · read-only — to edit these steps, inline the subgraph</small>
+    </nav>
+  );
+}

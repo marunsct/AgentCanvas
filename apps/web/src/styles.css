@@ -277,3 +277,5 @@ label.row input { width: auto; margin: 0; }
 .debug-aid h4 { margin: 4px 0; }
 .debug-aid pre { max-height: 160px; overflow: auto; }
 .lineage ul { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.subgraph-crumbs { position: absolute; top: 8px; left: 8px; z-index: 5; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; font-size: 13px; box-shadow: 0 1px 3px #0002; }

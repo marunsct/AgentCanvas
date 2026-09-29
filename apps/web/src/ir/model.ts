@@ -92,3 +92,15 @@ export function outputPort(m: NodeManifest | undefined, name: string | null | un
   const outs = m?.outputs ?? [];
   return name ? outs.find((p) => p.name === name) : outs.length === 1 ? outs[0] : undefined;
 }
+
+/** The workflow embedded in a chain of `core.subgraph` nodes (drill-in view, M2-T13); null if the path is stale. */
+export function innerWorkflow(wf: WF, path: string[]): WF | null {
+  let cur: WF = wf;
+  for (const id of path) {
+    const n = cur.nodes.find((x) => x.id === id);
+    const inner = (n?.config as { workflow?: G.Workflow } | undefined)?.workflow;
+    if (!n || n.type !== "core.subgraph" || !inner) return null;
+    cur = normalize({ ...inner, id: inner.id ?? `${cur.id}.${n.name}`, name: inner.name ?? n.label ?? n.name });
+  }
+  return cur;
+}

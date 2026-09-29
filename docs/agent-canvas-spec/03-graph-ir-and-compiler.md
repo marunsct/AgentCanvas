@@ -183,6 +183,8 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `E012` | error | Router has a route with no outgoing edge and no default |
 | `E015` | error | Reachable node without an outgoing flow edge (a map without an `each` edge) |
 | `E016` | error | Join fed by START or a conditional branch (router route / map) — it would wait forever (v0.6, S5) |
+| `E018` | error | Subgraph's embedded workflow is invalid (inner diagnostics are reported on the subgraph; W018 for inner warnings) (S6) |
+| `E019` | error | A subgraph resource name is configured differently inside and outside (resources resolve by name) (S6) |
 | `E020` | error | Two nodes in the same super-step write a channel whose reducer is `replace` (concurrent update) |
 | `E022` | error | Map worker writes a `replace` channel (parallel per-item writes; use `append`) (S5) |
 | `E021` | error | Node writes a channel not declared in state |
@@ -217,9 +219,10 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `P004` | warning | Node compiled through the Agent Spec bridge path (non-idiomatic generated code) |
 | `P003` | info | Workflow portability: compiles on N of M installed adapters |
 | `W001` | warning | Cycle without guard (router exit, counter, or explicit `recursion_limit` override) |
-| `W002` | warning | MCP tool with `destructive_hint` not behind approval |
+| `W002` | warning | MCP tool with `destructive_hint` not behind approval (from the tools cached by "Browse tools") |
 | `W003` | warning | Channel written but never read |
 | `W013` | warning | Join with fewer than two incoming branches (S5) |
+| `W015` | warning | USD budget set but a model has no catalog price (its calls are not counted) (S6) |
 | `W010` | warning | Model deprecated / not in environment allow-list |
 | `W020` | warning | Prompt > N tokens without caching-capable model |
 | `I001` | info | Consider `LLMToolSelectorMiddleware` (> 20 tools on an agent) |

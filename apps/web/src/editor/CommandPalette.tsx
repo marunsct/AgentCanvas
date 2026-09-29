@@ -35,6 +35,7 @@ export function CommandPalette({ onRun }: { onRun: () => void }) {
     const actions: Item[] = [
       { id: "run", label: "Run workflow", hint: "action", run: onRun },
       { id: "tidy", label: "Tidy up layout", hint: "action", run: () => void st.tidy?.() },
+      { id: "group", label: "Convert selection to subgraph", hint: "Ctrl/⌘+G", run: () => void st.group?.() },
       { id: "undo", label: "Undo", hint: "Ctrl/⌘+Z", run: st.undo },
       { id: "redo", label: "Redo", hint: "Ctrl/⌘+Shift+Z", run: st.redo },
       { id: "inbox", label: "Open inbox", hint: "navigate", run: () => navigate("/inbox") },

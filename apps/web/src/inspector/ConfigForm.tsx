@@ -6,13 +6,14 @@ import type { NodeManifest } from "../api/types";
 import { useEditor } from "../editor/store";
 import type { IRNode, IRResource } from "../ir/model";
 import { JsonSchemaField } from "./JsonSchemaField";
+import { SubgraphField } from "./SubgraphField";
 import { CUSTOM_FORMATS, diffToMergePatch, uiSchemaFromFormats } from "./schema";
 import { WIDGETS } from "./widgets";
 
 const validator = customizeValidator({
   customFormats: Object.fromEntries(CUSTOM_FORMATS.map((f) => [f, () => true])),
 });
-const FIELDS = { json_schema: JsonSchemaField };
+const FIELDS = { json_schema: JsonSchemaField, subgraph: SubgraphField };
 
 export function ConfigForm({ element, manifest, isResource }: {
   element: IRNode | IRResource; manifest: NodeManifest; isResource: boolean;

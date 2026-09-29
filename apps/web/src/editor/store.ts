@@ -51,6 +51,8 @@ export interface EditorState {
   breakpoints: string[]; // canvas node ids; debug runs pause before them (per viewer, remembered locally)
   pins: Record<string, Record<string, unknown>>; // canvas node id -> output replayed in debug runs (M4-T9)
   mocks: Record<string, unknown[]>; // model resource name -> scripted replies for debug runs
+  drill: string[]; // subgraph node ids the canvas is showing (read-only drill-in, M2-T13)
+  group: (() => Promise<void>) | null; // "convert selection to subgraph", registered by the canvas
 
   load: (id: string) => Promise<void>;
   dispatch: (cmds: Command[], opts?: { debounceMs?: number; history?: "push" | "undo" | "redo" }) => void;
@@ -66,6 +68,9 @@ export interface EditorState {
   toggleBreakpoint: (id: string) => void;
   setPin: (id: string, output: Record<string, unknown> | null) => void;
   setMock: (name: string, replies: unknown[] | null) => void;
+  setDrill: (path: string[]) => void;
+  setGroup: (fn: (() => Promise<void>) | null) => void;
+  refactor: (kind: "subgraph" | "inline", body: Record<string, unknown>) => Promise<Command[] | null>;
   reset: () => void;
 }
 
@@ -78,6 +83,7 @@ const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
   inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null, tidy: null,
   breakpoints: [] as string[], pins: {} as Record<string, Record<string, unknown>>, mocks: {} as Record<string, unknown[]>,
+  drill: [] as string[], group: null,
 };
 
 const bpKey = (id: string) => `agentcanvas.breakpoints.${id}`;
@@ -125,7 +131,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
       diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
-      pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}),
+      pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}), drill: [],
     });
   },
 
@@ -219,6 +225,21 @@ export const useEditor = create<EditorState>((set, get) => ({
   setConnectHint: (connectHint) => set({ connectHint }),
   setFocusNode: (focusNode) => set({ focusNode }),
   setTidy: (tidy) => set({ tidy }),
+  setDrill: (drill) => set({ drill, selected: null }),
+  setGroup: (group) => set({ group }),
+  refactor: async (kind, body) => {
+    const { workflowId, flush } = get();
+    if (!workflowId) return null;
+    await flush(); // the server computes the refactoring from the saved workflow
+    try {
+      const out = await apiFetch<{ commands: Command[] }>(`/workflows/${workflowId}/refactor/${kind}`, { method: "POST", json: body });
+      get().dispatch(out.commands);
+      return out.commands;
+    } catch (e) {
+      set({ notice: { kind: "error", text: (e as Error).message } });
+      return null;
+    }
+  },
   setPin: (id, output) => {
     const { pins, workflowId } = get();
     const next = { ...pins };

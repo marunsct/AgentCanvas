@@ -58,6 +58,15 @@ LangGraph does **not** checkpoint `Runtime.context`: every invocation (start, re
 **P-19 ✅ `TypeError: can only concatenate list (not "str") to list` in a map worker (Sprint 5).**
 `operator.add` as the `append` reducer rejects single values, and most widgets (LLM call, Set values) write one value. AgentCanvas's `append` reducer wraps non-list writes into a one-item list; a map worker can write its result straight into an `append` channel (E022 requires one: parallel workers writing a `replace` channel would raise P-10).
 
+**P-20 ✅ MCP: "A string target must be an http(s) URL" / tools stop working after the adapter closes? (Sprint 6).**
+`langchain.mcp.MCPAdapter` (beta) refuses string targets that are not http(s) URLs — `fastmcp.Client` would otherwise treat a string naming an existing file as a local script and *launch it*. AgentCanvas always passes an explicit transport (`StreamableHttpTransport(url, headers=…)`, or `StdioTransport` only when an admin allows local MCP, E042). Tools listed inside `async with MCPAdapter(...)` keep working after the context closes (each call reconnects), so tools are discovered once per graph build. Tool annotations (`destructive_hint`, `read_only_hint`) are in `tool.metadata["mcp"]["tool"]["annotations"]`; MCP tool results are content blocks with random ids — compare their text in tests.
+
+**P-21 ✅ `store.asearch(ns, query="tea")` returns everything (Sprint 6).**
+Without a semantic index (`index=` on the store) the query is ignored. Memory Recall and `search_memory` fall back to keyword ranking over key + value; configure an embedding index for semantic recall.
+
+**P-22 ✅ Token usage attributed to the wrong node, or not priced (Sprint 6).**
+Callback metadata carries the checkpoint namespace: a call inside an agent subgraph has `checkpoint_ns = "agent:<id>|model:<id>"` — the first segment is the canvas node. The model's own `.metadata` is merged into its callback metadata, so AgentCanvas tags each model with its catalog id (`ac_model`) to price usage; models whose catalog entry has no prices make the run cost "incomplete" (W015 for USD budgets).
+
 **P-08 ✅ Breakpoint run ends with no interrupts but the run is not finished.**
 With `interrupt_before/after`, `get_state().interrupts` is empty and `next` holds the pending node. Treat `next` non-empty as "paused"; continue with `ainvoke(None, config)`.
 
@@ -131,6 +140,12 @@ Handles that appear after a node's first render (ports known only once node-type
 
 **F-04 ✅ Initial view is zoomed in on part of the graph.**
 `<ReactFlow fitView>` can fit before every node is measured. Fit once when `useNodesInitialized()` becomes true, with `maxZoom: 1`.
+
+**F-06 ✅ Ctrl/⌘-click or box selection keeps only one node selected (Sprint 6).**
+Rebuilding React Flow nodes from the IR on every store change reset `selected` to the editor's single selected element. Merge React Flow's own `selected` flag into rebuilt nodes (the editor's selection is only ever added), and clear it explicitly when focusing a node from elsewhere.
+
+**F-07 ✅ An e2e drag sometimes creates no edge (Sprint 6).**
+A content-sized node whose validation badge appears/clears after the server answers moves its handles between "measure" and "press". Keep node widths fixed (resource pills are 200 px) and wait for "Saved" before measuring handles in tests.
 
 **F-05 ✅ A renamed field (or `values` key) comes back after the edit is saved (Sprint 5).**
 A JSON Merge Patch (RFC 7396) *merges* nested objects, so sending a nested object wholesale keeps its old keys. `diffToMergePatch` must diff recursively and send `null` for removed nested keys. Coalescing queued edits needs the same care: `mergePatch(p1, p2)` drops the `null`s of `p2`, and "delete, then set an object" has no single-patch equivalent — `composePatches` keeps nulls and refuses that case (the editor then queues both commands).

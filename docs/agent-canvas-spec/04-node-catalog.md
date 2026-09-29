@@ -214,12 +214,15 @@ Ports are written `name: Type`. Inputs ← , outputs → .
 | Emit event | N | `runtime.emit(event_type, payload)` → `custom` stream + event bus, schema-checked (FR-X-22) | P1 |
 | Wait for event | N | `interrupt({"kind": "wait_event", "event": …, "correlation": …})`; resumed by a trigger handler (`act.resume`) | P1 |
 
-## 11c. Implemented type ids (product, Sprint 5)
+## 11c. Implemented type ids (product, Sprints 5–6)
 
 | Catalog entry | Type id | Kind |
 |---------------|---------|------|
 | Chat Model | `model.chat` | resource → `ChatModel` |
-| Code tool (custom) | `tool.python` | resource → `Tool` |
+| Code tool (custom) · HTTP request tool | `tool.python` · `tool.http` | resource → `Tool` |
+| MCP server · Memory tools | `mcp.server` · `tool.memory` | resource → `Tool[]` (spread into the agent's tools) |
+| Recall · Remember · Forget | `core.memory_recall` · `core.memory_remember` · `core.memory_forget` | runtime (namespace = space, scope, owner) |
+| Subgraph | `core.subgraph` (embedded workflow + input/output channels) | runtime |
 | LLM call · Lite Agent · Deep Agent | `core.llm` · `core.agent` · `agent.deep` | runtime |
 | Subagent (declarative) | `agent.subagent` | resource → `Subagent` (← model, tools, middleware) |
 | State backend · Store backend | `backend.state` · `backend.store` (mount folder, scope user/workflow/thread) | resource → `Backend` |

@@ -54,6 +54,10 @@ export function EditorPage() {
         if (e.shiftKey) useEditor.getState().redo();
         else useEditor.getState().undo();
       }
+      if (mod && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        void useEditor.getState().group?.();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -75,6 +79,8 @@ export function EditorPage() {
         </Link>
         <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
         <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
+        <button type="button" onClick={() => void useEditor.getState().group?.()}
+          title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
         <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
         <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>

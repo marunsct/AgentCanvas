@@ -132,3 +132,31 @@ test("pinned output skips the model; mock replies steer a debug run", async ({ p
   await expect(page.getByTestId("debug-badge")).toContainText("1 mocked");
   await expect(page.getByTestId("node-escalate")).toHaveClass(/status-ok/, { timeout: 10_000 });
 });
+
+test("convert steps to a subgraph, open it, and inline it back", async ({ page }) => {
+  await openTriage(page);
+  await page.getByTestId("node-escalate").click();
+  await page.getByTestId("node-manager_approval").click({ modifiers: ["ControlOrMeta"] });
+  await page.getByRole("button", { name: "⧉ Subgraph" }).click();
+  await expect(page.getByTestId("node-escalate_group")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("node-escalate")).toHaveCount(0);
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+  await expect(page.locator(".problems")).not.toContainText("E0");
+
+  // drill in (read-only) and back out through the breadcrumb
+  await page.getByTestId("node-escalate_group").dblclick();
+  await expect(page.getByRole("navigation", { name: "subgraph path" })).toContainText("Escalate group");
+  await expect(page.getByTestId("node-escalate")).toBeVisible();
+  await expect(page.getByTestId("node-manager_approval")).toBeVisible();
+  await page.getByRole("navigation", { name: "subgraph path" }).getByRole("button", { name: "Workflow" }).click();
+  await expect(page.getByTestId("node-escalate_group")).toBeVisible();
+
+  // inline the steps again
+  await page.getByTestId("node-escalate_group").click();
+  await page.getByRole("tab", { name: "Inspector" }).click();
+  await page.getByRole("button", { name: "Inline steps" }).click();
+  await expect(page.getByTestId("node-escalate")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("node-escalate_group")).toHaveCount(0);
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+  await expect(page.locator(".problems")).not.toContainText("E0");
+});
