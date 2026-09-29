@@ -23,9 +23,13 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-change-me"
     allow_local_mcp: bool = False
     workspaces_dir: str = "./workspaces"  # one git repository per project (M5-T1)
-    # how workspace scripts run (M5-T4): in the API process (dev), in a child process, or in a Docker sandbox
-    script_execution: Literal["inprocess", "subprocess", "docker"] = "inprocess"
+    # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith
+    # Sandbox (spike SP-2; credentials from LANGSMITH_API_KEY)
+    script_execution: Literal["inprocess", "subprocess", "docker", "langsmith"] = "inprocess"
     sandbox_image: str = "python:3.12-slim"
+    langsmith_snapshot: str | None = None  # snapshot name/id to boot from; None = LangSmith's default snapshot
+    langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
+    langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)
     recursion_limit: int = 50
     cors_origins: list[str] = ["http://localhost:5173"]
     log_json: bool = False

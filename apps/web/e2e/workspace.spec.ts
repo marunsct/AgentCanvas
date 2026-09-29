@@ -51,7 +51,7 @@ test("script node: scaffold its file, edit it with ruff feedback, run the new co
   await page.getByTestId("open-script").click();
   await expect(page.getByTestId("code-editor")).toContainText("def run(state: dict) -> dict:");
   await typeCode(page, "def run(state):\n    return {'text': state['text'].upper() + suffix}\n");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("lint")).toContainText("F821");
   await typeCode(page, "def run(state):\n    return {'text': state['text'].upper() + '!'}\n");
   await page.keyboard.press("ControlOrMeta+s");
@@ -115,4 +115,18 @@ test("secrets are write-only in the workspace", async ({ page }) => {
   await expect(page.locator("body")).not.toContainText("s3cr3t-value-e2e");
   await page.getByRole("button", { name: `delete secret ${name}` }).click();
   await expect(page.getByRole("region", { name: "secrets" })).not.toContainText(name);
+});
+
+test("the sandbox policy is scaffolded and checked", async ({ page }) => {
+  await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json"); // fresh
+  await page.goto("/workspace");
+  await page.getByRole("button", { name: "Sandbox policy" }).click();
+  await expect(page.getByTestId("code-editor")).toContainText('"egress": []');
+  await expect(page.getByTestId("lint")).toContainText("no problems");
+  const policy = { egress: [], inject: [{ name: "crm", hosts: ["api.crm.example.com"], headers: { Authorization: "Bearer {{ secret.NOPE_E2E }}" } }] };
+  await typeCode(page, JSON.stringify(policy));
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByTestId("lint")).toContainText("E083"); // the project has no such secret
+  await expect(page.getByTestId("lint")).toContainText("W082"); // in-process scripts cannot enforce egress
+  await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json");
 });

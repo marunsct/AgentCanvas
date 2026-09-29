@@ -138,9 +138,7 @@ class EventService:
     async def _call(self, project_id: str, import_path: str, event: dict[str, Any]) -> list[dict[str, Any]]:
         resources = self.projects.resources(project_id)
         if getattr(resources, "script_runner", None) is not None:  # sandboxed: the child records the actions
-            from agentcanvas.sandbox.runners import run_handler
-
-            return await run_handler(self.projects.settings, resources.workspace, import_path, event)
+            return await resources.script_runner.handle(import_path, event)
         from agentcanvas.sdk import Actions, Event
         from agentcanvas.workspace import load_attr
 

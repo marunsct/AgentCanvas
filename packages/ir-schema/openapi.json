@@ -3794,19 +3794,19 @@
         "parameters": [
           {
             "in": "path",
-            "name": "path",
+            "name": "project_id",
             "required": true,
             "schema": {
-              "title": "Path",
+              "title": "Project Id",
               "type": "string"
             }
           },
           {
             "in": "path",
-            "name": "project_id",
+            "name": "path",
             "required": true,
             "schema": {
-              "title": "Project Id",
+              "title": "Path",
               "type": "string"
             }
           }
@@ -3843,19 +3843,19 @@
         "parameters": [
           {
             "in": "path",
-            "name": "path",
+            "name": "project_id",
             "required": true,
             "schema": {
-              "title": "Path",
+              "title": "Project Id",
               "type": "string"
             }
           },
           {
             "in": "path",
-            "name": "project_id",
+            "name": "path",
             "required": true,
             "schema": {
-              "title": "Project Id",
+              "title": "Path",
               "type": "string"
             }
           }

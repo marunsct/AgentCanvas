@@ -82,6 +82,9 @@ State is `total=False`: keys exist only after something wrote them. Use `state.g
 **P-12 Agent node output is missing in the parent state.**
 The agent subgraph shares only matching keys. The workflow state must have a `messages` channel with reducer `add_messages` (and `structured_response` if you use structured output).
 
+**P-23 ✅ LangSmith Sandboxes: every host reachable, or a memory change ignored (Sprint 7, SP-2).**
+Without `access_control` a sandbox reaches **every** host on every port; AgentCanvas always sends an `allow_list` (empty = offline, plus port 443 for hosts that header rules target). `update_sandbox(name, proxy_config=…)` patches egress and injected headers in place, but the size (`mem_bytes`, `vcpus`) is fixed at creation — a new `memory_mb` replaces the sandbox. TTLs must be multiples of 60. Secrets go into `opaque` header values (write-only), never into the sandbox environment.
+
 ## B. Templates & code generation
 
 **T-01 ✅ `jinja2.exceptions.UndefinedError: 'dict object' has no attribute '<key>'` during code generation.**
@@ -146,6 +149,9 @@ Rebuilding React Flow nodes from the IR on every store change reset `selected` t
 
 **F-07 ✅ An e2e drag sometimes creates no edge (Sprint 6).**
 A content-sized node whose validation badge appears/clears after the server answers moves its handles between "measure" and "press". Keep node widths fixed (resource pills are 200 px) and wait for "Saved" before measuring handles in tests.
+
+**F-08 ✅ Playwright: "strict mode violation … resolved to 2 elements" for a button (Sprint 7).**
+`getByRole("button", { name: "Save" })` matches by *substring*, so a new "Save secret" button on the same page broke the workspace journey. Use `{ name: "Save", exact: true }` for short labels. Run the whole e2e suite (not only the new spec) before pushing UI additions.
 
 **F-05 ✅ A renamed field (or `values` key) comes back after the edit is saved (Sprint 5).**
 A JSON Merge Patch (RFC 7396) *merges* nested objects, so sending a nested object wholesale keeps its old keys. `diffToMergePatch` must diff recursively and send `null` for removed nested keys. Coalescing queued edits needs the same care: `mergePatch(p1, p2)` drops the `null`s of `p2`, and "delete, then set an object" has no single-patch equivalent — `composePatches` keeps nulls and refuses that case (the editor then queues both commands).

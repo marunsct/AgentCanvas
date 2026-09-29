@@ -211,8 +211,11 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `E074` | error | Channel storage mode changed (delta ↔ full) while the previous version has live threads (v0.6) |
 | `E080` | error | `import_path` outside workspace packages (`scripts.`, `tools.`, `nodes.`; `examples.` in dev only) |
 | `E081` | error | Event handler references a field missing from the event schema (v0.6) |
+| `E082` | error | Workspace `sandbox.json` is not a valid sandbox policy (FR-X-08) |
+| `E083` | error | Sandbox policy header uses `{{ secret.NAME }}` for a secret the project does not have |
 | `W074` | warning | Sandbox binding without an egress allow-list (v0.6) |
 | `W080` | warning | Side-effecting node reachable without approval or dry-run stub (v0.6) |
+| `W082` | warning | Sandbox policy declares egress/header injection, but the script execution mode cannot apply it (only `langsmith` can) |
 | `I010` | info | Upstream beta/experimental API in use (v0.6) |
 | `P001` | error | Node type not supported by the workflow's framework adapter |
 | `P002` | warning | Node supported only via emulation on this adapter (e.g. emulated HITL) |

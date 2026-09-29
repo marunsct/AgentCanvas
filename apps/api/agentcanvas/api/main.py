@@ -60,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 yield
             finally:
                 await runner.shutdown()
+                await app.state.projects.aclose()
                 await db.dispose()
 
     app = FastAPI(title="AgentCanvas API", version="0.1.0.dev0", lifespan=lifespan)

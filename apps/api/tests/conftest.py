@@ -50,9 +50,10 @@ def triage() -> Workflow:
 async def _truncate(url: str) -> None:
     engine = create_async_engine(async_url(url))
     async with engine.begin() as conn:
-        exists = (await conn.execute(text("SELECT to_regclass('public.workflow')"))).scalar()
-        if exists:
-            await conn.execute(text(f"TRUNCATE {', '.join(TABLES)} CASCADE"))
+        # only tables that exist: the database may still be at an older revision (the app migrates it)
+        present = [t for t in TABLES if (await conn.execute(text(f"SELECT to_regclass('public.{t}')"))).scalar()]
+        if present:
+            await conn.execute(text(f"TRUNCATE {', '.join(present)} CASCADE"))
         for table in RUNTIME_TABLES:  # thread ids repeat across tests: stale checkpoints would leak in
             if (await conn.execute(text(f"SELECT to_regclass('public.{table}')"))).scalar():
                 await conn.execute(text(f"TRUNCATE {table}"))

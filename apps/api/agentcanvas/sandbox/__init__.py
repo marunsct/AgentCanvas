@@ -9,9 +9,9 @@ from agentcanvas.settings import Settings
 
 
 def script_runner(settings: Settings, workspace: Path, secrets: dict[str, str]) -> Any:
-    """A factory `import_path -> async node` for sandboxed modes, or None to run scripts in-process."""
+    """A `SandboxRunner` (`import_path -> async node`, `.handle` for event handlers), or None to run in-process."""
     if settings.script_execution == "inprocess":
         return None
-    from agentcanvas.sandbox.runners import make_runner
+    from agentcanvas.sandbox.runners import SandboxRunner
 
-    return make_runner(settings, workspace, secrets)
+    return SandboxRunner(settings, workspace, secrets)

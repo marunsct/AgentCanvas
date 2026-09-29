@@ -1,20 +1,23 @@
-"""Host side of the script sandbox: a child process (limits, no inherited secrets) or a Docker container."""
+"""Host side of the script sandbox: a child process (limits, no inherited secrets), a Docker container or a
+LangSmith Sandbox (`agentcanvas.sandbox.langsmith`)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from agentcanvas.sandbox.policy import PolicyError, load_policy
 from agentcanvas.settings import Settings
 
 CHILD = Path(__file__).with_name("child.py")
 TIMEOUT_S = 30.0
-MEMORY_BYTES = 512 * 1024 * 1024
+MEMORY_MB = 512
 
 
 class ScriptError(RuntimeError):
@@ -31,12 +34,15 @@ def _jsonable(v: Any) -> Any:
     return v if isinstance(v, str | int | float | bool) or v is None else str(v)
 
 
-def _limits() -> None:  # pragma: no cover - runs in the child before exec
-    import resource
+def _limits(memory_bytes: int, cpu_s: int) -> Callable[[], None]:
+    def apply() -> None:  # pragma: no cover - runs in the child before exec
+        import resource
 
-    resource.setrlimit(resource.RLIMIT_AS, (MEMORY_BYTES * 2, MEMORY_BYTES * 2))
-    resource.setrlimit(resource.RLIMIT_CPU, (int(TIMEOUT_S), int(TIMEOUT_S) + 1))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        resource.setrlimit(resource.RLIMIT_AS, (memory_bytes * 2, memory_bytes * 2))
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 1))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+
+    return apply
 
 
 def subprocess_command(workspace: Path, import_path: str) -> tuple[list[str], dict[str, str], Path]:
@@ -44,10 +50,10 @@ def subprocess_command(workspace: Path, import_path: str) -> tuple[list[str], di
     return [sys.executable, "-I", str(CHILD), import_path], env, workspace
 
 
-def docker_command(image: str, workspace: Path, import_path: str) -> list[str]:
+def docker_command(image: str, workspace: Path, import_path: str, memory_mb: int = 512) -> list[str]:
     return [
         "docker", "run", "--rm", "-i",
-        "--network", "none", "--memory", "512m", "--cpus", "1", "--pids-limit", "64",
+        "--network", "none", "--memory", f"{memory_mb}m", "--cpus", "1", "--pids-limit", "64",
         "--read-only", "--tmpfs", "/tmp:size=16m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "-v", f"{workspace}:/ws:ro", "-v", f"{CHILD}:/sandbox/child.py:ro", "-w", "/ws",
         "-e", "PYTHONDONTWRITEBYTECODE=1",
@@ -55,13 +61,32 @@ def docker_command(image: str, workspace: Path, import_path: str) -> list[str]:
     ]  # fmt: skip
 
 
+def _parse(import_path: str, stdout: str, stderr: str, exit_code: int | None) -> dict:
+    """The child's result line (the last line on stdout)."""
+    lines = [ln for ln in stdout.splitlines() if ln.strip()]
+    try:
+        result = json.loads(lines[-1])
+    except (IndexError, json.JSONDecodeError):
+        raise ScriptError(f"{import_path} crashed (exit {exit_code}): {stderr[-500:]}") from None
+    if not result.get("ok"):
+        raise ScriptError(f"{import_path} failed: {result.get('error')}")
+    return result
+
+
 async def _exchange(
-    mode: str, workspace: Path, import_path: str, payload: dict[str, Any], image: str, timeout: float
+    mode: str,
+    workspace: Path,
+    import_path: str,
+    payload: dict[str, Any],
+    image: str,
+    timeout: float,
+    memory_mb: int = MEMORY_MB,
 ) -> dict:
     if mode == "docker":
-        argv, env, cwd = docker_command(image, workspace, import_path), None, None
+        argv, env, cwd = docker_command(image, workspace, import_path, memory_mb), None, None
     else:
         argv, env, cwd = subprocess_command(workspace, import_path)
+    limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout))
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.PIPE,
@@ -69,7 +94,7 @@ async def _exchange(
         stderr=asyncio.subprocess.PIPE,
         env=env,
         cwd=cwd,
-        preexec_fn=_limits if mode == "subprocess" and os.name == "posix" else None,
+        preexec_fn=limits if mode == "subprocess" and os.name == "posix" else None,
     )
     try:
         out, err = await asyncio.wait_for(proc.communicate(json.dumps(payload).encode()), timeout)
@@ -77,24 +102,7 @@ async def _exchange(
         proc.kill()
         await proc.wait()
         raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
-    lines = [ln for ln in out.decode(errors="replace").splitlines() if ln.strip()]
-    try:
-        result = json.loads(lines[-1])
-    except (IndexError, json.JSONDecodeError):
-        tail = err.decode(errors="replace")[-500:]
-        raise ScriptError(f"{import_path} crashed (exit {proc.returncode}): {tail}") from None
-    if not result.get("ok"):
-        raise ScriptError(f"{import_path} failed: {result.get('error')}")
-    return result
-
-
-async def run_handler(settings: Settings, workspace: Path, import_path: str, event: dict[str, Any]) -> list[dict]:
-    """Run an event handler in the sandbox; returns the actions it recorded (FR-X-22)."""
-    mode = settings.script_execution
-    result = await _exchange(
-        mode, workspace, import_path, {"event": _jsonable(event)}, settings.sandbox_image, TIMEOUT_S
-    )
-    return list(result.get("actions") or [])
+    return _parse(import_path, out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode)
 
 
 async def run_in_sandbox(
@@ -107,7 +115,7 @@ async def run_in_sandbox(
     timeout: float = TIMEOUT_S,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run `import_path(state)` in the sandbox and return its channel update."""
+    """Run `import_path(state)` in a local sandbox (subprocess or docker) and return its channel update."""
     payload = {"state": _jsonable(state), "config": _jsonable(config) if config is not None else None}
     try:
         result = await _exchange(mode, workspace, import_path, payload, image, timeout)
@@ -118,23 +126,65 @@ async def run_in_sandbox(
     return result.get("update") or {}
 
 
-def make_runner(settings: Settings, workspace: Path, secrets: dict[str, str]) -> Callable[..., Callable]:
-    """`(import_path, config=None) -> async node` running each call in the configured sandbox.
+class SandboxRunner:
+    """Sandboxed execution of one project's workspace code in the configured mode.
 
-    Secrets are not passed in (FR-SCR-03: they never enter the sandbox)."""
+    `runner(import_path, config=None)` is an async graph node; `await runner.handle(import_path, event)` runs an
+    event handler and returns the actions it recorded (FR-X-22). Limits and egress come from the project's
+    `sandbox.json` (FR-X-08). Secrets are never passed into the sandbox (FR-SCR-03); in the LangSmith mode the auth
+    proxy injects them into outbound requests instead.
+    """
 
-    def node_for(import_path: str, config: dict[str, Any] | None = None) -> Callable:
+    def __init__(
+        self,
+        settings: Settings,
+        workspace: Path,
+        secrets: dict[str, str],
+        langsmith_client: Callable[[Settings], Any] | None = None,
+    ):
+        self.settings, self.workspace, self.secrets = settings, workspace, secrets
+        self._langsmith_client = langsmith_client
+        self._box: Any = None
+
+    def __call__(self, import_path: str, config: dict[str, Any] | None = None) -> Callable:
         async def run(state: Any) -> dict:
-            return await run_in_sandbox(
-                settings.script_execution,
-                workspace,
-                import_path,
-                dict(state),
-                image=settings.sandbox_image,
-                config=config,
-            )
+            payload = {"state": _jsonable(dict(state)), "config": _jsonable(config) if config is not None else None}
+            try:
+                result = await self.exchange(import_path, payload)
+            except TimeoutError as exc:
+                raise TimeoutError(f"script {exc}") from None
+            except ScriptError as exc:
+                raise ScriptError(f"script {exc}") from None
+            return result.get("update") or {}
 
         run.__name__ = import_path.rpartition(":")[2] or "script"
         return run
 
-    return node_for
+    async def handle(self, import_path: str, event: dict[str, Any]) -> list[dict]:
+        result = await self.exchange(import_path, {"event": _jsonable(event)})
+        return list(result.get("actions") or [])
+
+    async def exchange(self, import_path: str, payload: dict[str, Any]) -> dict:
+        try:
+            policy = load_policy(self.workspace)
+        except PolicyError as exc:
+            raise ScriptError(str(exc)) from None
+        mode = self.settings.script_execution
+        if mode != "langsmith":
+            image = self.settings.sandbox_image
+            return await _exchange(
+                mode, self.workspace, import_path, payload, image, policy.timeout_s, policy.memory_mb
+            )
+        if self._box is None:
+            from agentcanvas.sandbox.langsmith import LangSmithBox
+
+            self._box = LangSmithBox(self.settings, self.workspace, self.secrets, self._langsmith_client)
+        try:
+            out, err, code = await self._box.exchange(import_path, json.dumps(payload).encode(), policy)
+        except PolicyError as exc:
+            raise ScriptError(str(exc)) from None
+        return _parse(import_path, out, err, code)
+
+    async def aclose(self) -> None:
+        if self._box is not None:
+            await self._box.aclose()

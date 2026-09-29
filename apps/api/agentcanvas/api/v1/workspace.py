@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.deps import get_session
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
+from agentcanvas.sandbox.policy import POLICY_FILE, check_policy
 from agentcanvas.workspace import Workspace, WorkspaceError
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["workspace"])
@@ -70,16 +71,33 @@ async def list_files(ws: Workspace = Depends(workspace)) -> list[FileOut]:
     return [FileOut(path=f.path, size=f.size, modified=f.modified) for f in ws.list()]
 
 
+def _lint(ws: Workspace, path: str, request: Request, project_id: str) -> list[LintItem]:
+    """ruff for Python files; the sandbox policy checks (E082/E083/W082/W074) for `sandbox.json`."""
+    items = [LintItem(**d) for d in ws.lint(path)]
+    if path.strip("/") == POLICY_FILE:
+        projects = request.app.state.projects
+        mode, secrets = projects.settings.script_execution, set(projects.secrets.get(project_id, {}))
+        items += [
+            LintItem(line=1, column=1, end_line=1, end_column=1, code=p["code"], message=p["message"])
+            for p in check_policy(ws.root, mode, secrets)
+        ]
+    return items
+
+
 @router.get("/files/{path:path}", response_model=FileContent)
-async def read_file(path: str, ws: Workspace = Depends(workspace)) -> FileContent:
+async def read_file(project_id: str, path: str, request: Request, ws: Workspace = Depends(workspace)) -> FileContent:
     content = _guard(lambda: ws.read(path))
-    return FileContent(path=path, content=content, diagnostics=[LintItem(**d) for d in ws.lint(path)])
+    return FileContent(path=path, content=content, diagnostics=_lint(ws, path, request, project_id))
 
 
 @router.put("/files/{path:path}", response_model=SavedFile)
-async def save_file(path: str, body: FileSave, ws: Workspace = Depends(workspace)) -> SavedFile:
+async def save_file(
+    project_id: str, path: str, body: FileSave, request: Request, ws: Workspace = Depends(workspace)
+) -> SavedFile:
     info = _guard(lambda: ws.write(path, body.content))
-    return SavedFile(path=info.path, size=info.size, modified=info.modified, diagnostics=ws.lint(path))  # type: ignore[arg-type]
+    return SavedFile(
+        path=info.path, size=info.size, modified=info.modified, diagnostics=_lint(ws, path, request, project_id)
+    )
 
 
 @router.delete("/files/{path:path}", status_code=204)
@@ -122,13 +140,19 @@ class CatalogOut(BaseModel):
 @router.get("/workspace/catalog", response_model=CatalogOut)
 async def workspace_catalog(project_id: str, request: Request, _: Workspace = Depends(workspace)) -> CatalogOut:
     """What the workspace contributes to the palette: tools, custom nodes, scripts, event handlers (AST scan)."""
-    cat = request.app.state.projects.catalog(project_id)
+    projects = request.app.state.projects
+    cat = projects.catalog(project_id)
+    policy = check_policy(
+        projects.workspace(project_id).root,
+        projects.settings.script_execution,
+        set(projects.secrets.get(project_id, {})),
+    )
     return CatalogOut(
         tools=cat.tools,
         nodes=[m.type for m in cat.nodes],
         scripts=cat.scripts,
         handlers=cat.handlers,
-        problems=cat.problems,
+        problems=[*cat.problems, *policy],
         schemas=sorted(
             p.stem
             for p in (request.app.state.projects.workspace(project_id).root / "events" / "schemas").glob("*.json")

@@ -51,6 +51,13 @@ class ProjectRegistry:
             )
         return self._resources[project_id]
 
+    async def aclose(self) -> None:
+        """Release per-project sandboxes (a LangSmith Sandbox stays up until its idle timeout otherwise)."""
+        for res in self._resources.values():
+            runner = getattr(res, "script_runner", None)
+            if runner is not None and hasattr(runner, "aclose"):
+                await runner.aclose()
+
     def has_handlers(self, project_id: str) -> bool:
         """True when the project's workspace has event handler code (without creating the workspace)."""
         events = Path(self.settings.workspaces_dir) / project_id / "events"
