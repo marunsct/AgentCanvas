@@ -170,6 +170,7 @@ export type Location = (string | number)[];
 export type Message1 = string;
 export type ErrorType = string;
 export type Detail = ValidationError[];
+export type NodeId1 = string;
 export type CanvasNodeId = string;
 export type CreatedAt1 = string;
 export type DecidedAt = string | null;
@@ -228,6 +229,7 @@ export type Inputs = PortSpec[];
 export type Interrupts = boolean;
 export type Kind3 = "runtime" | "resource" | "middleware" | "trigger";
 export type Label4 = string;
+export type ListReadFields = string[];
 export type ListWriteFields = string[];
 export type Outputs = PortSpec[];
 export type ReadFields = string[];
@@ -241,6 +243,9 @@ export type Writes = string[];
 export type CreatedAt3 = string;
 export type Id12 = string;
 export type Name11 = string;
+export type Commands1 = {
+  [k: string]: unknown;
+}[];
 export type InterruptId = string | null;
 export type Mocks1 = {
   [k: string]: unknown[];
@@ -276,9 +281,14 @@ export type Stream2 = boolean;
 export type ThreadId2 = string | null;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
+export type Name12 = string | null;
+/**
+ * @minItems 1
+ */
+export type NodeIds = [string, ...string[]];
 export type Description6 = string;
 export type Id14 = string;
-export type Name12 = string;
+export type Name13 = string;
 export type NodeCount = number;
 export type CreatedAt4 = string;
 export type Id15 = string;
@@ -292,12 +302,12 @@ export type CreatedAt5 = string;
 export type Diagnostics1 = Diagnostic[];
 export type Id16 = string;
 export type IrHash2 = string;
-export type Name13 = string;
+export type Name14 = string;
 export type ProjectId1 = string;
 export type UpdatedAt3 = string;
 export type Version2 = number;
 export type Id17 = string;
-export type Name14 = string;
+export type Name15 = string;
 export type UpdatedAt4 = string;
 export type Version3 = number;
 export type Items1 = WorkflowSummary[];
@@ -324,6 +334,7 @@ export interface ApiSchemas {
   ExpressionResult?: ExpressionResult;
   ForkRequest?: ForkRequest;
   HTTPValidationError?: HTTPValidationError;
+  InlineRequest?: InlineRequest;
   InterruptOut?: InterruptOut;
   LayoutUpdate?: LayoutUpdate;
   McpInspectRequest?: McpInspectRequest;
@@ -336,6 +347,7 @@ export interface ApiSchemas {
   NodePolicies?: NodePolicies;
   PortSpec?: PortSpec;
   ProjectOut?: ProjectOut;
+  RefactorOut?: RefactorOut;
   RemoveNode?: RemoveNode;
   RemoveResource?: RemoveResource;
   RenameNode?: RenameNode;
@@ -351,6 +363,7 @@ export interface ApiSchemas {
   SetChannels?: SetChannels;
   SetContext?: SetContext;
   StateEdit?: StateEdit;
+  SubgraphRequest?: SubgraphRequest;
   TemplateInfo?: TemplateInfo;
   ThreadOut?: ThreadOut;
   ThreadPage?: ThreadPage;
@@ -785,6 +798,13 @@ export interface Input {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "InlineRequest".
+ */
+export interface InlineRequest {
+  node_id: NodeId1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "InterruptOut".
  */
 export interface InterruptOut {
@@ -897,6 +917,7 @@ export interface NodeManifest {
   interrupts?: Interrupts;
   kind: Kind3;
   label: Label4;
+  list_read_fields?: ListReadFields;
   list_write_fields?: ListWriteFields;
   outputs?: Outputs;
   read_fields?: ReadFields;
@@ -938,6 +959,15 @@ export interface ProjectOut {
   created_at: CreatedAt3;
   id: Id12;
   name: Name11;
+}
+/**
+ * Commands the editor dispatches like its own edits (optimistic, autosaved, undoable).
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "RefactorOut".
+ */
+export interface RefactorOut {
+  commands: Commands1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -1015,12 +1045,20 @@ export interface Values1 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SubgraphRequest".
+ */
+export interface SubgraphRequest {
+  name?: Name12;
+  node_ids: NodeIds;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "TemplateInfo".
  */
 export interface TemplateInfo {
   description: Description6;
   id: Id14;
-  name: Name12;
+  name: Name13;
   node_count: NodeCount;
 }
 /**
@@ -1054,7 +1092,7 @@ export interface WorkflowOut {
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
-  name: Name13;
+  name: Name14;
   project_id: ProjectId1;
   updated_at: UpdatedAt3;
   version: Version2;
@@ -1079,7 +1117,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id17;
-  name: Name14;
+  name: Name15;
   updated_at: UpdatedAt4;
   version: Version3;
 }

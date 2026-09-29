@@ -262,6 +262,14 @@ class Workflow(_Base):
     def flow_edges(self) -> list[Edge]:
         return [e for e in self.edges if e.kind == "flow"]
 
+    def subworkflow(self, node: Node) -> Workflow:
+        """The workflow embedded in a `core.subgraph` node; the inner steps see the parent's run context."""
+        data = dict(node.config.get("workflow") or {})
+        data.setdefault("id", f"{self.id}.{node.name}")
+        data.setdefault("name", node.label or node.name)
+        data.setdefault("context", self.context.model_dump(mode="json"))
+        return Workflow.model_validate(data)
+
     def wiring_into(self, node_id: str, port: str) -> list[Edge]:
         """Wiring edges into `node_id.port`, ordered by `order` then list position."""
         edges = [e for e in self.edges if e.kind == "wiring" and e.target.node == node_id and e.target.port == port]

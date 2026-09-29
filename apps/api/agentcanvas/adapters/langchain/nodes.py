@@ -827,6 +827,30 @@ def script_node(*, import_path: str) -> Callable:
     return ensure_async(safe_import(import_path))
 
 
+def subgraph_node(*, graph: Any, inputs: Sequence[str], outputs: Sequence[str], append: Sequence[str] = ()) -> Callable:
+    """Run a compiled inner workflow as one step (M2-T13): copy `inputs` in, copy `outputs` back.
+
+    For outer `append` channels only the items added inside are returned (the inner copy starts with the outer
+    items, which the outer reducer would otherwise append a second time). The inner graph inherits the parent's
+    checkpointer, so interrupts inside it pause and resume the whole run.
+    """
+
+    async def run(state: Any) -> dict:
+        given = {k: state[k] for k in inputs if k in state}
+        out = await graph.ainvoke(given)
+        update: dict[str, Any] = {}
+        for k in outputs:
+            if k not in out:
+                continue
+            value = out[k]
+            if k in append and isinstance(value, list):
+                value = value[len(given.get(k) or []) :]
+            update[k] = value
+        return update
+
+    return run
+
+
 def pinned_node(output: dict[str, Any]) -> Callable:
     """Debug runs (M4-T9): replay a pinned output instead of running the node (no model call, no side effect)."""
 

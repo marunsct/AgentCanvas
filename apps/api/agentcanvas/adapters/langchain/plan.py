@@ -39,6 +39,8 @@ class PlannedNode:
     wired: dict[str, list[str]] = field(default_factory=dict)  # input port -> resource names
     fan_out: bool = False  # core.map: conditional edge returning Send(...)s
     pinned: dict[str, Any] | None = None  # debug runs only: replay this output instead of running the node
+    subplan: Plan | None = None  # core.subgraph: the embedded workflow, lowered
+    append_outputs: list[str] = field(default_factory=list)  # core.subgraph outputs whose outer reducer is append
 
 
 @dataclass
@@ -64,7 +66,19 @@ class Plan:
 
     @property
     def mcp(self) -> list[PlannedResource]:
-        return [pr for pr in self.resources if pr.resource.type == "mcp.server"]
+        """MCP servers of this plan and of every subgraph inside it."""
+        own = [pr for pr in self.resources if pr.resource.type == "mcp.server"]
+        return own + [pr for p in self.nodes if p.subplan for pr in p.subplan.mcp]
+
+    def subplans(self, path: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], Plan]]:
+        """Every nested subgraph plan, innermost first, with its path of subgraph node names."""
+        out: list[tuple[tuple[str, ...], Plan]] = []
+        for p in self.nodes:
+            if p.subplan is not None:
+                inner = (*path, p.node.name)
+                out += p.subplan.subplans(inner)
+                out.append((inner, p.subplan))
+        return out
 
 
 def _ep(wf: Workflow, node_id: str) -> str:
@@ -130,6 +144,12 @@ def lower(wf: Workflow) -> Plan:
             options["error_channel"] = error_channel
         needs_cache = needs_cache or bool(n.policies and n.policies.cache)
         m = registry.get(n.type)
+        subplan, append_outputs = None, []
+        if n.type == "core.subgraph":
+            subplan = lower(wf.subworkflow(n))
+            append_outputs = [
+                c for c in n.config.get("outputs", []) if (ch := wf.state.channel(c)) and ch.reducer == "append"
+            ]
         planned.append(
             PlannedNode(
                 node=n,
@@ -138,6 +158,8 @@ def lower(wf: Workflow) -> Plan:
                 options=options,
                 wired=_wired(wf, n.id, [p.name for p in m.inputs] if m else []),
                 fan_out=n.id in map_ids,
+                subplan=subplan,
+                append_outputs=append_outputs,
             )
         )
 

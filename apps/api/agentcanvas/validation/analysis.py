@@ -64,7 +64,11 @@ def node_reads(node: Node, m: NodeManifest) -> set[str]:
     for f in m.read_fields:
         if isinstance(node.config.get(f), str) and node.config[f]:
             out.add(node.config[f])
-    for _, s in iter_strings(node.config):
+    for f in m.list_read_fields:
+        if isinstance(node.config.get(f), list):
+            out.update(x for x in node.config[f] if isinstance(x, str))
+    config = {k: v for k, v in node.config.items() if k != "workflow"}  # a subgraph's own state is not ours
+    for _, s in iter_strings(config):
         out.update(STATE_REF.findall(s))
     return out
 

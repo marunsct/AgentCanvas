@@ -161,3 +161,37 @@ async def validate_workflow(wf_id: str, svc: WorkflowService = Depends(service))
 async def get_code(wf_id: str, svc: WorkflowService = Depends(service)) -> str:
     view = await svc.get(wf_id)
     return get_adapter(view.workflow.framework).generate(view.workflow)
+
+
+# ------------------------------------------------------------------ refactorings (M2-T13) ----
+class SubgraphRequest(BaseModel):
+    node_ids: list[str] = Field(min_length=1)
+    name: str | None = None
+
+
+class InlineRequest(BaseModel):
+    node_id: str
+
+
+class RefactorOut(BaseModel):
+    """Commands the editor dispatches like its own edits (optimistic, autosaved, undoable)."""
+
+    commands: list[dict[str, Any]]
+
+
+@router.post("/workflows/{wf_id}/refactor/subgraph", response_model=RefactorOut)
+async def refactor_to_subgraph(
+    wf_id: str, body: SubgraphRequest, svc: WorkflowService = Depends(service)
+) -> RefactorOut:
+    from agentcanvas.services.refactor import to_subgraph
+
+    wf = (await svc.get(wf_id)).workflow
+    return RefactorOut(commands=[c.model_dump(mode="json") for c in to_subgraph(wf, body.node_ids, body.name)])
+
+
+@router.post("/workflows/{wf_id}/refactor/inline", response_model=RefactorOut)
+async def refactor_inline(wf_id: str, body: InlineRequest, svc: WorkflowService = Depends(service)) -> RefactorOut:
+    from agentcanvas.services.refactor import inline_subgraph
+
+    wf = (await svc.get(wf_id)).workflow
+    return RefactorOut(commands=[c.model_dump(mode="json") for c in inline_subgraph(wf, body.node_id)])

@@ -142,6 +142,14 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             fn = ac.passthrough
         elif n.type == "core.join":
             fn = ac.passthrough
+        elif n.type == "core.subgraph":
+            assert p.subplan is not None
+            fn = ac.subgraph_node(
+                graph=build_from_plan(p.subplan, resources),  # no checkpointer: inherits the parent's
+                inputs=cfg.get("inputs", []),
+                outputs=cfg.get("outputs", []),
+                append=p.append_outputs,
+            )
         elif n.type == "core.approval":
             fn = ac.approval_node(node_id=n.id, show=cfg["show"], output=cfg["output"])
         elif n.type == "core.human_input":

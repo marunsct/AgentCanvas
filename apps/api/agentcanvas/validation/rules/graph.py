@@ -147,3 +147,44 @@ def joins(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 )
         if len({e.source.node for e in inputs}) < 2:
             yield warning("W013", f"join '{n.name}' has fewer than two incoming branches", node_id=n.id)
+
+
+@rule
+def subgraphs(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """E018: the embedded workflow must be valid on its own; its inputs/outputs must exist inside (E021)."""
+    from pydantic import ValidationError
+
+    from agentcanvas.validation.engine import validate
+
+    outer_resources = {r.name: r.config for r in ctx.wf.resources}
+    for n in ctx.wf.nodes:
+        if n.type != "core.subgraph":
+            continue
+        try:
+            inner = ctx.wf.subworkflow(n)
+        except ValidationError as exc:
+            yield error("E018", f"subgraph '{n.name}' is not a valid workflow: {exc.errors()[0]['msg']}", node_id=n.id)
+            continue
+        for d in validate(inner, ctx.registry, edition=ctx.edition, allow_local_mcp=ctx.allow_local_mcp):
+            if d.severity == "error":
+                yield error("E018", f"subgraph '{n.name}': {d.code} {d.message}", node_id=n.id, path="config.workflow")
+            elif d.severity == "warning":
+                yield warning("W018", f"subgraph '{n.name}': {d.code} {d.message}", node_id=n.id)
+        inside = {c.name for c in inner.state.channels}
+        for key in ("inputs", "outputs"):
+            for ch in n.config.get(key) or []:
+                if ch not in inside:
+                    yield error(
+                        "E021",
+                        f"subgraph '{n.name}' passes '{ch}' but has no channel of that name inside",
+                        node_id=n.id,
+                        path=f"config.{key}",
+                    )
+        for r in inner.resources:  # resources resolve by name: one name must mean one configuration
+            if r.name in outer_resources and outer_resources[r.name] != r.config:
+                yield error(
+                    "E019",
+                    f"subgraph '{n.name}' has resource '{r.name}' configured differently from the workflow's",
+                    node_id=n.id,
+                    hint="rename one of them",
+                )

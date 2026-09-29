@@ -20,6 +20,20 @@ def node_index(wf: Workflow) -> dict[str, str]:
     return {n.name: n.id for n in wf.nodes}
 
 
+def nested_index(wf: Workflow, path: tuple[str, ...] = ()) -> dict[tuple[str, ...], dict[str, str]]:
+    """Subgraph path (outer node names) -> {inner node name: canvas node id}, for nested activity on the canvas."""
+    out: dict[tuple[str, ...], dict[str, str]] = {}
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            try:
+                inner = wf.subworkflow(n)
+            except Exception:  # noqa: BLE001 - invalid subgraphs never run (E018)
+                continue
+            out[(*path, n.name)] = node_index(inner)
+            out |= nested_index(inner, (*path, n.name))
+    return out
+
+
 def jsonable(v: Any) -> Any:
     if isinstance(v, dict):
         return {str(k): jsonable(x) for k, x in v.items()}
@@ -32,9 +46,15 @@ def jsonable(v: Any) -> Any:
     return str(v)
 
 
-def translate(part: Any, names: dict[str, str]) -> Iterator[dict[str, Any]]:
+def translate(
+    part: Any, names: dict[str, str], nested: dict[tuple[str, ...], dict[str, str]] | None = None
+) -> Iterator[dict[str, Any]]:
     kind, ns, data = part["type"], part["ns"], part["data"]
     top_level = len(ns) == 0
+    path = tuple(seg.split(":")[0] for seg in ns)
+    if kind == "tasks" and not top_level and nested and path in nested:
+        names = nested[path]  # a step inside a subgraph: report it for the inner node (drill-in view)
+        top_level = True
     if kind == "tasks" and top_level:
         node_id = names.get(data["name"])
         if node_id is None:

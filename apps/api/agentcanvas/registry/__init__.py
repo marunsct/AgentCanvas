@@ -50,6 +50,7 @@ class NodeManifest(BaseModel):
     read_fields: list[str] = Field(default_factory=list)  # config keys naming a read channel
     channel_map_fields: list[str] = Field(default_factory=list)  # config keys whose dict keys are written channels
     list_write_fields: list[str] = Field(default_factory=list)  # config keys holding a list of written channels
+    list_read_fields: list[str] = Field(default_factory=list)  # config keys holding a list of read channels
     conditional_writes: dict[str, list[str]] = Field(default_factory=dict)  # config key set -> channels written
     template_fields: list[str] = Field(default_factory=list)  # Jinja templates (may read state.*)
     builtin_tools: list[str] = Field(default_factory=list)  # tools the node brings itself (valid in approve_tools)

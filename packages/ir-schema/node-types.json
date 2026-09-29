@@ -59,6 +59,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [
       "prompt"
@@ -158,6 +159,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {
       "response_format": [
         "structured_response"
@@ -323,6 +325,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {
       "response_format": [
         "structured_response"
@@ -435,6 +438,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -512,6 +516,7 @@
     "list_write_fields": [
       "writes"
     ],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -576,6 +581,7 @@
       "values"
     ],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [
       "values"
@@ -641,6 +647,7 @@
     ],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -710,6 +717,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [
       "prompt"
@@ -756,6 +764,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -840,6 +849,7 @@
     ],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -906,10 +916,90 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
     "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.subgraph",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Subgraph",
+    "category": "Logic",
+    "icon": "layers",
+    "color": "#0E7490",
+    "description": "A group of steps with its own state, run as one step. Input channels are copied in; output channels are copied back (append channels get only the new items).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "workflow": {
+          "type": "object",
+          "title": "Steps",
+          "format": "subgraph",
+          "description": "The embedded workflow (double-click the node to open it)"
+        },
+        "inputs": {
+          "type": "array",
+          "title": "Channels passed in",
+          "items": {
+            "type": "string",
+            "format": "channel"
+          },
+          "uniqueItems": true
+        },
+        "outputs": {
+          "type": "array",
+          "title": "Channels passed back",
+          "items": {
+            "type": "string",
+            "format": "channel"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [
+      "outputs"
+    ],
+    "list_read_fields": [
+      "inputs"
+    ],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": true,
     "side_effects": [],
     "hosted_forbidden": false,
     "stability": "stable",
@@ -979,6 +1069,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [
       "key"
@@ -1053,6 +1144,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1119,6 +1211,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [
@@ -1209,6 +1302,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [
       "query"
@@ -1293,6 +1387,7 @@
     ],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [
       "key"
@@ -1339,6 +1434,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1403,6 +1499,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1456,6 +1553,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1539,6 +1637,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1629,6 +1728,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1675,6 +1775,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1746,6 +1847,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1816,6 +1918,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1908,6 +2011,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -1975,6 +2079,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -2064,6 +2169,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -2202,6 +2308,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -2333,6 +2440,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],
@@ -2400,6 +2508,7 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "list_read_fields": [],
     "conditional_writes": {},
     "template_fields": [],
     "builtin_tools": [],

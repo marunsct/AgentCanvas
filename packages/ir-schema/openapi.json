@@ -825,6 +825,19 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InlineRequest": {
+        "properties": {
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id"
+        ],
+        "title": "InlineRequest",
+        "type": "object"
+      },
       "InterruptOut": {
         "properties": {
           "canvas_node_id": {
@@ -1321,6 +1334,13 @@
             "title": "Label",
             "type": "string"
           },
+          "list_read_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "List Read Fields",
+            "type": "array"
+          },
           "list_write_fields": {
             "items": {
               "type": "string"
@@ -1546,6 +1566,24 @@
           "created_at"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "RefactorOut": {
+        "description": "Commands the editor dispatches like its own edits (optimistic, autosaved, undoable).",
+        "properties": {
+          "commands": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Commands",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commands"
+        ],
+        "title": "RefactorOut",
         "type": "object"
       },
       "RemoveNode": {
@@ -2083,6 +2121,34 @@
           "values"
         ],
         "title": "StateEdit",
+        "type": "object"
+      },
+      "SubgraphRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Node Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node_ids"
+        ],
+        "title": "SubgraphRequest",
         "type": "object"
       },
       "TemplateInfo": {
@@ -4255,6 +4321,110 @@
           }
         },
         "summary": "Set Layout",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/refactor/inline": {
+      "post": {
+        "operationId": "refactor_inline_v1_workflows__wf_id__refactor_inline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InlineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefactorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refactor Inline",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/refactor/subgraph": {
+      "post": {
+        "operationId": "refactor_to_subgraph_v1_workflows__wf_id__refactor_subgraph_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubgraphRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefactorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refactor To Subgraph",
         "tags": [
           "workflows"
         ]

@@ -16,7 +16,7 @@ from langgraph.types import Command
 
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.codegen import generate
-from agentcanvas.adapters.langchain.events import UsageTracker, jsonable, node_index, translate
+from agentcanvas.adapters.langchain.events import UsageTracker, jsonable, nested_index, node_index, translate
 from agentcanvas.adapters.langchain.interpreter import build_from_plan, prepare
 from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread, open_persistence
 from agentcanvas.adapters.langchain.plan import lower
@@ -157,7 +157,7 @@ class LangChainAdapter:
             graph = await self._debug_graph(wf, resources, spec.pins)
         else:
             graph = await self.graph(wf, resources)
-        names = node_index(wf)
+        names, nested = node_index(wf), nested_index(wf)
         cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id)
         if spec.resume is not None:
             value = {spec.resume.interrupt_id: spec.resume.value} if spec.resume.interrupt_id else spec.resume.value
@@ -192,7 +192,7 @@ class LangChainAdapter:
         started: dict[str, float] = {}
         try:
             async for part in graph.astream(graph_input, cfg, **kwargs):
-                for ev in translate(part, names):
+                for ev in translate(part, names, nested):
                     if ev["type"] == "STEP_STARTED":
                         started[ev["task_id"]] = time.perf_counter()
                     elif ev["type"] == "STEP_FINISHED" and ev["task_id"] in started:
@@ -235,7 +235,8 @@ class LangChainAdapter:
         for task in snap.tasks:
             for intr in task.interrupts:
                 payload = jsonable(intr.value)
-                node = names.get(task.name) or (payload.get("canvas_node_id") if isinstance(payload, dict) else None)
+                # the payload names the step that asked (also inside a subgraph); tool approvals only have the task
+                node = (payload.get("canvas_node_id") if isinstance(payload, dict) else None) or names.get(task.name)
                 interrupts.append(
                     InterruptInfo(id=intr.id, kind=interrupt_kind(payload), canvas_node_id=node, payload=payload)
                 )
