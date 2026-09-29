@@ -186,6 +186,7 @@ export type Reasoning = boolean;
 export type StructuredOutput = boolean;
 export type Tools = boolean;
 export type Vision = boolean;
+export type BuiltinTools = string[];
 export type Category = string;
 export type ChannelFields = string[];
 export type ChannelMapFields = string[];
@@ -781,10 +782,12 @@ export interface ModelInfo {
  * via the `definition` "NodeManifest".
  */
 export interface NodeManifest {
+  builtin_tools?: BuiltinTools;
   category: Category;
   channel_fields?: ChannelFields;
   channel_map_fields?: ChannelMapFields;
   color?: Color;
+  conditional_writes?: ConditionalWrites;
   config_schema?: ConfigSchema;
   description?: Description3;
   docs?: Docs;
@@ -806,6 +809,9 @@ export interface NodeManifest {
   type: Type5;
   version?: Version1;
   writes?: Writes;
+}
+export interface ConditionalWrites {
+  [k: string]: string[];
 }
 export interface ConfigSchema {
   [k: string]: unknown;

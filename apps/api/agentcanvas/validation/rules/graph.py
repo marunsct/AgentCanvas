@@ -26,7 +26,7 @@ def reachability(ctx: ValidationContext) -> Iterator[Diagnostic]:
         if n.id not in seen:
             yield error("E011", f"'{n.name}' is unreachable from START", node_id=n.id)
     for n in ctx.wf.nodes:
-        if n.id in seen and not succ.get(n.id) and n.id not in ctx.router_ids:
+        if n.id in seen and not succ.get(n.id) and n.id not in ctx.conditional_ids:
             yield error(
                 "E015", f"'{n.name}' has no outgoing flow edge (connect it to a next step or END)", node_id=n.id
             )
@@ -82,8 +82,8 @@ def parallel_write_conflicts(ctx: ValidationContext) -> Iterator[Diagnostic]:
     replace = {c.name for c in ctx.wf.state.channels if c.reducer == "replace"}
     names = {n.id: n.name for n in ctx.wf.nodes}
     for src, targets in ctx.successors.items():
-        if src in ctx.router_ids:
-            continue  # a router takes exactly one route
+        if src in ctx.conditional_ids:
+            continue  # a router takes exactly one route; a map's outputs are alternatives (items / empty)
         branch = sorted(t for t in targets if t in names)
         for i, a in enumerate(branch):
             for b in branch[i + 1 :]:
@@ -95,3 +95,55 @@ def parallel_write_conflicts(ctx: ValidationContext) -> Iterator[Diagnostic]:
                         node_id=b,
                         hint=f"give '{ch}' a reducer such as 'append', or write different channels",
                     )
+
+
+@rule
+def map_fan_out(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """E015/E006 map outputs; E022: map workers run in parallel, so they may only write merge-safe channels."""
+    replace = {c.name for c in ctx.wf.state.channels if c.reducer == "replace"}
+    for n in ctx.wf.nodes:
+        if n.id not in ctx.map_ids:
+            continue
+        out = [e for e in ctx.wf.flow_edges() if e.source.node == n.id]
+        for port in ("each", "empty"):
+            if len([e for e in out if e.source.port == port]) > 1:
+                yield error("E006", f"map '{n.name}' has more than one '{port}' edge", node_id=n.id)
+        workers = [e.target.node for e in out if e.source.port == "each"]
+        if not workers:
+            yield error(
+                "E015", f"map '{n.name}' needs a flow edge from its 'each' output to the worker step", node_id=n.id
+            )
+        for w in workers:
+            if w in ("START", "END") or ctx.wf.node(w) is None:
+                yield error("E006", f"map '{n.name}' must send items to a step, not {w}", node_id=n.id)
+                continue
+            for ch in sorted(ctx.writes.get(w, set()) & replace):
+                yield error(
+                    "E022",
+                    f"'{ctx.wf.require_node(w).name}' runs once per item of '{n.name}' in parallel and writes "
+                    f"'{ch}' (reducer 'replace')",
+                    node_id=w,
+                    hint=f"give '{ch}' the reducer 'append' so every item's result is kept",
+                )
+
+
+@rule
+def joins(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """E016: a join waits for *every* input, so an input that may never arrive blocks it forever."""
+    for n in ctx.wf.nodes:
+        if n.id not in ctx.join_ids:
+            continue
+        inputs = [e for e in ctx.wf.flow_edges() if e.target.node == n.id]
+        for e in inputs:
+            src = e.source.node
+            if src == "START" or src in ctx.conditional_ids:
+                what = "START" if src == "START" else f"'{ctx.wf.require_node(src).name}' (a conditional branch)"
+                yield error(
+                    "E016",
+                    f"join '{n.name}' waits for {what}, which may never arrive",
+                    node_id=n.id,
+                    edge_id=e.id,
+                    hint="connect conditional branches straight to the next step (joins wait for every branch)",
+                )
+        if len({e.source.node for e in inputs}) < 2:
+            yield warning("W013", f"join '{n.name}' has fewer than two incoming branches", node_id=n.id)

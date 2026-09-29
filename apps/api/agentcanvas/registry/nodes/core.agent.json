@@ -18,6 +18,13 @@
       "multi": true,
       "ordered": true,
       "description": "Tools the agent may call"
+    },
+    {
+      "name": "middleware",
+      "type": "Middleware",
+      "multi": true,
+      "ordered": true,
+      "description": "Middleware, applied in order (guardrails, limits, retries\u2026)"
     }
   ],
   "outputs": [
@@ -44,6 +51,12 @@
         },
         "uniqueItems": true,
         "description": "Pause for a human before these tools run (approve / edit / reject)."
+      },
+      "response_format": {
+        "type": "object",
+        "title": "Structured output (JSON Schema)",
+        "format": "json_schema",
+        "description": "When set, the agent's final answer is validated against this schema and written to the `structured_response` channel."
       }
     }
   },
@@ -56,5 +69,10 @@
   "interrupts": true,
   "side_effects": [
     "spend"
-  ]
+  ],
+  "conditional_writes": {
+    "response_format": [
+      "structured_response"
+    ]
+  }
 }

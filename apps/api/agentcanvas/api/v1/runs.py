@@ -408,7 +408,9 @@ async def fork_thread(
         checkpoint = await r.adapter.update_state(
             wf, target, r.resources(target, wf), body.values, body.as_node, checkpoint
         )
-    h = await r.start(wf, thread_id=target, input=None, checkpoint_id=checkpoint, user_id=user.id)
+    h = await r.start(
+        wf, thread_id=target, input=None, checkpoint_id=checkpoint, user_id=user.id, context_from=thread_id
+    )
     return _respond(r, h, body.stream)
 
 

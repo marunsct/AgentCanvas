@@ -12,6 +12,7 @@ export interface Verdict {
 export function checkConnection(wf: WF, manifests: Map<string, NodeManifest>, c: Connection): Verdict {
   const { source, target, sourceHandle, targetHandle } = c;
   if (!source || !target) return { ok: false, reason: "incomplete connection" };
+  if (source === target) return { ok: false, reason: "an element cannot connect to itself" };
   const res = wf.resources.find((r) => r.id === source);
   if (res) {
     const out = outputPort(manifests.get(res.type), sourceHandle);
@@ -32,12 +33,25 @@ export function checkConnection(wf: WF, manifests: Map<string, NodeManifest>, c:
   if (target === "START") return { ok: false, reason: "nothing can flow into START" };
   if (wf.resources.some((r) => r.id === target)) return { ok: false, reason: "flow edges connect steps, not resources" };
   if (targetHandle && targetHandle !== "in") return { ok: false, reason: "wiring ports accept resources (models, tools…)" };
-  const port = sourceHandle && sourceHandle.startsWith("route:") ? sourceHandle : null;
+  const port = flowPort(sourceHandle);
   const dup = wf.edges.some((e) => e.kind === "flow" && e.source.node === source && e.target.node === target &&
     (e.source.port ?? null) === port);
   if (dup) return { ok: false, reason: "already connected" };
   if (port && wf.edges.some((e) => e.kind === "flow" && e.source.node === source && e.source.port === port)) {
-    return { ok: false, reason: `route '${port.slice(6)}' already has a target` };
+    const what = port.startsWith("route:") ? `route '${port.slice(6)}'` : `output '${port}'`;
+    return { ok: false, reason: `${what} already has a target` };
   }
   return { ok: true, kind: "flow" };
+}
+
+/** IR `source.port` of a flow edge: null for the default "next" output, else the named output (route:x, each…). */
+export function flowPort(sourceHandle: string | null | undefined): string | null {
+  return sourceHandle && sourceHandle !== "next" ? sourceHandle : null;
+}
+
+/** `order` for a new wiring edge into an ordered port (appended after the existing ones). */
+export function nextOrder(wf: WF, target: string, port: string | null | undefined): number {
+  const orders = wf.edges.filter((e) => e.kind === "wiring" && e.target.node === target && e.target.port === port)
+    .map((e, i) => e.order ?? i);
+  return orders.length ? Math.max(...orders) + 1 : 0;
 }

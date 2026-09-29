@@ -1,0 +1,41 @@
+{
+  "type": "mw.model_call_limit",
+  "kind": "resource",
+  "label": "Model call limit",
+  "category": "Middleware",
+  "icon": "gauge",
+  "color": "#9333EA",
+  "description": "Stops the agent after N model calls per run or thread (ModelCallLimitMiddleware).",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "run_limit": {
+        "type": "integer",
+        "title": "Per run",
+        "minimum": 1,
+        "default": 20
+      },
+      "thread_limit": {
+        "type": "integer",
+        "title": "Per thread",
+        "minimum": 1
+      },
+      "exit_behavior": {
+        "enum": [
+          "end",
+          "error"
+        ],
+        "title": "When reached",
+        "default": "end"
+      }
+    }
+  }
+}

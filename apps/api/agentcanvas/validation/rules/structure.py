@@ -62,6 +62,11 @@ def edge_references(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 yield error("E006", f"flow edge '{e.id}' leaves END or enters START", edge_id=e.id)
             if src in node_ids and e.source.port and e.source.port.startswith("route:") and src not in ctx.router_ids:
                 yield error("E006", f"edge '{e.id}' uses a route port on a node that is not a router", edge_id=e.id)
+            port = e.source.port
+            if src in node_ids and src not in ctx.router_ids and port and not port.startswith("route:"):
+                m = ctx.manifest(wf.require_node(src))
+                if m is not None and not any(o.name == port and o.type == "Flow" for o in m.outputs):
+                    yield error("E006", f"edge '{e.id}' leaves '{src}' through unknown output '{port}'", edge_id=e.id)
             if src in ctx.router_ids and not (e.source.port or "").startswith("route:"):
                 yield error(
                     "E006",

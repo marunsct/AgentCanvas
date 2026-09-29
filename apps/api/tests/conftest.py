@@ -30,6 +30,7 @@ TABLES = [
     "app_user",
     "organization",
 ]
+RUNTIME_TABLES = ["checkpoints", "checkpoint_writes", "checkpoint_blobs", "store"]  # LangGraph persistence data
 
 
 @pytest.fixture
@@ -43,6 +44,9 @@ async def _truncate(url: str) -> None:
         exists = (await conn.execute(text("SELECT to_regclass('public.workflow')"))).scalar()
         if exists:
             await conn.execute(text(f"TRUNCATE {', '.join(TABLES)} CASCADE"))
+        for table in RUNTIME_TABLES:  # thread ids repeat across tests: stale checkpoints would leak in
+            if (await conn.execute(text(f"SELECT to_regclass('public.{table}')"))).scalar():
+                await conn.execute(text(f"TRUNCATE {table}"))
     await engine.dispose()
 
 

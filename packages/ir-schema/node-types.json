@@ -59,9 +59,11 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "conditional_writes": {},
     "template_fields": [
       "prompt"
     ],
+    "builtin_tools": [],
     "interrupts": false,
     "side_effects": [
       "spend"
@@ -98,6 +100,14 @@
         "multi": true,
         "ordered": true,
         "description": "Tools the agent may call"
+      },
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": "Middleware, applied in order (guardrails, limits, retries\u2026)"
       }
     ],
     "outputs": [
@@ -129,6 +139,12 @@
           },
           "uniqueItems": true,
           "description": "Pause for a human before these tools run (approve / edit / reject)."
+        },
+        "response_format": {
+          "type": "object",
+          "title": "Structured output (JSON Schema)",
+          "format": "json_schema",
+          "description": "When set, the agent's final answer is validated against this schema and written to the `structured_response` channel."
         }
       }
     },
@@ -142,11 +158,288 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "conditional_writes": {
+      "response_format": [
+        "structured_response"
+      ]
+    },
     "template_fields": [],
+    "builtin_tools": [],
     "interrupts": true,
     "side_effects": [
       "spend"
     ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "agent.deep",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Deep Agent",
+    "category": "Agents",
+    "icon": "brain",
+    "color": "#7C3AED",
+    "description": "A planning agent with a virtual filesystem, subagents and long-term memory (create_deep_agent). Reads and writes `messages`.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      },
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": null
+      },
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": null
+      },
+      {
+        "name": "subagents",
+        "type": "Subagent",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": null
+      },
+      {
+        "name": "backend",
+        "type": "Backend",
+        "required": false,
+        "multi": true,
+        "ordered": false,
+        "description": "Default: state files. Long-term folders are mounted at their path."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "system_prompt": {
+          "type": "string",
+          "title": "System prompt",
+          "format": "prompt",
+          "default": ""
+        },
+        "planning": {
+          "type": "boolean",
+          "title": "Planning (write_todos)",
+          "default": true
+        },
+        "approve_tools": {
+          "type": "array",
+          "title": "Tools that need approval",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Pause before these tools run; built-ins such as write_file or task are allowed."
+        },
+        "permissions": {
+          "type": "array",
+          "title": "File permissions",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operations",
+              "paths"
+            ],
+            "properties": {
+              "operations": {
+                "type": "array",
+                "title": "Operations",
+                "items": {
+                  "enum": [
+                    "read",
+                    "write"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "paths": {
+                "type": "array",
+                "title": "Paths (globs)",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "mode": {
+                "enum": [
+                  "allow",
+                  "deny",
+                  "interrupt"
+                ],
+                "title": "Mode",
+                "default": "allow"
+              }
+            }
+          }
+        },
+        "response_format": {
+          "type": "object",
+          "title": "Structured output (JSON Schema)",
+          "format": "json_schema",
+          "description": "When set, the agent's final answer is validated against this schema and written to the `structured_response` channel."
+        }
+      }
+    },
+    "reads": [
+      "messages"
+    ],
+    "writes": [
+      "messages"
+    ],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {
+      "response_format": [
+        "structured_response"
+      ]
+    },
+    "template_fields": [],
+    "builtin_tools": [
+      "write_todos",
+      "ls",
+      "read_file",
+      "write_file",
+      "edit_file",
+      "delete",
+      "glob",
+      "grep",
+      "execute",
+      "task"
+    ],
+    "interrupts": true,
+    "side_effects": [
+      "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "agent.subagent",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Subagent",
+    "category": "Agents",
+    "icon": "bot",
+    "color": "#6D28D9",
+    "description": "A specialist a Deep Agent can delegate to with its `task` tool. The resource name is the subagent name.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Optional: defaults to the Deep Agent's model"
+      },
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": null
+      },
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": null
+      }
+    ],
+    "outputs": [
+      {
+        "name": "subagent",
+        "type": "Subagent",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "system_prompt"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "title": "When to use it",
+          "minLength": 1,
+          "description": "Shown to the main agent to decide when to delegate."
+        },
+        "system_prompt": {
+          "type": "string",
+          "title": "System prompt",
+          "format": "prompt",
+          "minLength": 1
+        },
+        "approve_tools": {
+          "type": "array",
+          "title": "Tools that need approval",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Pause for a human before these tools run (approve / edit / reject)."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
     "hosted_forbidden": false,
     "stability": "stable",
     "targets": {
@@ -219,7 +512,9 @@
     "list_write_fields": [
       "writes"
     ],
+    "conditional_writes": {},
     "template_fields": [],
+    "builtin_tools": [],
     "interrupts": false,
     "side_effects": [
       "code_exec"
@@ -281,9 +576,11 @@
       "values"
     ],
     "list_write_fields": [],
+    "conditional_writes": {},
     "template_fields": [
       "values"
     ],
+    "builtin_tools": [],
     "interrupts": false,
     "side_effects": [],
     "hosted_forbidden": false,
@@ -344,8 +641,209 @@
     ],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "conditional_writes": {},
     "template_fields": [],
+    "builtin_tools": [],
     "interrupts": true,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.human_input",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Human input",
+    "category": "Human-in-the-loop",
+    "icon": "message-square",
+    "color": "#D97706",
+    "description": "Pauses and asks a person for input (a form when a response schema is set); the answer is written to a channel.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "output"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "title": "Question",
+          "format": "template",
+          "minLength": 1,
+          "description": "Jinja template, e.g. Which plan should we use for {{ state.customer }}?"
+        },
+        "response_schema": {
+          "type": "object",
+          "title": "Answer form (JSON Schema)",
+          "format": "json_schema",
+          "description": "Optional; the answer is validated against it and the question is asked again if invalid."
+        },
+        "output": {
+          "type": "string",
+          "title": "Answer channel",
+          "format": "channel"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "prompt"
+    ],
+    "builtin_tools": [],
+    "interrupts": true,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.join",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Join (wait for all)",
+    "category": "Logic",
+    "icon": "merge",
+    "color": "#0891B2",
+    "description": "Waits until every incoming branch has finished, then continues.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.map",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Map (for each)",
+    "category": "Logic",
+    "icon": "git-fork",
+    "color": "#0891B2",
+    "description": "Runs the step wired to `each` once per list item, in parallel (Send). Results must go to an `append` channel.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "each",
+        "type": "Flow",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "Worker step, run once per item"
+      },
+      {
+        "name": "empty",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Taken when the list is empty (default: END)"
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "item"
+      ],
+      "properties": {
+        "items": {
+          "type": "string",
+          "title": "List channel",
+          "format": "channel"
+        },
+        "item": {
+          "type": "string",
+          "title": "Each item goes to",
+          "format": "channel",
+          "description": "The worker sees the current item in this channel"
+        },
+        "carry": {
+          "type": "array",
+          "title": "Also give the worker",
+          "items": {
+            "type": "string",
+            "format": "channel"
+          },
+          "uniqueItems": true
+        },
+        "max_items": {
+          "type": "integer",
+          "title": "Max items",
+          "minimum": 1
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [
+      "items"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
     "side_effects": [],
     "hosted_forbidden": false,
     "stability": "stable",
@@ -408,7 +906,761 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "conditional_writes": {},
     "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "backend.store",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Long-term files",
+    "category": "Memory",
+    "icon": "database",
+    "color": "#0F766E",
+    "description": "Mounts a folder backed by the long-term store (StoreBackend), shared across threads for a user, the workflow or one thread.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "backend",
+        "type": "Backend",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mount",
+        "scope"
+      ],
+      "properties": {
+        "mount": {
+          "type": "string",
+          "title": "Folder",
+          "default": "/memories/",
+          "pattern": "^/([A-Za-z0-9_\\-]+/)+$",
+          "description": "Paths under this folder are stored long-term, e.g. /memories/"
+        },
+        "scope": {
+          "enum": [
+            "user",
+            "workflow",
+            "thread"
+          ],
+          "title": "Shared per",
+          "default": "user",
+          "description": "user = the run's authenticated user (needs a context field with source 'user')"
+        },
+        "namespace": {
+          "type": "string",
+          "title": "Namespace",
+          "default": "memories",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "backend.state",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "State files",
+    "category": "Memory",
+    "icon": "file",
+    "color": "#0F766E",
+    "description": "Agent files live in the thread's state (StateBackend): they are checkpointed with the thread and vanish with it.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "backend",
+        "type": "Backend",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.model_call_limit",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Model call limit",
+    "category": "Middleware",
+    "icon": "gauge",
+    "color": "#9333EA",
+    "description": "Stops the agent after N model calls per run or thread (ModelCallLimitMiddleware).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run_limit": {
+          "type": "integer",
+          "title": "Per run",
+          "minimum": 1,
+          "default": 20
+        },
+        "thread_limit": {
+          "type": "integer",
+          "title": "Per thread",
+          "minimum": 1
+        },
+        "exit_behavior": {
+          "enum": [
+            "end",
+            "error"
+          ],
+          "title": "When reached",
+          "default": "end"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.model_fallback",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Model fallback",
+    "category": "Middleware",
+    "icon": "life-buoy",
+    "color": "#9333EA",
+    "description": "Tries the wired models in order when the agent's model fails (ModelFallbackMiddleware).",
+    "inputs": [
+      {
+        "name": "models",
+        "type": "ChatModel",
+        "required": true,
+        "multi": true,
+        "ordered": true,
+        "description": "Fallback models, first to last"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.model_retry",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Model retry",
+    "category": "Middleware",
+    "icon": "rotate-cw",
+    "color": "#9333EA",
+    "description": "Retries failed model calls with exponential backoff (ModelRetryMiddleware).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "title": "Max retries",
+          "minimum": 0,
+          "default": 2
+        },
+        "on_failure": {
+          "enum": [
+            "continue",
+            "error"
+          ],
+          "title": "When retries are exhausted",
+          "default": "continue",
+          "description": "continue = return an error message to the model; error = raise"
+        },
+        "backoff_factor": {
+          "type": "number",
+          "title": "Backoff factor",
+          "minimum": 0,
+          "default": 2.0
+        },
+        "initial_delay": {
+          "type": "number",
+          "title": "Initial delay (s)",
+          "minimum": 0,
+          "default": 1.0
+        },
+        "max_delay": {
+          "type": "number",
+          "title": "Max delay (s)",
+          "minimum": 0,
+          "default": 60.0
+        },
+        "jitter": {
+          "type": "boolean",
+          "title": "Jitter",
+          "default": true
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.pii",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "PII guard",
+    "category": "Middleware",
+    "icon": "shield",
+    "color": "#9333EA",
+    "description": "Detects PII in messages and blocks, redacts, masks or hashes it (PIIMiddleware).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pii_type": {
+          "enum": [
+            "email",
+            "credit_card",
+            "ip",
+            "mac_address",
+            "url"
+          ],
+          "title": "PII type",
+          "default": "email"
+        },
+        "strategy": {
+          "enum": [
+            "redact",
+            "mask",
+            "hash",
+            "block"
+          ],
+          "title": "Strategy",
+          "default": "redact"
+        },
+        "detector": {
+          "type": "string",
+          "title": "Custom detector (regex)",
+          "format": "regex",
+          "description": "Optional regular expression that replaces the built-in detector."
+        },
+        "apply_to_input": {
+          "type": "boolean",
+          "title": "Check user input",
+          "default": true
+        },
+        "apply_to_output": {
+          "type": "boolean",
+          "title": "Check model output",
+          "default": false
+        },
+        "apply_to_tool_results": {
+          "type": "boolean",
+          "title": "Check tool results",
+          "default": false
+        }
+      },
+      "required": [
+        "pii_type"
+      ]
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [
+      "pii_read"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.todo",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Planning (to-dos)",
+    "category": "Middleware",
+    "icon": "list-checks",
+    "color": "#9333EA",
+    "description": "Gives the agent a write_todos tool to plan multi-step work (TodoListMiddleware).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.summarization",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Summarization",
+    "category": "Middleware",
+    "icon": "scroll",
+    "color": "#9333EA",
+    "description": "Summarizes old messages when the conversation grows too long (SummarizationMiddleware).",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "Model that writes the summary"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trigger_tokens": {
+          "type": "integer",
+          "title": "Summarize above (tokens)",
+          "minimum": 100,
+          "default": 4000
+        },
+        "trigger_messages": {
+          "type": "integer",
+          "title": "\u2026or above (messages)",
+          "minimum": 2
+        },
+        "keep_messages": {
+          "type": "integer",
+          "title": "Keep last (messages)",
+          "minimum": 1,
+          "default": 20
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.tool_call_limit",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Tool call limit",
+    "category": "Middleware",
+    "icon": "gauge",
+    "color": "#9333EA",
+    "description": "Limits tool calls per run or thread, for all tools or one tool (ToolCallLimitMiddleware).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool_name": {
+          "type": "string",
+          "title": "Only this tool",
+          "description": "Empty = all tools"
+        },
+        "run_limit": {
+          "type": "integer",
+          "title": "Per run",
+          "minimum": 1,
+          "default": 10
+        },
+        "thread_limit": {
+          "type": "integer",
+          "title": "Per thread",
+          "minimum": 1
+        },
+        "exit_behavior": {
+          "enum": [
+            "continue",
+            "error",
+            "end"
+          ],
+          "title": "When reached",
+          "default": "continue"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.tool_retry",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Tool retry",
+    "category": "Middleware",
+    "icon": "rotate-cw",
+    "color": "#9333EA",
+    "description": "Retries failed tool calls with exponential backoff (ToolRetryMiddleware).",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "title": "Max retries",
+          "minimum": 0,
+          "default": 2
+        },
+        "on_failure": {
+          "enum": [
+            "continue",
+            "error"
+          ],
+          "title": "When retries are exhausted",
+          "default": "continue",
+          "description": "continue = return an error message to the model; error = raise"
+        },
+        "backoff_factor": {
+          "type": "number",
+          "title": "Backoff factor",
+          "minimum": 0,
+          "default": 2.0
+        },
+        "initial_delay": {
+          "type": "number",
+          "title": "Initial delay (s)",
+          "minimum": 0,
+          "default": 1.0
+        },
+        "max_delay": {
+          "type": "number",
+          "title": "Max delay (s)",
+          "minimum": 0,
+          "default": 60.0
+        },
+        "jitter": {
+          "type": "boolean",
+          "title": "Jitter",
+          "default": true
+        },
+        "tools": {
+          "type": "array",
+          "title": "Only these tools",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Empty = all tools"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mw.tool_selector",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Tool selector",
+    "category": "Middleware",
+    "icon": "filter",
+    "color": "#9333EA",
+    "description": "Lets a (cheaper) model pick the relevant tools before each call (LLMToolSelectorMiddleware).",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Selector model (default: the agent's model)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tools": {
+          "type": "integer",
+          "title": "Max tools",
+          "minimum": 1
+        },
+        "always_include": {
+          "type": "array",
+          "title": "Always include",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
     "interrupts": false,
     "side_effects": [],
     "hosted_forbidden": false,
@@ -495,7 +1747,9 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "conditional_writes": {},
     "template_fields": [],
+    "builtin_tools": [],
     "interrupts": false,
     "side_effects": [],
     "hosted_forbidden": false,
@@ -560,7 +1814,9 @@
     "read_fields": [],
     "channel_map_fields": [],
     "list_write_fields": [],
+    "conditional_writes": {},
     "template_fields": [],
+    "builtin_tools": [],
     "interrupts": false,
     "side_effects": [],
     "hosted_forbidden": false,

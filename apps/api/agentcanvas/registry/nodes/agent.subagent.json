@@ -1,0 +1,65 @@
+{
+  "type": "agent.subagent",
+  "kind": "resource",
+  "label": "Subagent",
+  "category": "Agents",
+  "icon": "bot",
+  "color": "#6D28D9",
+  "description": "A specialist a Deep Agent can delegate to with its `task` tool. The resource name is the subagent name.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "description": "Optional: defaults to the Deep Agent's model"
+    },
+    {
+      "name": "tools",
+      "type": "Tool",
+      "multi": true,
+      "ordered": true
+    },
+    {
+      "name": "middleware",
+      "type": "Middleware",
+      "multi": true,
+      "ordered": true
+    }
+  ],
+  "outputs": [
+    {
+      "name": "subagent",
+      "type": "Subagent"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "description",
+      "system_prompt"
+    ],
+    "properties": {
+      "description": {
+        "type": "string",
+        "title": "When to use it",
+        "minLength": 1,
+        "description": "Shown to the main agent to decide when to delegate."
+      },
+      "system_prompt": {
+        "type": "string",
+        "title": "System prompt",
+        "format": "prompt",
+        "minLength": 1
+      },
+      "approve_tools": {
+        "type": "array",
+        "title": "Tools that need approval",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true,
+        "description": "Pause for a human before these tools run (approve / edit / reject)."
+      }
+    }
+  }
+}

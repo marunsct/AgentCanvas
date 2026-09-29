@@ -96,5 +96,5 @@ export function MonoWidget(props: WidgetProps) {
 
 export const WIDGETS = {
   prompt: PromptWidget, template: PromptWidget, channel: ChannelWidget, cel: CelWidget, model: ModelWidget,
-  import_path: MonoWidget,
+  import_path: MonoWidget, regex: MonoWidget,
 };

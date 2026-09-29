@@ -14,7 +14,7 @@ import { useEditor } from "../editor/store";
 import { useRun } from "../run/runStore";
 import { useUi } from "../editor/ui";
 import { type Clip, copySelection, pasteCommands } from "./clipboard";
-import { checkConnection } from "./connect";
+import { checkConnection, flowPort, nextOrder } from "./connect";
 import { tidyLayout } from "./layout";
 import { type CanvasData, irToFlow } from "./irToFlow";
 import { NODE_TYPES } from "./nodes";
@@ -154,11 +154,11 @@ export function Canvas() {
     if (!v.ok) return;
     const id = `e_${ulid()}`;
     const edge = v.kind === "wiring"
-      ? { id, kind: "wiring" as const, source: { node: c.source, port: c.sourceHandle }, target: { node: c.target, port: c.targetHandle } }
-      : {
-          id, kind: "flow" as const, target: { node: c.target, port: null },
-          source: { node: c.source, port: c.sourceHandle?.startsWith("route:") ? c.sourceHandle : null },
-        };
+      ? {
+          id, kind: "wiring" as const, source: { node: c.source, port: c.sourceHandle },
+          target: { node: c.target, port: c.targetHandle }, order: nextOrder(wf, c.target, c.targetHandle),
+        }
+      : { id, kind: "flow" as const, target: { node: c.target, port: null }, source: { node: c.source, port: flowPort(c.sourceHandle) } };
     dispatch([{ op: "Connect", edge }]);
   }, [wf, manifests, dispatch]);
 

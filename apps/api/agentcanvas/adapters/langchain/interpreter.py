@@ -1,7 +1,7 @@
 """Interpreter: build a runnable LangGraph graph directly from the IR (canvas runs).
 
 Mirrors `codegen.py` line by line through the shared Execution Plan (`plan.py`) and node library
-(`nodes.py`); `tests/test_equivalence.py` proves both produce the same behaviour.
+(`nodes.py`); `tests/test_run.py` and `tests/test_catalog.py` prove both produce the same behaviour.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from langgraph.cache.base import BaseCache
 from langgraph.graph import END, START, StateGraph
 
 from agentcanvas.adapters.langchain import nodes as ac
-from agentcanvas.adapters.langchain.plan import Plan, lower
+from agentcanvas.adapters.langchain.plan import Plan, PlannedResource, lower
 from agentcanvas.ir.models import Workflow
 
 _SPECIAL = {"START": START, "END": END}
@@ -22,6 +22,34 @@ def build_graph(wf: Workflow, resources: ac.Resources, checkpointer=None, store=
     return build_from_plan(lower(wf), resources, checkpointer=checkpointer, store=store, cache=cache)
 
 
+def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: dict[str, Any]) -> Any:
+    r, cfg = pr.resource, pr.resource.config
+
+    def wired(port: str) -> list[Any]:
+        return [objs[name] for name in pr.wired.get(port, [])]
+
+    if r.type == "model.chat":
+        return resources.model(r.name, cfg)
+    if r.type.startswith("tool."):
+        return resources.tool(r.name, cfg)
+    if r.type.startswith("mw."):
+        return resources.middleware(r.name, r.type, cfg, models=wired("models") + wired("model"))
+    if r.type == "agent.subagent":
+        models = wired("model")
+        return ac.subagent(
+            name=r.name,
+            description=cfg["description"],
+            system_prompt=cfg["system_prompt"],
+            model=models[0] if models else None,
+            tools=wired("tools"),
+            middleware=wired("middleware"),
+            approve_tools=cfg.get("approve_tools"),
+        )
+    if r.type.startswith("backend."):
+        return ac.backend(r.type, cfg, workflow_id=plan.wf.id, user_key=plan.user_key)
+    raise ValueError(f"unsupported resource type {r.type}")  # pragma: no cover - rejected by the validator
+
+
 def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, store=None, cache: BaseCache | None = None):
     State = ac.make_state_type("State", plan.channels)
     Input, Output = ac.make_io_types(plan.channels, plan.settings)
@@ -29,30 +57,66 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
     builder: Any = StateGraph(State, context_schema=Context, input_schema=Input, output_schema=Output)
     ac.apply_node_defaults(builder, plan.settings.get("node_defaults"))
     routes: dict[str, Any] = {}
+    objs: dict[str, Any] = {}
+    for pr in plan.resources:
+        objs[pr.resource.name] = _resource(pr, plan, resources, objs)
 
     for p in plan.nodes:
         n, cfg = p.node, p.node.config
+
+        def wired(port: str, p=p) -> list[Any]:
+            return [objs[name] for name in p.wired.get(port, [])]
+
         if p.bypass:
             fn: Any = ac.passthrough
         elif n.type == "core.llm":
-            assert p.model is not None
-            fn = ac.llm_node(
-                model=resources.model(p.model.name, p.model.config), prompt=cfg["prompt"], output=cfg["output"]
-            )
+            fn = ac.llm_node(model=wired("model")[0], prompt=cfg["prompt"], output=cfg["output"])
         elif n.type == "core.agent":
-            assert p.model is not None
             fn = ac.agent_node(
                 name=n.name,
-                model=resources.model(p.model.name, p.model.config),
-                tools=[resources.tool(t.name, t.config) for t in p.tools],
+                model=wired("model")[0],
+                tools=wired("tools"),
                 system_prompt=cfg.get("system_prompt", ""),
                 approve_tools=cfg.get("approve_tools"),
+                middleware=wired("middleware"),
+                response_format=cfg.get("response_format"),
+            )
+        elif n.type == "agent.deep":
+            fn = ac.deep_agent_node(
+                name=n.name,
+                model=wired("model")[0],
+                tools=wired("tools"),
+                system_prompt=cfg.get("system_prompt", ""),
+                middleware=wired("middleware"),
+                subagents=wired("subagents"),
+                backends=wired("backend"),
+                planning=cfg.get("planning", True),
+                approve_tools=cfg.get("approve_tools"),
+                permissions=cfg.get("permissions"),
+                response_format=cfg.get("response_format"),
             )
         elif n.type == "core.router":
             routes[n.name] = ac.router_fn(cases=cfg.get("cases", []), default=cfg.get("default", "default"))
             fn = ac.passthrough
+        elif n.type == "core.map":
+            worker, empty = plan.map_edges[n.name]
+            routes[n.name] = ac.map_fn(
+                items=cfg["items"],
+                item=cfg["item"],
+                target=worker,
+                empty=_SPECIAL.get(empty, empty),
+                carry=cfg.get("carry", []),
+                max_items=cfg.get("max_items"),
+            )
+            fn = ac.passthrough
+        elif n.type == "core.join":
+            fn = ac.passthrough
         elif n.type == "core.approval":
             fn = ac.approval_node(node_id=n.id, show=cfg["show"], output=cfg["output"])
+        elif n.type == "core.human_input":
+            fn = ac.human_input_node(
+                node_id=n.id, prompt=cfg["prompt"], output=cfg["output"], response_schema=cfg.get("response_schema")
+            )
         elif n.type == "core.set":
             fn = ac.set_node(values=cfg["values"])
         elif n.type == "core.script":
@@ -63,8 +127,12 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
 
     for src, dst in plan.plain_edges:
         builder.add_edge(_SPECIAL.get(src, src), _SPECIAL.get(dst, dst))
+    for sources, join in plan.join_edges:
+        builder.add_edge(sources, join)
     for router, mapping in plan.router_edges.items():
         builder.add_conditional_edges(router, routes[router], {k: _SPECIAL.get(v, v) for k, v in mapping.items()})
+    for name, (worker, empty) in plan.map_edges.items():
+        builder.add_conditional_edges(name, routes[name], [worker, _SPECIAL.get(empty, empty)])
 
     if cache is None and plan.needs_cache:
         from langgraph.cache.memory import InMemoryCache

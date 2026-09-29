@@ -51,6 +51,37 @@ def config_matches_schema(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 
 @rule
+def embedded_schemas(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """Config values with format `json_schema` (structured output, input forms) must be valid JSON Schemas."""
+    from jsonschema.exceptions import SchemaError
+
+    for el in [*ctx.wf.nodes, *ctx.wf.resources]:
+        m = ctx.manifest(el)
+        if m is None:
+            continue
+        for key, prop in m.config_schema.get("properties", {}).items():
+            value = el.config.get(key)
+            if prop.get("format") != "json_schema" or not isinstance(value, dict) or not value:
+                continue
+            try:
+                Draft202012Validator.check_schema(value)
+            except SchemaError as exc:
+                yield error(
+                    "E004",
+                    f"'{el.name}': {key} is not a valid JSON Schema: {exc.message}",
+                    node_id=el.id,
+                    path=f"config.{key}",
+                )
+            if key == "response_format" and value.get("type", "object") != "object":
+                yield error(
+                    "E004",
+                    f"'{el.name}': structured output must be an object schema",
+                    node_id=el.id,
+                    path=f"config.{key}",
+                )
+
+
+@rule
 def expressions_compile(ctx: ValidationContext) -> Iterator[Diagnostic]:
     for el in [*ctx.wf.nodes, *ctx.wf.resources]:
         m = ctx.manifest(el)

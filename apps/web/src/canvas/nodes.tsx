@@ -4,7 +4,9 @@ import { memo, useEffect, useRef } from "react";
 import { type CanvasData, PORT_COLORS } from "./irToFlow";
 
 const ICONS: Record<string, string> = {
-  sparkles: "✨", bot: "🤖", split: "🔀", "user-check": "🙋", pencil: "✏️", code: "⌨️", cpu: "🧠", wrench: "🔧", box: "▪",
+  sparkles: "✨", bot: "🤖", split: "🔀", "user-check": "🙋", pencil: "✏️", code: "⌨️", cpu: "🔌", wrench: "🔧", box: "▪",
+  brain: "🧠", shield: "🛡", gauge: "⏱", "rotate-cw": "🔁", "life-buoy": "🛟", scroll: "📜", "list-checks": "☑",
+  filter: "🔎", file: "📄", database: "🗄", "message-square": "💬", "git-fork": "🔱", merge: "⛙",
 };
 const STATUS_LABEL: Record<string, string> = { running: "running", ok: "done", error: "error", interrupted: "waiting" };
 
@@ -36,7 +38,8 @@ function useHandleSync(id: string, signature: string) {
 export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeProps<Node<CanvasData>>) {
   const m = data.manifest;
   const wiring = m?.inputs ?? [];
-  const outs = data.routes ? data.routes.map((r) => `route:${r}`) : ["next"];
+  const flowOuts = (m?.outputs ?? []).filter((p) => p.type === "Flow").map((p) => p.name);
+  const outs = data.routes ? data.routes.map((r) => `route:${r}`) : flowOuts.length ? flowOuts : ["next"];
   useHandleSync(id, [...wiring.map((p) => p.name), ...outs].join("|"));
   const rows = Math.max(wiring.length, outs.length, 1);
   return (
@@ -66,7 +69,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
       {data.preview && <div className="preview" style={{ top: HEAD + rows * ROW }} title={data.preview}>{data.preview}</div>}
       {outs.map((h, i) => (
         <div key={h} className="port-row out" style={{ top: HEAD + i * ROW }}>
-          <span>{h === "next" ? "" : h.slice(6)}</span>
+          <span>{h === "next" ? "" : h.startsWith("route:") ? h.slice(6) : h}</span>
           <Handle type="source" id={h} position={Position.Right} className="h-flow" style={{ top: 9 }} title={h} />
         </div>
       ))}
@@ -76,17 +79,27 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
 
 export const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<Node<CanvasData>>) {
   const out = data.manifest?.outputs?.[0];
-  useHandleSync(id, out?.name ?? "");
+  const inputs = data.manifest?.inputs ?? []; // e.g. fallback models, a subagent's model and tools
+  useHandleSync(id, [out?.name ?? "", ...inputs.map((p) => p.name)].join("|"));
   return (
-    <div className={`resource${selected ? " selected" : ""}`} style={{ borderColor: PORT_COLORS[out?.type ?? ""] ?? "#94a3b8" }}
-      data-testid={`node-${data.name}`}>
-      <span className="icon">{ICONS[data.manifest?.icon ?? "box"] ?? "▪"}</span>
-      <span className="title">{data.name}</span>
-      <em>{out?.type}</em>
-      <Badges data={data} />
+    <div className={`resource${selected ? " selected" : ""}${inputs.length ? " with-inputs" : ""}`}
+      style={{ borderColor: PORT_COLORS[out?.type ?? ""] ?? "#94a3b8" }} data-testid={`node-${data.name}`}>
+      <div className="resource-head">
+        <span className="icon">{ICONS[data.manifest?.icon ?? "box"] ?? "▪"}</span>
+        <span className="title" title={data.type}>{data.name}</span>
+        <em>{out?.type}</em>
+        <Badges data={data} />
+      </div>
+      {inputs.map((p) => (
+        <div key={p.name} className="resource-port">
+          <Handle type="target" id={p.name} position={Position.Left} className="h-port"
+            style={{ background: PORT_COLORS[p.type] ?? "#94a3b8" }} title={`${p.name}: ${p.type}${p.multi ? "[]" : ""}`} />
+          <span>{p.name}{p.required ? "*" : ""}</span> <em>{p.type}{p.multi ? "[]" : ""}</em>
+        </div>
+      ))}
       {out && (
         <Handle type="source" id={out.name} position={Position.Right} className="h-port"
-          style={{ background: PORT_COLORS[out.type] ?? "#94a3b8" }} title={`${out.name}: ${out.type}`} />
+          style={{ background: PORT_COLORS[out.type] ?? "#94a3b8", top: 17 }} title={`${out.name}: ${out.type}`} />
       )}
     </div>
   );

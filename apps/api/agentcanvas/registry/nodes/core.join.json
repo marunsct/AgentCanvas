@@ -1,0 +1,20 @@
+{
+  "type": "core.join",
+  "kind": "runtime",
+  "label": "Join (wait for all)",
+  "category": "Logic",
+  "icon": "merge",
+  "color": "#0891B2",
+  "description": "Waits until every incoming branch has finished, then continues.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "type": "backend.store",
+  "kind": "resource",
+  "label": "Long-term files",
+  "category": "Memory",
+  "icon": "database",
+  "color": "#0F766E",
+  "description": "Mounts a folder backed by the long-term store (StoreBackend), shared across threads for a user, the workflow or one thread.",
+  "outputs": [
+    {
+      "name": "backend",
+      "type": "Backend"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "mount",
+      "scope"
+    ],
+    "properties": {
+      "mount": {
+        "type": "string",
+        "title": "Folder",
+        "default": "/memories/",
+        "pattern": "^/([A-Za-z0-9_\\-]+/)+$",
+        "description": "Paths under this folder are stored long-term, e.g. /memories/"
+      },
+      "scope": {
+        "enum": [
+          "user",
+          "workflow",
+          "thread"
+        ],
+        "title": "Shared per",
+        "default": "user",
+        "description": "user = the run's authenticated user (needs a context field with source 'user')"
+      },
+      "namespace": {
+        "type": "string",
+        "title": "Namespace",
+        "default": "memories",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    }
+  }
+}

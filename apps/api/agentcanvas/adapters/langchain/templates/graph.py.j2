@@ -20,10 +20,16 @@ def build_graph(resources: ac.Resources | None = None, checkpointer=None, store=
     resources = resources or ac.Resources()
     builder = StateGraph(State, context_schema=Context, input_schema=Input, output_schema=Output)
     ac.apply_node_defaults(builder, SETTINGS.get("node_defaults"))
-{% for r in plan.wf.resources %}
+{% for pr in plan.resources %}{% set r = pr.resource %}
     # ── @canvas-resource {{ r.id }} "{{ r.name }}" ({{ r.type }}) ──
 {%- if r.type == "model.chat" %}
     {{ r.name }} = resources.model({{ r.name | py }}, {{ r.config | pp }})
+{%- elif r.type.startswith("mw.") %}
+    {{ r.name }} = resources.middleware({{ r.name | py }}, {{ r.type | py }}, {{ r.config | pp }}, models=[{{ (pr.wired.get("models", []) + pr.wired.get("model", [])) | join(", ") }}])
+{%- elif r.type == "agent.subagent" %}
+    {{ r.name }} = ac.subagent(name={{ r.name | py }}, description={{ r.config.description | py }}, system_prompt={{ r.config.system_prompt | py }}, model={{ pr.wired.get("model", ["None"])[0] }}, tools=[{{ pr.wired.get("tools", []) | join(", ") }}], middleware=[{{ pr.wired.get("middleware", []) | join(", ") }}], approve_tools={{ r.config.get("approve_tools") | py }})
+{%- elif r.type.startswith("backend.") %}
+    {{ r.name }} = ac.backend({{ r.type | py }}, {{ r.config | pp }}, workflow_id={{ plan.wf.id | py }}, user_key={{ plan.user_key | py }})
 {%- else %}
     {{ r.name }} = resources.tool({{ r.name | py }}, {{ r.config | pp }})
 {%- endif %}
@@ -33,12 +39,21 @@ def build_graph(resources: ac.Resources | None = None, checkpointer=None, store=
 {%- if p.bypass %}
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
 {%- elif n.type == "core.llm" %}
-    builder.add_node({{ n.name | py }}, ac.llm_node(model={{ p.model.name }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}), {{ meta }})
+    builder.add_node({{ n.name | py }}, ac.llm_node(model={{ p.wired.model[0] }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}), {{ meta }})
 {%- elif n.type == "core.agent" %}
-    builder.add_node({{ n.name | py }}, ac.agent_node(name={{ n.name | py }}, model={{ p.model.name }}, tools=[{{ p.tools | map(attribute="name") | join(", ") }}], system_prompt={{ n.config.get("system_prompt", "") | py }}, approve_tools={{ n.config.get("approve_tools") | py }}), {{ meta }})
+    builder.add_node({{ n.name | py }}, ac.agent_node(name={{ n.name | py }}, model={{ p.wired.model[0] }}, tools=[{{ p.wired.get("tools", []) | join(", ") }}], system_prompt={{ n.config.get("system_prompt", "") | py }}, approve_tools={{ n.config.get("approve_tools") | py }}{% if p.wired.get("middleware") %}, middleware=[{{ p.wired.middleware | join(", ") }}]{% endif %}{% if n.config.get("response_format") %}, response_format={{ n.config.response_format | pp }}{% endif %}), {{ meta }})
+{%- elif n.type == "agent.deep" %}
+    builder.add_node({{ n.name | py }}, ac.deep_agent_node(name={{ n.name | py }}, model={{ p.wired.model[0] }}, tools=[{{ p.wired.get("tools", []) | join(", ") }}], system_prompt={{ n.config.get("system_prompt", "") | py }}, middleware=[{{ p.wired.get("middleware", []) | join(", ") }}], subagents=[{{ p.wired.get("subagents", []) | join(", ") }}], backends=[{{ p.wired.get("backend", []) | join(", ") }}], planning={{ n.config.get("planning", True) | py }}, approve_tools={{ n.config.get("approve_tools") | py }}, permissions={{ n.config.get("permissions") | pp }}, response_format={{ n.config.get("response_format") | pp }}), {{ meta }})
 {%- elif n.type == "core.router" %}
     {{ n.name }}_route = ac.router_fn(cases={{ n.config.get("cases", []) | pp }}, default={{ n.config.get("default", "default") | py }})
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
+{%- elif n.type == "core.map" %}{% set worker, empty = plan.map_edges[n.name] %}
+    {{ n.name }}_fan_out = ac.map_fn(items={{ n.config["items"] | py }}, item={{ n.config["item"] | py }}, target={{ worker | py }}, empty={{ empty if empty in ("START", "END") else (empty | py) }}, carry={{ n.config.get("carry", []) | py }}, max_items={{ n.config.get("max_items") | py }})
+    builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
+{%- elif n.type == "core.join" %}
+    builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
+{%- elif n.type == "core.human_input" %}
+    builder.add_node({{ n.name | py }}, ac.human_input_node(node_id={{ n.id | py }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}, response_schema={{ n.config.get("response_schema") | pp }}), {{ meta }})
 {%- elif n.type == "core.approval" %}
     builder.add_node({{ n.name | py }}, ac.approval_node(node_id={{ n.id | py }}, show={{ n.config.show | py }}, output={{ n.config.output | py }}), {{ meta }})
 {%- elif n.type == "core.set" %}
@@ -51,8 +66,14 @@ def build_graph(resources: ac.Resources | None = None, checkpointer=None, store=
 {%- for src, dst in plan.plain_edges %}
     builder.add_edge({{ src if src in ("START", "END") else (src | py) }}, {{ dst if dst in ("START", "END") else (dst | py) }})
 {%- endfor %}
+{%- for sources, join in plan.join_edges %}
+    builder.add_edge([{{ sources | map("py") | join(", ") }}], {{ join | py }})
+{%- endfor %}
 {%- for rname, mapping in plan.router_edges.items() %}
     builder.add_conditional_edges({{ rname | py }}, {{ rname }}_route, { {%- for k, v in mapping.items() %}{{ k | py }}: {{ v if v in ("START", "END") else (v | py) }}, {% endfor -%} })
+{%- endfor %}
+{%- for mname, (worker, empty) in plan.map_edges.items() %}
+    builder.add_conditional_edges({{ mname | py }}, {{ mname }}_fan_out, [{{ worker | py }}, {{ empty if empty in ("START", "END") else (empty | py) }}])
 {%- endfor %}
 {% if plan.needs_cache %}
     if cache is None:

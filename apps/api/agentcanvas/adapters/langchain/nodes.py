@@ -16,20 +16,36 @@ import functools
 import importlib
 import inspect
 import operator
+import re
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Annotated, Any
 
+from jsonschema import Draft202012Validator
 from langchain.agents import create_agent
-from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    HumanInTheLoopMiddleware,
+    LLMToolSelectorMiddleware,
+    ModelCallLimitMiddleware,
+    ModelFallbackMiddleware,
+    ModelRetryMiddleware,
+    PIIMiddleware,
+    SummarizationMiddleware,
+    TodoListMiddleware,
+    ToolCallLimitMiddleware,
+    ToolRetryMiddleware,
+)
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.channels import DeltaChannel
+from langgraph.config import get_config
 from langgraph.errors import NodeError
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.runtime import Runtime
-from langgraph.types import CachePolicy, Command, RetryPolicy, TimeoutPolicy, TracePolicy, interrupt
+from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPolicy, TracePolicy, interrupt
 from typing_extensions import TypedDict
 
 from agentcanvas.expr import eval_condition, render_template
@@ -75,9 +91,14 @@ def _merge(left: dict | None, right: dict | None) -> dict:
     return {**(left or {}), **(right or {})}
 
 
+def _append(left: list | None, right: Any) -> list:
+    """List concatenation; a single value is appended as one item (so map workers can write plain values)."""
+    return [*(left or []), *(right if isinstance(right, list) else [right])]
+
+
 REDUCERS: dict[str, Callable | None] = {
     "replace": None,  # plain field: last writer wins
-    "append": operator.add,  # list concatenation
+    "append": _append,  # list concatenation (single values become one item)
     "add_messages": add_messages,  # chat messages (dedup by id)
     "sum": operator.add,  # numbers
     "merge": _merge,  # dict shallow merge
@@ -235,6 +256,13 @@ class Resources:
             return self._overrides[name]
         return safe_import(config["import_path"])
 
+    def middleware(
+        self, name: str, type_: str, config: dict[str, Any], *, models: Sequence[BaseChatModel] = ()
+    ) -> AgentMiddleware:
+        if name in self._overrides:
+            return self._overrides[name]
+        return middleware(type_, config, models=models)
+
     def _resolve(self, value: Any) -> Any:
         if isinstance(value, dict) and "$secret" in value:
             key = value["$secret"]
@@ -242,6 +270,173 @@ class Resources:
                 raise KeyError(f"secret '{key}' is not set for this project")
             return self._secrets[key]
         return value
+
+
+# ------------------------------------------------------------- middleware ----
+def _set(config: dict[str, Any], *keys: str) -> dict[str, Any]:
+    """Config keys that are present and not empty (empty = use the upstream default)."""
+    return {k: config[k] for k in keys if config.get(k) not in (None, "", [])}
+
+
+_RETRY_KEYS = ("max_retries", "on_failure", "backoff_factor", "initial_delay", "max_delay", "jitter")
+
+
+def middleware(type_: str, config: dict[str, Any], *, models: Sequence[BaseChatModel] = ()) -> Any:
+    """Build a LangChain agent middleware from a `mw.*` resource (spec doc 04 §5, M3-T12).
+
+    Omitted options keep the upstream defaults (V-07 #9), e.g. ModelCallLimit exits with "end",
+    ToolCallLimit with "continue".
+    """
+    c = config
+    if type_ == "mw.pii":
+        return PIIMiddleware(
+            c["pii_type"],
+            **_set(c, "strategy", "detector", "apply_to_input", "apply_to_output", "apply_to_tool_results"),
+        )
+    if type_ == "mw.model_call_limit":
+        return ModelCallLimitMiddleware(**_set(c, "run_limit", "thread_limit", "exit_behavior"))
+    if type_ == "mw.tool_call_limit":
+        return ToolCallLimitMiddleware(**_set(c, "tool_name", "run_limit", "thread_limit", "exit_behavior"))
+    if type_ == "mw.model_retry":
+        return ModelRetryMiddleware(**_set(c, *_RETRY_KEYS))
+    if type_ == "mw.tool_retry":
+        return ToolRetryMiddleware(**_set(c, *_RETRY_KEYS, "tools"))
+    if type_ == "mw.model_fallback":
+        if not models:
+            raise ValueError("model fallback needs at least one wired model")
+        return ModelFallbackMiddleware(*models)
+    if type_ == "mw.summarization":
+        trigger: list[Any] = []
+        if c.get("trigger_tokens"):
+            trigger.append(("tokens", c["trigger_tokens"]))
+        if c.get("trigger_messages"):
+            trigger.append(("messages", c["trigger_messages"]))
+        return SummarizationMiddleware(
+            models[0], trigger=trigger or None, keep=("messages", c.get("keep_messages", 20))
+        )
+    if type_ == "mw.todo":
+        return TodoListMiddleware()
+    if type_ == "mw.tool_selector":
+        return LLMToolSelectorMiddleware(model=models[0] if models else None, **_set(c, "max_tools", "always_include"))
+    raise ValueError(f"unknown middleware type '{type_}'")
+
+
+def _hitl(approve_tools: Sequence[str] | None) -> dict[str, Any]:
+    return {t: {"allowed_decisions": ["approve", "edit", "reject"]} for t in approve_tools or []}
+
+
+def _response_format(schema: dict[str, Any] | None, name: str) -> dict[str, Any] | None:
+    """A JSON Schema dict for `response_format`; the title becomes the structured-output tool name."""
+    if not schema:
+        return None
+    title = re.sub(r"[^A-Za-z0-9_-]", "_", str(schema.get("title") or f"{name}_output"))
+    return {**schema, "title": title}
+
+
+# ------------------------------------------------------------ deep agents ----
+@dataclass(frozen=True)
+class Mount:
+    """A Deep Agent file backend; `path` None = the default backend, else a folder mounted on it."""
+
+    path: str | None
+    backend: Any
+
+
+def store_namespace(*, scope: str, namespace: str, workflow_id: str, user_key: str | None) -> Callable:
+    """Namespace factory for a long-term folder: never derived from model output (E072)."""
+
+    def factory(rt: Any) -> tuple[str, ...]:
+        if scope == "workflow":
+            owner = workflow_id
+        elif scope == "thread":
+            owner = get_config().get("configurable", {}).get("thread_id")
+        else:
+            ctx = getattr(rt, "context", None) or {}
+            owner = ctx.get(user_key) if user_key and isinstance(ctx, dict) else None
+            if not owner:
+                raise PermissionError("a user-scoped folder needs the run's user (context field with source 'user')")
+        return (namespace, scope, str(owner))
+
+    return factory
+
+
+def backend(type_: str, config: dict[str, Any], *, workflow_id: str, user_key: str | None = None) -> Mount:
+    from deepagents.backends import StateBackend, StoreBackend
+
+    if type_ == "backend.state":
+        return Mount(None, StateBackend())
+    if type_ == "backend.store":
+        factory = store_namespace(
+            scope=config.get("scope", "user"),
+            namespace=config.get("namespace", "memories"),
+            workflow_id=workflow_id,
+            user_key=user_key,
+        )
+        return Mount(config.get("mount", "/memories/"), StoreBackend(namespace=factory))
+    raise ValueError(f"unknown backend type '{type_}'")
+
+
+def _compose(mounts: Sequence[Mount]) -> Any:
+    from deepagents.backends import CompositeBackend, StateBackend
+
+    default = next((m.backend for m in mounts if m.path is None), None) or StateBackend()
+    routes = {m.path: m.backend for m in mounts if m.path}
+    return CompositeBackend(default=default, routes=routes) if routes else default
+
+
+def subagent(
+    *,
+    name: str,
+    description: str,
+    system_prompt: str,
+    model: BaseChatModel | None = None,
+    tools: Sequence[Any] = (),
+    middleware: Sequence[AgentMiddleware] = (),
+    approve_tools: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """A declarative Deep Agents `SubAgent` (called through the main agent's `task` tool)."""
+    spec: dict[str, Any] = {"name": name, "description": description, "system_prompt": system_prompt}
+    if model is not None:
+        spec["model"] = model
+    if tools:
+        spec["tools"] = list(tools)
+    if middleware:
+        spec["middleware"] = list(middleware)
+    if approve_tools:
+        spec["interrupt_on"] = _hitl(approve_tools)
+    return spec
+
+
+def deep_agent_node(
+    *,
+    name: str,
+    model: BaseChatModel,
+    tools: Sequence[Any] = (),
+    system_prompt: str = "",
+    middleware: Sequence[AgentMiddleware] = (),
+    subagents: Sequence[Any] = (),
+    backends: Sequence[Mount] = (),
+    planning: bool = True,
+    approve_tools: Sequence[str] | None = None,
+    permissions: Sequence[dict[str, Any]] | None = None,
+    response_format: dict[str, Any] | None = None,
+):
+    """A Deep Agent (create_deep_agent) as a subgraph node; reads/writes the parent's `messages`."""
+    from deepagents import FilesystemPermission, create_deep_agent
+
+    stack = [TodoListMiddleware(), *middleware] if planning else list(middleware)
+    return create_deep_agent(
+        model=model,
+        tools=list(tools),
+        system_prompt=system_prompt or None,
+        middleware=stack,
+        subagents=list(subagents) or None,
+        backend=_compose(backends),
+        interrupt_on=_hitl(approve_tools) or None,
+        permissions=[FilesystemPermission(**p) for p in permissions or []] or None,
+        response_format=_response_format(response_format, name),
+        name=name,
+    )
 
 
 # ------------------------------------------------------------------ nodes ----
@@ -257,21 +452,33 @@ def llm_node(*, model: BaseChatModel, prompt: str, output: str) -> Callable:
 
 
 def agent_node(
-    *, name: str, model: BaseChatModel, tools: list, system_prompt: str, approve_tools: list[str] | None = None
+    *,
+    name: str,
+    model: BaseChatModel,
+    tools: list,
+    system_prompt: str,
+    approve_tools: list[str] | None = None,
+    middleware: Sequence[AgentMiddleware] = (),
+    response_format: dict[str, Any] | None = None,
 ):
     """A tool-using agent (LangChain create_agent). Returns a compiled subgraph.
 
     The subgraph reads/writes the parent's `messages` channel, so the workflow
-    state must contain a `messages` channel with reducer `add_messages`.
+    state must contain a `messages` channel with reducer `add_messages`. With a
+    `response_format` it also writes `structured_response`. Wired middleware runs in edge order,
+    the tool-approval middleware last.
     """
-    middleware = []
+    stack = list(middleware)
     if approve_tools:
-        middleware.append(
-            HumanInTheLoopMiddleware(
-                interrupt_on={t: {"allowed_decisions": ["approve", "edit", "reject"]} for t in approve_tools}
-            )
-        )
-    return create_agent(model, tools=tools, system_prompt=system_prompt, middleware=middleware, name=name)
+        stack.append(HumanInTheLoopMiddleware(interrupt_on=_hitl(approve_tools)))
+    return create_agent(
+        model,
+        tools=tools,
+        system_prompt=system_prompt,
+        middleware=stack,
+        response_format=_response_format(response_format, name),
+        name=name,
+    )
 
 
 def router_fn(*, cases: list[dict[str, str]], default: str = "default") -> Callable:
@@ -298,6 +505,45 @@ def approval_node(*, node_id: str, show: str, output: str) -> Callable:
         return result
 
     return run
+
+
+def human_input_node(
+    *, node_id: str, prompt: str, output: str, response_schema: dict[str, Any] | None = None
+) -> Callable:
+    """Ask a person (M3-T7). The answer is validated against `response_schema`; invalid answers re-ask."""
+    validator = Draft202012Validator(response_schema) if response_schema else None
+
+    async def run(state: Any) -> dict:
+        request: dict[str, Any] = {"kind": "input", "canvas_node_id": node_id, "prompt": render_template(prompt, state)}
+        if response_schema:
+            request["response_schema"] = response_schema
+        while True:
+            answer = interrupt(request)
+            problems = sorted(validator.iter_errors(answer), key=str) if validator else []
+            if not problems:
+                return {output: answer}
+            request = {**request, "error": problems[0].message}
+
+    return run
+
+
+def map_fn(
+    *, items: str, item: str, target: str, empty: str, carry: Sequence[str] = (), max_items: int | None = None
+) -> Callable:
+    """Fan-out for `core.map` (M3-T8): one `Send(target, {item: x, **carry})` per list element.
+
+    The workers run in the same super-step; the step after them runs once, when all have finished.
+    """
+
+    def fan_out(state: Any) -> str | list[Send]:
+        values = state.get(items) or []
+        values = list(values if isinstance(values, list | tuple) else [values])[:max_items]
+        if not values:
+            return empty
+        shared = {c: state[c] for c in carry if c in state}
+        return [Send(target, {**shared, item: v}) for v in values]
+
+    return fan_out
 
 
 def set_node(*, values: dict[str, str]) -> Callable:

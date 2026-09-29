@@ -1,0 +1,41 @@
+{
+  "type": "mw.tool_selector",
+  "kind": "resource",
+  "label": "Tool selector",
+  "category": "Middleware",
+  "icon": "filter",
+  "color": "#9333EA",
+  "description": "Lets a (cheaper) model pick the relevant tools before each call (LLMToolSelectorMiddleware).",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "description": "Selector model (default: the agent's model)"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "max_tools": {
+        "type": "integer",
+        "title": "Max tools",
+        "minimum": 1
+      },
+      "always_include": {
+        "type": "array",
+        "title": "Always include",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true
+      }
+    }
+  }
+}

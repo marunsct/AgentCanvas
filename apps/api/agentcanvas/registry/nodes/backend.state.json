@@ -1,0 +1,20 @@
+{
+  "type": "backend.state",
+  "kind": "resource",
+  "label": "State files",
+  "category": "Memory",
+  "icon": "file",
+  "color": "#0F766E",
+  "description": "Agent files live in the thread's state (StateBackend): they are checkpointed with the thread and vanish with it.",
+  "outputs": [
+    {
+      "name": "backend",
+      "type": "Backend"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

@@ -79,7 +79,9 @@ class Runner:
         checkpoint_id: str | None = None,
         user_id: str | None = None,
         decided_by: str | None = None,
+        context_from: str | None = None,
     ) -> RunHandle:
+        """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         thread_id = thread_id or new_id("th")
         if thread_id in self.active_by_thread:  # double-texting policy "reject" (FR-RUN-11 later adds others)
             raise Conflict(f"thread '{thread_id}' already has an active run", run_id=self.active_by_thread[thread_id])
@@ -94,8 +96,12 @@ class Runner:
                 raise Conflict(f"thread '{thread_id}' belongs to workflow '{thread.workflow_id}'")
             else:
                 thread.status = "running"
+            if context is None:
+                context = await self._last_context(s, context_from or thread_id)
             await s.flush()
-            s.add(Run(id=run_id, thread_id=thread_id, ir_hash=ir_hash(wf), mode=mode, status="running"))
+            s.add(
+                Run(id=run_id, thread_id=thread_id, ir_hash=ir_hash(wf), mode=mode, status="running", context=context)
+            )
             if resume is not None:
                 await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
             await s.commit()
@@ -119,6 +125,11 @@ class Runner:
         handle.task = asyncio.create_task(self._pump(handle, spec), name=f"run:{run_id}")
         self._evict()
         return handle
+
+    @staticmethod
+    async def _last_context(s: Any, thread_id: str) -> dict[str, Any]:
+        q = select(Run.context).where(Run.thread_id == thread_id).order_by(Run.id.desc()).limit(1)
+        return (await s.scalar(q)) or {}
 
     async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> None:
         q = update(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")

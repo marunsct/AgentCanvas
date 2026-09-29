@@ -53,6 +53,9 @@ def node_writes(node: Node, m: NodeManifest) -> set[str]:
     for f in m.list_write_fields:
         if isinstance(cfg.get(f), list):
             out.update(x for x in cfg[f] if isinstance(x, str))
+    for f, channels in m.conditional_writes.items():
+        if cfg.get(f):
+            out.update(channels)
     return out
 
 

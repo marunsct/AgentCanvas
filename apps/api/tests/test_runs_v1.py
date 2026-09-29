@@ -287,6 +287,37 @@ async def test_context_from_authenticated_user(api_client):
     assert fin["output"]["out"] == "user=usr_dev"
 
 
+async def test_resume_keeps_the_original_run_context(app, api_client):
+    """A reviewer resuming someone else's run must not become the run's user (per-user memory namespaces)."""
+    from agentcanvas.api.deps import CurrentUser, current_user
+
+    ask = {
+        "id": "n_ask",
+        "type": "core.human_input",
+        "name": "ask",
+        "config": {"prompt": "Proceed?", "output": "answer"},
+    }
+    ctx = [{"name": "user_id", "source": "user"}]
+    wf = await make(
+        api_client, linear(ask, script("n_w", "examples.scripts:whoami"), channels=("out", "answer"), context=ctx)
+    )
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"thread_id": "th_ctx"})
+    fin = events(r.text)[-1]
+    assert fin["status"] == "interrupted" and fin["interrupts"][0]["kind"] == "input"
+    from agentcanvas.db.models import AppUser
+
+    async with app.state.db.sessionmaker() as s:
+        s.add(AppUser(id="usr_reviewer", oidc_subject="reviewer", email="reviewer@example.com"))
+        await s.commit()
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_reviewer", org_id="org_default", role="admin")
+    try:
+        r = await api_client.post("/v1/threads/th_ctx/resume", json={"value": "yes"})
+    finally:
+        app.dependency_overrides.pop(current_user)
+    fin = events(r.text)[-1]
+    assert fin["status"] == "success" and fin["output"] == {"out": "user=usr_dev", "answer": "yes"}
+
+
 async def test_invalid_workflow_cannot_run(api_client):
     wf = (await api_client.post(P, json={"name": "bad", "template": "classify_and_route"})).json()
     ir = wf["ir"] | {"edges": [e for e in wf["ir"]["edges"] if e["id"] != "w1"]}

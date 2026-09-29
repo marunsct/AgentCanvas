@@ -26,7 +26,7 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
 export function DecisionCard({ intr, onDecide, busy }: { intr: PendingInterrupt; onDecide: (value: unknown) => void; busy?: boolean }) {
   const payload = (intr.payload ?? {}) as Record<string, unknown>;
   return (
-    <div className="interrupt-card" role="group" aria-label="Approval needed">
+    <div className="interrupt-card" role="group" aria-label={intr.kind === "input" ? "Input needed" : "Approval needed"}>
       <b>{intr.kind === "input" ? "Input needed" : "Approval needed"}</b> <small className="muted">{intr.kind}</small>
       {intr.kind === "tool_approval"
         ? <ToolApproval requests={(payload.action_requests as ActionRequest[]) ?? []} onDecide={onDecide} busy={busy} />
@@ -99,6 +99,7 @@ function InputRequest({ payload, onDecide, busy }: { payload: Record<string, unk
   return (
     <>
       {question && <p>{question}</p>}
+      {typeof payload.error === "string" && <p className="error-text" role="alert">Please try again: {payload.error}</p>}
       {schema ? (
         <Form schema={schema} validator={validator} onSubmit={(e) => onDecide(e.formData)} disabled={busy} />
       ) : (

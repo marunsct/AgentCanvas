@@ -1,0 +1,30 @@
+{
+  "type": "mw.model_fallback",
+  "kind": "resource",
+  "label": "Model fallback",
+  "category": "Middleware",
+  "icon": "life-buoy",
+  "color": "#9333EA",
+  "description": "Tries the wired models in order when the agent's model fails (ModelFallbackMiddleware).",
+  "inputs": [
+    {
+      "name": "models",
+      "type": "ChatModel",
+      "required": true,
+      "multi": true,
+      "ordered": true,
+      "description": "Fallback models, first to last"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

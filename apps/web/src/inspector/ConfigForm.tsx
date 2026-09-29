@@ -5,12 +5,14 @@ import { useMemo } from "react";
 import type { NodeManifest } from "../api/types";
 import { useEditor } from "../editor/store";
 import type { IRNode, IRResource } from "../ir/model";
-import { diffToMergePatch, uiSchemaFromFormats, WIDGET_FORMATS } from "./schema";
+import { JsonSchemaField } from "./JsonSchemaField";
+import { CUSTOM_FORMATS, diffToMergePatch, uiSchemaFromFormats } from "./schema";
 import { WIDGETS } from "./widgets";
 
 const validator = customizeValidator({
-  customFormats: Object.fromEntries([...WIDGET_FORMATS].map((f) => [f, () => true])),
+  customFormats: Object.fromEntries(CUSTOM_FORMATS.map((f) => [f, () => true])),
 });
+const FIELDS = { json_schema: JsonSchemaField };
 
 export function ConfigForm({ element, manifest, isResource }: {
   element: IRNode | IRResource; manifest: NodeManifest; isResource: boolean;
@@ -22,7 +24,7 @@ export function ConfigForm({ element, manifest, isResource }: {
 
   return (
     <Form
-      schema={schema} uiSchema={uiSchema} formData={config} validator={validator} widgets={WIDGETS}
+      schema={schema} uiSchema={uiSchema} formData={config} validator={validator} widgets={WIDGETS} fields={FIELDS}
       liveValidate showErrorList={false} noHtml5Validate idPrefix={`cfg_${element.id}`}
       onChange={(e) => {
         const patch = diffToMergePatch(config, (e.formData ?? {}) as Record<string, unknown>);

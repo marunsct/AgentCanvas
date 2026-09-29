@@ -153,6 +153,9 @@ class Run(Base):
     tokens_out: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), server_default=text("0"), default=Decimal(0))
     trace_url: Mapped[str | None] = mapped_column(Text)
+    # run context (Runtime.context) — resumes reuse it: LangGraph does not checkpoint the context, and a
+    # reviewer resuming someone else's run must not become the run's user (per-user memory namespaces)
+    context: Mapped[dict[str, Any] | None] = mapped_column(Json)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

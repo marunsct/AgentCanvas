@@ -1,0 +1,149 @@
+{
+  "type": "agent.deep",
+  "kind": "runtime",
+  "label": "Deep Agent",
+  "category": "Agents",
+  "icon": "brain",
+  "color": "#7C3AED",
+  "description": "A planning agent with a virtual filesystem, subagents and long-term memory (create_deep_agent). Reads and writes `messages`.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": true
+    },
+    {
+      "name": "tools",
+      "type": "Tool",
+      "multi": true,
+      "ordered": true
+    },
+    {
+      "name": "middleware",
+      "type": "Middleware",
+      "multi": true,
+      "ordered": true
+    },
+    {
+      "name": "subagents",
+      "type": "Subagent",
+      "multi": true,
+      "ordered": true
+    },
+    {
+      "name": "backend",
+      "type": "Backend",
+      "multi": true,
+      "description": "Default: state files. Long-term folders are mounted at their path."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "system_prompt": {
+        "type": "string",
+        "title": "System prompt",
+        "format": "prompt",
+        "default": ""
+      },
+      "planning": {
+        "type": "boolean",
+        "title": "Planning (write_todos)",
+        "default": true
+      },
+      "approve_tools": {
+        "type": "array",
+        "title": "Tools that need approval",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true,
+        "description": "Pause before these tools run; built-ins such as write_file or task are allowed."
+      },
+      "permissions": {
+        "type": "array",
+        "title": "File permissions",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operations",
+            "paths"
+          ],
+          "properties": {
+            "operations": {
+              "type": "array",
+              "title": "Operations",
+              "items": {
+                "enum": [
+                  "read",
+                  "write"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "paths": {
+              "type": "array",
+              "title": "Paths (globs)",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "mode": {
+              "enum": [
+                "allow",
+                "deny",
+                "interrupt"
+              ],
+              "title": "Mode",
+              "default": "allow"
+            }
+          }
+        }
+      },
+      "response_format": {
+        "type": "object",
+        "title": "Structured output (JSON Schema)",
+        "format": "json_schema",
+        "description": "When set, the agent's final answer is validated against this schema and written to the `structured_response` channel."
+      }
+    }
+  },
+  "reads": [
+    "messages"
+  ],
+  "writes": [
+    "messages"
+  ],
+  "conditional_writes": {
+    "response_format": [
+      "structured_response"
+    ]
+  },
+  "builtin_tools": [
+    "write_todos",
+    "ls",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "delete",
+    "glob",
+    "grep",
+    "execute",
+    "task"
+  ],
+  "interrupts": true,
+  "side_effects": [
+    "spend"
+  ],
+  "stability": "beta"
+}

@@ -72,6 +72,19 @@ class ValidationContext:
         return {n.id for n in self.wf.nodes if (m := self.manifest(n)) and m.dynamic_outputs == "routes"}
 
     @cached_property
+    def map_ids(self) -> set[str]:
+        return {n.id for n in self.wf.nodes if n.type == "core.map"}
+
+    @cached_property
+    def join_ids(self) -> set[str]:
+        return {n.id for n in self.wf.nodes if n.type == "core.join"}
+
+    @cached_property
+    def conditional_ids(self) -> set[str]:
+        """Nodes whose outgoing edges are alternatives (routers) or per-item fan-out (maps), not parallel."""
+        return self.router_ids | self.map_ids
+
+    @cached_property
     def writes(self) -> dict[str, set[str]]:
         return {n.id: analysis.node_writes(n, m) for n in self.wf.nodes if (m := self.manifest(n))}
 

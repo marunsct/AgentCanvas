@@ -1,0 +1,50 @@
+{
+  "type": "core.human_input",
+  "kind": "runtime",
+  "label": "Human input",
+  "category": "Human-in-the-loop",
+  "icon": "message-square",
+  "color": "#D97706",
+  "description": "Pauses and asks a person for input (a form when a response schema is set); the answer is written to a channel.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "prompt",
+      "output"
+    ],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "title": "Question",
+        "format": "template",
+        "minLength": 1,
+        "description": "Jinja template, e.g. Which plan should we use for {{ state.customer }}?"
+      },
+      "response_schema": {
+        "type": "object",
+        "title": "Answer form (JSON Schema)",
+        "format": "json_schema",
+        "description": "Optional; the answer is validated against it and the question is asked again if invalid."
+      },
+      "output": {
+        "type": "string",
+        "title": "Answer channel",
+        "format": "channel"
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "template_fields": [
+    "prompt"
+  ],
+  "interrupts": true
+}

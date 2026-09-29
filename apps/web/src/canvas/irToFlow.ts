@@ -130,7 +130,8 @@ export function irToFlow(
         style: { stroke: color, strokeDasharray: "5 4", strokeWidth: 1.5 },
       };
     }
-    const route = e.source.port?.startsWith("route:") ? e.source.port.slice(6) : undefined;
+    const port = e.source.port ?? undefined;
+    const route = port?.startsWith("route:") ? port.slice(6) : port; // route name, or a named output (each/empty)
     const active = status[e.source.node] === "ok" && ["running", "ok", "interrupted"].includes(status[e.target.node] ?? "");
     return {
       id: e.id, source: e.source.node, target: e.target.node, sourceHandle: e.source.port ?? "next", targetHandle: "in",

@@ -1,0 +1,21 @@
+{
+  "type": "mw.todo",
+  "kind": "resource",
+  "label": "Planning (to-dos)",
+  "category": "Middleware",
+  "icon": "list-checks",
+  "color": "#9333EA",
+  "description": "Gives the agent a write_todos tool to plan multi-step work (TodoListMiddleware).",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

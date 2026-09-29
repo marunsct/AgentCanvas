@@ -4,6 +4,7 @@ import { useEditor } from "../editor/store";
 import { findElement, isResource } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
 import { PoliciesEditor } from "./PoliciesEditor";
+import { WiredPorts } from "./WiredPorts";
 import { WorkflowPanel } from "./WorkflowPanel";
 
 const NAME = /^[a-z][a-z0-9_]{0,62}$/;
@@ -46,6 +47,7 @@ export function Inspector() {
         </ul>
       )}
       {m && <ConfigForm element={el} manifest={m} isResource={res} />}
+      {m && <WiredPorts element={el} manifest={m} />}
       {!res && (
         <button type="button" onClick={() => useEditor.getState().toggleBreakpoint(el.id)}
           title="Debug runs pause before this node">

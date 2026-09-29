@@ -1051,6 +1051,13 @@
       "NodeManifest": {
         "additionalProperties": false,
         "properties": {
+          "builtin_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Builtin Tools",
+            "type": "array"
+          },
           "category": {
             "title": "Category",
             "type": "string"
@@ -1079,6 +1086,16 @@
               }
             ],
             "title": "Color"
+          },
+          "conditional_writes": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Conditional Writes",
+            "type": "object"
           },
           "config_schema": {
             "additionalProperties": true,

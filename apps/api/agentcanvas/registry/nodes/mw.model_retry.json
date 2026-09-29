@@ -1,0 +1,60 @@
+{
+  "type": "mw.model_retry",
+  "kind": "resource",
+  "label": "Model retry",
+  "category": "Middleware",
+  "icon": "rotate-cw",
+  "color": "#9333EA",
+  "description": "Retries failed model calls with exponential backoff (ModelRetryMiddleware).",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "max_retries": {
+        "type": "integer",
+        "title": "Max retries",
+        "minimum": 0,
+        "default": 2
+      },
+      "on_failure": {
+        "enum": [
+          "continue",
+          "error"
+        ],
+        "title": "When retries are exhausted",
+        "default": "continue",
+        "description": "continue = return an error message to the model; error = raise"
+      },
+      "backoff_factor": {
+        "type": "number",
+        "title": "Backoff factor",
+        "minimum": 0,
+        "default": 2.0
+      },
+      "initial_delay": {
+        "type": "number",
+        "title": "Initial delay (s)",
+        "minimum": 0,
+        "default": 1.0
+      },
+      "max_delay": {
+        "type": "number",
+        "title": "Max delay (s)",
+        "minimum": 0,
+        "default": 60.0
+      },
+      "jitter": {
+        "type": "boolean",
+        "title": "Jitter",
+        "default": true
+      }
+    }
+  }
+}
