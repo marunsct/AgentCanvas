@@ -9,3 +9,6 @@ test-results/
 playwright-report/
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
+*.tsbuildinfo

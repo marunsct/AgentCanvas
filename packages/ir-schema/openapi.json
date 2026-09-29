@@ -1,0 +1,3752 @@
+{
+  "components": {
+    "schemas": {
+      "AddNode": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "op": {
+            "const": "AddNode",
+            "default": "AddNode",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "title": "AddNode",
+        "type": "object"
+      },
+      "AddResource": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "op": {
+            "const": "AddResource",
+            "default": "AddResource",
+            "title": "Op",
+            "type": "string"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "title": "AddResource",
+        "type": "object"
+      },
+      "Breakpoints": {
+        "properties": {
+          "after": {
+            "items": {
+              "type": "string"
+            },
+            "title": "After",
+            "type": "array"
+          },
+          "before": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Before",
+            "type": "array"
+          }
+        },
+        "title": "Breakpoints",
+        "type": "object"
+      },
+      "CachePolicySpec": {
+        "additionalProperties": false,
+        "properties": {
+          "ttl": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl"
+          }
+        },
+        "title": "CachePolicySpec",
+        "type": "object"
+      },
+      "Channel": {
+        "additionalProperties": false,
+        "description": "One field of the shared graph state.",
+        "properties": {
+          "default": {
+            "title": "Default"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "io": {
+            "default": "inout",
+            "enum": [
+              "inout",
+              "in",
+              "out",
+              "private"
+            ],
+            "title": "Io",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reducer": {
+            "default": "replace",
+            "enum": [
+              "replace",
+              "append",
+              "add_messages",
+              "sum",
+              "merge"
+            ],
+            "title": "Reducer",
+            "type": "string"
+          },
+          "storage": {
+            "default": "full",
+            "enum": [
+              "full",
+              "delta"
+            ],
+            "title": "Storage",
+            "type": "string"
+          },
+          "type": {
+            "additionalProperties": true,
+            "title": "Type",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Channel",
+        "type": "object"
+      },
+      "CommandBatch": {
+        "properties": {
+          "commands": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "AddNode": "#/components/schemas/AddNode",
+                  "AddResource": "#/components/schemas/AddResource",
+                  "Connect": "#/components/schemas/Connect",
+                  "Disconnect": "#/components/schemas/Disconnect",
+                  "RemoveNode": "#/components/schemas/RemoveNode",
+                  "RemoveResource": "#/components/schemas/RemoveResource",
+                  "RenameNode": "#/components/schemas/RenameNode",
+                  "ReplaceNode": "#/components/schemas/ReplaceNode",
+                  "ReplaceResource": "#/components/schemas/ReplaceResource",
+                  "ReplaceSettings": "#/components/schemas/ReplaceSettings",
+                  "SetChannels": "#/components/schemas/SetChannels",
+                  "SetContext": "#/components/schemas/SetContext",
+                  "UpdateMeta": "#/components/schemas/UpdateMeta",
+                  "UpdateNode": "#/components/schemas/UpdateNode",
+                  "UpdateResource": "#/components/schemas/UpdateResource",
+                  "UpdateSettings": "#/components/schemas/UpdateSettings"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddNode"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveNode"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateNode"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceNode"
+                },
+                {
+                  "$ref": "#/components/schemas/RenameNode"
+                },
+                {
+                  "$ref": "#/components/schemas/AddResource"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveResource"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateResource"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceResource"
+                },
+                {
+                  "$ref": "#/components/schemas/Connect"
+                },
+                {
+                  "$ref": "#/components/schemas/Disconnect"
+                },
+                {
+                  "$ref": "#/components/schemas/SetChannels"
+                },
+                {
+                  "$ref": "#/components/schemas/SetContext"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateSettings"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceSettings"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateMeta"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Commands",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commands"
+        ],
+        "title": "CommandBatch",
+        "type": "object"
+      },
+      "CommandResult": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inverse": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "AddNode": "#/components/schemas/AddNode",
+                  "AddResource": "#/components/schemas/AddResource",
+                  "Connect": "#/components/schemas/Connect",
+                  "Disconnect": "#/components/schemas/Disconnect",
+                  "RemoveNode": "#/components/schemas/RemoveNode",
+                  "RemoveResource": "#/components/schemas/RemoveResource",
+                  "RenameNode": "#/components/schemas/RenameNode",
+                  "ReplaceNode": "#/components/schemas/ReplaceNode",
+                  "ReplaceResource": "#/components/schemas/ReplaceResource",
+                  "ReplaceSettings": "#/components/schemas/ReplaceSettings",
+                  "SetChannels": "#/components/schemas/SetChannels",
+                  "SetContext": "#/components/schemas/SetContext",
+                  "UpdateMeta": "#/components/schemas/UpdateMeta",
+                  "UpdateNode": "#/components/schemas/UpdateNode",
+                  "UpdateResource": "#/components/schemas/UpdateResource",
+                  "UpdateSettings": "#/components/schemas/UpdateSettings"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddNode"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveNode"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateNode"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceNode"
+                },
+                {
+                  "$ref": "#/components/schemas/RenameNode"
+                },
+                {
+                  "$ref": "#/components/schemas/AddResource"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveResource"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateResource"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceResource"
+                },
+                {
+                  "$ref": "#/components/schemas/Connect"
+                },
+                {
+                  "$ref": "#/components/schemas/Disconnect"
+                },
+                {
+                  "$ref": "#/components/schemas/SetChannels"
+                },
+                {
+                  "$ref": "#/components/schemas/SetContext"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateSettings"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceSettings"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateMeta"
+                }
+              ]
+            },
+            "title": "Inverse",
+            "type": "array"
+          },
+          "ir": {
+            "additionalProperties": true,
+            "title": "Ir",
+            "type": "object"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "layout": {
+            "additionalProperties": true,
+            "title": "Layout",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "version",
+          "ir_hash",
+          "ir",
+          "layout",
+          "diagnostics",
+          "created_at",
+          "updated_at",
+          "inverse"
+        ],
+        "title": "CommandResult",
+        "type": "object"
+      },
+      "Connect": {
+        "additionalProperties": false,
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/Edge"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "op": {
+            "const": "Connect",
+            "default": "Connect",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "edge"
+        ],
+        "title": "Connect",
+        "type": "object"
+      },
+      "ContextField": {
+        "additionalProperties": false,
+        "description": "Run-scoped, immutable value (LangGraph ``Runtime.context``), e.g. user_id, tenant_id.\n\n``source=\"user\"`` means the runner fills it from the authenticated identity \u2014 never from\nmodel output or client input (spec doc 08 rule 2).",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "input",
+            "enum": [
+              "input",
+              "user",
+              "tenant"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "type": {
+            "additionalProperties": true,
+            "title": "Type",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ContextField",
+        "type": "object"
+      },
+      "CreateWorkflow": {
+        "properties": {
+          "name": {
+            "default": "Untitled workflow",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          }
+        },
+        "title": "CreateWorkflow",
+        "type": "object"
+      },
+      "Decision": {
+        "properties": {
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "Diagnostic": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "edge_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge Id"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "Diagnostic",
+        "type": "object"
+      },
+      "Disconnect": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "Disconnect",
+            "default": "Disconnect",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "Disconnect",
+        "type": "object"
+      },
+      "Edge": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "flow",
+              "wiring",
+              "data"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Endpoint"
+          },
+          "target": {
+            "$ref": "#/components/schemas/Endpoint"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "target"
+        ],
+        "title": "Edge",
+        "type": "object"
+      },
+      "Endpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "title": "Endpoint",
+        "type": "object"
+      },
+      "ExpressionCheck": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "cel",
+              "template"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source"
+        ],
+        "title": "ExpressionCheck",
+        "type": "object"
+      },
+      "ExpressionResult": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ExpressionResult",
+        "type": "object"
+      },
+      "ForkRequest": {
+        "properties": {
+          "as_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Node"
+          },
+          "checkpoint_id": {
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "branch",
+            "enum": [
+              "branch",
+              "copy"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "stream": {
+            "default": true,
+            "title": "Stream",
+            "type": "boolean"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "required": [
+          "checkpoint_id"
+        ],
+        "title": "ForkRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InterruptOut": {
+        "properties": {
+          "canvas_node_id": {
+            "title": "Canvas Node Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "run_id",
+          "canvas_node_id",
+          "kind",
+          "payload",
+          "status",
+          "decision",
+          "created_at",
+          "decided_at"
+        ],
+        "title": "InterruptOut",
+        "type": "object"
+      },
+      "LayoutUpdate": {
+        "properties": {
+          "positions": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Positions",
+            "type": "object"
+          },
+          "replace": {
+            "default": false,
+            "title": "Replace",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "positions"
+        ],
+        "title": "LayoutUpdate",
+        "type": "object"
+      },
+      "ModelInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "price_in_per_mtok": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price In Per Mtok"
+          },
+          "price_out_per_mtok": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Out Per Mtok"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reasoning": {
+            "default": false,
+            "title": "Reasoning",
+            "type": "boolean"
+          },
+          "structured_output": {
+            "default": true,
+            "title": "Structured Output",
+            "type": "boolean"
+          },
+          "tools": {
+            "default": true,
+            "title": "Tools",
+            "type": "boolean"
+          },
+          "vision": {
+            "default": false,
+            "title": "Vision",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "provider"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
+      "Node": {
+        "additionalProperties": false,
+        "description": "A runtime step in the graph.",
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "disabled": {
+            "default": false,
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "policies": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodePolicies"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "name"
+        ],
+        "title": "Node",
+        "type": "object"
+      },
+      "NodeManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "channel_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channel Fields",
+            "type": "array"
+          },
+          "channel_map_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channel Map Fields",
+            "type": "array"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "config_schema": {
+            "additionalProperties": true,
+            "title": "Config Schema",
+            "type": "object"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "docs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs"
+          },
+          "dynamic_outputs": {
+            "anyOf": [
+              {
+                "const": "routes",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dynamic Outputs"
+          },
+          "hosted_forbidden": {
+            "default": false,
+            "title": "Hosted Forbidden",
+            "type": "boolean"
+          },
+          "icon": {
+            "default": "box",
+            "title": "Icon",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/PortSpec"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "interrupts": {
+            "default": false,
+            "title": "Interrupts",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "runtime",
+              "resource",
+              "middleware",
+              "trigger"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "list_write_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "List Write Fields",
+            "type": "array"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/PortSpec"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "read_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Read Fields",
+            "type": "array"
+          },
+          "reads": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reads",
+            "type": "array"
+          },
+          "side_effects": {
+            "items": {
+              "enum": [
+                "external_write",
+                "message_send",
+                "code_exec",
+                "spend",
+                "pii_read",
+                "host_exec"
+              ],
+              "type": "string"
+            },
+            "title": "Side Effects",
+            "type": "array"
+          },
+          "stability": {
+            "default": "stable",
+            "enum": [
+              "stable",
+              "beta",
+              "experimental"
+            ],
+            "title": "Stability",
+            "type": "string"
+          },
+          "targets": {
+            "additionalProperties": {
+              "enum": [
+                "full",
+                "partial",
+                "none"
+              ],
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "object"
+          },
+          "template_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Template Fields",
+            "type": "array"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "version": {
+            "default": "1.0.0",
+            "title": "Version",
+            "type": "string"
+          },
+          "writes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Writes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "kind",
+          "label",
+          "category"
+        ],
+        "title": "NodeManifest",
+        "type": "object"
+      },
+      "NodePolicies": {
+        "additionalProperties": false,
+        "properties": {
+          "cache": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CachePolicySpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Route"
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryPolicySpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeoutPolicySpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trace": {
+            "default": "full",
+            "enum": [
+              "full",
+              "omit_inputs",
+              "omit_outputs",
+              "omit"
+            ],
+            "title": "Trace",
+            "type": "string"
+          }
+        },
+        "title": "NodePolicies",
+        "type": "object"
+      },
+      "PortSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "multi": {
+            "default": false,
+            "title": "Multi",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ordered": {
+            "default": false,
+            "title": "Ordered",
+            "type": "boolean"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "PortSpec",
+        "type": "object"
+      },
+      "ProjectOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "ProjectOut",
+        "type": "object"
+      },
+      "RemoveNode": {
+        "additionalProperties": false,
+        "description": "Removes a node and every edge touching it.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "RemoveNode",
+            "default": "RemoveNode",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "RemoveNode",
+        "type": "object"
+      },
+      "RemoveResource": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "RemoveResource",
+            "default": "RemoveResource",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "RemoveResource",
+        "type": "object"
+      },
+      "RenameNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "op": {
+            "const": "RenameNode",
+            "default": "RenameNode",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RenameNode",
+        "type": "object"
+      },
+      "ReplaceIR": {
+        "properties": {
+          "ir": {
+            "additionalProperties": true,
+            "title": "Ir",
+            "type": "object"
+          }
+        },
+        "required": [
+          "ir"
+        ],
+        "title": "ReplaceIR",
+        "type": "object"
+      },
+      "ReplaceNode": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "op": {
+            "const": "ReplaceNode",
+            "default": "ReplaceNode",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "title": "ReplaceNode",
+        "type": "object"
+      },
+      "ReplaceResource": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "ReplaceResource",
+            "default": "ReplaceResource",
+            "title": "Op",
+            "type": "string"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "title": "ReplaceResource",
+        "type": "object"
+      },
+      "ReplaceSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "ReplaceSettings",
+            "default": "ReplaceSettings",
+            "title": "Op",
+            "type": "string"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "title": "Settings",
+            "type": "object"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "ReplaceSettings",
+        "type": "object"
+      },
+      "Resource": {
+        "additionalProperties": false,
+        "description": "Constructed once and injected into nodes by wiring edges (models, tools, middleware...).",
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "name"
+        ],
+        "title": "Resource",
+        "type": "object"
+      },
+      "ResumeRequest": {
+        "properties": {
+          "interrupt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupt Id"
+          },
+          "stream": {
+            "default": true,
+            "title": "Stream",
+            "type": "boolean"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "title": "ResumeRequest",
+        "type": "object"
+      },
+      "RetryPolicySpec": {
+        "additionalProperties": false,
+        "properties": {
+          "backoff_factor": {
+            "default": 2.0,
+            "minimum": 1.0,
+            "title": "Backoff Factor",
+            "type": "number"
+          },
+          "initial_interval": {
+            "default": 0.5,
+            "minimum": 0.0,
+            "title": "Initial Interval",
+            "type": "number"
+          },
+          "jitter": {
+            "default": true,
+            "title": "Jitter",
+            "type": "boolean"
+          },
+          "max_attempts": {
+            "default": 3,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "max_interval": {
+            "default": 128.0,
+            "minimum": 0.0,
+            "title": "Max Interval",
+            "type": "number"
+          },
+          "retry_on": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retry On",
+            "type": "array"
+          }
+        },
+        "title": "RetryPolicySpec",
+        "type": "object"
+      },
+      "RunOut": {
+        "properties": {
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "status",
+          "mode",
+          "ir_hash",
+          "error",
+          "started_at",
+          "ended_at"
+        ],
+        "title": "RunOut",
+        "type": "object"
+      },
+      "RunRequest": {
+        "properties": {
+          "breakpoints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Breakpoints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "durability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "exit",
+                  "async",
+                  "sync"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durability"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "mode": {
+            "default": "normal",
+            "enum": [
+              "normal",
+              "debug"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "stream": {
+            "default": true,
+            "title": "Stream",
+            "type": "boolean"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "title": "RunRequest",
+        "type": "object"
+      },
+      "SetChannels": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "op": {
+            "const": "SetChannels",
+            "default": "SetChannels",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channels"
+        ],
+        "title": "SetChannels",
+        "type": "object"
+      },
+      "SetContext": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ContextField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "op": {
+            "const": "SetContext",
+            "default": "SetContext",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "SetContext",
+        "type": "object"
+      },
+      "StateEdit": {
+        "properties": {
+          "as_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Node"
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "StateEdit",
+        "type": "object"
+      },
+      "TemplateInfo": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "node_count": {
+            "title": "Node Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "node_count"
+        ],
+        "title": "TemplateInfo",
+        "type": "object"
+      },
+      "ThreadOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ThreadOut",
+        "type": "object"
+      },
+      "ThreadPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ThreadPage",
+        "type": "object"
+      },
+      "TimeoutPolicySpec": {
+        "additionalProperties": false,
+        "properties": {
+          "idle_timeout": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Timeout"
+          },
+          "refresh_on": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "heartbeat"
+            ],
+            "title": "Refresh On",
+            "type": "string"
+          },
+          "run_timeout": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Timeout"
+          }
+        },
+        "title": "TimeoutPolicySpec",
+        "type": "object"
+      },
+      "UpdateMeta": {
+        "additionalProperties": false,
+        "description": "Change name / description / metadata of the workflow.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "op": {
+            "const": "UpdateMeta",
+            "default": "UpdateMeta",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "title": "UpdateMeta",
+        "type": "object"
+      },
+      "UpdateNode": {
+        "additionalProperties": false,
+        "description": "JSON merge patch on a node (label, config, policies, disabled, metadata, name).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "UpdateNode",
+            "default": "UpdateNode",
+            "title": "Op",
+            "type": "string"
+          },
+          "patch": {
+            "additionalProperties": true,
+            "title": "Patch",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "patch"
+        ],
+        "title": "UpdateNode",
+        "type": "object"
+      },
+      "UpdateResource": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "UpdateResource",
+            "default": "UpdateResource",
+            "title": "Op",
+            "type": "string"
+          },
+          "patch": {
+            "additionalProperties": true,
+            "title": "Patch",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "patch"
+        ],
+        "title": "UpdateResource",
+        "type": "object"
+      },
+      "UpdateSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "UpdateSettings",
+            "default": "UpdateSettings",
+            "title": "Op",
+            "type": "string"
+          },
+          "patch": {
+            "additionalProperties": true,
+            "title": "Patch",
+            "type": "object"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "title": "UpdateSettings",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkflowOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ir": {
+            "additionalProperties": true,
+            "title": "Ir",
+            "type": "object"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "layout": {
+            "additionalProperties": true,
+            "title": "Layout",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "version",
+          "ir_hash",
+          "ir",
+          "layout",
+          "diagnostics",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkflowOut",
+        "type": "object"
+      },
+      "WorkflowPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "WorkflowPage",
+        "type": "object"
+      },
+      "WorkflowSummary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "updated_at"
+        ],
+        "title": "WorkflowSummary",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "AgentCanvas API",
+    "version": "0.1.0.dev0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "Liveness probe.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness probe: the control database answers.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Readyz Readyz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/expressions/check": {
+      "post": {
+        "operationId": "check_expression_v1_expressions_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpressionCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Expression",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/v1/inbox": {
+      "get": {
+        "operationId": "inbox_v1_inbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "decided",
+                "expired"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InterruptOut"
+                  },
+                  "title": "Response Inbox V1 Inbox Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inbox",
+        "tags": [
+          "runs",
+          "inbox"
+        ]
+      }
+    },
+    "/v1/inbox/{interrupt_id}/decision": {
+      "post": {
+        "operationId": "decide_v1_inbox__interrupt_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interrupt_id",
+            "required": true,
+            "schema": {
+              "title": "Interrupt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stream",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Stream",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "runs",
+          "inbox"
+        ]
+      }
+    },
+    "/v1/ir-schema": {
+      "get": {
+        "description": "JSON Schema of the Graph IR (the web app generates its TypeScript types from it).",
+        "operationId": "ir_schema_v1_ir_schema_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ir Schema V1 Ir Schema Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ir Schema",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "models_v1_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelInfo"
+                  },
+                  "title": "Response Models V1 Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Models",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/v1/node-types": {
+      "get": {
+        "operationId": "node_types_v1_node_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NodeManifest"
+                  },
+                  "title": "Response Node Types V1 Node Types Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Node Types",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/v1/projects": {
+      "get": {
+        "operationId": "list_projects_v1_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectOut"
+                  },
+                  "title": "Response List Projects V1 Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Projects",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/workflows": {
+      "get": {
+        "operationId": "list_workflows_v1_projects__project_id__workflows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workflows",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "operationId": "create_workflow_v1_projects__project_id__workflows_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflow"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_run_v1_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Run V1 Runs  Run Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "run_events_v1_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Events",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/templates": {
+      "get": {
+        "operationId": "templates_v1_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateInfo"
+                  },
+                  "title": "Response Templates V1 Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Templates",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/v1/threads": {
+      "get": {
+        "operationId": "list_threads_v1_threads_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workflow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Threads",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}": {
+      "delete": {
+        "operationId": "delete_thread_v1_threads__thread_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Thread",
+        "tags": [
+          "runs"
+        ]
+      },
+      "get": {
+        "operationId": "get_thread_v1_threads__thread_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Thread V1 Threads  Thread Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Thread",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/continue": {
+      "post": {
+        "description": "Continue after a breakpoint (input None).",
+        "operationId": "continue_thread_v1_threads__thread_id__continue_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stream",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Stream",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Thread",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/fork": {
+      "post": {
+        "description": "Time travel: continue from a past checkpoint, optionally after editing it (M4-T7).",
+        "operationId": "fork_thread_v1_threads__thread_id__fork_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fork Thread",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/history": {
+      "get": {
+        "operationId": "thread_history_v1_threads__thread_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Thread History V1 Threads  Thread Id  History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Thread History",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/resume": {
+      "post": {
+        "operationId": "resume_thread_v1_threads__thread_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Thread",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/runs": {
+      "get": {
+        "operationId": "thread_runs_v1_threads__thread_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunOut"
+                  },
+                  "title": "Response Thread Runs V1 Threads  Thread Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Thread Runs",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/state": {
+      "post": {
+        "operationId": "edit_state_v1_threads__thread_id__state_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Edit State V1 Threads  Thread Id  State Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit State",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}": {
+      "delete": {
+        "operationId": "delete_workflow_v1_workflows__wf_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Workflow",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "get": {
+        "operationId": "get_workflow_v1_workflows__wf_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "put": {
+        "operationId": "replace_workflow_v1_workflows__wf_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceIR"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/code": {
+      "get": {
+        "operationId": "get_code_v1_workflows__wf_id__code_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Code",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/commands": {
+      "post": {
+        "operationId": "apply_commands_v1_workflows__wf_id__commands_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Commands",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/layout": {
+      "put": {
+        "operationId": "set_layout_v1_workflows__wf_id__layout_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Layout V1 Workflows  Wf Id  Layout Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Layout",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/runs/stream": {
+      "post": {
+        "operationId": "start_run_v1_workflows__wf_id__runs_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/validate": {
+      "post": {
+        "operationId": "validate_workflow_v1_workflows__wf_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Diagnostic"
+                  },
+                  "title": "Response Validate Workflow V1 Workflows  Wf Id  Validate Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    }
+  }
+}

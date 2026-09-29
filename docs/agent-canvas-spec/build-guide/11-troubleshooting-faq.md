@@ -106,6 +106,20 @@ Commit `pnpm-lock.yaml`; install with `pnpm install --frozen-lockfile`; use the 
 **E-04 Playwright cannot find a browser.**
 Run `npx playwright install chromium` (or point `executablePath` at a system Chromium).
 
+## F. Frontend (Sprint 3)
+
+**F-01 ✅ `openapi-typescript` crashes with `Cannot read properties of undefined (reading 'createKeywordTypeNode')`.**
+It uses the TypeScript compiler's JavaScript API, which TypeScript 7 (native compiler) no longer ships. AgentCanvas generates API types from the OpenAPI *component schemas* with `json-schema-to-typescript` instead (`apps/web/scripts/gen-api-types.mjs`, `pnpm gen`).
+
+**F-02 ✅ `Maximum update depth exceeded` in React Flow's `StoreUpdater`.**
+A prop derived on every render (e.g. `new Map(...)` of manifests, or a Zustand v5 selector returning a fresh array) re-triggers React Flow's store sync forever. Memoize derived collections (`useMemo`) and use `useShallow` (or a constant fallback like `NONE`) for selectors that build arrays.
+
+**F-03 ✅ `[React Flow]: Couldn't create edge for source handle id: "model"` (error 008) after a reload; edges missing.**
+Handles that appear after a node's first render (ports known only once node-type manifests load, or a router gaining a route) are not measured. Render the canvas only after manifests are loaded, and call `useUpdateNodeInternals()(id)` when a node's handle set changes — but **not on mount**: re-measuring every node on mount is O(n²) (500 nodes: 5.9 s → 0.8 s load after the fix).
+
+**F-04 ✅ Initial view is zoomed in on part of the graph.**
+`<ReactFlow fitView>` can fit before every node is measured. Fit once when `useNodesInitialized()` becomes true, with `maxZoom: 1`.
+
 ## E. Product questions
 
 **Why not use LangSmith Agent Server as the runtime?**
