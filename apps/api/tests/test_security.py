@@ -1,8 +1,8 @@
 import pytest
 
+from agentcanvas.adapters.langchain.nodes import safe_import
 from agentcanvas.expr import ExpressionError, eval_condition, render_template
 from agentcanvas.ir.validate import validate
-from agentcanvas.runtime.nodes import safe_import
 
 
 @pytest.mark.parametrize(

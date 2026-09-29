@@ -10,7 +10,7 @@ test("run → approve → complete, then reject on a new thread", async ({ page 
   await page.getByRole("button", { name: "▶ Run" }).click();
   await expect(page.getByText("Approval needed")).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText("Reply sent.")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("the tool call finished (demo model)")).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("button", { name: "▶ Run" }).click();
   await expect(page.getByText("Approval needed")).toBeVisible({ timeout: 10_000 });

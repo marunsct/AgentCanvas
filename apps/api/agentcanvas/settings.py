@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     edition: Literal["dev", "hosted"] = "dev"  # hosted = multi-tenant service (E041 etc.)
     # SQLAlchemy URL of the control DB. postgresql://… (production) or sqlite+aiosqlite:///… (local edition).
     database_url: str = Field(default="sqlite+aiosqlite:///./agentcanvas.db", validation_alias="DATABASE_URL")
+    # LangGraph checkpointer/store location; defaults to the control DB ("memory" = ephemeral, tests only)
+    persistence_url: str | None = None
     auto_migrate: bool = True  # run Alembic `upgrade head` at startup
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
     secret_key: str = "dev-only-change-me"

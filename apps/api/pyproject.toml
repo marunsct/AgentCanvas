@@ -25,6 +25,7 @@ dependencies = [
   "structlog>=24.4",
   "pydantic-settings>=2.6",
   "jsonschema>=4.23",
+  "langgraph-checkpoint-sqlite>=3.1.1,<4",
 ]
 
 [dependency-groups]
@@ -35,6 +36,7 @@ dev = [
     "pyright>=1.1.390",
     "ruff>=0.9",
     "hypothesis>=6.120",
+    "import-linter>=2.1",
 ]
 
 [build-system]
@@ -60,3 +62,25 @@ asyncio_mode = "auto"
 [tool.pyright]
 include = ["agentcanvas"]
 typeCheckingMode = "standard"
+
+[tool.importlinter]
+root_package = "agentcanvas"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core stays framework-neutral (ADR 0011): only agentcanvas.adapters may import LangChain/LangGraph"
+type = "forbidden"
+source_modules = [
+  "agentcanvas.ir",
+  "agentcanvas.validation",
+  "agentcanvas.registry",
+  "agentcanvas.db",
+  "agentcanvas.services",
+  "agentcanvas.runtime",
+  "agentcanvas.security",
+  "agentcanvas.api",
+  "agentcanvas.settings",
+  "agentcanvas.errors",
+]
+forbidden_modules = ["langchain", "langchain_core", "langgraph", "deepagents"]
+allow_indirect_imports = true

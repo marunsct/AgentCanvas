@@ -14,13 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
-from agentcanvas.api import legacy
+from agentcanvas.adapters import get_adapter
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.db.repositories import seed_dev
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
+from agentcanvas.runtime.runner import Runner
 from agentcanvas.settings import Settings, get_settings
 
 log = get_logger(__name__)
@@ -39,11 +40,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async with db.sessionmaker() as s:
                 await seed_dev(s)
         app.state.db = db
-        log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
-        try:
-            yield
-        finally:
-            await db.dispose()
+        adapter = get_adapter("langchain")
+        async with adapter.persistence(settings.persistence_url or settings.database_url):
+            runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, adapter, thread_id, wf))
+            app.state.runner = runner
+            log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
+            try:
+                yield
+            finally:
+                await runner.shutdown()
+                await db.dispose()
 
     app = FastAPI(title="AgentCanvas API", version="0.1.0.dev0", lifespan=lifespan)
     app.state.settings = settings
@@ -86,8 +92,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ready"}
 
     app.include_router(v1_router)
-    app.include_router(legacy.router)  # walking-skeleton endpoints until Sprint 2
     return app
+
+
+def _resources(app: FastAPI, adapter, thread_id: str, wf):
+    """Model/tool resolver for a thread. Dev/test hosts may install `app.state.resources_factory`."""
+    factory = getattr(app.state, "resources_factory", None)
+    return factory(thread_id, wf) if factory else adapter.default_resources()
 
 
 app = create_app()

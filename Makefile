@@ -32,7 +32,7 @@ e2e:        ## Playwright end-to-end (starts servers itself)
 	cd apps/web && pnpm e2e
 
 lint:       ## ruff, pyright, tsc
-	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright
+	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run lint-imports
 	cd apps/web && pnpm typecheck
 
 fmt:        ## format Python

@@ -10,9 +10,8 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.adapters import get_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
-from agentcanvas.compiler.codegen import CompileError, generate
-from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.commands import Command
 from agentcanvas.services.workflows import WorkflowService, WorkflowView
 from agentcanvas.settings import Settings
@@ -161,8 +160,4 @@ async def validate_workflow(wf_id: str, svc: WorkflowService = Depends(service))
 @router.get("/workflows/{wf_id}/code", response_class=PlainTextResponse)
 async def get_code(wf_id: str, svc: WorkflowService = Depends(service)) -> str:
     view = await svc.get(wf_id)
-    try:
-        return generate(view.workflow)
-    except CompileError as exc:
-        errors = [d.model_dump() for d in view.diagnostics if d.severity == "error"]
-        raise WorkflowHasErrors(str(exc), errors=errors) from exc
+    return get_adapter(view.workflow.framework).generate(view.workflow)

@@ -37,6 +37,15 @@ In async code the v3 run stream's `output` is a method: `await run.output()`. (T
 **P-12 ✅ Old threads become unreadable after changing a channel to/from `DeltaChannel` (v0.6).**
 Delta and non-delta representations are not interchangeable for persisted threads, and deepagents ≥ 0.6 already stores messages/files as delta channels. Never flip a channel's storage mode on a published workflow with live threads (validator E074), and never downgrade deepagents across 0.6.
 
+**P-13 ✅ `KeyError: 'checkpoint_ns'` from `AsyncSqliteSaver.aput_writes` when editing a past checkpoint (Sprint 2).**
+`graph.aupdate_state(config, …)` with a `checkpoint_id` but no `checkpoint_ns` in `configurable` fails on the SQLite saver (Postgres/memory tolerate it). Always send `{"thread_id": …, "checkpoint_id": …, "checkpoint_ns": ""}` for past checkpoints — the LangChain adapter does this in `_config()`.
+
+**P-14 ✅ `NotImplementedError` from `checkpointer.acopy_thread(...)` (Sprint 2).**
+The method exists on `BaseCheckpointSaver` but `InMemorySaver`, `AsyncSqliteSaver` and `AsyncPostgresSaver` do not implement it (langgraph-checkpoint, 2026-09). AgentCanvas copies threads through the public saver contract (`alist` → `aput` + `aput_writes`, ids and namespaces preserved) in `adapters/langchain/persistence.py:copy_thread`; a canary test tells us when upstream implements it.
+
+**P-15 ✅ A node's `error_handler` does not run; the run fails with the original exception (Sprint 2).**
+In langgraph 1.2.12, node-level error handlers are **bypassed when streaming with `stream_mode` containing `"messages"` or `"custom"`, or with `subgraphs=True`** (they work with `invoke`, `"updates"`, `"tasks"`, `"values"`). Verified for raised exceptions and `NodeTimeoutError`. Workaround in the runner: workflows that declare an error route stream with `["tasks", "updates"]` only (no token streaming) and emit `CUSTOM ac.warning tokens_disabled`. The strict-xfail canary `tests/test_upstream_canaries.py` turns red when upstream fixes it.
+
 **P-08 ✅ Breakpoint run ends with no interrupts but the run is not finished.**
 With `interrupt_before/after`, `get_state().interrupts` is empty and `next` holds the pending node. Treat `next` non-empty as "paused"; continue with `ainvoke(None, config)`.
 

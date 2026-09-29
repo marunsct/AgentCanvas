@@ -2,18 +2,18 @@
 // from the Pydantic JSON Schema (see build guide M1-T4) instead of writing it by hand.
 export type Reducer = "replace" | "append" | "add_messages" | "sum" | "merge";
 export interface Channel { name: string; type: Record<string, unknown>; reducer: Reducer; default?: unknown }
-export interface Resource { id: string; type: "model.chat" | "tool.python"; name: string; config: Record<string, unknown> }
+export interface Resource { id: string; type: string; name: string; config: Record<string, unknown> }
 export interface IRNode {
   id: string;
-  type: "core.llm" | "core.agent" | "core.router" | "core.approval" | "core.set" | "core.script";
+  type: string; // registry type, e.g. "core.llm" (IR v1.1: open set checked by the validator)
   name: string;
   label?: string | null;
   config: Record<string, unknown>;
 }
 export interface Endpoint { node: string; port?: string | null }
-export interface IREdge { id: string; kind: "flow" | "wiring"; source: Endpoint; target: Endpoint }
+export interface IREdge { id: string; kind: "flow" | "wiring" | "data"; source: Endpoint; target: Endpoint }
 export interface Workflow {
-  ir_version: "1.0"; id: string; name: string;
+  ir_version: "1.0" | "1.1"; id: string; name: string;
   state: { channels: Channel[] }; resources: Resource[]; nodes: IRNode[]; edges: IREdge[];
 }
 

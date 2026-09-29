@@ -57,6 +57,17 @@ class ValidationContext:
         return succ
 
     @cached_property
+    def reach_successors(self) -> dict[str, set[str]]:
+        """Flow successors plus error routes (a node's error handler can jump to its `error_route`)."""
+        succ: dict[str, set[str]] = defaultdict(set)
+        for k, v in self.successors.items():
+            succ[k] |= v
+        for n in self.wf.nodes:
+            if n.policies and n.policies.error_route:
+                succ[n.id].add(n.policies.error_route)
+        return succ
+
+    @cached_property
     def router_ids(self) -> set[str]:
         return {n.id for n in self.wf.nodes if (m := self.manifest(n)) and m.dynamic_outputs == "routes"}
 

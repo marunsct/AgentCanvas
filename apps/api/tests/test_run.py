@@ -1,13 +1,16 @@
 import importlib.util
+import json
+import pathlib
 import sys
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from agentcanvas.compiler.codegen import generate
-from agentcanvas.runtime.interpreter import build_graph
-from agentcanvas.runtime.nodes import Resources
+from agentcanvas.adapters.langchain.codegen import generate
+from agentcanvas.adapters.langchain.interpreter import build_graph
+from agentcanvas.adapters.langchain.nodes import Resources
+from agentcanvas.ir.models import NodePolicies, RetryPolicySpec, Workflow
 from agentcanvas.testing import scripted, tool_call
 
 
@@ -86,3 +89,33 @@ def test_optional_config_keys_can_be_omitted(triage):
             e.source.port = "route:default"
     code = generate(triage)
     assert "approve_tools=None" in code and 'default="default"' in code
+
+
+# ---- equivalence beyond the triage example: routers, policies, bypass, output schema (TR-COMP-40) ----
+ROUTE_TEMPLATE = pathlib.Path(__file__).parents[1] / "agentcanvas/registry/templates/classify_and_route.ir.json"
+
+
+def route_workflow() -> Workflow:
+    wf = Workflow.model_validate(json.loads(ROUTE_TEMPLATE.read_text()))
+    wf.require_node("n_other").disabled = True  # bypassed node must behave the same in both modes
+    wf.settings.node_defaults = NodePolicies(retry=RetryPolicySpec(max_attempts=2))
+    return wf
+
+
+async def run_route(graph, text: str, thread: str) -> dict:
+    return await graph.ainvoke({"request": text}, {"configurable": {"thread_id": thread}})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("category", ["question", "complaint", "other"])
+async def test_router_template_equivalence(tmp_path, category):
+    wf = route_workflow()
+    mod = load_generated(generate(wf), tmp_path)
+
+    def res():
+        return Resources(overrides={"fast_model": scripted(category, "An answer.")})
+
+    interpreted = await run_route(build_graph(wf, res(), checkpointer=InMemorySaver()), "hello", "a")
+    compiled = await run_route(mod.build_graph(res(), checkpointer=InMemorySaver()), "hello", "a")
+    assert interpreted == compiled
+    assert set(interpreted) <= {"category", "reply"}  # output schema = settings.output_channels

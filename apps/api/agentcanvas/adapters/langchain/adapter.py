@@ -1,0 +1,238 @@
+"""The LangChain / LangGraph / Deep Agents framework adapter (adapter #1, spec doc 12)."""
+
+from __future__ import annotations
+
+import warnings
+from collections import OrderedDict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import asdict
+from typing import Any
+
+from langchain_core.runnables import RunnableConfig
+from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
+
+from agentcanvas.adapters.langchain import nodes as ac
+from agentcanvas.adapters.langchain.codegen import generate
+from agentcanvas.adapters.langchain.events import jsonable, node_index, translate
+from agentcanvas.adapters.langchain.interpreter import build_from_plan
+from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread, open_persistence
+from agentcanvas.adapters.langchain.plan import lower
+from agentcanvas.ir.canonical import ir_hash
+from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
+
+STREAM_MODES = ["tasks", "updates", "messages", "custom"]
+# langgraph 1.2.12 skips node `error_handler`s when streaming "messages"/"custom" or with subgraphs=True
+# (FAQ P-15, canary test `test_upstream_error_handler_with_messages_stream`). Workflows that use error routes
+# therefore stream without tokens until upstream is fixed.
+SAFE_STREAM_MODES = ["tasks", "updates"]
+warnings.filterwarnings("ignore", message=".*langchain.mcp.*beta.*")  # surfaced as I010 diagnostics instead
+
+
+class LangChainAdapter:
+    id = "langchain"
+
+    def __init__(self, graph_cache_size: int = 128):
+        self._p: Persistence | None = None
+        self._graphs: OrderedDict[tuple[str, int], tuple[Any, Any]] = OrderedDict()
+        self._cache_size = graph_cache_size
+        self._shared = ac.Resources()
+
+    # ------------------------------------------------------------ plumbing ----
+    def default_resources(self) -> ac.Resources:
+        return self._shared
+
+    @asynccontextmanager
+    async def persistence(self, database_url: str | None) -> AsyncIterator[None]:
+        async with open_persistence(database_url) as p:
+            self._p = p
+            try:
+                yield
+            finally:
+                self._p = None
+                self._graphs.clear()
+
+    @property
+    def persistence_kind(self) -> str:
+        return self._p.kind if self._p else "none"
+
+    def _persist(self) -> Persistence:
+        if self._p is None:
+            raise RuntimeError("persistence is not open; use `async with adapter.persistence(url)`")
+        return self._p
+
+    def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
+        """Compiled graph for (IR, resources), cached: rebuilding per run is wasteful for real models."""
+        key = (ir_hash(wf), id(resources))  # the entry keeps `resources` alive, so its id cannot be reused
+        if key in self._graphs:
+            self._graphs.move_to_end(key)
+            return self._graphs[key][1]
+        p = self._persist()
+        graph = build_from_plan(lower(wf), resources, checkpointer=p.checkpointer, store=p.store)
+        self._graphs[key] = (resources, graph)
+        if len(self._graphs) > self._cache_size:
+            self._graphs.popitem(last=False)
+        return graph
+
+    @staticmethod
+    def _config(
+        wf: Workflow, thread_id: str, checkpoint_id: str | None = None, run_id: str | None = None
+    ) -> RunnableConfig:
+        configurable: dict[str, Any] = {"thread_id": thread_id}
+        if checkpoint_id:
+            configurable["checkpoint_id"] = checkpoint_id
+            configurable["checkpoint_ns"] = ""  # AsyncSqliteSaver.aput_writes needs it for past checkpoints (FAQ P-13)
+        cfg: RunnableConfig = {"configurable": configurable, "recursion_limit": wf.settings.recursion_limit}
+        if run_id:
+            cfg["metadata"] = {"workflow_id": wf.id, "run_id": run_id, "ir_hash": ir_hash(wf)}
+            cfg["tags"] = ["agentcanvas", f"workflow:{wf.id}"]
+            cfg["run_name"] = wf.name
+        return cfg
+
+    # --------------------------------------------------------- compilation ----
+    def generate(self, wf: Workflow) -> str:
+        return generate(wf)
+
+    # ----------------------------------------------------------- execution ----
+    async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
+        wf = spec.workflow
+        graph = self.graph(wf, resources)
+        names = node_index(wf)
+        cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id)
+        if spec.resume is not None:
+            value = {spec.resume.interrupt_id: spec.resume.value} if spec.resume.interrupt_id else spec.resume.value
+            graph_input: Any = Command(resume=value)
+        else:
+            graph_input = spec.input
+        error_routes = any(n.policies and n.policies.error_route for n in wf.nodes)
+        kwargs: dict[str, Any] = {
+            "stream_mode": SAFE_STREAM_MODES if error_routes else STREAM_MODES,
+            "subgraphs": not error_routes,
+            "version": "v2",
+            "durability": spec.durability or wf.settings.durability,
+        }
+        if error_routes:
+            yield {
+                "type": "CUSTOM",
+                "name": "ac.warning",
+                "value": {
+                    "code": "tokens_disabled",
+                    "message": "Token streaming is off for workflows with error routes "
+                    "(upstream LangGraph issue, FAQ P-15).",
+                },
+            }
+        if spec.context:
+            kwargs["context"] = spec.context
+        if spec.mode == "debug":
+            id2name = {n.id: n.name for n in wf.nodes}
+            kwargs["interrupt_before"] = [id2name[i] for i in spec.breakpoints_before if i in id2name] or None
+            kwargs["interrupt_after"] = [id2name[i] for i in spec.breakpoints_after if i in id2name] or None
+        try:
+            async for part in graph.astream(graph_input, cfg, **kwargs):
+                for ev in translate(part, names):
+                    yield ev
+        except GraphRecursionError as exc:
+            yield {
+                "type": "RUN_ERROR",
+                "code": "recursion_limit",
+                "message": f"stopped after {wf.settings.recursion_limit} steps without reaching END "
+                f"(GraphRecursionError: {exc}). Add a router exit or raise the recursion limit.",
+            }
+            return
+        except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
+            yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
+            return
+
+        state = await self._state(graph, self._config(wf, spec.thread_id), names)
+        for intr in state.interrupts:
+            yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}
+        paused = bool(state.interrupts or state.next)
+        yield {
+            "type": "RUN_FINISHED",
+            "outcome": "interrupt" if paused else "success",
+            "breakpoint": paused and not state.interrupts,
+            "interrupts": [asdict(i) for i in state.interrupts],
+            "next": state.next,
+            "checkpoint_id": state.checkpoint_id,
+            "output": _outputs(wf, state.values),
+        }
+
+    # --------------------------------------------------------------- state ----
+    async def _state(self, graph: Any, cfg: RunnableConfig, names: dict[str, str]) -> ThreadState:
+        snap = await graph.aget_state(cfg)
+        interrupts: list[InterruptInfo] = []
+        for task in snap.tasks:
+            for intr in task.interrupts:
+                payload = jsonable(intr.value)
+                node = names.get(task.name) or (payload.get("canvas_node_id") if isinstance(payload, dict) else None)
+                interrupts.append(
+                    InterruptInfo(id=intr.id, kind=interrupt_kind(payload), canvas_node_id=node, payload=payload)
+                )
+        return ThreadState(
+            values=jsonable(snap.values or {}),
+            next=[names.get(n) or n for n in snap.next],
+            interrupts=interrupts,
+            checkpoint_id=(snap.config or {}).get("configurable", {}).get("checkpoint_id"),
+            step=(snap.metadata or {}).get("step"),
+        )
+
+    async def get_state(self, wf: Workflow, thread_id: str, resources: ac.Resources) -> ThreadState:
+        return await self._state(self.graph(wf, resources), self._config(wf, thread_id), node_index(wf))
+
+    async def history(
+        self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100
+    ) -> list[CheckpointInfo]:
+        graph, names = self.graph(wf, resources), node_index(wf)
+        out = []
+        async for snap in graph.aget_state_history(self._config(wf, thread_id), limit=limit):
+            meta = snap.metadata or {}
+            writes = {names.get(t.name) or t.name: jsonable(t.result) for t in snap.tasks if t.result is not None}
+            out.append(
+                CheckpointInfo(
+                    checkpoint_id=snap.config["configurable"]["checkpoint_id"],
+                    parent_checkpoint_id=(snap.parent_config or {}).get("configurable", {}).get("checkpoint_id"),
+                    step=meta.get("step"),
+                    source=meta.get("source"),
+                    next=[names.get(n) or n for n in snap.next],
+                    writes=writes or None,
+                    created_at=snap.created_at,
+                )
+            )
+        return out
+
+    async def update_state(
+        self,
+        wf: Workflow,
+        thread_id: str,
+        resources: ac.Resources,
+        values: dict[str, Any],
+        as_node: str | None,
+        checkpoint_id: str | None,
+    ) -> str:
+        graph = self.graph(wf, resources)
+        node = wf.node(as_node) if as_node else None
+        node_name = node.name if node else as_node  # accept canvas id or node name
+        new_cfg = await graph.aupdate_state(self._config(wf, thread_id, checkpoint_id), values, as_node=node_name)
+        return new_cfg["configurable"]["checkpoint_id"]
+
+    async def copy_thread(
+        self, wf: Workflow, src_thread: str, dst_thread: str, resources: ac.Resources, checkpoint_id: str | None
+    ) -> str:
+        """Copy all checkpoints of a thread (ids preserved) so a fork can continue from any of them."""
+        await copy_thread(self._persist().checkpointer, src_thread, dst_thread)
+        state = await self.get_state(wf, dst_thread, resources)
+        return checkpoint_id or state.checkpoint_id or ""
+
+    async def delete_thread(self, thread_id: str) -> None:
+        await self._persist().checkpointer.adelete_thread(thread_id)
+
+
+def _outputs(wf: Workflow, values: dict[str, Any]) -> dict[str, Any]:
+    s = wf.settings
+    if s.output_channels:
+        keep = set(s.output_channels)
+    else:
+        keep = {c.name for c in wf.state.channels if c.io in ("inout", "out")}
+    return {k: v for k, v in values.items() if k in keep}

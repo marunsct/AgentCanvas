@@ -8,7 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, TimeoutPolicy
 from typing_extensions import TypedDict
 
-from agentcanvas.runtime import nodes as ac
+from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.testing import scripted
 
 

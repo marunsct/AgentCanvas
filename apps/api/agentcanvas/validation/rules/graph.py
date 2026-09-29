@@ -9,7 +9,7 @@ from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, 
 
 @rule
 def reachability(ctx: ValidationContext) -> Iterator[Diagnostic]:
-    succ = ctx.successors
+    succ = ctx.reach_successors
     seen: set[str] = set()
     stack = ["START"]
     while stack:

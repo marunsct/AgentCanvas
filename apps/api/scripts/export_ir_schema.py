@@ -1,6 +1,6 @@
 """Export the IR JSON Schema and node manifests for the web app (ticket M1-T7).
 
-    uv run python scripts/export_ir_schema.py      # writes packages/ir-schema/*.json
+uv run python scripts/export_ir_schema.py      # writes packages/ir-schema/*.json
 """
 
 from __future__ import annotations

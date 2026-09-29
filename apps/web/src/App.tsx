@@ -10,14 +10,30 @@ const COLORS: Record<NodeStatus, string> = {
   idle: "#e5e7eb", running: "#3b82f6", ok: "#22c55e", error: "#ef4444", interrupted: "#f59e0b",
 };
 
-export default function App({ workflowId = "wf_support_triage" }: { workflowId?: string }) {
+const PROJECT = "prj_default";
+
+/** Find the demo workflow in the default project, or create it from the `support_triage` template. */
+async function loadDemoWorkflow(): Promise<Workflow> {
+  const list = await (await fetch(`/api/v1/projects/${PROJECT}/workflows`)).json();
+  let id: string | undefined = list.items.find((w: { name: string }) => w.name === "Support triage")?.id;
+  if (!id) {
+    const created = await fetch(`/api/v1/projects/${PROJECT}/workflows`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Support triage", template: "support_triage" }),
+    });
+    id = (await created.json()).id;
+  }
+  return (await (await fetch(`/api/v1/workflows/${id}`)).json()).ir as Workflow;
+}
+
+export default function App() {
   const [wf, setWf] = useState<Workflow | null>(null);
   const [ticket, setTicket] = useState("Where is my invoice?");
   const run = useRun();
 
   useEffect(() => {
-    fetch(`/api/workflows/${workflowId}`).then((r) => r.json()).then(setWf).catch(console.error);
-  }, [workflowId]);
+    loadDemoWorkflow().then(setWf).catch(console.error);
+  }, []);
 
   const flow = useMemo(() => (wf ? irToFlow(wf) : { nodes: [], edges: [] }), [wf]);
   const nodes = flow.nodes.map((n) => ({
@@ -27,11 +43,12 @@ export default function App({ workflowId = "wf_support_triage" }: { workflowId?:
 
   const start = () => {
     run.reset();
-    void postStream(`/api/workflows/${workflowId}/runs/stream`, { input: { ticket } }, run.apply);
+    if (!wf) return;
+    void postStream(`/api/v1/workflows/${wf.id}/runs/stream`, { input: { ticket } }, run.apply);
   };
   const decide = (value: unknown) => {
     if (!run.threadId) return;
-    void postStream(`/api/threads/${run.threadId}/resume`, { value }, run.apply);
+    void postStream(`/api/v1/threads/${run.threadId}/resume`, { value, interrupt_id: run.interrupt?.id }, run.apply);
   };
   const isToolApproval = typeof run.interrupt?.payload === "object" && run.interrupt?.payload !== null
     && "action_requests" in (run.interrupt.payload as object);

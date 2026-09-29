@@ -152,7 +152,7 @@ async def test_delete(api_client):
 async def test_code_and_validate(api_client):
     wf = await create(api_client, template="classify_and_route")
     code = (await api_client.get(f"/v1/workflows/{wf['id']}/code")).text
-    assert '"route", route_route, {"question": "answer"' in code
+    assert "builder.add_conditional_edges(" in code and '"question": "answer"' in code
     empty = await create(api_client)
     r = await api_client.get(f"/v1/workflows/{empty['id']}/code")
     assert r.status_code == 200  # an empty graph is valid (nothing to run)
