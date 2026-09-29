@@ -32,7 +32,9 @@ class FrameworkAdapter(Protocol):
     # ---- thread state
     async def get_state(self, wf: Workflow, thread_id: str, resources: Any) -> ThreadState: ...
 
-    async def history(self, wf: Workflow, thread_id: str, resources: Any, limit: int) -> list[CheckpointInfo]: ...
+    async def history(
+        self, wf: Workflow, thread_id: str, resources: Any, limit: int, include_values: bool = False
+    ) -> list[CheckpointInfo]: ...
 
     async def update_state(
         self,

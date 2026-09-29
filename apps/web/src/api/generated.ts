@@ -173,6 +173,8 @@ export type Kind2 = string;
 export type RunId = string;
 export type Status = string;
 export type ThreadId = string;
+export type WorkflowId = string | null;
+export type WorkflowName = string | null;
 export type Replace = boolean;
 export type ContextWindow = number | null;
 export type Id11 = string;
@@ -241,7 +243,7 @@ export type Id15 = string;
 export type Status2 = string;
 export type Title = string | null;
 export type UpdatedAt1 = string;
-export type WorkflowId = string;
+export type WorkflowId1 = string;
 export type Items = ThreadOut[];
 export type NextCursor = string | null;
 export type CreatedAt4 = string;
@@ -739,6 +741,8 @@ export interface InterruptOut {
   run_id: RunId;
   status: Status;
   thread_id: ThreadId;
+  workflow_id?: WorkflowId;
+  workflow_name?: WorkflowName;
 }
 export interface Payload {
   [k: string]: unknown;
@@ -917,7 +921,7 @@ export interface ThreadOut {
   status: Status2;
   title: Title;
   updated_at: UpdatedAt1;
-  workflow_id: WorkflowId;
+  workflow_id: WorkflowId1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

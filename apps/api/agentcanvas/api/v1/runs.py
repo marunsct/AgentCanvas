@@ -18,11 +18,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import InterruptTask, Run, Thread
+from agentcanvas.db.models import InterruptTask, Run, Thread, WorkflowRow
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.services.explain import explain
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
 from agentcanvas.validation import has_errors
@@ -98,6 +99,8 @@ class ThreadPage(BaseModel):
 
 class InterruptOut(BaseModel):
     id: str
+    workflow_id: str | None = None
+    workflow_name: str | None = None
     thread_id: str
     run_id: str
     canvas_node_id: str
@@ -287,13 +290,30 @@ async def get_thread(
 async def thread_history(
     thread_id: str,
     limit: int = Query(100, ge=1, le=1000),
+    include_values: bool = False,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
     r: Runner = Depends(runner),
 ) -> list[dict[str, Any]]:
     t = await _thread(session, thread_id)
     wf = (await _svc(session, settings).get(t.workflow_id)).workflow
-    return [c.__dict__ for c in await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit)]
+    items = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values)
+    return [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
+
+
+@router.get("/threads/{thread_id}/explain")
+async def explain_thread(
+    thread_id: str,
+    limit: int = Query(200, ge=1, le=1000),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    r: Runner = Depends(runner),
+) -> list[dict[str, Any]]:
+    """Explain mode (FR-X-17): what ran at each super-step, what it wrote and why routers chose their route."""
+    t = await _thread(session, thread_id)
+    wf = (await _svc(session, settings).get(t.workflow_id)).workflow
+    history = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values=True)
+    return explain(wf, history)
 
 
 @router.get("/threads/{thread_id}/runs", response_model=list[RunOut])
@@ -406,9 +426,11 @@ async def delete_thread(
 
 
 # ------------------------------------------------------------------- inbox ----
-def _intr(x: InterruptTask) -> InterruptOut:
+def _intr(x: InterruptTask, workflow_id: str | None = None, workflow_name: str | None = None) -> InterruptOut:
     return InterruptOut(
         id=x.id,
+        workflow_id=workflow_id,
+        workflow_name=workflow_name,
         thread_id=x.thread_id,
         run_id=x.run_id,
         canvas_node_id=x.canvas_node_id,
@@ -428,11 +450,16 @@ async def inbox(
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
 ) -> list[InterruptOut]:
-    q = select(InterruptTask).where(InterruptTask.status == status)
+    q = (
+        select(InterruptTask, Thread.workflow_id, WorkflowRow.name)
+        .join(Thread, Thread.id == InterruptTask.thread_id)
+        .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+        .where(InterruptTask.status == status)
+    )
     if workflow_id:
-        q = q.join(Thread, Thread.id == InterruptTask.thread_id).where(Thread.workflow_id == workflow_id)
-    rows = (await session.scalars(q.order_by(InterruptTask.created_at).limit(limit))).all()
-    return [_intr(x) for x in rows]
+        q = q.where(Thread.workflow_id == workflow_id)
+    rows = (await session.execute(q.order_by(InterruptTask.created_at).limit(limit))).all()
+    return [_intr(x, wid, name) for x, wid, name in rows]
 
 
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])

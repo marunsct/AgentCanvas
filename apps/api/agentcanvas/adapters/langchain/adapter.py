@@ -182,7 +182,7 @@ class LangChainAdapter:
         return await self._state(self.graph(wf, resources), self._config(wf, thread_id), node_index(wf))
 
     async def history(
-        self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100
+        self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100, include_values: bool = False
     ) -> list[CheckpointInfo]:
         graph, names = self.graph(wf, resources), node_index(wf)
         out = []
@@ -198,6 +198,7 @@ class LangChainAdapter:
                     next=[names.get(n) or n for n in snap.next],
                     writes=writes or None,
                     created_at=snap.created_at,
+                    values=jsonable(snap.values or {}) if include_values else None,
                 )
             )
         return out

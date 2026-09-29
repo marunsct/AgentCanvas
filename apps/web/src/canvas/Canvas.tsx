@@ -12,11 +12,15 @@ import type { Command } from "../ir/commands";
 import { allNames, defaultsFromSchema, uniqueName } from "../ir/model";
 import { useEditor } from "../editor/store";
 import { useRun } from "../run/runStore";
+import { useUi } from "../editor/ui";
+import { type Clip, copySelection, pasteCommands } from "./clipboard";
 import { checkConnection } from "./connect";
+import { tidyLayout } from "./layout";
 import { type CanvasData, irToFlow } from "./irToFlow";
 import { NODE_TYPES } from "./nodes";
 
 export const DND_MIME = "application/agentcanvas";
+let clip: Clip | null = null; // in-memory clipboard shared by all canvases in this tab
 
 export function Canvas() {
   const wf = useEditor((s) => s.wf);
@@ -26,12 +30,17 @@ export function Canvas() {
   const hint = useEditor((s) => s.connectHint);
   const { dispatch, select, setPositions, setConnectHint, setFocusNode } = useEditor.getState();
   const status = useRun((s) => s.status);
+  const highlight = useRun((s) => s.highlight);
+  const output = useRun((s) => s.output);
+  const breakpoints = useEditor((s) => s.breakpoints);
   const manifests = useManifests();
   const rf = useReactFlow();
 
   const derived = useMemo(
-    () => (wf ? irToFlow(wf, layout, manifests, diagnostics, status, selected) : { nodes: [], edges: [] }),
-    [wf, layout, manifests, diagnostics, status, selected],
+    () => (wf
+      ? irToFlow(wf, layout, manifests, diagnostics, status, selected, { highlight, breakpoints, output })
+      : { nodes: [], edges: [] }),
+    [wf, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);
@@ -69,6 +78,36 @@ export function Canvas() {
     });
     return () => setFocusNode(null);
   }, [rf, select, setFocusNode]);
+
+  // "Tidy up" (ELK) needs React Flow's measured sizes, so the canvas registers it
+  useEffect(() => {
+    useEditor.getState().setTidy(async () => {
+      const positions = await tidyLayout(rf.getNodes(), rf.getEdges());
+      useEditor.getState().setPositions(positions, true);
+      requestAnimationFrame(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 300 }));
+    });
+    return () => useEditor.getState().setTidy(null);
+  }, [rf]);
+
+  // copy / paste (M2-T10); ignored while typing in a form field
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, select, .code-view")) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const st = useEditor.getState();
+      if (e.key.toLowerCase() === "c" && st.wf) {
+        const ids = rf.getNodes().filter((n) => n.selected).map((n) => n.id);
+        clip = copySelection(st.wf, ids, st.layout);
+      } else if (e.key.toLowerCase() === "v" && clip && st.wf) {
+        const { commands, positions, ids } = pasteCommands(st.wf, clip);
+        st.dispatch(commands);
+        st.setPositions(positions, true);
+        if (ids[0]) st.select(ids[0]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rf]);
 
   const onNodesChange = useCallback((changes: NodeChange<Node<CanvasData>>[]) => {
     setNodes((ns) => applyNodeChanges(changes, ns));
@@ -138,6 +177,11 @@ export function Canvas() {
         onConnect={onConnect} isValidConnection={isValidConnection}
         onConnectEnd={() => { lastHint.current = null; setTimeout(() => setConnectHint(null), 1500); }}
         onPaneClick={() => select(null)}
+        onDoubleClick={(e) => {
+          if (!(e.target as HTMLElement).classList.contains("react-flow__pane")) return;
+          useUi.getState().openPalette(rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+        }}
+        zoomOnDoubleClick={false}
         deleteKeyCode={["Backspace", "Delete"]} minZoom={0.1} proOptions={{ hideAttribution: false }}
       >
         <Background gap={16} />

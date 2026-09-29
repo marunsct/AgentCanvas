@@ -41,8 +41,8 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
   const rows = Math.max(wiring.length, outs.length, 1);
   return (
     <div
-      className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}`}
-      style={{ borderTopColor: m?.color ?? "#64748b", minHeight: HEAD + rows * ROW + 8 }}
+      className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}${data.highlight ? " highlight" : ""}`}
+      style={{ borderTopColor: m?.color ?? "#64748b", minHeight: HEAD + rows * ROW + 8 + (data.preview ? 34 : 0) }}
       data-testid={`node-${data.name}`}
     >
       <Handle type="target" id="in" position={Position.Left} className="h-flow" style={{ top: 20 }} title="flow in" />
@@ -51,6 +51,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
         <span className="title" title={data.type}>{data.label}</span>
         <Badges data={data} />
       </header>
+      {data.breakpoint && <span className="bp-dot" title="breakpoint: debug runs pause before this node" />}
       <div className="subtitle">{data.name}{data.disabled ? " · bypassed" : ""}</div>
       {wiring.map((p, i) => (
         <div key={p.name} className="port-row in" style={{ top: HEAD + i * ROW }}>
@@ -62,6 +63,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
           <em>{p.type}{p.multi ? "[]" : ""}</em>
         </div>
       ))}
+      {data.preview && <div className="preview" style={{ top: HEAD + rows * ROW }} title={data.preview}>{data.preview}</div>}
       {outs.map((h, i) => (
         <div key={h} className="port-row out" style={{ top: HEAD + i * ROW }}>
           <span>{h === "next" ? "" : h.slice(6)}</span>

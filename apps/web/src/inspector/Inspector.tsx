@@ -13,6 +13,7 @@ export function Inspector() {
   const selected = useEditor((s) => s.selected);
   const diagnostics = useEditor((s) => s.diagnostics);
   const dispatch = useEditor((s) => s.dispatch);
+  const breakpoints = useEditor((s) => s.breakpoints);
   const manifests = useManifests();
   if (!wf) return null;
   const el = selected ? findElement(wf, selected) : undefined;
@@ -45,6 +46,12 @@ export function Inspector() {
         </ul>
       )}
       {m && <ConfigForm element={el} manifest={m} isResource={res} />}
+      {!res && (
+        <button type="button" onClick={() => useEditor.getState().toggleBreakpoint(el.id)}
+          title="Debug runs pause before this node">
+          {breakpoints.includes(el.id) ? "● Remove breakpoint" : "○ Add breakpoint"}
+        </button>
+      )}
       {!res && <PoliciesEditor node={el} />}
       <button type="button" className="danger"
         onClick={() => { dispatch([res ? { op: "RemoveResource", id: el.id } : { op: "RemoveNode", id: el.id }]); useEditor.getState().select(null); }}>

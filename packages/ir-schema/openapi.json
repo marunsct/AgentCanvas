@@ -847,6 +847,28 @@
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id"
+          },
+          "workflow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Name"
           }
         },
         "required": [
@@ -3087,6 +3109,66 @@
         ]
       }
     },
+    "/v1/threads/{thread_id}/explain": {
+      "get": {
+        "description": "Explain mode (FR-X-17): what ran at each super-step, what it wrote and why routers chose their route.",
+        "operationId": "explain_thread_v1_threads__thread_id__explain_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Explain Thread V1 Threads  Thread Id  Explain Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explain Thread",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
     "/v1/threads/{thread_id}/fork": {
       "post": {
         "description": "Time travel: continue from a past checkpoint, optionally after editing it (M4-T7).",
@@ -3161,6 +3243,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_values",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Values",
+              "type": "boolean"
             }
           }
         ],

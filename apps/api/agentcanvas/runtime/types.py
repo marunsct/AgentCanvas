@@ -58,8 +58,9 @@ class CheckpointInfo:
     step: int | None
     source: str | None  # input | loop | update | fork
     next: list[str]  # canvas node ids
-    writes: dict[str, Any] | None  # {canvas_node_id: update} produced by the step that created this checkpoint
+    writes: dict[str, Any] | None  # {canvas_node_id: update} written by the tasks that ran *after* this checkpoint
     created_at: str | None
+    values: dict[str, Any] | None = None  # state at this checkpoint (only when requested)
 
 
 def interrupt_kind(payload: Any) -> InterruptKind:

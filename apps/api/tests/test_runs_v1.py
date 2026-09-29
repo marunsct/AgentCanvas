@@ -82,6 +82,7 @@ async def test_run_pauses_for_tool_approval_and_inbox_resumes(triage_api):
 
     inbox = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
     assert len(inbox) == 1 and inbox[0]["payload"]["action_requests"][0]["name"] == "send_reply"
+    assert inbox[0]["workflow_id"] == wf and inbox[0]["workflow_name"] == "Support triage"
     assert (await api.get("/v1/threads/th_low")).json()["status"] == "interrupted"
 
     r = await api.post(
@@ -310,3 +311,24 @@ async def test_durability_override_is_accepted(triage_api):
         f"/v1/workflows/{triage_api.wf_id}/runs/stream", json={"input": {"ticket": "x"}, "durability": "sync"}
     )
     assert events(r.text)[-1]["outcome"] == "interrupt"
+
+
+async def test_explain_mode_narrates_steps_and_router_decisions(triage_api):
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Down!"}, "thread_id": "th_high_x"})
+    steps = (await api.get("/v1/threads/th_high_x/explain")).json()
+    assert [s["ran"][0]["node_id"] for s in steps] == ["n_cls", "n_rt", "n_esc", "n_ok"]
+    assert steps[0]["ran"][0]["wrote"] == {"urgency": "high"}
+    decision = steps[1]["ran"][0]["decision"]
+    assert decision == {
+        "route": "high",
+        "condition": 'state.urgency == "high"',
+        "reason": '`state.urgency == "high"` is true',
+        "target": "n_esc",
+        "target_name": "escalate",
+    }
+    assert "chose route 'high' → escalate" in steps[1]["text"]
+    assert steps[-1]["ran"][0]["completed"] is False and "waiting" in steps[-1]["text"]
+    hist = (await api.get("/v1/threads/th_high_x/history", params={"include_values": True})).json()
+    assert hist[0]["values"]["summary"] == "ESCALATED: Down!"
+    assert "values" not in (await api.get("/v1/threads/th_high_x/history")).json()[0]

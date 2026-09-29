@@ -47,6 +47,8 @@ export interface EditorState {
   notice: Notice | null;
   connectHint: string | null;
   focusNode: ((id: string) => void) | null;
+  tidy: (() => Promise<void>) | null;
+  breakpoints: string[]; // canvas node ids; debug runs pause before them (per viewer, remembered locally)
 
   load: (id: string) => Promise<void>;
   dispatch: (cmds: Command[], opts?: { debounceMs?: number; history?: "push" | "undo" | "redo" }) => void;
@@ -58,6 +60,8 @@ export interface EditorState {
   setNotice: (n: Notice | null) => void;
   setConnectHint: (h: string | null) => void;
   setFocusNode: (fn: ((id: string) => void) | null) => void;
+  setTidy: (fn: (() => Promise<void>) | null) => void;
+  toggleBreakpoint: (id: string) => void;
   reset: () => void;
 }
 
@@ -68,8 +72,20 @@ const historyMode: { next: "push" | "undo" | "redo" } = { next: "push" };
 
 const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
-  inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null,
+  inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null, tidy: null,
+  breakpoints: [] as string[],
 };
+
+const bpKey = (id: string) => `agentcanvas.breakpoints.${id}`;
+
+function loadBreakpoints(id: string): string[] {
+  try {
+    const raw = localStorage.getItem(bpKey(id));
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 /** Merge a new UpdateNode/UpdateResource into the last queued one for the same element (typing in a form). */
 function coalesce(pending: Command[], cmd: Command): Command[] {
@@ -89,7 +105,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
-      diagnostics: out.diagnostics, pending: [], inflight: false,
+      diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
     });
   },
 
@@ -176,6 +192,17 @@ export const useEditor = create<EditorState>((set, get) => ({
   setNotice: (notice) => set({ notice }),
   setConnectHint: (connectHint) => set({ connectHint }),
   setFocusNode: (focusNode) => set({ focusNode }),
+  setTidy: (tidy) => set({ tidy }),
+  toggleBreakpoint: (id) => {
+    const { breakpoints, workflowId } = get();
+    const next = breakpoints.includes(id) ? breakpoints.filter((b) => b !== id) : [...breakpoints, id];
+    set({ breakpoints: next });
+    try {
+      if (workflowId) localStorage.setItem(bpKey(workflowId), JSON.stringify(next));
+    } catch {
+      /* storage may be unavailable (private window); breakpoints still work for this session */
+    }
+  },
 }));
 
 export function positionOf(layout: Layout, id: string): Position | undefined {

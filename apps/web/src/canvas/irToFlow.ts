@@ -17,6 +17,15 @@ export interface CanvasData extends Record<string, unknown> {
   warnings: number;
   status: NodeStatus;
   disabled: boolean;
+  breakpoint?: boolean;
+  highlight?: boolean;
+  preview?: string; // tail of the streamed tokens (M4-T3)
+}
+
+export interface FlowExtras {
+  highlight?: string[];
+  breakpoints?: string[];
+  output?: Record<string, string>;
 }
 
 export const PORT_COLORS: Record<string, string> = {
@@ -68,7 +77,10 @@ export function irToFlow(
   diagnostics: Diagnostic[] = [],
   status: Record<string, NodeStatus> = {},
   selected: string | null = null,
+  extras: FlowExtras = {},
 ): { nodes: Node<CanvasData>[]; edges: Edge[] } {
+  const hl = new Set(extras.highlight ?? []);
+  const bp = new Set(extras.breakpoints ?? []);
   const auto = autoPositions(wf);
   const placed = (id: string) => layout[id] ?? auto[id] ?? { x: 0, y: 0 };
   // START/END without a saved position sit left/right of whatever the user placed, never on top of it
@@ -94,6 +106,8 @@ export function irToFlow(
         routes: kind === "node" && manifest?.dynamic_outputs === "routes" ? routesOf(el as IRNode) : undefined,
         errors: count(el.id, "error"), warnings: count(el.id, "warning"), status: status[el.id] ?? "idle",
         disabled: kind === "node" && Boolean((el as IRNode).disabled),
+        breakpoint: bp.has(el.id), highlight: hl.has(el.id),
+        preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
       },
     };
   };

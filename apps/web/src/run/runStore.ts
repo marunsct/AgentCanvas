@@ -15,18 +15,26 @@ export interface RunState {
   error: string | null;
   running: boolean;
   breakpoint: boolean;
+  runSeq: number; // increments whenever a run ends (timeline/explain/chat refetch)
+  highlight: string[]; // node ids emphasised by the timeline/explain views
+  next: string[];
   reset: () => void;
   apply: (ev: RunEvent) => void;
+  setHighlight: (ids: string[]) => void;
+  setThread: (id: string | null) => void;
 }
 
 const empty = {
   status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], error: null, breakpoint: false,
+  highlight: [], next: [],
 };
 
 export const useRun = create<RunState>((set) => ({
-  threadId: null, runId: null, running: false, ...empty,
+  threadId: null, runId: null, running: false, runSeq: 0, ...empty,
   reset: () => set({ ...empty }),
   apply: (ev) => set((s) => reduce(s, ev)),
+  setHighlight: (highlight) => set({ highlight }),
+  setThread: (threadId) => set({ threadId, ...empty }),
 }));
 
 /** Pure reducer (unit-tested): how each canonical event changes the canvas. */
@@ -51,9 +59,10 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
       if (ev.name === "ac.warning") return { warnings: [...s.warnings, String(ev.value.message ?? "")] };
       return {};
     case "RUN_FINISHED":
-      return { running: false, finalOutput: ev.output ?? null, breakpoint: Boolean(ev.breakpoint) };
+      return { running: false, finalOutput: ev.output ?? null, breakpoint: Boolean(ev.breakpoint), next: ev.next ?? [],
+        runSeq: s.runSeq + 1 };
     case "RUN_ERROR":
-      return { running: false, error: ev.message };
+      return { running: false, error: ev.message, runSeq: s.runSeq + 1 };
     default:
       return {};
   }

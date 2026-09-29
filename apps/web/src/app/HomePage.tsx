@@ -22,7 +22,10 @@ export function HomePage() {
 
   return (
     <div className="page home">
-      <header className="topbar"><span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span></header>
+      <header className="topbar">
+        <span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span><span className="spacer" />
+        <Link to="/inbox">Inbox</Link>
+      </header>
       <section>
         <h2>New workflow</h2>
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); create.mutate({ name: name.trim() || "Untitled workflow" }); }}>
