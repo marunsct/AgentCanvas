@@ -238,6 +238,13 @@ def apply_node_defaults(builder: StateGraph, defaults: dict[str, Any] | None) ->
 
 
 # -------------------------------------------------------------- resources ----
+def tag_model(model: Any, model_id: str | None) -> Any:
+    """Record the catalog id (provider:model) in the model's callback metadata, so usage can be priced (M4-T11)."""
+    if model_id and isinstance(model, BaseChatModel):
+        model.metadata = {**(model.metadata or {}), "ac_model": model_id}
+    return model
+
+
 class Resources:
     """Resolves resource configs into live objects. Tests and the fake server inject models here.
 
@@ -259,10 +266,10 @@ class Resources:
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
-            return self._overrides[name]
+            return tag_model(self._overrides[name], config.get("model"))
         if name not in self._cache:
             params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
-            self._cache[name] = init_chat_model(config["model"], **params)
+            self._cache[name] = tag_model(init_chat_model(config["model"], **params), config["model"])
         return self._cache[name]
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:

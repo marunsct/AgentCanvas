@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from agentcanvas.adapters.spi import FrameworkAdapter
 from agentcanvas.db.models import InterruptTask, Run, Thread
@@ -24,8 +24,9 @@ from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.canonical import ir_hash
-from agentcanvas.ir.models import Workflow
+from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
+from agentcanvas.registry import default_registry
 from agentcanvas.runtime.types import ResumeSpec, RunMode, RunSpec
 
 log = get_logger(__name__)
@@ -43,6 +44,37 @@ class RunHandle:
     task: asyncio.Task | None = None
     status: str = "running"
     finished_at: float | None = None
+    usage: dict[str, Any] = field(
+        default_factory=lambda: {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "priced": True}
+    )
+
+
+class BudgetExceeded(Exception):
+    """A run went over its workflow budget (FR-X-15)."""
+
+
+def price(model_id: str | None, tokens_in: int, tokens_out: int) -> float | None:
+    """USD for a model call from catalog prices; None when the model or its prices are unknown."""
+    info = default_registry().model(model_id or "")
+    if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
+        return None
+    return (tokens_in * info.price_in_per_mtok + tokens_out * info.price_out_per_mtok) / 1_000_000
+
+
+def check_budget(budget: Budget | None, usage: dict[str, Any], before: tuple[int, float]) -> None:
+    """Raise BudgetExceeded when this run (or the thread including earlier runs) is over a limit."""
+    if budget is None:
+        return
+    tokens, cost = usage["input_tokens"] + usage["output_tokens"], usage["cost_usd"]
+    limits = [
+        (budget.max_tokens, tokens, "tokens for this run"),
+        (budget.max_cost_usd, cost, "USD for this run"),
+        (budget.thread_max_tokens, before[0] + tokens, "tokens for this conversation"),
+        (budget.thread_max_cost_usd, before[1] + cost, "USD for this conversation"),
+    ]
+    for limit, used, what in limits:
+        if limit is not None and used > limit:
+            raise BudgetExceeded(f"budget exceeded: {used:g} of {limit:g} {what}")
 
 
 class Runner:
@@ -160,24 +192,50 @@ class Runner:
             },
         )
         status, error, interrupts = "error", None, []
+        budget = spec.workflow.settings.budget
+        events: Any = None  # the adapter's async generator (closed in `finally`)
         try:
+            before = await self._thread_spend(spec.thread_id, h.run_id) if budget else (0, 0.0)
+            check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
-            async for raw in self.adapter.execute(spec, resources):
-                ev = raw
-                if ev["type"] == "RUN_FINISHED":
-                    interrupts = ev.get("interrupts", [])
-                    status = "interrupted" if ev["outcome"] == "interrupt" else "success"
-                    ev = {
-                        **raw,
-                        "runId": h.run_id,
-                        "threadId": h.thread_id,
-                        "status": status,
-                        "duration_ms": round((time.perf_counter() - started) * 1000),
-                    }
-                elif ev["type"] == "RUN_ERROR":
-                    status, error = "error", ev.get("message")
-                    ev = {**raw, "runId": h.run_id, "threadId": h.thread_id}
-                await self._emit(h, ev)
+            events = self.adapter.execute(spec, resources)
+            async with asyncio.timeout(budget.max_seconds if budget and budget.max_seconds else None):
+                async for raw in events:
+                    if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
+                        await self._emit(h, self._priced(h, raw))
+                        check_budget(budget, h.usage, before)
+                        continue
+                    ev = raw
+                    if ev["type"] == "RUN_FINISHED":
+                        interrupts = ev.get("interrupts", [])
+                        status = "interrupted" if ev["outcome"] == "interrupt" else "success"
+                        ev = {
+                            **raw,
+                            "runId": h.run_id,
+                            "threadId": h.thread_id,
+                            "status": status,
+                            "duration_ms": round((time.perf_counter() - started) * 1000),
+                            "usage": dict(h.usage),
+                        }
+                    elif ev["type"] == "RUN_ERROR":
+                        status, error = "error", ev.get("message")
+                        ev = {**raw, "runId": h.run_id, "threadId": h.thread_id}
+                    await self._emit(h, ev)
+        except (BudgetExceeded, TimeoutError) as exc:
+            status = "error"
+            seconds = budget.max_seconds if budget else None
+            error = str(exc) if isinstance(exc, BudgetExceeded) else f"budget exceeded: ran longer than {seconds} s"
+            await self._emit(
+                h,
+                {
+                    "type": "RUN_ERROR",
+                    "code": "budget_exceeded",
+                    "message": error,
+                    "usage": dict(h.usage),
+                    "runId": h.run_id,
+                    "threadId": h.thread_id,
+                },
+            )
         except asyncio.CancelledError:
             status, error = "cancelled", "cancelled by user"
             await self._emit(
@@ -198,6 +256,8 @@ class Runner:
                 {"type": "RUN_ERROR", "code": "internal", "message": error, "runId": h.run_id, "threadId": h.thread_id},
             )
         finally:
+            if events is not None:
+                await events.aclose()  # stops the graph if we left early (budget, cancel)
             h.status = status
             await self._finish(h, status, error, interrupts)
             h.finished_at = time.monotonic()
@@ -211,7 +271,16 @@ class Runner:
         try:
             async with self.db.sessionmaker() as s:
                 await s.execute(
-                    update(Run).where(Run.id == h.run_id).values(status=status, error=error, ended_at=datetime.now(UTC))
+                    update(Run)
+                    .where(Run.id == h.run_id)
+                    .values(
+                        status=status,
+                        error=error,
+                        ended_at=datetime.now(UTC),
+                        tokens_in=h.usage["input_tokens"],
+                        tokens_out=h.usage["output_tokens"],
+                        cost_usd=h.usage["cost_usd"],
+                    )
                 )
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
                 for intr in interrupts:
@@ -229,6 +298,27 @@ class Runner:
                 await s.commit()
         except Exception:
             log.exception("run.finish_failed", run_id=h.run_id)
+
+    def _priced(self, h: RunHandle, raw: dict[str, Any]) -> dict[str, Any]:
+        """Add the cost to a usage event and to the run's totals."""
+        v = dict(raw["value"])
+        v["cost_usd"] = price(v.get("model"), v["input_tokens"], v["output_tokens"])
+        h.usage["input_tokens"] += v["input_tokens"]
+        h.usage["output_tokens"] += v["output_tokens"]
+        if v["cost_usd"] is None:
+            h.usage["priced"] = False  # at least one model has no catalog price: the cost is a lower bound
+        else:
+            h.usage["cost_usd"] += v["cost_usd"]
+        return {**raw, "value": v}
+
+    async def _thread_spend(self, thread_id: str, run_id: str) -> tuple[int, float]:
+        """Tokens and USD spent by the thread's earlier runs."""
+        async with self.db.sessionmaker() as s:
+            q = select(
+                func.coalesce(func.sum(Run.tokens_in + Run.tokens_out), 0), func.coalesce(func.sum(Run.cost_usd), 0)
+            ).where(Run.thread_id == thread_id, Run.id != run_id)
+            tokens, cost = (await s.execute(q)).one()
+        return int(tokens), float(cost)
 
     def _evict(self) -> None:
         finished = [rid for rid, h in self.handles.items() if h.done.is_set()]

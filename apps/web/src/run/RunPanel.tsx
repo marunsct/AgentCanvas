@@ -5,7 +5,7 @@ import { apiFetch } from "../api/client";
 import { useEditor } from "../editor/store";
 import { DecisionCard } from "../inbox/DecisionCard";
 import type { WF } from "../ir/model";
-import { useRun } from "./runStore";
+import { formatMetrics, useRun } from "./runStore";
 import { cancelRun, continueRun, resumeRun, startRun } from "./session";
 
 interface ChatMessage {
@@ -60,6 +60,15 @@ export function RunPanel() {
       </div>
       {run.breakpoint && !run.running && (
         <p className="muted">Paused at a breakpoint before {run.next.map((id) => wf.nodes.find((n) => n.id === id)?.name ?? id).join(", ")}.</p>
+      )}
+      {run.usage && (run.usage.input_tokens + run.usage.output_tokens > 0 || run.durationMs) && (
+        <p className="muted small" data-testid="run-usage">
+          Run: {formatMetrics({
+            tokens: run.usage.input_tokens + run.usage.output_tokens, cost: run.usage.cost_usd, priced: run.usage.priced,
+            ms: run.durationMs ?? undefined,
+          })}
+          {!run.usage.priced && <span title="a model has no catalog price"> (cost incomplete)</span>}
+        </p>
       )}
       {run.warnings.map((w, i) => <p key={i} className="warn-text">⚠ {w}</p>)}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}

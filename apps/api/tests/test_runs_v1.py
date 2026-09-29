@@ -383,3 +383,78 @@ async def test_research_template_map_reduce_and_deep_agent_memory(app, api_clien
     assert [i.key for i in items] == ["/findings.md"]
     saved = str(items[0].value["content"])
     assert "cocoa" in saved and "Hot drinks" in saved
+
+
+# ------------------------------------------------------------------ usage & budgets (M4-T11, FR-X-15) ----
+def demo_triage(app):
+    from agentcanvas.testing import DemoResources
+
+    demo = DemoResources()  # stateless demo model that reports approximate usage
+    app.state.resources_factory = lambda thread_id, wf: demo
+
+
+async def test_usage_per_node_and_run_totals(app, api_client, monkeypatch):
+    from agentcanvas.registry import default_registry
+
+    demo_triage(app)
+    for model_id, (p_in, p_out) in {
+        "openai:gpt-5-mini": (1.0, 4.0),
+        "anthropic:claude-sonnet-5-5": (3.0, 15.0),
+    }.items():
+        info = default_registry().model(model_id)
+        monkeypatch.setattr(info, "price_in_per_mtok", p_in)
+        monkeypatch.setattr(info, "price_out_per_mtok", p_out)
+    wf = (await api_client.post(P, json={"name": "t", "template": "support_triage"})).json()["id"]
+    evs = events((await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "hi"}})).text)
+    usage = [e["value"] for e in evs if e.get("name") == "ac.usage"]
+    assert {u["canvas_node_id"] for u in usage} == {"n_cls", "n_ag"}  # the agent's inner model counts for n_ag
+    cls = next(u for u in usage if u["canvas_node_id"] == "n_cls")
+    assert cls["model"] == "openai:gpt-5-mini"
+    assert cls["cost_usd"] == pytest.approx((cls["input_tokens"] * 1.0 + cls["output_tokens"] * 4.0) / 1e6)
+    steps = [e for e in evs if e["type"] == "STEP_FINISHED"]
+    assert steps and all(isinstance(e["duration_ms"], int) for e in steps)
+    fin = evs[-1]
+    total = sum(u["input_tokens"] + u["output_tokens"] for u in usage)
+    assert fin["usage"]["input_tokens"] + fin["usage"]["output_tokens"] == total and fin["usage"]["priced"] is True
+    run = (await api_client.get(f"/v1/runs/{fin['runId']}")).json()
+    assert run["tokens_in"] + run["tokens_out"] == total and run["cost_usd"] == pytest.approx(fin["usage"]["cost_usd"])
+
+
+async def test_run_token_budget_stops_the_run(app, api_client):
+    demo_triage(app)
+    wf = (await api_client.post(P, json={"name": "t", "template": "support_triage"})).json()
+    ir = wf["ir"] | {"settings": {**wf["ir"].get("settings", {}), "budget": {"max_tokens": 5}}}
+    assert (
+        await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": "1"})
+    ).status_code == 200
+    evs = events(
+        (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": {"ticket": "hi"}})).text
+    )
+    fin = evs[-1]
+    assert fin["type"] == "RUN_ERROR" and fin["code"] == "budget_exceeded" and "tokens for this run" in fin["message"]
+    assert not any(e["type"] == "STEP_STARTED" and e["canvas_node_id"] == "n_ag" for e in evs)  # stopped early
+    assert (await api_client.get(f"/v1/runs/{fin['runId']}")).json()["status"] == "error"
+
+
+async def test_thread_budget_blocks_the_next_run(app, api_client):
+    demo_triage(app)
+    ctx = [{"name": "user_id", "source": "user"}]
+    llm = {"id": "n_llm", "type": "core.llm", "name": "ask", "config": {"prompt": "{{ state.q }}", "output": "out"}}
+    ir = linear(llm, channels=("q", "out"), settings={"budget": {"thread_max_tokens": 80}}, context=ctx)
+    ir["resources"] = [{"id": "r_m", "type": "model.chat", "name": "m", "config": {"model": "fake:scripted"}}]
+    ir["edges"].append(
+        {"id": "w", "kind": "wiring", "source": {"node": "r_m"}, "target": {"node": "n_llm", "port": "model"}}
+    )
+    wf = await make(api_client, ir)
+    body = {"input": {"q": "a fairly long question " * 4}, "thread_id": "th_budget"}
+    first = events((await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)).text)[-1]
+    assert first["type"] == "RUN_FINISHED"
+    second = events((await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)).text)[-1]
+    assert second["code"] == "budget_exceeded" and "conversation" in second["message"]
+
+
+async def test_wall_clock_budget(api_client):
+    nodes = [script("n_slow", "examples.scripts:slow")]
+    wf = await make(api_client, linear(*nodes, channels=("out", "seconds"), settings={"budget": {"max_seconds": 0.3}}))
+    fin = events((await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 5}})).text)[-1]
+    assert fin["code"] == "budget_exceeded" and "longer than 0.3 s" in fin["message"]

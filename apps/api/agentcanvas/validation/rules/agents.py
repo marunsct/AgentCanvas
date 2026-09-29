@@ -166,3 +166,22 @@ def _permissions(n: Node) -> Iterator[Diagnostic]:
                     node_id=n.id,
                     path=f"config.permissions[{i}].paths[{j}]",
                 )
+
+
+@rule
+def cost_budget_prices(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W015: a USD budget can only count models whose catalog entry has prices."""
+    b = ctx.wf.settings.budget
+    if b is None or (b.max_cost_usd is None and b.thread_max_cost_usd is None):
+        return
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        info = ctx.registry.model(str(r.config.get("model", "")))
+        if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
+            yield warning(
+                "W015",
+                f"'{r.name}' has no catalog price, so the USD budget does not count its calls",
+                node_id=r.id,
+                hint="set price_in_per_mtok / price_out_per_mtok in the model catalog, or use a token budget",
+            )

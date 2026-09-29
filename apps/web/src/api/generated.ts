@@ -235,6 +235,7 @@ export type Id12 = string;
 export type Name11 = string;
 export type InterruptId = string | null;
 export type Stream1 = boolean;
+export type CostUsd = number;
 export type EndedAt = string | null;
 export type Error1 = string | null;
 export type Id13 = string;
@@ -243,6 +244,8 @@ export type Mode1 = string;
 export type StartedAt = string;
 export type Status1 = string;
 export type ThreadId1 = string;
+export type TokensIn = number;
+export type TokensOut = number;
 export type Durability = ("exit" | "async" | "sync") | null;
 export type Mode2 = "normal" | "debug";
 export type Stream2 = boolean;
@@ -928,6 +931,7 @@ export interface Value2 {
  * via the `definition` "RunOut".
  */
 export interface RunOut {
+  cost_usd?: CostUsd;
   ended_at: EndedAt;
   error: Error1;
   id: Id13;
@@ -936,6 +940,8 @@ export interface RunOut {
   started_at: StartedAt;
   status: Status1;
   thread_id: ThreadId1;
+  tokens_in?: TokensIn;
+  tokens_out?: TokensOut;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

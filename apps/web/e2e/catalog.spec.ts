@@ -21,6 +21,9 @@ test("research template: map fans out per topic and the Deep Agent saves finding
   await expect(page.getByTestId("node-writer")).toHaveClass(/status-ok/, { timeout: 15_000 });
   await expect(page.getByTestId("node-research")).toHaveClass(/status-ok/);
   await expect(page.getByTestId("run-output")).toContainText("/memories/findings.md");
+  // cost & latency (M4-T11): the three map workers' tokens add up on the worker node; run totals in the panel
+  await expect(page.getByTestId("metrics-research")).toContainText(/\d+ tok · .*(ms|s)$/);
+  await expect(page.getByTestId("run-usage")).toContainText("tok");
 
   await page.getByRole("tab", { name: "Code" }).click();
   await expect(page.getByTestId("code-view")).toContainText("ac.map_fn(");

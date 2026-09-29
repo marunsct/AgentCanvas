@@ -52,6 +52,11 @@ export type Durability = "exit" | "async" | "sync";
 export type InputChannels = string[] | null;
 export type OutputChannels = string[] | null;
 export type Experimental = boolean;
+export type MaxTokens = number | null;
+export type MaxCostUsd = number | null;
+export type MaxSeconds = number | null;
+export type ThreadMaxTokens = number | null;
+export type ThreadMaxCostUsd = number | null;
 
 export interface Workflow {
   ir_version?: IrVersion;
@@ -182,6 +187,17 @@ export interface WorkflowSettings {
   input_channels?: InputChannels;
   output_channels?: OutputChannels;
   experimental?: Experimental;
+  budget?: Budget | null;
+}
+/**
+ * Spending limits (FR-X-15), enforced by the runner from the models' reported usage.
+ */
+export interface Budget {
+  max_tokens?: MaxTokens;
+  max_cost_usd?: MaxCostUsd;
+  max_seconds?: MaxSeconds;
+  thread_max_tokens?: ThreadMaxTokens;
+  thread_max_cost_usd?: ThreadMaxCostUsd;
 }
 export interface Metadata1 {
   [k: string]: unknown;

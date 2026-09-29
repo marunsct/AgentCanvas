@@ -81,6 +81,25 @@ class RunOut(BaseModel):
     error: str | None
     started_at: datetime
     ended_at: datetime | None
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+
+
+def _run_out(run: Run) -> RunOut:
+    return RunOut(
+        id=run.id,
+        thread_id=run.thread_id,
+        status=run.status,
+        mode=run.mode,
+        ir_hash=run.ir_hash,
+        error=run.error,
+        started_at=run.started_at,
+        ended_at=run.ended_at,
+        tokens_in=run.tokens_in or 0,
+        tokens_out=run.tokens_out or 0,
+        cost_usd=float(run.cost_usd or 0),
+    )
 
 
 class ThreadOut(BaseModel):
@@ -209,16 +228,7 @@ async def get_run(run_id: str, session: AsyncSession = Depends(get_session)) -> 
     run = await session.get(Run, run_id)
     if run is None:
         raise NotFound(f"run '{run_id}' not found")
-    return RunOut(
-        id=run.id,
-        thread_id=run.thread_id,
-        status=run.status,
-        mode=run.mode,
-        ir_hash=run.ir_hash,
-        error=run.error,
-        started_at=run.started_at,
-        ended_at=run.ended_at,
-    )
+    return _run_out(run)
 
 
 @router.get("/runs/{run_id}/events")
@@ -320,19 +330,7 @@ async def explain_thread(
 async def thread_runs(thread_id: str, session: AsyncSession = Depends(get_session)) -> list[RunOut]:
     await _thread(session, thread_id)
     rows = (await session.scalars(select(Run).where(Run.thread_id == thread_id).order_by(Run.id))).all()
-    return [
-        RunOut(
-            id=x.id,
-            thread_id=x.thread_id,
-            status=x.status,
-            mode=x.mode,
-            ir_hash=x.ir_hash,
-            error=x.error,
-            started_at=x.started_at,
-            ended_at=x.ended_at,
-        )
-        for x in rows
-    ]
+    return [_run_out(x) for x in rows]
 
 
 @router.post("/threads/{thread_id}/resume")

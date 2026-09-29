@@ -266,3 +266,7 @@ label.row input { width: auto; margin: 0; }
 .memory-table td, .memory-table th { border-bottom: 1px solid var(--border); padding: 6px; text-align: left; vertical-align: top; }
 .memory-table pre { margin: 0; max-height: 120px; overflow: auto; }
 @media (max-width: 700px) { .memory-layout { grid-template-columns: 1fr; } }
+.subtitle .metrics { color: var(--run); font-variant-numeric: tabular-nums; }
+.budget { margin: 8px 0; }
+.budget summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.budget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }

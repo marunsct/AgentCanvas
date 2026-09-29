@@ -1,7 +1,16 @@
 import { create } from "zustand";
-import type { InterruptInfo, RunEvent } from "./events";
+import type { InterruptInfo, RunEvent, Usage } from "./events";
 
 export type NodeStatus = "idle" | "running" | "ok" | "error" | "interrupted";
+
+export interface NodeMetrics {
+  tokens: number;
+  cost: number;
+  priced: boolean;
+  ms: number;
+}
+
+const ZERO: NodeMetrics = { tokens: 0, cost: 0, priced: true, ms: 0 };
 
 export interface RunState {
   threadId: string | null;
@@ -18,6 +27,9 @@ export interface RunState {
   runSeq: number; // increments whenever a run ends (timeline/explain/chat refetch)
   highlight: string[]; // node ids emphasised by the timeline/explain views
   next: string[];
+  metrics: Record<string, NodeMetrics>; // canvas node id -> tokens, cost and time of this run
+  usage: Usage | null; // run totals
+  durationMs: number | null;
   reset: () => void;
   apply: (ev: RunEvent) => void;
   setHighlight: (ids: string[]) => void;
@@ -26,7 +38,7 @@ export interface RunState {
 
 const empty = {
   status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], error: null, breakpoint: false,
-  highlight: [], next: [],
+  highlight: [], next: [], metrics: {}, usage: null, durationMs: null,
 };
 
 export const useRun = create<RunState>((set) => ({
@@ -42,11 +54,16 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
   switch (ev.type) {
     case "RUN_STARTED":
       return { threadId: ev.threadId, runId: ev.runId ?? null, running: true, error: null, interrupt: null, interrupts: [],
-        breakpoint: false, finalOutput: null };
+        breakpoint: false, finalOutput: null, metrics: {}, usage: null, durationMs: null };
     case "STEP_STARTED":
       return { status: { ...s.status, [ev.canvas_node_id]: "running" } };
-    case "STEP_FINISHED":
-      return { status: { ...s.status, [ev.canvas_node_id]: ev.status } };
+    case "STEP_FINISHED": {
+      const m = s.metrics[ev.canvas_node_id] ?? ZERO; // a node that runs several times (loops, map) adds up
+      return {
+        status: { ...s.status, [ev.canvas_node_id]: ev.status },
+        metrics: { ...s.metrics, [ev.canvas_node_id]: { ...m, ms: m.ms + (ev.duration_ms ?? 0) } },
+      };
+    }
     case "TEXT_MESSAGE_CONTENT":
       if (!ev.canvas_node_id) return {};
       return { output: { ...s.output, [ev.canvas_node_id]: (s.output[ev.canvas_node_id] ?? "") + ev.delta } };
@@ -57,13 +74,31 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         return { interrupts, interrupt: interrupts[0] };
       }
       if (ev.name === "ac.warning") return { warnings: [...s.warnings, String(ev.value.message ?? "")] };
+      if (ev.name === "ac.usage" && typeof ev.value.canvas_node_id === "string") {
+        const id = ev.value.canvas_node_id;
+        const m = s.metrics[id] ?? ZERO;
+        const cost = typeof ev.value.cost_usd === "number" ? ev.value.cost_usd : null;
+        const tokens = Number(ev.value.input_tokens ?? 0) + Number(ev.value.output_tokens ?? 0);
+        return {
+          metrics: { ...s.metrics, [id]: { ...m, tokens: m.tokens + tokens, cost: m.cost + (cost ?? 0), priced: m.priced && cost !== null } },
+        };
+      }
       return {};
     case "RUN_FINISHED":
       return { running: false, finalOutput: ev.output ?? null, breakpoint: Boolean(ev.breakpoint), next: ev.next ?? [],
-        runSeq: s.runSeq + 1 };
+        runSeq: s.runSeq + 1, usage: ev.usage ?? null, durationMs: ev.duration_ms ?? null };
     case "RUN_ERROR":
-      return { running: false, error: ev.message, runSeq: s.runSeq + 1 };
+      return { running: false, error: ev.message, runSeq: s.runSeq + 1, usage: ev.usage ?? s.usage };
     default:
       return {};
   }
+}
+
+/** "1.2k tok · $0.0031 · 850 ms" (cost omitted when no model had a price). */
+export function formatMetrics(m: { tokens: number; cost: number; priced: boolean; ms?: number }): string {
+  const parts: string[] = [];
+  if (m.tokens) parts.push(`${m.tokens >= 1000 ? `${(m.tokens / 1000).toFixed(1)}k` : m.tokens} tok`);
+  if (m.tokens && (m.cost > 0 || m.priced)) parts.push(`$${m.cost < 0.01 ? m.cost.toFixed(4) : m.cost.toFixed(2)}${m.priced ? "" : "+"}`);
+  if (m.ms) parts.push(m.ms >= 1000 ? `${(m.ms / 1000).toFixed(1)} s` : `${m.ms} ms`);
+  return parts.join(" · ");
 }

@@ -1761,6 +1761,11 @@
       },
       "RunOut": {
         "properties": {
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
           "ended_at": {
             "anyOf": [
               {
@@ -1808,6 +1813,16 @@
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
+          },
+          "tokens_in": {
+            "default": 0,
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "default": 0,
+            "title": "Tokens Out",
+            "type": "integer"
           }
         },
         "required": [

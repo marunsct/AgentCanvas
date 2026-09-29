@@ -2,7 +2,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Diagnostic, Layout, NodeManifest } from "../api/types";
 import { outputPort, routesOf, type IRNode, type IRResource, type WF } from "../ir/model";
-import type { NodeStatus } from "../run/runStore";
+import { formatMetrics, type NodeMetrics, type NodeStatus } from "../run/runStore";
 
 export type ElementKind = "node" | "resource" | "terminal";
 
@@ -20,12 +20,14 @@ export interface CanvasData extends Record<string, unknown> {
   breakpoint?: boolean;
   highlight?: boolean;
   preview?: string; // tail of the streamed tokens (M4-T3)
+  metrics?: string; // "1.2k tok · $0.003 · 850 ms" for the last run (M4-T11)
 }
 
 export interface FlowExtras {
   highlight?: string[];
   breakpoints?: string[];
   output?: Record<string, string>;
+  metrics?: Record<string, NodeMetrics>;
 }
 
 export const PORT_COLORS: Record<string, string> = {
@@ -108,6 +110,7 @@ export function irToFlow(
         disabled: kind === "node" && Boolean((el as IRNode).disabled),
         breakpoint: bp.has(el.id), highlight: hl.has(el.id),
         preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
+        metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
       },
     };
   };

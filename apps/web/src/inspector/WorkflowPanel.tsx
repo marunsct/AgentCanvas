@@ -35,7 +35,41 @@ export function WorkflowPanel() {
           </select>
         </label>
       </div>
+      <BudgetEditor />
       <StateDesigner />
     </div>
+  );
+}
+
+const BUDGET_FIELDS: [key: string, label: string, step: number][] = [
+  ["max_tokens", "Tokens per run", 1],
+  ["max_cost_usd", "USD per run", 0.01],
+  ["max_seconds", "Seconds per run", 1],
+  ["thread_max_tokens", "Tokens per conversation", 1],
+  ["thread_max_cost_usd", "USD per conversation", 0.01],
+];
+
+/** Budgets (FR-X-15): the runner stops a run that goes over; empty = no limit. */
+function BudgetEditor() {
+  const budget = useEditor((s) => s.wf?.settings.budget) as Record<string, number | null | undefined> | null | undefined;
+  const dispatch = useEditor((s) => s.dispatch);
+  const set = (key: string, raw: string) => {
+    const v = raw.trim() === "" ? null : Number(raw);
+    if (v !== null && !(v > 0)) return;
+    dispatch([{ op: "UpdateSettings", patch: { budget: { [key]: v } } }], { debounceMs: 400 });
+  };
+  return (
+    <details className="budget" open={Boolean(budget && Object.values(budget).some((v) => v != null))}>
+      <summary>Budget</summary>
+      <div className="budget-grid">
+        {BUDGET_FIELDS.map(([key, label, step]) => (
+          <label key={key}>
+            {label}
+            <input type="number" min={step} step={step} placeholder="no limit" aria-label={`budget ${label}`}
+              defaultValue={budget?.[key] ?? ""} onChange={(e) => set(key, e.target.value)} />
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }

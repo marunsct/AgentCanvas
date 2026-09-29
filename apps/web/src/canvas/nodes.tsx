@@ -55,7 +55,10 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
         <Badges data={data} />
       </header>
       {data.breakpoint && <span className="bp-dot" title="breakpoint: debug runs pause before this node" />}
-      <div className="subtitle">{data.name}{data.disabled ? " · bypassed" : ""}</div>
+      <div className="subtitle">
+        {data.name}{data.disabled ? " · bypassed" : ""}
+        {data.metrics && <span className="metrics" data-testid={`metrics-${data.name}`}> · {data.metrics}</span>}
+      </div>
       {wiring.map((p, i) => (
         <div key={p.name} className="port-row in" style={{ top: HEAD + i * ROW }}>
           <Handle

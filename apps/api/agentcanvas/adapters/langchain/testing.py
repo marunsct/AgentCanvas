@@ -22,7 +22,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import Field
 
-from agentcanvas.adapters.langchain.nodes import Resources
+from agentcanvas.adapters.langchain.nodes import Resources, tag_model
 
 
 class ToolFakeModel(GenericFakeChatModel):
@@ -58,12 +58,22 @@ class DemoChatModel(BaseChatModel):
         super().__init__(**{"disable_streaming": True, **kwargs})
 
     def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> DemoChatModel:  # type: ignore[override]
-        return DemoChatModel(tool_specs=[convert_to_openai_tool(t)["function"] for t in tools])
+        specs = [convert_to_openai_tool(t)["function"] for t in tools]
+        return DemoChatModel(tool_specs=specs, metadata=self.metadata)
 
     def _generate(
         self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
     ) -> ChatResult:
-        return ChatResult(generations=[ChatGeneration(message=self._reply(messages))])
+        reply = self._reply(messages)
+        # approximate usage (characters / 4) so the demo shows tokens per node like a real provider would
+        tokens_in = max(1, sum(len(str(m.content)) for m in messages) // 4)
+        tokens_out = max(1, (len(str(reply.content)) + len(str(reply.tool_calls))) // 4)
+        reply.usage_metadata = {
+            "input_tokens": tokens_in,
+            "output_tokens": tokens_out,
+            "total_tokens": tokens_in + tokens_out,
+        }
+        return ChatResult(generations=[ChatGeneration(message=reply)])
 
     def _reply(self, messages: list[BaseMessage]) -> AIMessage:
         if self.tool_specs and not any(isinstance(m, ToolMessage) for m in messages):
@@ -104,7 +114,10 @@ class DemoResources(Resources):
 
     def __init__(self) -> None:
         super().__init__()
-        self._demo = DemoChatModel()
+        self._demos: dict[str, DemoChatModel] = {}  # one per catalog id, so usage is attributed to the right model
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
-        return self._demo
+        model_id = str(config.get("model", "demo"))
+        if model_id not in self._demos:
+            self._demos[model_id] = tag_model(DemoChatModel(), model_id)
+        return self._demos[model_id]

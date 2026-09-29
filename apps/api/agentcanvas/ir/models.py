@@ -203,6 +203,16 @@ class Edge(_Base):
 
 
 # -------------------------------------------------------------- workflow ----
+class Budget(_Base):
+    """Spending limits (FR-X-15), enforced by the runner from the models' reported usage."""
+
+    max_tokens: int | None = Field(default=None, ge=1)  # per run, input + output
+    max_cost_usd: float | None = Field(default=None, gt=0)  # per run; needs catalog prices
+    max_seconds: float | None = Field(default=None, gt=0)  # per run, wall clock
+    thread_max_tokens: int | None = Field(default=None, ge=1)  # all runs of a thread together
+    thread_max_cost_usd: float | None = Field(default=None, gt=0)
+
+
 class WorkflowSettings(_Base):
     recursion_limit: int = Field(default=50, ge=1, le=10_000)
     durability: Literal["exit", "async", "sync"] = "async"
@@ -210,6 +220,7 @@ class WorkflowSettings(_Base):
     input_channels: list[str] | None = None  # None = all non-private channels
     output_channels: list[str] | None = None  # None = all non-private channels
     experimental: bool = False  # allow upstream experimental features (D16)
+    budget: Budget | None = None  # FR-X-15
 
 
 class Workflow(_Base):

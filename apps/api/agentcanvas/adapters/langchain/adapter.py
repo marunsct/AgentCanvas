@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import warnings
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -15,7 +16,7 @@ from langgraph.types import Command
 
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.codegen import generate
-from agentcanvas.adapters.langchain.events import jsonable, node_index, translate
+from agentcanvas.adapters.langchain.events import UsageTracker, jsonable, node_index, translate
 from agentcanvas.adapters.langchain.interpreter import build_from_plan, prepare
 from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread, open_persistence
 from agentcanvas.adapters.langchain.plan import lower
@@ -172,10 +173,19 @@ class LangChainAdapter:
             id2name = {n.id: n.name for n in wf.nodes}
             kwargs["interrupt_before"] = [id2name[i] for i in spec.breakpoints_before if i in id2name] or None
             kwargs["interrupt_after"] = [id2name[i] for i in spec.breakpoints_after if i in id2name] or None
+        usage = UsageTracker(names)
+        cfg["callbacks"] = [usage]
+        started: dict[str, float] = {}
         try:
             async for part in graph.astream(graph_input, cfg, **kwargs):
                 for ev in translate(part, names):
+                    if ev["type"] == "STEP_STARTED":
+                        started[ev["task_id"]] = time.perf_counter()
+                    elif ev["type"] == "STEP_FINISHED" and ev["task_id"] in started:
+                        ev["duration_ms"] = round((time.perf_counter() - started.pop(ev["task_id"])) * 1000)
                     yield ev
+                for record in usage.drain():
+                    yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         except GraphRecursionError as exc:
             yield {
                 "type": "RUN_ERROR",
@@ -188,6 +198,8 @@ class LangChainAdapter:
             yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
             return
 
+        for record in usage.drain():
+            yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         state = await self._state(graph, self._config(wf, spec.thread_id), names)
         for intr in state.interrupts:
             yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}

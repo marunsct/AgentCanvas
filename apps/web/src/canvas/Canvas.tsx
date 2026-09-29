@@ -32,15 +32,16 @@ export function Canvas() {
   const status = useRun((s) => s.status);
   const highlight = useRun((s) => s.highlight);
   const output = useRun((s) => s.output);
+  const metrics = useRun((s) => s.metrics);
   const breakpoints = useEditor((s) => s.breakpoints);
   const manifests = useManifests();
   const rf = useReactFlow();
 
   const derived = useMemo(
     () => (wf
-      ? irToFlow(wf, layout, manifests, diagnostics, status, selected, { highlight, breakpoints, output })
+      ? irToFlow(wf, layout, manifests, diagnostics, status, selected, { highlight, breakpoints, output, metrics })
       : { nodes: [], edges: [] }),
-    [wf, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output],
+    [wf, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);
