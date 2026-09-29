@@ -17,11 +17,25 @@ dependencies = [
   "pydantic>=2.9",
   "jinja2>=3.1",
   "cel-python>=0.4",
-  "ruff>=0.9",  # used at runtime by the code generator (ruff format)
+  "ruff>=0.9", # used at runtime by the code generator (ruff format)
+  "sqlalchemy[asyncio]>=2.0.36",
+  "alembic>=1.14",
+  "aiosqlite>=0.20",
+  "python-ulid>=3.0",
+  "structlog>=24.4",
+  "pydantic-settings>=2.6",
+  "jsonschema>=4.23",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27", "pyright>=1.1.390", "ruff>=0.9"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "pyright>=1.1.390",
+    "ruff>=0.9",
+    "hypothesis>=6.120",
+]
 
 [build-system]
 requires = ["hatchling"]

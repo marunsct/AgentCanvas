@@ -1,0 +1,57 @@
+{
+  "type": "core.script",
+  "kind": "runtime",
+  "label": "Python script",
+  "category": "Code",
+  "icon": "code",
+  "color": "#475569",
+  "description": "Runs a function from the Workspace: `def run(state) -> dict` (sync or async).",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "import_path"
+    ],
+    "properties": {
+      "import_path": {
+        "type": "string",
+        "title": "Function",
+        "format": "import_path",
+        "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "writes": {
+        "type": "array",
+        "title": "Channels written",
+        "items": {
+          "type": "string",
+          "format": "channel"
+        }
+      },
+      "side_effects": {
+        "type": "array",
+        "title": "Side effects",
+        "items": {
+          "enum": [
+            "external_write",
+            "message_send",
+            "code_exec",
+            "spend",
+            "pii_read"
+          ]
+        }
+      }
+    }
+  },
+  "list_write_fields": [
+    "writes"
+  ],
+  "side_effects": [
+    "code_exec"
+  ]
+}

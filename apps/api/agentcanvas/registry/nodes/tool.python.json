@@ -1,0 +1,43 @@
+{
+  "type": "tool.python",
+  "kind": "resource",
+  "label": "Python tool",
+  "category": "Tools",
+  "icon": "wrench",
+  "color": "#4B5563",
+  "description": "A LangChain @tool function from the Workspace.",
+  "outputs": [
+    {
+      "name": "tool",
+      "type": "Tool"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "import_path"
+    ],
+    "properties": {
+      "import_path": {
+        "type": "string",
+        "title": "Tool function",
+        "format": "import_path",
+        "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "side_effects": {
+        "type": "array",
+        "title": "Side effects",
+        "items": {
+          "enum": [
+            "external_write",
+            "message_send",
+            "code_exec",
+            "spend",
+            "pii_read"
+          ]
+        }
+      }
+    }
+  }
+}

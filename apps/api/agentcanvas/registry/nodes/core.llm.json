@@ -1,0 +1,54 @@
+{
+  "type": "core.llm",
+  "kind": "runtime",
+  "label": "LLM call",
+  "category": "AI",
+  "icon": "sparkles",
+  "color": "#2563EB",
+  "description": "One chat-model call: renders the prompt from state and writes the answer text to a channel.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": true,
+      "description": "Chat model to call"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "prompt",
+      "output"
+    ],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "title": "Prompt",
+        "format": "prompt",
+        "minLength": 1,
+        "description": "Jinja template; use {{ state.<channel> }} to insert state values."
+      },
+      "output": {
+        "type": "string",
+        "title": "Output channel",
+        "format": "channel"
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "template_fields": [
+    "prompt"
+  ],
+  "side_effects": [
+    "spend"
+  ]
+}

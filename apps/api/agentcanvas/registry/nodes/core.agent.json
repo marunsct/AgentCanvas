@@ -1,0 +1,60 @@
+{
+  "type": "core.agent",
+  "kind": "runtime",
+  "label": "Agent",
+  "category": "Agents",
+  "icon": "bot",
+  "color": "#7C3AED",
+  "description": "A tool-using agent (LangChain create_agent). Reads and writes the `messages` channel.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": true
+    },
+    {
+      "name": "tools",
+      "type": "Tool",
+      "multi": true,
+      "ordered": true,
+      "description": "Tools the agent may call"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "system_prompt": {
+        "type": "string",
+        "title": "System prompt",
+        "format": "prompt",
+        "default": ""
+      },
+      "approve_tools": {
+        "type": "array",
+        "title": "Tools that need approval",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true,
+        "description": "Pause for a human before these tools run (approve / edit / reject)."
+      }
+    }
+  },
+  "reads": [
+    "messages"
+  ],
+  "writes": [
+    "messages"
+  ],
+  "interrupts": true,
+  "side_effects": [
+    "spend"
+  ]
+}

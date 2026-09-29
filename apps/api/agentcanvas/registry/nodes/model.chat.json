@@ -1,0 +1,65 @@
+{
+  "type": "model.chat",
+  "kind": "resource",
+  "label": "Chat model",
+  "category": "Models",
+  "icon": "cpu",
+  "color": "#1D4ED8",
+  "description": "A chat model created with init_chat_model(\"provider:model\").",
+  "outputs": [
+    {
+      "name": "model",
+      "type": "ChatModel"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "format": "model",
+        "pattern": "^[a-z0-9_\\-]+:.+$",
+        "description": "provider:model, e.g. anthropic:claude-sonnet-5-5"
+      },
+      "temperature": {
+        "type": "number",
+        "title": "Temperature",
+        "minimum": 0,
+        "maximum": 2
+      },
+      "max_tokens": {
+        "type": "integer",
+        "title": "Max output tokens",
+        "minimum": 1
+      },
+      "timeout": {
+        "type": "number",
+        "title": "Timeout (s)",
+        "exclusiveMinimum": 0
+      },
+      "base_url": {
+        "type": "string",
+        "title": "Base URL",
+        "format": "uri"
+      },
+      "api_key": {
+        "title": "API key (secret reference)",
+        "type": "object",
+        "required": [
+          "$secret"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "$secret": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
