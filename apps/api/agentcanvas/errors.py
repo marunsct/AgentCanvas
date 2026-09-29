@@ -34,3 +34,11 @@ class InvalidInput(DomainError):
 
 class WorkflowHasErrors(DomainError):
     status, title, type_ = 422, "Workflow has errors", "https://agentcanvas.dev/errors/validation"
+
+
+class Forbidden(DomainError):
+    status, title, type_ = 403, "Forbidden", "https://agentcanvas.dev/errors/forbidden"
+
+
+class UpstreamError(DomainError):
+    status, title, type_ = 502, "Upstream error", "https://agentcanvas.dev/errors/upstream"

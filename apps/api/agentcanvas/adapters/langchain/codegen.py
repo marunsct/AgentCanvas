@@ -37,7 +37,7 @@ def generate(wf: Workflow, *, format_code: bool = True) -> str:
         errors = [d.model_dump() for d in diags if d.severity == "error"]
         raise WorkflowHasErrors("; ".join(f"{d['code']} {d['message']}" for d in errors), errors=errors)
     plan = lower(wf)
-    source = _env.get_template("graph.py.j2").render(plan=plan, options=_options)
+    source = _env.get_template("graph.py.j2").render(plan=plan, options=_options, refs=_refs(plan.many))
     return ruff_format(source) if format_code else source
 
 
@@ -47,6 +47,15 @@ def _options(options: dict[str, Any]) -> str:
     if not args:
         return ""
     return ", **ac.node_options(" + ", ".join(f"{k}={v!r}" for k, v in sorted(args.items())) + ")"
+
+
+def _refs(many: set[str]):
+    """Render wired resource names as a Python list body; list-valued resources are spread (`*github`)."""
+
+    def refs(names: list[str]) -> str:
+        return ", ".join(f"*{n}" if n in many else n for n in names)
+
+    return refs
 
 
 def ruff_format(source: str) -> str:

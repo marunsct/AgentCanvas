@@ -16,7 +16,7 @@ from langgraph.types import Command
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.codegen import generate
 from agentcanvas.adapters.langchain.events import jsonable, node_index, translate
-from agentcanvas.adapters.langchain.interpreter import build_from_plan
+from agentcanvas.adapters.langchain.interpreter import build_from_plan, prepare
 from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread, open_persistence
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
@@ -68,14 +68,16 @@ class LangChainAdapter:
             raise RuntimeError("persistence is not open; use `async with adapter.persistence(url)`")
         return self._p
 
-    def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
+    async def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
         """Compiled graph for (IR, resources), cached: rebuilding per run is wasteful for real models."""
         key = (ir_hash(wf), id(resources))  # the entry keeps `resources` alive, so its id cannot be reused
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key][1]
         p = self._persist()
-        graph = build_from_plan(lower(wf), resources, checkpointer=p.checkpointer, store=p.store)
+        plan = lower(wf)
+        await prepare(plan, resources)  # MCP tool discovery happens before the (synchronous) build
+        graph = build_from_plan(plan, resources, checkpointer=p.checkpointer, store=p.store)
         self._graphs[key] = (resources, graph)
         if len(self._graphs) > self._cache_size:
             self._graphs.popitem(last=False)
@@ -97,13 +99,18 @@ class LangChainAdapter:
         return cfg
 
     # --------------------------------------------------------- compilation ----
+    async def inspect_mcp(self, name: str, config: dict[str, Any], resources: ac.Resources) -> list[dict[str, Any]]:
+        """List an MCP server's tools with their annotations (the canvas "Browse tools" action)."""
+        tools = await resources.load_mcp(name, {**config, "tool_filter": []}, refresh=True)
+        return [ac.mcp_tool_info(t) for t in tools]
+
     def generate(self, wf: Workflow) -> str:
         return generate(wf)
 
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
         wf = spec.workflow
-        graph = self.graph(wf, resources)
+        graph = await self.graph(wf, resources)
         names = node_index(wf)
         cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id)
         if spec.resume is not None:
@@ -184,12 +191,12 @@ class LangChainAdapter:
         )
 
     async def get_state(self, wf: Workflow, thread_id: str, resources: ac.Resources) -> ThreadState:
-        return await self._state(self.graph(wf, resources), self._config(wf, thread_id), node_index(wf))
+        return await self._state(await self.graph(wf, resources), self._config(wf, thread_id), node_index(wf))
 
     async def history(
         self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100, include_values: bool = False
     ) -> list[CheckpointInfo]:
-        graph, names = self.graph(wf, resources), node_index(wf)
+        graph, names = await self.graph(wf, resources), node_index(wf)
         out = []
         async for snap in graph.aget_state_history(self._config(wf, thread_id), limit=limit):
             meta = snap.metadata or {}
@@ -217,7 +224,7 @@ class LangChainAdapter:
         as_node: str | None,
         checkpoint_id: str | None,
     ) -> str:
-        graph = self.graph(wf, resources)
+        graph = await self.graph(wf, resources)
         node = wf.node(as_node) if as_node else None
         node_name = node.name if node else as_node  # accept canvas id or node name
         new_cfg = await graph.aupdate_state(self._config(wf, thread_id, checkpoint_id), values, as_node=node_name)

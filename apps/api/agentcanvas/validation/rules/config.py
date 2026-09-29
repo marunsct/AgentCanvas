@@ -93,7 +93,7 @@ def expressions_compile(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     check_condition(value)
                 except ExpressionError as exc:
                     yield error("E013", f"'{el.name}': {exc}", node_id=el.id, path=path)
-            elif fmt in ("prompt", "template"):
+            elif fmt in ("prompt", "template", "url_template"):
                 try:
                     _jinja.parse(value)
                 except TemplateSyntaxError as exc:

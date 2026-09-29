@@ -41,9 +41,10 @@ def eval_condition(source: str, state: dict[str, Any]) -> bool:
     return bool(result)
 
 
-def render_template(source: str, state: dict[str, Any]) -> str:
+def render_template(source: str, state: dict[str, Any], **names: Any) -> str:
+    """Render a sandboxed Jinja template with `state` (and extra names, e.g. `args` for HTTP tool URLs)."""
     try:
-        return _jinja.from_string(source).render(state=state)
+        return _jinja.from_string(source).render(state=state, **names)
     except Exception as exc:
         raise ExpressionError(f"template error in '{source[:40]}…': {exc}") from exc
 

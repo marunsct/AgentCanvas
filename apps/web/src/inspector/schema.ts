@@ -27,7 +27,7 @@ export function uiSchemaFromFormats(schema: Schema): Schema {
   return ui;
 }
 
-export const WIDGET_FORMATS = new Set(["prompt", "template", "channel", "cel", "model", "import_path", "regex"]);
+export const WIDGET_FORMATS = new Set(["prompt", "template", "channel", "cel", "model", "import_path", "regex", "url_template"]);
 export const CUSTOM_FORMATS = [...WIDGET_FORMATS, "json_schema"];
 
 const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);

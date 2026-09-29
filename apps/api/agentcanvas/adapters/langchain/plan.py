@@ -17,10 +17,17 @@ from agentcanvas.registry import default_registry
 ERROR_CHANNEL = "last_error"  # if declared, error routes write "<node>: <Error>: <message>" into it
 
 
+LIST_RESOURCES = {"mcp.server"}  # resources that stand for several objects (all tools of an MCP server)
+
+
 @dataclass
 class PlannedResource:
     resource: Resource
     wired: dict[str, list[str]]  # input port -> resource names wired into it (in edge order)
+
+    @property
+    def many(self) -> bool:
+        return self.resource.type in LIST_RESOURCES
 
 
 @dataclass
@@ -48,6 +55,15 @@ class Plan:
     needs_cache: bool
     names: dict[str, str]  # canvas node id -> graph node name
     user_key: str | None  # context field filled with the authenticated user (source "user")
+
+    @property
+    def many(self) -> set[str]:
+        """Names of list-valued resources (spread with `*name` where they are wired)."""
+        return {pr.resource.name for pr in self.resources if pr.many}
+
+    @property
+    def mcp(self) -> list[PlannedResource]:
+        return [pr for pr in self.resources if pr.resource.type == "mcp.server"]
 
 
 def _ep(wf: Workflow, node_id: str) -> str:

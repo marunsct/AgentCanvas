@@ -15,8 +15,10 @@ import asyncio
 import functools
 import importlib
 import inspect
+import json
 import operator
 import re
+import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any
@@ -39,6 +41,7 @@ from langchain.agents.middleware import (
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from langgraph.channels import DeltaChannel
 from langgraph.config import get_config
 from langgraph.errors import NodeError
@@ -236,12 +239,23 @@ def apply_node_defaults(builder: StateGraph, defaults: dict[str, Any] | None) ->
 
 # -------------------------------------------------------------- resources ----
 class Resources:
-    """Resolves resource configs into live objects. Tests and the fake server inject models here."""
+    """Resolves resource configs into live objects. Tests and the fake server inject models here.
 
-    def __init__(self, overrides: dict[str, Any] | None = None, secrets: dict[str, str] | None = None):
+    `overrides` replace a resource by name (for an `mcp.server`: any MCP target, e.g. an in-process FastMCP
+    server); `http_transport` lets tests serve HTTP tools without a network.
+    """
+
+    def __init__(
+        self,
+        overrides: dict[str, Any] | None = None,
+        secrets: dict[str, str] | None = None,
+        http_transport: Any = None,
+    ):
         self._overrides = overrides or {}
         self._secrets = secrets or {}
+        self._http_transport = http_transport
         self._cache: dict[str, Any] = {}
+        self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
@@ -251,10 +265,28 @@ class Resources:
             self._cache[name] = init_chat_model(config["model"], **params)
         return self._cache[name]
 
-    def tool(self, name: str, config: dict[str, Any]):
+    def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:
+        """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`)."""
+        if type_ == "mcp.server":
+            key = (name, _config_key(config))
+            if key not in self._mcp:
+                raise RuntimeError(f"MCP tools of '{name}' are not loaded yet; build the graph with abuild_graph()")
+            return self._mcp[key]
         if name in self._overrides:
             return self._overrides[name]
+        if type_ == "tool.http":
+            return http_tool(name=name, config=config, resolve=self._resolve, transport=self._http_transport)
         return safe_import(config["import_path"])
+
+    async def load_mcp(self, name: str, config: dict[str, Any], *, refresh: bool = False) -> list[BaseTool]:
+        """Discover an MCP server's tools (network I/O, so it happens before the synchronous graph build)."""
+        key = (name, _config_key(config))
+        if refresh or key not in self._mcp:
+            target = self._overrides.get(name) or mcp_target(config, self._resolve)
+            tools = await mcp_tools(target)
+            wanted = config.get("tool_filter") or []
+            self._mcp[key] = [t for t in tools if not wanted or t.name in wanted]
+        return self._mcp[key]
 
     def middleware(
         self, name: str, type_: str, config: dict[str, Any], *, models: Sequence[BaseChatModel] = ()
@@ -270,6 +302,92 @@ class Resources:
                 raise KeyError(f"secret '{key}' is not set for this project")
             return self._secrets[key]
         return value
+
+
+# ------------------------------------------------------------ tools: MCP ----
+def _config_key(config: dict[str, Any]) -> str:
+    return json.dumps(config, sort_keys=True, default=str)
+
+
+def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v) -> Any:
+    """FastMCP transport for an `mcp.server` resource. Strings are never passed through: a string naming a file
+    would launch it (langchain.mcp rejects that too); stdio is explicit and admin-gated (E042)."""
+    from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+
+    if config.get("transport", "http") == "stdio":
+        return StdioTransport(command=config["command"], args=list(config.get("args") or []))
+    headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
+    return StreamableHttpTransport(config["url"], headers=headers or None)
+
+
+async def mcp_tools(target: Any) -> list[BaseTool]:
+    with warnings.catch_warnings():  # langchain.mcp is beta (surfaced as I010 on the canvas instead)
+        warnings.simplefilter("ignore")
+        from langchain.mcp import MCPAdapter
+
+    async with MCPAdapter(target) as adapter:
+        return await adapter.list_tools()
+
+
+def mcp_tool_info(tool: BaseTool) -> dict[str, Any]:
+    """Name, description and MCP annotations of a discovered tool (the inspector caches these on the resource)."""
+    annotations = ((tool.metadata or {}).get("mcp", {}).get("tool", {}) or {}).get("annotations") or {}
+    return {
+        "name": tool.name,
+        "description": (tool.description or "")[:500],
+        "destructive": bool(annotations.get("destructive_hint")),
+        "read_only": bool(annotations.get("read_only_hint")),
+    }
+
+
+# ----------------------------------------------------------- tools: HTTP ----
+def _host_allowed(host: str, allowed: Sequence[str]) -> bool:
+    host = host.lower().rstrip(".")
+    return any(host == d.lower() or host.endswith("." + d.lower()) for d in allowed)
+
+
+def http_tool(
+    *, name: str, config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v, transport: Any = None
+) -> StructuredTool:
+    """An HTTP request as a tool (M3-T6). Only hosts in `allowed_domains` (and their subdomains) are reachable;
+    a refused host or an HTTP error comes back to the model as a tool error, not an exception."""
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    method = config.get("method", "GET").upper()
+    send = config.get("send_args", "auto")
+    if send == "auto":
+        send = "none" if method in ("GET", "DELETE") else "json"
+    allowed = list(config.get("allowed_domains") or [])
+    limit = int(config.get("max_response_chars", 20_000))
+
+    async def call(**args: Any) -> str:
+        url = render_template(config["url"], {}, args=args)
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.hostname or not _host_allowed(parts.hostname, allowed):
+            raise ToolException(f"'{parts.hostname or url}' is not an allowed domain for {name}")
+        headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
+        async with httpx.AsyncClient(timeout=config.get("timeout", 20), transport=transport) as client:
+            r = await client.request(
+                method,
+                url,
+                headers=headers,
+                params=args if send == "query" else None,
+                json=args if send == "json" else None,
+            )
+        text = r.text[:limit]
+        if r.status_code >= 400:
+            raise ToolException(f"HTTP {r.status_code} from {parts.hostname}: {text[:500]}")
+        return text
+
+    return StructuredTool(
+        name=name,
+        description=config.get("description") or f"HTTP {method} {config['url']}",
+        args_schema=config.get("args_schema") or {"type": "object", "properties": {}},
+        coroutine=call,
+        handle_tool_error=True,
+    )
 
 
 # ------------------------------------------------------------- middleware ----

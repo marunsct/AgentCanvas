@@ -176,6 +176,14 @@ export type ThreadId = string;
 export type WorkflowId = string | null;
 export type WorkflowName = string | null;
 export type Replace = boolean;
+/**
+ * Resource name (lets dev/test hosts substitute an in-process server)
+ */
+export type Name8 = string;
+export type Description3 = string;
+export type Destructive = boolean;
+export type Name9 = string;
+export type ReadOnly = boolean;
 export type ContextWindow = number | null;
 export type Id11 = string;
 export type Label3 = string;
@@ -191,14 +199,14 @@ export type Category = string;
 export type ChannelFields = string[];
 export type ChannelMapFields = string[];
 export type Color = string | null;
-export type Description3 = string;
+export type Description4 = string;
 export type Docs = string | null;
 export type DynamicOutputs = "routes" | null;
 export type HostedForbidden = boolean;
 export type Icon = string;
-export type Description4 = string | null;
+export type Description5 = string | null;
 export type Multi = boolean;
-export type Name8 = string;
+export type Name10 = string;
 export type Ordered = boolean;
 export type Required1 = boolean;
 export type Type4 = string;
@@ -218,7 +226,7 @@ export type Version1 = string;
 export type Writes = string[];
 export type CreatedAt2 = string;
 export type Id12 = string;
-export type Name9 = string;
+export type Name11 = string;
 export type InterruptId = string | null;
 export type Stream1 = boolean;
 export type EndedAt = string | null;
@@ -235,9 +243,9 @@ export type Stream2 = boolean;
 export type ThreadId2 = string | null;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
-export type Description5 = string;
+export type Description6 = string;
 export type Id14 = string;
-export type Name10 = string;
+export type Name12 = string;
 export type NodeCount = number;
 export type CreatedAt3 = string;
 export type Id15 = string;
@@ -251,12 +259,12 @@ export type CreatedAt4 = string;
 export type Diagnostics1 = Diagnostic[];
 export type Id16 = string;
 export type IrHash2 = string;
-export type Name11 = string;
+export type Name13 = string;
 export type ProjectId1 = string;
 export type UpdatedAt2 = string;
 export type Version2 = number;
 export type Id17 = string;
-export type Name12 = string;
+export type Name14 = string;
 export type UpdatedAt3 = string;
 export type Version3 = number;
 export type Items1 = WorkflowSummary[];
@@ -284,6 +292,8 @@ export interface ApiSchemas {
   HTTPValidationError?: HTTPValidationError;
   InterruptOut?: InterruptOut;
   LayoutUpdate?: LayoutUpdate;
+  McpInspectRequest?: McpInspectRequest;
+  McpToolInfo?: McpToolInfo;
   ModelInfo?: ModelInfo;
   Node?: Node;
   NodeManifest?: NodeManifest;
@@ -763,6 +773,27 @@ export interface Positions {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "McpInspectRequest".
+ */
+export interface McpInspectRequest {
+  config: Config2;
+  name: Name8;
+}
+export interface Config2 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "McpToolInfo".
+ */
+export interface McpToolInfo {
+  description?: Description3;
+  destructive?: Destructive;
+  name: Name9;
+  read_only?: ReadOnly;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ModelInfo".
  */
 export interface ModelInfo {
@@ -789,7 +820,7 @@ export interface NodeManifest {
   color?: Color;
   conditional_writes?: ConditionalWrites;
   config_schema?: ConfigSchema;
-  description?: Description3;
+  description?: Description4;
   docs?: Docs;
   dynamic_outputs?: DynamicOutputs;
   hosted_forbidden?: HostedForbidden;
@@ -821,9 +852,9 @@ export interface ConfigSchema {
  * via the `definition` "PortSpec".
  */
 export interface PortSpec {
-  description?: Description4;
+  description?: Description5;
   multi?: Multi;
-  name: Name8;
+  name: Name10;
   ordered?: Ordered;
   required?: Required1;
   type: Type4;
@@ -838,7 +869,7 @@ export interface Targets {
 export interface ProjectOut {
   created_at: CreatedAt2;
   id: Id12;
-  name: Name9;
+  name: Name11;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -912,9 +943,9 @@ export interface Values1 {
  * via the `definition` "TemplateInfo".
  */
 export interface TemplateInfo {
-  description: Description5;
+  description: Description6;
   id: Id14;
-  name: Name10;
+  name: Name12;
   node_count: NodeCount;
 }
 /**
@@ -948,7 +979,7 @@ export interface WorkflowOut {
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
-  name: Name11;
+  name: Name13;
   project_id: ProjectId1;
   updated_at: UpdatedAt2;
   version: Version2;
@@ -973,7 +1004,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id17;
-  name: Name12;
+  name: Name14;
   updated_at: UpdatedAt3;
   version: Version3;
 }

@@ -44,8 +44,24 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
         if isinstance(el, Resource) and not tools:
             continue  # a subagent without its own tools inherits the main agent's tools
         approve = el.config.get("approve_tools") or []
-        names = {t.name for t in tools} | set(m.builtin_tools)
-        for t in approve if isinstance(approve, list) else []:
+        approve = approve if isinstance(approve, list) else []
+        names, known = set(m.builtin_tools), True
+        for t in tools:
+            if t.type == "mcp.server":
+                offered = mcp_tools(t)
+                known = known and offered is not None
+                names |= {x["name"] for x in offered or []}
+                for x in offered or []:
+                    if x.get("destructive") and x["name"] not in approve:
+                        yield warning(
+                            "W002",
+                            f"'{el.name}' can call destructive MCP tool '{x['name']}' ({t.name}) without approval",
+                            node_id=el.id,
+                            hint="add it to the tools that need approval",
+                        )
+            else:
+                names.add(t.name)
+        for t in approve if known else []:
             if t not in names:
                 yield error(
                     "E033",
@@ -53,6 +69,15 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     node_id=el.id,
                     path="config.approve_tools",
                 )
+
+
+def mcp_tools(r: Resource) -> list[dict] | None:
+    """Tools an MCP server offers, as cached by "Browse tools" (narrowed by the tool filter); None if unknown."""
+    discovered = r.config.get("discovered")
+    wanted = r.config.get("tool_filter") or []
+    if not isinstance(discovered, list) or not discovered:
+        return [{"name": n} for n in wanted] if wanted else None
+    return [x for x in discovered if isinstance(x, dict) and (not wanted or x.get("name") in wanted)]
 
 
 def _mw_key(r: Resource) -> str:

@@ -29,7 +29,7 @@ from agentcanvas.log import get_logger
 from agentcanvas.runtime.types import ResumeSpec, RunMode, RunSpec
 
 log = get_logger(__name__)
-ResourcesFactory = Callable[[str, Workflow], Any]
+ResourcesFactory = Callable[[str, Workflow | None], Any]
 
 
 @dataclass
@@ -60,7 +60,7 @@ class Runner:
         self.active_by_thread: dict[str, str] = {}
         self._keep = keep_finished
 
-    def resources(self, thread_id: str, wf: Workflow) -> Any:
+    def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
 
     # --------------------------------------------------------------- start ----

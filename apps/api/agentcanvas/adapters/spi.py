@@ -52,6 +52,11 @@ class FrameworkAdapter(Protocol):
 
     async def delete_thread(self, thread_id: str) -> None: ...
 
+    # ---- tools
+    async def inspect_mcp(self, name: str, config: dict[str, Any], resources: Any) -> list[dict[str, Any]]:
+        """Tools of an MCP server: name, description, destructive/read_only annotations."""
+        ...
+
     def default_resources(self) -> Any:
         """Resources (models/tools resolver) used when the host installs no override."""
         ...

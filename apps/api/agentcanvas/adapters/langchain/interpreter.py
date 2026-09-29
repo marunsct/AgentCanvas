@@ -22,16 +22,37 @@ def build_graph(wf: Workflow, resources: ac.Resources, checkpointer=None, store=
     return build_from_plan(lower(wf), resources, checkpointer=checkpointer, store=store, cache=cache)
 
 
+async def abuild_graph(wf: Workflow, resources: ac.Resources, checkpointer=None, store=None, cache=None):
+    """Like `build_graph`, after loading what needs network I/O first (MCP tool lists)."""
+    plan = lower(wf)
+    await prepare(plan, resources)
+    return build_from_plan(plan, resources, checkpointer=checkpointer, store=store, cache=cache)
+
+
+async def prepare(plan: Plan, resources: ac.Resources) -> None:
+    for pr in plan.mcp:
+        await resources.load_mcp(pr.resource.name, pr.resource.config)
+
+
+def _flat(objs: dict[str, Any], names: list[str]) -> list[Any]:
+    """Wired objects in order; a list-valued resource (an MCP server's tools) contributes all its items."""
+    out: list[Any] = []
+    for name in names:
+        value = objs[name]
+        out.extend(value) if isinstance(value, list) else out.append(value)
+    return out
+
+
 def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: dict[str, Any]) -> Any:
     r, cfg = pr.resource, pr.resource.config
 
     def wired(port: str) -> list[Any]:
-        return [objs[name] for name in pr.wired.get(port, [])]
+        return _flat(objs, pr.wired.get(port, []))
 
     if r.type == "model.chat":
         return resources.model(r.name, cfg)
-    if r.type.startswith("tool."):
-        return resources.tool(r.name, cfg)
+    if r.type.startswith("tool.") or r.type == "mcp.server":
+        return resources.tool(r.name, cfg, r.type)
     if r.type.startswith("mw."):
         return resources.middleware(r.name, r.type, cfg, models=wired("models") + wired("model"))
     if r.type == "agent.subagent":
@@ -65,7 +86,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         n, cfg = p.node, p.node.config
 
         def wired(port: str, p=p) -> list[Any]:
-            return [objs[name] for name in p.wired.get(port, [])]
+            return _flat(objs, p.wired.get(port, []))
 
         if p.bypass:
             fn: Any = ac.passthrough

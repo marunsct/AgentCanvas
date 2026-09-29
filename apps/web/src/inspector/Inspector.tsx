@@ -3,6 +3,7 @@ import { useManifests } from "../api/queries";
 import { useEditor } from "../editor/store";
 import { findElement, isResource } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
+import { McpBrowser } from "./McpBrowser";
 import { PoliciesEditor } from "./PoliciesEditor";
 import { WiredPorts } from "./WiredPorts";
 import { WorkflowPanel } from "./WorkflowPanel";
@@ -46,6 +47,7 @@ export function Inspector() {
           {mine.map((d, i) => <li key={i} className={d.severity}><b>{d.code}</b> {d.message}{d.hint ? ` — ${d.hint}` : ""}</li>)}
         </ul>
       )}
+      {res && el.type === "mcp.server" && <McpBrowser resource={el} />}
       {m && <ConfigForm element={el} manifest={m} isResource={res} />}
       {m && <WiredPorts element={el} manifest={m} />}
       {!res && (

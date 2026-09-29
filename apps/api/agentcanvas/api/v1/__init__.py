@@ -2,10 +2,11 @@
 
 from fastapi import APIRouter
 
-from agentcanvas.api.v1 import catalog, projects, runs, workflows
+from agentcanvas.api.v1 import catalog, projects, runs, tools, workflows
 
 router = APIRouter(prefix="/v1")
 router.include_router(catalog.router)
 router.include_router(projects.router)
 router.include_router(workflows.router)
 router.include_router(runs.router)
+router.include_router(tools.router)

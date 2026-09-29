@@ -910,6 +910,54 @@
         "title": "LayoutUpdate",
         "type": "object"
       },
+      "McpInspectRequest": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "name": {
+            "description": "Resource name (lets dev/test hosts substitute an in-process server)",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "title": "McpInspectRequest",
+        "type": "object"
+      },
+      "McpToolInfo": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "destructive": {
+            "default": false,
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "read_only": {
+            "default": false,
+            "title": "Read Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "McpToolInfo",
+        "type": "object"
+      },
       "ModelInfo": {
         "additionalProperties": false,
         "properties": {
@@ -2545,6 +2593,51 @@
         "summary": "Ir Schema",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/v1/mcp/inspect": {
+      "post": {
+        "operationId": "inspect_mcp_v1_mcp_inspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpInspectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/McpToolInfo"
+                  },
+                  "title": "Response Inspect Mcp V1 Mcp Inspect Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect Mcp",
+        "tags": [
+          "tools"
         ]
       }
     },

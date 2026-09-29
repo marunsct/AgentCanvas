@@ -1760,6 +1760,275 @@
     "docs": null
   },
   {
+    "type": "tool.http",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "HTTP request tool",
+    "category": "Tools",
+    "icon": "globe",
+    "color": "#4B5563",
+    "description": "Calls an HTTP API. The resource name is the tool name; the URL is a template over the tool's arguments, e.g. https://api.example.com/orders/{{ args.order_id }}.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "tool",
+        "type": "Tool",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "url",
+        "allowed_domains"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "title": "What it does (shown to the model)",
+          "minLength": 1
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "title": "Method",
+          "default": "GET"
+        },
+        "url": {
+          "type": "string",
+          "title": "URL template",
+          "format": "url_template",
+          "pattern": "^https?://"
+        },
+        "args_schema": {
+          "type": "object",
+          "title": "Arguments (JSON Schema)",
+          "format": "json_schema",
+          "description": "What the model must provide; used in the URL as {{ args.<name> }}"
+        },
+        "send_args": {
+          "enum": [
+            "auto",
+            "none",
+            "query",
+            "json"
+          ],
+          "title": "Send arguments as",
+          "default": "auto",
+          "description": "auto = none for GET/DELETE, JSON body otherwise"
+        },
+        "headers": {
+          "type": "object",
+          "title": "Headers",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Value"
+              },
+              {
+                "type": "object",
+                "title": "Secret",
+                "required": [
+                  "$secret"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "$secret": {
+                    "type": "string",
+                    "title": "Secret name"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "allowed_domains": {
+          "type": "array",
+          "title": "Allowed domains",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9.-]+$"
+          },
+          "description": "Requests to any other host are refused (subdomains are allowed)"
+        },
+        "timeout": {
+          "type": "number",
+          "title": "Timeout (s)",
+          "exclusiveMinimum": 0,
+          "default": 20
+        },
+        "max_response_chars": {
+          "type": "integer",
+          "title": "Max response characters",
+          "minimum": 100,
+          "default": 20000
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [
+      "external_write"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "mcp.server",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "MCP server",
+    "category": "Tools",
+    "icon": "plug",
+    "color": "#4B5563",
+    "description": "All tools of a Model Context Protocol server (langchain.mcp). Use Browse tools to pick tools and see which are destructive.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Every (selected) tool of the server"
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "enum": [
+            "http",
+            "stdio"
+          ],
+          "title": "Transport",
+          "default": "http",
+          "description": "stdio starts a local process: local edition + admin setting only (E042)"
+        },
+        "url": {
+          "type": "string",
+          "title": "Server URL",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "headers": {
+          "type": "object",
+          "title": "Headers",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Value"
+              },
+              {
+                "type": "object",
+                "title": "Secret",
+                "required": [
+                  "$secret"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "$secret": {
+                    "type": "string",
+                    "title": "Secret name"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "command": {
+          "type": "string",
+          "title": "Command (stdio)"
+        },
+        "args": {
+          "type": "array",
+          "title": "Arguments (stdio)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tool_filter": {
+          "type": "array",
+          "title": "Only these tools",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Empty = every tool the server offers"
+        },
+        "discovered": {
+          "type": "array",
+          "title": "Discovered tools",
+          "readOnly": true,
+          "description": "Filled by Browse tools; used to check approvals (W002, E033)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "destructive": {
+                "type": "boolean"
+              },
+              "read_only": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
     "type": "tool.python",
     "version": "1.0.0",
     "kind": "resource",
