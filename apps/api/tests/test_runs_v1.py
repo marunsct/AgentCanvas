@@ -363,3 +363,23 @@ async def test_explain_mode_narrates_steps_and_router_decisions(triage_api):
     hist = (await api.get("/v1/threads/th_high_x/history", params={"include_values": True})).json()
     assert hist[0]["values"]["summary"] == "ESCALATED: Down!"
     assert "values" not in (await api.get("/v1/threads/th_high_x/history")).json()[0]
+
+
+async def test_research_template_map_reduce_and_deep_agent_memory(app, api_client):
+    """Sprint 5 demo: parallel research per topic, then a Deep Agent saves findings in the user's /memories/."""
+    from agentcanvas.testing import DemoResources
+
+    demo = DemoResources()
+    app.state.resources_factory = lambda thread_id, wf: demo
+    wf = (await api_client.post(P, json={"name": "Research", "template": "research_brief"})).json()
+    assert not [d for d in wf["diagnostics"] if d["severity"] == "error"]
+    body = {"input": {"question": "Hot drinks", "topics": ["tea", "coffee", "cocoa"]}, "thread_id": "th_research"}
+    fin = events((await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json=body)).text)[-1]
+    assert fin["status"] == "success", fin
+    assert set(fin["output"]) == {"messages"}  # output schema: only `messages` is io "out"
+    state = (await api_client.get("/v1/threads/th_research")).json()["values"]
+    assert len(state["notes"]) == 3 and all("Demo reply" in n for n in state["notes"])
+    items = await app.state.runner.adapter.store.asearch(("memories", "user", "usr_dev"))
+    assert [i.key for i in items] == ["/findings.md"]
+    saved = str(items[0].value["content"])
+    assert "cocoa" in saved and "Hot drinks" in saved

@@ -22,10 +22,14 @@ export function isChat(wf: WF): boolean {
   return hasMessages && inputs.every((c) => c.name === "messages");
 }
 
-function sampleInput(wf: WF): string {
+const EMPTY: Record<string, unknown> = { string: "", array: [], object: {}, number: 0, integer: 0, boolean: false };
+
+/** A starter input: one key per input channel, typed (`topics: []`, `question: ""`). */
+export function sampleInput(wf: WF): string {
   const inputs = wf.state.channels.filter((c) => (c.io ?? "inout") === "inout" || c.io === "in");
-  const fields = inputs.filter((c) => c.reducer !== "add_messages").slice(0, 3);
-  return JSON.stringify(Object.fromEntries(fields.map((c) => [c.name, ""])), null, 2);
+  const fields = inputs.filter((c) => c.reducer !== "add_messages").slice(0, 4);
+  const empty = (c: (typeof fields)[number]) => EMPTY[(c.type as { type?: string } | undefined)?.type ?? "string"] ?? "";
+  return JSON.stringify(Object.fromEntries(fields.map((c) => [c.name, empty(c)])), null, 2);
 }
 
 export function RunPanel() {

@@ -181,18 +181,23 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `E010` | error | No path from START to END |
 | `E011` | error | Node unreachable from START |
 | `E012` | error | Router has a route with no outgoing edge and no default |
+| `E015` | error | Reachable node without an outgoing flow edge (a map without an `each` edge) |
+| `E016` | error | Join fed by START or a conditional branch (router route / map) — it would wait forever (v0.6, S5) |
 | `E020` | error | Two nodes in the same super-step write a channel whose reducer is `replace` (concurrent update) |
+| `E022` | error | Map worker writes a `replace` channel (parallel per-item writes; use `append`) (S5) |
 | `E021` | error | Node writes a channel not declared in state |
-| `E030` | error | Agent has tools but model lacks tool-calling capability (from model profile) |
+| `E030` | error | Agent has tools (or structured output) but the model lacks tool-calling (structured-output) capability (from model profile) |
 | `E031` | error | Duplicate tool name in agent |
 | `E032` | error | Subagent missing description / duplicate name |
-| `E033` | error | `interrupt_on` references unknown tool |
+| `E033` | error | `interrupt_on` references unknown tool (Deep Agent built-ins such as `write_file`, `task` are known) |
 | `E034` | error | Permission path not absolute / contains `..` or `~` |
+| `E035` | error | Middleware wired twice under the same upstream name, or duplicating a Deep Agent built-in (summarization; to-dos when planning is on) (S5) |
+| `E036` | error | Deep Agent file backends clash (two folders mounted at one path, two default backends) (S5) |
 | `E040` | error | `execute`/shell capability without sandbox backend |
 | `E050` | error | Secret literal detected in config |
 | `E060` | error | Send target input type incompatible with payload |
 | `E070` | error | Node performs a DB/external write **and** calls `interrupt()` (write would repeat on resume) — split the node |
-| `E071` | error | Data node/tool without a resolved tenant/user scope for a tenant-scoped entity |
+| `E071` | error | Data node/tool/memory folder without a resolved tenant/user scope (e.g. a per-user `/memories/` folder but no context field with source `user`) |
 | `E072` | error | Memory Space namespace template uses values produced by a model or tool (allowed: `context`, authenticated identity, and input channels marked `trusted`, e.g. webhook payload fields) |
 | `E073` | error | Persistence binding missing for the target environment |
 | `W070` | warning | Write node with retries but no idempotency key |
@@ -214,6 +219,7 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `W001` | warning | Cycle without guard (router exit, counter, or explicit `recursion_limit` override) |
 | `W002` | warning | MCP tool with `destructive_hint` not behind approval |
 | `W003` | warning | Channel written but never read |
+| `W013` | warning | Join with fewer than two incoming branches (S5) |
 | `W010` | warning | Model deprecated / not in environment allow-list |
 | `W020` | warning | Prompt > N tokens without caching-capable model |
 | `I001` | info | Consider `LLMToolSelectorMiddleware` (> 20 tools on an agent) |

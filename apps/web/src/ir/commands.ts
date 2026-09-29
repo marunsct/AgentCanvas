@@ -28,6 +28,27 @@ export function mergePatch(target: unknown, patch: unknown): unknown {
   return result;
 }
 
+/**
+ * One merge patch with the effect of applying `first` then `second`, keeping the nulls that delete keys; or
+ * `undefined` when no single merge patch has that effect (`first` deletes or replaces a value with a scalar and
+ * `second` then patches an object into it: merged into the old object, it would resurrect the old keys).
+ */
+export function composePatches(first: unknown, second: unknown): unknown {
+  const isObj = (v: unknown) => v !== null && typeof v === "object" && !Array.isArray(v);
+  if (!isObj(second)) return second;
+  if (!isObj(first)) return undefined;
+  const out: Record<string, unknown> = { ...(first as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(second as Record<string, unknown>)) {
+    if (!(k in out)) out[k] = v;
+    else {
+      const c = composePatches(out[k], v);
+      if (c === undefined) return undefined;
+      out[k] = c;
+    }
+  }
+  return out;
+}
+
 function idx<T extends { id: string }>(items: T[], id: string, what: string): number {
   const i = items.findIndex((x) => x.id === id);
   if (i < 0) throw new CommandError(`unknown ${what} '${id}'`);

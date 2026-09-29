@@ -67,9 +67,11 @@ class DemoChatModel(BaseChatModel):
 
     def _reply(self, messages: list[BaseMessage]) -> AIMessage:
         if self.tool_specs and not any(isinstance(m, ToolMessage) for m in messages):
-            spec = self.tool_specs[0]
+            # a Deep Agent offers file tools: saving a note shows its long-term /memories/ folder at work
+            spec = next((t for t in self.tool_specs if t["name"] == "write_file"), self.tool_specs[0])
             props = spec.get("parameters", {}).get("properties", {})
-            args = {k: _demo_value(v) for k, v in props.items()}
+            asked = _last_human(messages)
+            args = {k: _demo_value(v, k, asked) for k, v in props.items()}
             return AIMessage(content="", tool_calls=[{"name": spec["name"], "args": args, "id": "demo_call_1"}])
         if any(isinstance(m, ToolMessage) for m in messages):
             return AIMessage(content="Done — the tool call finished (demo model).")
@@ -80,7 +82,18 @@ class DemoChatModel(BaseChatModel):
         return AIMessage(content=f"Demo reply (no model key configured): {text[:120]}")
 
 
-def _demo_value(schema: dict[str, Any]) -> Any:
+def _last_human(messages: list[BaseMessage]) -> str:
+    return next((str(m.content) for m in reversed(messages) if m.type == "human"), "")
+
+
+_DEMO_ARGS = {"file_path": "/memories/findings.md"}
+
+
+def _demo_value(schema: dict[str, Any], name: str = "", asked: str = "") -> Any:
+    if name in _DEMO_ARGS:
+        return _DEMO_ARGS[name]
+    if name == "content":
+        return f"Notes (demo model):\n{asked[:500]}"
     return {"string": "demo", "integer": 1, "number": 1.0, "boolean": True, "array": [], "object": {}}.get(
         schema.get("type", "string"), "demo"
     )

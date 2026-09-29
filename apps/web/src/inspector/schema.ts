@@ -30,12 +30,23 @@ export function uiSchemaFromFormats(schema: Schema): Schema {
 export const WIDGET_FORMATS = new Set(["prompt", "template", "channel", "cel", "model", "import_path", "regex"]);
 export const CUSTOM_FORMATS = [...WIDGET_FORMATS, "json_schema"];
 
-/** Top-level JSON merge patch turning `before` into `after` (removed keys -> null). */
+const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * RFC 7396 merge patch turning `before` into `after`: removed keys -> null, nested objects are diffed recursively
+ * (a merge patch *merges* objects, so replacing a nested object wholesale would keep its old keys — e.g. a renamed
+ * structured-output field or a renamed `values` key). Arrays and scalars are replaced.
+ */
 export function diffToMergePatch(before: Record<string, unknown>, after: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   for (const k of Object.keys(before)) if (!(k in after) || after[k] === undefined) patch[k] = null;
   for (const [k, v] of Object.entries(after)) {
-    if (v !== undefined && JSON.stringify(v) !== JSON.stringify(before[k])) patch[k] = v;
+    if (v === undefined) continue;
+    const old = before[k];
+    if (isObject(v) && isObject(old)) {
+      const sub = diffToMergePatch(old, v);
+      if (Object.keys(sub).length) patch[k] = sub;
+    } else if (JSON.stringify(v) !== JSON.stringify(old)) patch[k] = v;
   }
   return patch;
 }

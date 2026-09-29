@@ -3,7 +3,7 @@
  * fields, or the raw JSON Schema for anything richer. Used for config properties with `format: json_schema`.
  */
 import type { FieldProps } from "@rjsf/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Json = Record<string, unknown>;
 export type FieldType = "string" | "number" | "integer" | "boolean" | "enum" | "list";
@@ -56,14 +56,22 @@ export function schemaFromRows(rows: FieldRow[], title?: string): Json | undefin
 export function JsonSchemaField(props: FieldProps) {
   const { schema, formData, onChange, fieldPathId, disabled, readonly } = props;
   const value = (formData && typeof formData === "object" ? formData : undefined) as Json | undefined;
-  const rows = rowsFromSchema(value);
+  const title = typeof value?.title === "string" ? value.title : undefined;
+  // rows are local editing state: a row being renamed may briefly have no name (and so no schema property)
+  const [rows, setRowsState] = useState<FieldRow[] | null>(() => rowsFromSchema(value));
   const [mode, setMode] = useState<"fields" | "json">(rows === null ? "json" : "fields");
   const [draft, setDraft] = useState(() => (value ? JSON.stringify(value, null, 2) : ""));
   const [error, setError] = useState<string | null>(null);
   const emit = (v: Json | undefined) => onChange(v, fieldPathId.path);
   const off = disabled || readonly;
-  const title = typeof value?.title === "string" ? value.title : undefined;
+  const valueKey = JSON.stringify(value ?? null);
+  useEffect(() => {
+    // changed elsewhere (undo, JSON mode, another tab): rebuild the rows unless they already produce this value
+    setRowsState((cur) =>
+      cur !== null && JSON.stringify(schemaFromRows(cur, title) ?? null) === valueKey ? cur : rowsFromSchema(value));
+  }, [valueKey]); // valueKey stands for `value` (a new object on every render)
   const setRows = (next: FieldRow[]) => {
+    setRowsState(next);
     const v = schemaFromRows(next, title);
     setDraft(v ? JSON.stringify(v, null, 2) : "");
     emit(v);
@@ -76,10 +84,10 @@ export function JsonSchemaField(props: FieldProps) {
       {schema.description && <p className="muted small">{schema.description}</p>}
       <div className="row gap mode-toggle" role="radiogroup" aria-label={`${schema.title} editor`}>
         <button type="button" role="radio" aria-checked={mode === "fields"} className={mode === "fields" ? "active" : ""}
-          disabled={rows === null} title={rows === null ? "this schema needs the JSON editor" : undefined}
-          onClick={() => setMode("fields")}>Fields</button>
+          disabled={rowsFromSchema(value) === null} title={rowsFromSchema(value) === null ? "this schema needs the JSON editor" : undefined}
+          onClick={() => { setRowsState(rowsFromSchema(value)); setMode("fields"); }}>Fields</button>
         <button type="button" role="radio" aria-checked={mode === "json"} className={mode === "json" ? "active" : ""}
-          onClick={() => setMode("json")}>JSON</button>
+          onClick={() => { setDraft(value ? JSON.stringify(value, null, 2) : ""); setMode("json"); }}>JSON</button>
       </div>
       {mode === "fields" && rows !== null ? (
         <>

@@ -9,7 +9,7 @@
 import { create } from "zustand";
 import { ApiError, apiFetch } from "../api/client";
 import type { Diagnostic, Layout, Position } from "../api/types";
-import { applyAll, applyLocal, type Command, CommandError, mergePatch } from "../ir/commands";
+import { applyAll, applyLocal, type Command, CommandError, composePatches } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
 import type * as G from "../ir/generated";
 
@@ -88,10 +88,11 @@ function loadBreakpoints(id: string): string[] {
 }
 
 /** Merge a new UpdateNode/UpdateResource into the last queued one for the same element (typing in a form). */
-function coalesce(pending: Command[], cmd: Command): Command[] {
+export function coalesce(pending: Command[], cmd: Command): Command[] {
   const last = pending[pending.length - 1];
   if (last && (cmd.op === "UpdateNode" || cmd.op === "UpdateResource") && last.op === cmd.op && last.id === cmd.id) {
-    return [...pending.slice(0, -1), { ...last, patch: mergePatch(last.patch, cmd.patch) as typeof cmd.patch }];
+    const patch = composePatches(last.patch, cmd.patch);
+    if (patch !== undefined) return [...pending.slice(0, -1), { ...last, patch: patch as typeof cmd.patch }];
   }
   return [...pending, cmd];
 }

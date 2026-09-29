@@ -546,3 +546,26 @@ def test_join_rules():
         )
     )
     assert "E016" in errors(racy)
+
+
+@pytest.mark.asyncio
+async def test_research_template_equivalence(tmp_path):
+    import json
+    import pathlib
+
+    path = pathlib.Path(__file__).parents[1] / "agentcanvas/registry/templates/research_brief.ir.json"
+    wf = Workflow.model_validate(json.loads(path.read_text()))
+
+    def res():
+        demo = DemoChatModel()
+        return Resources(overrides={"fast_model": demo, "smart_model": demo})
+
+    async def run(graph):
+        out = await graph.ainvoke(
+            {"question": "Hot drinks", "topics": ["tea", "coffee"]}, cfg(), context={"user_id": "usr_x"}
+        )
+        items = await graph.store.asearch(("memories", "user", "usr_x"))
+        return [m.content for m in out["messages"] if m.type != "tool"], [i.key for i in items]
+
+    a, b = await both(wf, tmp_path, res, run)
+    assert a == b and a[1] == ["/findings.md"]

@@ -214,6 +214,22 @@ Ports are written `name: Type`. Inputs ← , outputs → .
 | Emit event | N | `runtime.emit(event_type, payload)` → `custom` stream + event bus, schema-checked (FR-X-22) | P1 |
 | Wait for event | N | `interrupt({"kind": "wait_event", "event": …, "correlation": …})`; resumed by a trigger handler (`act.resume`) | P1 |
 
+## 11c. Implemented type ids (product, Sprint 5)
+
+| Catalog entry | Type id | Kind |
+|---------------|---------|------|
+| Chat Model | `model.chat` | resource → `ChatModel` |
+| Code tool (custom) | `tool.python` | resource → `Tool` |
+| LLM call · Lite Agent · Deep Agent | `core.llm` · `core.agent` · `agent.deep` | runtime |
+| Subagent (declarative) | `agent.subagent` | resource → `Subagent` (← model, tools, middleware) |
+| State backend · Store backend | `backend.state` · `backend.store` (mount folder, scope user/workflow/thread) | resource → `Backend` |
+| Middleware: PII guard, model/tool call limit, model/tool retry, model fallback, summarization, to-dos, tool selector | `mw.pii`, `mw.model_call_limit`, `mw.tool_call_limit`, `mw.model_retry`, `mw.tool_retry`, `mw.model_fallback` (← models), `mw.summarization` (← model), `mw.todo`, `mw.tool_selector` (← model) | resource → `Middleware` |
+| Router · Map · Join | `core.router` · `core.map` (outputs `each`, `empty`) · `core.join` | runtime |
+| Approval · Human input | `core.approval` · `core.human_input` | runtime |
+| Set values · Python script | `core.set` · `core.script` | runtime |
+
+Resources may take inputs from other resources (a fallback middleware takes models, a subagent takes a model and tools); the Execution Plan builds them in dependency order. Ordered multi-ports (`middleware`, `tools`, `subagents`) use the edge `order`.
+
 ## 12. Node type manifest (for built-ins and custom nodes)
 
 ```yaml

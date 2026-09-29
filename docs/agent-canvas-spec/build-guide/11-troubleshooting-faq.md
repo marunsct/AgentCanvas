@@ -46,6 +46,18 @@ The method exists on `BaseCheckpointSaver` but `InMemorySaver`, `AsyncSqliteSave
 **P-15 ✅ A node's `error_handler` does not run; the run fails with the original exception (Sprint 2).**
 In langgraph 1.2.12, node-level error handlers are **bypassed when streaming with `stream_mode` containing `"messages"` or `"custom"`, or with `subgraphs=True`** (they work with `invoke`, `"updates"`, `"tasks"`, `"values"`). Verified for raised exceptions and `NodeTimeoutError`. Workaround in the runner: workflows that declare an error route stream with `["tasks", "updates"]` only (no token streaming) and emit `CUSTOM ac.warning tokens_disabled`. The strict-xfail canary `tests/test_upstream_canaries.py` turns red when upstream fixes it.
 
+**P-16 ✅ `Please remove duplicate middleware instances.` when building an agent (Sprint 5).**
+`create_agent` rejects two middleware with the same `.name`. Names include a key for some types (`PIIMiddleware[email]`, `ToolCallLimitMiddleware[send_email]`) but not for others (two `ModelCallLimitMiddleware` clash). Deep Agents (deepagents 0.7) already contain `SummarizationMiddleware` in their base stack, so wiring a Summarization widget into a Deep Agent fails the same way. **Planning (`TodoListMiddleware`) is no longer in the Deep Agent base stack** — the widget's "Planning" toggle adds it, so a separate To-dos widget would clash. Validator **E035** reports all three cases before a run.
+
+**P-17 ✅ Structured output: the tool name changes between runs, or a scripted test cannot answer it (Sprint 5).**
+With a JSON-Schema `response_format` that has no `title`, LangChain names the structured-output tool `response_format_<random>`. AgentCanvas always sets a title (the schema's, or `<node>_output`) so generated code, traces and tests are deterministic. The agent writes the result to `structured_response`; declare that channel (validator E021 says so).
+
+**P-18 ✅ A per-user memory folder fails after an approval with "needs the run's user" (Sprint 5).**
+LangGraph does **not** checkpoint `Runtime.context`: every invocation (start, resume, continue, fork) must pass it again. The runner stores each run's context on the `run` row and reuses the thread's last context for resume/continue/decisions and the source thread's for forks — so a reviewer approving someone else's run never becomes the run's user (the `/memories/` namespace stays the requester's).
+
+**P-19 ✅ `TypeError: can only concatenate list (not "str") to list` in a map worker (Sprint 5).**
+`operator.add` as the `append` reducer rejects single values, and most widgets (LLM call, Set values) write one value. AgentCanvas's `append` reducer wraps non-list writes into a one-item list; a map worker can write its result straight into an `append` channel (E022 requires one: parallel workers writing a `replace` channel would raise P-10).
+
 **P-08 ✅ Breakpoint run ends with no interrupts but the run is not finished.**
 With `interrupt_before/after`, `get_state().interrupts` is empty and `next` holds the pending node. Treat `next` non-empty as "paused"; continue with `ainvoke(None, config)`.
 
@@ -119,6 +131,9 @@ Handles that appear after a node's first render (ports known only once node-type
 
 **F-04 ✅ Initial view is zoomed in on part of the graph.**
 `<ReactFlow fitView>` can fit before every node is measured. Fit once when `useNodesInitialized()` becomes true, with `maxZoom: 1`.
+
+**F-05 ✅ A renamed field (or `values` key) comes back after the edit is saved (Sprint 5).**
+A JSON Merge Patch (RFC 7396) *merges* nested objects, so sending a nested object wholesale keeps its old keys. `diffToMergePatch` must diff recursively and send `null` for removed nested keys. Coalescing queued edits needs the same care: `mergePatch(p1, p2)` drops the `null`s of `p2`, and "delete, then set an object" has no single-patch equivalent — `composePatches` keeps nulls and refuses that case (the editor then queues both commands).
 
 ## E. Product questions
 

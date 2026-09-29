@@ -58,6 +58,11 @@ class LangChainAdapter:
     def persistence_kind(self) -> str:
         return self._p.kind if self._p else "none"
 
+    @property
+    def store(self) -> Any:
+        """The long-term store (Deep Agent /memories/ folders, memory nodes); read by tests and the memory inspector."""
+        return self._persist().store
+
     def _persist(self) -> Persistence:
         if self._p is None:
             raise RuntimeError("persistence is not open; use `async with adapter.persistence(url)`")

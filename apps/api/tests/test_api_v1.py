@@ -38,7 +38,7 @@ async def test_create_from_template(api_client):
     wf = await create(api_client, name="Router", template="classify_and_route")
     assert wf["name"] == "Router" and len(wf["ir"]["nodes"]) == 5 and wf["diagnostics"] == []
     templates = {t["id"] for t in (await api_client.get("/v1/templates")).json()}
-    assert {"classify_and_route", "chat_assistant", "support_triage"} <= templates
+    assert {"classify_and_route", "chat_assistant", "support_triage", "research_brief"} <= templates
 
 
 async def test_unknown_template_and_project_are_404_problems(api_client):

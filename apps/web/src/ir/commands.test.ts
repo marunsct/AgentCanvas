@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { triage } from "../test/fixtures";
-import { applyAll, applyLocal, CommandError, mergePatch } from "./commands";
+import { applyAll, applyLocal, CommandError, composePatches, mergePatch } from "./commands";
 
 describe("mergePatch (RFC 7396)", () => {
   it("merges, deletes on null and replaces arrays", () => {
@@ -35,5 +35,23 @@ describe("applyLocal mirrors the server commands", () => {
   it("RemoveResource removes its wiring", () => {
     const wf = applyLocal(triage(), { op: "RemoveResource", id: "r_fast" });
     expect(wf.edges.some((e) => e.source.node === "r_fast")).toBe(false);
+  });
+});
+
+describe("composePatches (queued form edits)", () => {
+  const doc = { config: { values: { a: "1" }, rf: { properties: { field_1: { type: "string" } } } } };
+  const seq = (...ps: unknown[]) => ps.reduce((d, p) => mergePatch(d, p), doc);
+
+  it("has the effect of applying both patches, deletions included", () => {
+    const p1 = { config: { values: { b: "2" } } };
+    const p2 = { config: { values: { a: null } } };
+    expect(mergePatch(doc, composePatches(p1, p2))).toEqual(seq(p1, p2));
+  });
+
+  it("refuses to compose a delete followed by an object (no single merge patch does that)", () => {
+    const p1 = { config: { rf: null } };
+    const p2 = { config: { rf: { properties: { urgency: { type: "string" } } } } };
+    expect(composePatches(p1, p2)).toBeUndefined();
+    expect(seq(p1, p2)).toEqual({ config: { values: { a: "1" }, rf: { properties: { urgency: { type: "string" } } } } });
   });
 });
