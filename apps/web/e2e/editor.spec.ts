@@ -28,6 +28,8 @@ async function createEmpty(page: Page, name: string) {
 }
 
 test("build, validate, run and reload a workflow from an empty canvas", async ({ page }) => {
+  const warnings: string[] = [];
+  page.on("console", (m) => m.type() === "warning" && warnings.push(m.text().slice(0, 300)));
   const errors: string[] = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await createEmpty(page, `E2E build ${Date.now()}`);
@@ -78,7 +80,18 @@ test("build, validate, run and reload a workflow from an empty canvas", async ({
   // everything was autosaved
   await page.reload();
   await expect(page.getByTestId("node-llm_call")).toBeVisible();
-  await expect(page.locator(".react-flow__edge")).toHaveCount(3);
+  try {
+    await expect(page.locator(".react-flow__edge")).toHaveCount(3);
+  } catch (e) {
+    // diagnostics for CI logs (traces are not always reachable): saved edges vs rendered handles
+    const id = page.url().split("/workflows/")[1];
+    const saved = await (await page.request.get(`/api/v1/workflows/${id}`)).json();
+    console.log("saved edges:", JSON.stringify(saved.ir.edges));
+    console.log("handles:", await page.locator(".react-flow__handle").evaluateAll((hs) =>
+      hs.map((h) => `${h.closest(".react-flow__node")?.getAttribute("data-id")}:${h.getAttribute("data-handleid")}`)));
+    console.log("warnings:", JSON.stringify(warnings));
+    throw e;
+  }
   expect(errors).toEqual([]);
 });
 

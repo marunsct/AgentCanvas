@@ -1,7 +1,7 @@
 /** The canvas (M2-T3…T6): derived from the IR, edits become commands. */
 import {
   applyEdgeChanges, applyNodeChanges, Background, Controls, type Connection, type Edge, type EdgeChange, MiniMap,
-  type Node, type NodeChange, ReactFlow, useNodesInitialized, useReactFlow,
+  type Node, type NodeChange, ReactFlow, useNodesInitialized, useReactFlow, useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -169,6 +169,22 @@ export function Canvas() {
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((es) => applyEdgeChanges(changes, es)), []);
 
+  // React Flow error 008: an edge references a handle that was not measured yet (a handle rendered after the
+  // node's first measurement). Re-measure both ends a few times instead of leaving the edge invisible (FAQ F-03).
+  const updateInternals = useUpdateNodeInternals();
+  const remeasured = useRef(new Map<string, number>());
+  const onError = useCallback((code: string, message: string) => {
+    const edgeId = code === "008" ? /edge id: ([^\s.]+)/.exec(message)?.[1] : undefined;
+    const edge = edgeId ? rf.getEdge(edgeId) : undefined;
+    const tries = edgeId ? remeasured.current.get(edgeId) ?? 0 : 99;
+    if (!edge || tries >= 5) {
+      console.warn(`[React Flow ${code}] ${message}`);
+      return;
+    }
+    remeasured.current.set(edgeId!, tries + 1);
+    setTimeout(() => updateInternals([edge.source, edge.target]), 50 * (tries + 1));
+  }, [rf, updateInternals]);
+
   const onDelete = useCallback(({ nodes: ns, edges: es }: { nodes: Node<CanvasData>[]; edges: Edge[] }) => {
     if (useEditor.getState().drill.length) return;
     const cmds: Command[] = [];
@@ -219,7 +235,7 @@ export function Canvas() {
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={NODE_TYPES}
         onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onDelete={onDelete}
-        onConnect={onConnect} isValidConnection={isValidConnection}
+        onConnect={onConnect} isValidConnection={isValidConnection} onError={onError}
         onConnectEnd={() => { lastHint.current = null; setTimeout(() => setConnectHint(null), 1500); }}
         onPaneClick={() => select(null)}
         onNodeDoubleClick={(_, n) => {
