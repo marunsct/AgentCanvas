@@ -220,6 +220,7 @@ export type Changed = ElementChange[];
 export type Removed = string[];
 export type Summary = string;
 export type Workflow = FieldChange[];
+export type Enabled = boolean;
 export type Type4 = string;
 export type CreatedAt2 = string;
 export type Id13 = string;
@@ -431,30 +432,45 @@ export type WorkflowId1 = string;
 export type Items1 = ThreadOut[];
 export type NextCursor = string | null;
 export type CreatedAt9 = string;
-export type CreatedBy = string | null;
+export type DeploymentId = string | null;
+export type Enabled1 = boolean;
 export type Id21 = string;
+export type Kind4 = string;
+export type Secret = string | null;
+export type Url = string | null;
+export type DeploymentId1 = string | null;
+export type Kind5 = "webhook" | "cron";
+export type CreatedAt10 = string;
+export type DeploymentId2 = string | null;
+export type Enabled2 = boolean;
+export type Id22 = string;
+export type Kind6 = string;
+export type Url1 = string | null;
+export type CreatedAt11 = string;
+export type CreatedBy = string | null;
+export type Id23 = string;
 export type IrHash2 = string;
 export type Message4 = string;
 export type Semver1 = string;
 export type WorkspaceCommit = string | null;
 export type Bump = "major" | "minor" | "patch";
 export type Message5 = string;
-export type CreatedAt10 = string;
+export type CreatedAt12 = string;
 export type CreatedBy1 = string | null;
-export type Id22 = string;
+export type Id24 = string;
 export type IrHash3 = string;
 export type Message6 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
-export type CreatedAt11 = string;
+export type CreatedAt13 = string;
 export type Diagnostics3 = Diagnostic[];
-export type Id23 = string;
+export type Id25 = string;
 export type IrHash4 = string;
 export type Name21 = string;
 export type ProjectId1 = string;
 export type UpdatedAt3 = string;
 export type Version3 = number;
-export type Id24 = string;
+export type Id26 = string;
 export type Name22 = string;
 export type UpdatedAt4 = string;
 export type Version4 = number;
@@ -487,6 +503,7 @@ export interface ApiSchemas {
   Edge?: Edge;
   ElementChange?: ElementChange;
   ElementDiff?: ElementDiff;
+  EnabledIn?: EnabledIn;
   Endpoint?: Endpoint;
   EventIn?: EventIn;
   EventLogOut?: EventLogOut;
@@ -545,6 +562,9 @@ export interface ApiSchemas {
   ThreadOut?: ThreadOut;
   ThreadPage?: ThreadPage;
   TimeoutPolicySpec?: TimeoutPolicySpec;
+  TriggerCreated?: TriggerCreated;
+  TriggerIn?: TriggerIn;
+  TriggerOut?: TriggerOut;
   UpdateMeta?: UpdateMeta;
   UpdateNode?: UpdateNode;
   UpdateResource?: UpdateResource;
@@ -1063,6 +1083,13 @@ export interface After1 {
 }
 export interface Before1 {
   [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "EnabledIn".
+ */
+export interface EnabledIn {
+  enabled: Enabled;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -1616,12 +1643,57 @@ export interface ThreadPage {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TriggerCreated".
+ */
+export interface TriggerCreated {
+  config: Config3;
+  created_at: CreatedAt9;
+  deployment_id: DeploymentId;
+  enabled: Enabled1;
+  id: Id21;
+  kind: Kind4;
+  secret?: Secret;
+  url?: Url;
+}
+export interface Config3 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TriggerIn".
+ */
+export interface TriggerIn {
+  config?: Config4;
+  deployment_id?: DeploymentId1;
+  kind: Kind5;
+}
+export interface Config4 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TriggerOut".
+ */
+export interface TriggerOut {
+  config: Config5;
+  created_at: CreatedAt10;
+  deployment_id: DeploymentId2;
+  enabled: Enabled2;
+  id: Id22;
+  kind: Kind6;
+  url?: Url1;
+}
+export interface Config5 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "VersionDetail".
  */
 export interface VersionDetail {
-  created_at: CreatedAt9;
+  created_at: CreatedAt11;
   created_by: CreatedBy;
-  id: Id21;
+  id: Id23;
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
@@ -1648,9 +1720,9 @@ export interface VersionIn {
  * via the `definition` "VersionOut".
  */
 export interface VersionOut {
-  created_at: CreatedAt10;
+  created_at: CreatedAt12;
   created_by: CreatedBy1;
-  id: Id22;
+  id: Id24;
   ir_hash: IrHash3;
   message: Message6;
   semver: Semver2;
@@ -1661,9 +1733,9 @@ export interface VersionOut {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt11;
+  created_at: CreatedAt13;
   diagnostics: Diagnostics3;
-  id: Id23;
+  id: Id25;
   ir: Ir3;
   ir_hash: IrHash4;
   layout: Layout2;
@@ -1691,7 +1763,7 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id24;
+  id: Id26;
   name: Name22;
   updated_at: UpdatedAt4;
   version: Version4;

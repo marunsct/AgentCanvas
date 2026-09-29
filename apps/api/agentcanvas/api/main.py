@@ -26,6 +26,7 @@ from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
 from agentcanvas.services.secrets import SecretService
+from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
 
 log = get_logger(__name__)
@@ -55,10 +56,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.runner = runner
             app.state.events = EventService(db, runner, app.state.projects)
             runner.finish_hooks.append(app.state.events.on_run_finished)
+            app.state.cron = CronScheduler(db, runner, settings.secret_key)
+            if settings.env != "test":  # tests drive the scheduler with explicit ticks
+                app.state.cron.start()
             log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
             try:
                 yield
             finally:
+                await app.state.cron.stop()
                 await runner.shutdown()
                 await app.state.projects.aclose()
                 await db.dispose()

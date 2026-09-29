@@ -6,6 +6,7 @@ import type { DiffOut, ElementDiff, VersionOut } from "../api/generated";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import { PublishSection } from "./PublishSection";
+import { TriggersSection } from "./TriggersSection";
 
 export function VersionsPanel() {
   const wf = useEditor((s) => s.wf);
@@ -78,6 +79,7 @@ export function VersionsPanel() {
       </ul>
       {versions.data?.length === 0 && <p className="muted">No versions yet. A version freezes the workflow and its workspace code.</p>}
       <PublishSection wfId={wf.id} />
+      <TriggersSection wfId={wf.id} />
     </div>
   );
 }

@@ -81,3 +81,20 @@ test("publish from the Versions tab, then call the endpoint with the key", async
   });
   expect((await res.json()).output.out).toBe("Hi Ada");
 });
+
+test("add a webhook and a cron trigger", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Triggers ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "+ Webhook" }).click();
+  await expect(page.getByTestId("webhook-secret")).toContainText("whsec_");
+  await page.getByLabel("cron schedule").fill("*/5 * * * *");
+  await page.getByRole("button", { name: "+ Cron" }).click();
+  await expect(page.getByTestId("trigger-cron")).toContainText("*/5 * * * *");
+  await page.getByLabel("cron schedule").fill("nope");
+  await page.getByRole("button", { name: "+ Cron" }).click();
+  await expect(page.getByRole("alert")).toContainText("5 fields");
+  await page.getByTestId("trigger-cron").getByRole("button", { name: "Disable" }).click();
+  await expect(page.getByTestId("trigger-cron")).toContainText("off");
+});
