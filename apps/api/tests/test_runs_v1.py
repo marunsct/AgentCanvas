@@ -458,3 +458,50 @@ async def test_wall_clock_budget(api_client):
     wf = await make(api_client, linear(*nodes, channels=("out", "seconds"), settings={"budget": {"max_seconds": 0.3}}))
     fin = events((await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 5}})).text)[-1]
     assert fin["code"] == "budget_exceeded" and "longer than 0.3 s" in fin["message"]
+
+
+# ------------------------------------------------------------------------ pins & mocks (M4-T9) ----
+class MustNotRun(Exception):
+    pass
+
+
+def raising_models():
+    from agentcanvas.testing import ToolFakeModel
+
+    class Raising(ToolFakeModel):
+        def _generate(self, *a, **kw):
+            raise MustNotRun("a pinned or mocked model was called")
+
+    return Resources(overrides={"fast_model": Raising(messages=iter([])), "smart_model": Raising(messages=iter([]))})
+
+
+async def test_pinned_classifier_never_calls_the_model(triage_api, app):
+    app.state.resources_factory = lambda thread_id, wf: raising_models()
+    api, wf = triage_api, triage_api.wf_id
+    body = {"input": {"ticket": "Where is my invoice?"}, "mode": "debug", "pins": {"n_cls": {"urgency": "high"}}}
+    fin = events((await api.post(f"/v1/workflows/{wf}/runs/stream", json=body)).text)[-1]
+    assert fin["type"] == "RUN_FINISHED", fin
+    assert fin["interrupts"][0]["canvas_node_id"] == "n_ok"  # the pinned "high" took the escalation branch
+    assert (await api.post(f"/v1/workflows/{wf}/runs/stream", json={**body, "mode": "normal"})).status_code == 422
+    bad = {**body, "pins": {"n_rt": {}}}
+    assert (await api.post(f"/v1/workflows/{wf}/runs/stream", json=bad)).status_code == 422
+
+
+async def test_mock_models_follow_the_conversation_across_resume(triage_api, app):
+    app.state.resources_factory = lambda thread_id, wf: raising_models()
+    api, wf = triage_api, triage_api.wf_id
+    mocks = {
+        "fast_model": ["low"],
+        "smart_model": [{"tool_calls": [{"name": "send_reply", "args": {"text": "Hi!"}}]}, "Mocked: reply sent."],
+    }
+    body = {"input": {"ticket": "Where is my invoice?"}, "mode": "debug", "mocks": mocks, "thread_id": "th_mock"}
+    fin = events((await api.post(f"/v1/workflows/{wf}/runs/stream", json=body)).text)[-1]
+    assert fin["interrupts"][0]["kind"] == "tool_approval"
+    assert fin["interrupts"][0]["payload"]["action_requests"][0]["args"] == {"text": "Hi!"}
+    resume = {"value": {"decisions": [{"type": "approve"}]}, "mocks": mocks}
+    fin = events((await api.post("/v1/threads/th_mock/resume", json=resume)).text)[-1]
+    assert fin["status"] == "success", fin
+    state = (await api.get("/v1/threads/th_mock")).json()["values"]
+    assert state["messages"][-1]["content"] == "Mocked: reply sent."
+    unknown = {**body, "thread_id": None, "mocks": {"nope": ["x"]}}
+    assert (await api.post(f"/v1/workflows/{wf}/runs/stream", json=unknown)).status_code == 422

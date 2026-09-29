@@ -37,6 +37,16 @@ async function stream(path: string, body: unknown): Promise<void> {
   }
 }
 
+/** Pinned outputs and mock models of this viewer (sent with every debug run, M4-T9). */
+export function debugAids(): { pins?: Record<string, unknown>; mocks?: Record<string, unknown[]> } {
+  const { wf, pins, mocks } = useEditor.getState();
+  const known = new Set(wf?.nodes.map((n) => n.id));
+  const models = new Set(wf?.resources.filter((r) => r.type === "model.chat").map((r) => r.name));
+  const p = Object.fromEntries(Object.entries(pins).filter(([id]) => known.has(id)));
+  const m = Object.fromEntries(Object.entries(mocks).filter(([name]) => models.has(name)));
+  return { ...(Object.keys(p).length ? { pins: p } : {}), ...(Object.keys(m).length ? { mocks: m } : {}) };
+}
+
 export async function startRun(input: Record<string, unknown>, opts: { continueThread?: boolean } = {}) {
   const { wf, breakpoints, flush } = useEditor.getState();
   if (!wf) return;
@@ -44,21 +54,23 @@ export async function startRun(input: Record<string, unknown>, opts: { continueT
   const run = useRun.getState();
   const threadId = opts.continueThread ? run.threadId ?? undefined : undefined;
   run.reset();
-  const debug = breakpoints.length > 0;
+  const aids = debugAids();
+  const debug = breakpoints.length > 0 || Object.keys(aids).length > 0;
   await stream(`/workflows/${wf.id}/runs/stream`, {
-    input, thread_id: threadId, ...(debug ? { mode: "debug", breakpoints: { before: breakpoints } } : {}),
+    input, thread_id: threadId, ...aids,
+    ...(debug ? { mode: "debug", breakpoints: { before: breakpoints } } : {}),
   });
 }
 
 export async function resumeRun(value: unknown, interruptId?: string) {
   const { threadId } = useRun.getState();
   if (!threadId) return;
-  await stream(`/threads/${threadId}/resume`, { value, interrupt_id: interruptId });
+  await stream(`/threads/${threadId}/resume`, { value, interrupt_id: interruptId, ...debugAids() });
 }
 
 export async function continueRun() {
   const { threadId } = useRun.getState();
-  if (threadId) await stream(`/threads/${threadId}/continue`, {});
+  if (threadId) await stream(`/threads/${threadId}/continue`, debugAids());
 }
 
 export async function cancelRun() {

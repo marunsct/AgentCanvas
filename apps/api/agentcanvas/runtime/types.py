@@ -32,6 +32,8 @@ class RunSpec:
     context: dict[str, Any] = field(default_factory=dict)
     durability: Literal["exit", "async", "sync"] | None = None
     checkpoint_id: str | None = None  # start from a past checkpoint (replay / fork)
+    pins: dict[str, dict[str, Any]] = field(default_factory=dict)  # canvas node id -> output replayed (debug)
+    mocks: dict[str, list[Any]] = field(default_factory=dict)  # model resource name -> scripted replies (debug)
 
 
 @dataclass

@@ -3,6 +3,7 @@ import { useManifests } from "../api/queries";
 import { useEditor } from "../editor/store";
 import { findElement, isResource } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
+import { MockPanel, PinPanel } from "./DebugAids";
 import { McpBrowser } from "./McpBrowser";
 import { PoliciesEditor } from "./PoliciesEditor";
 import { WiredPorts } from "./WiredPorts";
@@ -56,6 +57,8 @@ export function Inspector() {
           {breakpoints.includes(el.id) ? "● Remove breakpoint" : "○ Add breakpoint"}
         </button>
       )}
+      {!res && <PinPanel node={el} />}
+      {res && el.type === "model.chat" && <MockPanel resource={el} key={`mock-${el.name}`} />}
       {!res && <PoliciesEditor node={el} />}
       <button type="button" className="danger"
         onClick={() => { dispatch([res ? { op: "RemoveResource", id: el.id } : { op: "RemoveNode", id: el.id }]); useEditor.getState().select(null); }}>

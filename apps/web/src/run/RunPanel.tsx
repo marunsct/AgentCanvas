@@ -37,6 +37,8 @@ export function RunPanel() {
   const errors = useEditor((s) => s.diagnostics.filter((d) => d.severity === "error").length);
   const busyEditing = useEditor((s) => s.pending.length > 0 || s.inflight);
   const breakpoints = useEditor((s) => s.breakpoints.length);
+  const pinned = useEditor((s) => Object.keys(s.pins).length);
+  const mocked = useEditor((s) => Object.keys(s.mocks).length);
   const run = useRun();
   const [chatOverride, setChatOverride] = useState<boolean | null>(null);
   if (!wf) return null;
@@ -45,7 +47,14 @@ export function RunPanel() {
 
   return (
     <div className="panel-body run-panel">
-      <h3>Test run {breakpoints > 0 && <small className="badge warn">debug · {breakpoints} breakpoint(s)</small>}</h3>
+      <h3>
+        Test run{" "}
+        {(breakpoints > 0 || pinned > 0 || mocked > 0) && (
+          <small className="badge warn" data-testid="debug-badge">
+            debug{breakpoints > 0 && ` · ${breakpoints} breakpoint(s)`}{pinned > 0 && ` · ${pinned} pinned`}{mocked > 0 && ` · ${mocked} mocked`}
+          </small>
+        )}
+      </h3>
       <div className="row gap mode-toggle" role="radiogroup" aria-label="input mode">
         <button type="button" role="radio" aria-checked={!chat} className={!chat ? "active" : ""} onClick={() => setChatOverride(false)}>JSON</button>
         <button type="button" role="radio" aria-checked={chat} className={chat ? "active" : ""} onClick={() => setChatOverride(true)}>Chat</button>

@@ -38,6 +38,7 @@ class PlannedNode:
     options: dict[str, Any]  # arguments for nodes.node_options(...)
     wired: dict[str, list[str]] = field(default_factory=dict)  # input port -> resource names
     fan_out: bool = False  # core.map: conditional edge returning Send(...)s
+    pinned: dict[str, Any] | None = None  # debug runs only: replay this output instead of running the node
 
 
 @dataclass

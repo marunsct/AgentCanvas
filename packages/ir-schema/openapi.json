@@ -496,6 +496,43 @@
         "title": "CreateWorkflow",
         "type": "object"
       },
+      "DebugOptions": {
+        "description": "Debug-run aids (M4-T9); never part of the workflow or its exported code.",
+        "properties": {
+          "mocks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {},
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mocks"
+          },
+          "pins": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pins"
+          }
+        },
+        "title": "DebugOptions",
+        "type": "object"
+      },
       "Decision": {
         "properties": {
           "value": {
@@ -1703,6 +1740,36 @@
             ],
             "title": "Interrupt Id"
           },
+          "mocks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {},
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mocks"
+          },
+          "pins": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pins"
+          },
           "stream": {
             "default": true,
             "title": "Stream",
@@ -1876,6 +1943,21 @@
             "title": "Input",
             "type": "object"
           },
+          "mocks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {},
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mocks"
+          },
           "mode": {
             "default": "normal",
             "enum": [
@@ -1884,6 +1966,21 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "pins": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pins"
           },
           "stream": {
             "default": true,
@@ -3484,6 +3581,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DebugOptions"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

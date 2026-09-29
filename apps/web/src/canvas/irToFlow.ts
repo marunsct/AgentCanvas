@@ -21,6 +21,7 @@ export interface CanvasData extends Record<string, unknown> {
   highlight?: boolean;
   preview?: string; // tail of the streamed tokens (M4-T3)
   metrics?: string; // "1.2k tok · $0.003 · 850 ms" for the last run (M4-T11)
+  pinned?: boolean; // debug runs replay a pinned output (M4-T9)
 }
 
 export interface FlowExtras {
@@ -28,6 +29,7 @@ export interface FlowExtras {
   breakpoints?: string[];
   output?: Record<string, string>;
   metrics?: Record<string, NodeMetrics>;
+  pins?: Record<string, unknown>;
 }
 
 export const PORT_COLORS: Record<string, string> = {
@@ -108,7 +110,7 @@ export function irToFlow(
         routes: kind === "node" && manifest?.dynamic_outputs === "routes" ? routesOf(el as IRNode) : undefined,
         errors: count(el.id, "error"), warnings: count(el.id, "warning"), status: status[el.id] ?? "idle",
         disabled: kind === "node" && Boolean((el as IRNode).disabled),
-        breakpoint: bp.has(el.id), highlight: hl.has(el.id),
+        breakpoint: bp.has(el.id), highlight: hl.has(el.id), pinned: Boolean(extras.pins?.[el.id]),
         preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
         metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
       },

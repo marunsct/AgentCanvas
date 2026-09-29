@@ -49,6 +49,8 @@ export interface EditorState {
   focusNode: ((id: string) => void) | null;
   tidy: (() => Promise<void>) | null;
   breakpoints: string[]; // canvas node ids; debug runs pause before them (per viewer, remembered locally)
+  pins: Record<string, Record<string, unknown>>; // canvas node id -> output replayed in debug runs (M4-T9)
+  mocks: Record<string, unknown[]>; // model resource name -> scripted replies for debug runs
 
   load: (id: string) => Promise<void>;
   dispatch: (cmds: Command[], opts?: { debounceMs?: number; history?: "push" | "undo" | "redo" }) => void;
@@ -62,6 +64,8 @@ export interface EditorState {
   setFocusNode: (fn: ((id: string) => void) | null) => void;
   setTidy: (fn: (() => Promise<void>) | null) => void;
   toggleBreakpoint: (id: string) => void;
+  setPin: (id: string, output: Record<string, unknown> | null) => void;
+  setMock: (name: string, replies: unknown[] | null) => void;
   reset: () => void;
 }
 
@@ -73,18 +77,32 @@ const historyMode: { next: "push" | "undo" | "redo" } = { next: "push" };
 const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
   inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null, tidy: null,
-  breakpoints: [] as string[],
+  breakpoints: [] as string[], pins: {} as Record<string, Record<string, unknown>>, mocks: {} as Record<string, unknown[]>,
 };
 
 const bpKey = (id: string) => `agentcanvas.breakpoints.${id}`;
+const pinKey = (id: string) => `agentcanvas.pins.${id}`;
+const mockKey = (id: string) => `agentcanvas.mocks.${id}`;
+
+function loadLocal<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLocal(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage may be unavailable (private window); the setting still works for this session */
+  }
+}
 
 function loadBreakpoints(id: string): string[] {
-  try {
-    const raw = localStorage.getItem(bpKey(id));
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
+  return loadLocal<string[]>(bpKey(id), []);
 }
 
 /** Merge a new UpdateNode/UpdateResource into the last queued one for the same element (typing in a form). */
@@ -107,6 +125,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
       diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
+      pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}),
     });
   },
 
@@ -200,6 +219,22 @@ export const useEditor = create<EditorState>((set, get) => ({
   setConnectHint: (connectHint) => set({ connectHint }),
   setFocusNode: (focusNode) => set({ focusNode }),
   setTidy: (tidy) => set({ tidy }),
+  setPin: (id, output) => {
+    const { pins, workflowId } = get();
+    const next = { ...pins };
+    if (output) next[id] = output;
+    else delete next[id];
+    set({ pins: next });
+    if (workflowId) saveLocal(pinKey(workflowId), next);
+  },
+  setMock: (name, replies) => {
+    const { mocks, workflowId } = get();
+    const next = { ...mocks };
+    if (replies && replies.length) next[name] = replies;
+    else delete next[name];
+    set({ mocks: next });
+    if (workflowId) saveLocal(mockKey(workflowId), next);
+  },
   toggleBreakpoint: (id) => {
     const { breakpoints, workflowId } = get();
     const next = breakpoints.includes(id) ? breakpoints.filter((b) => b !== id) : [...breakpoints, id];

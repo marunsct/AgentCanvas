@@ -272,3 +272,7 @@ label.row input { width: auto; margin: 0; }
 .budget { margin: 8px 0; }
 .budget summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .budget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+.widget .pin { position: absolute; top: -10px; right: 18px; font-size: 13px; }
+.debug-aid { margin: 8px 0; }
+.debug-aid h4 { margin: 4px 0; }
+.debug-aid pre { max-height: 160px; overflow: auto; }

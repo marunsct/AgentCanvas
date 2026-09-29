@@ -39,6 +39,30 @@ def tool_call(name: str, args: dict, call_id: str = "call_1") -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}])
 
 
+class MockChatModel(BaseChatModel):
+    """Scripted replies for debug "mock mode" (M4-T9), stateless: the n-th AI turn of the conversation gets
+    reply n (the last one repeats), so resumes and later chat turns continue the script instead of restarting it."""
+
+    replies: list[AIMessage]
+
+    @property
+    def _llm_type(self) -> str:
+        return "agentcanvas-mock"
+
+    def __init__(self, **kwargs: Any):
+        super().__init__(**{"disable_streaming": True, **kwargs})
+
+    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> MockChatModel:  # type: ignore[override]
+        return self
+
+    def _generate(
+        self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
+    ) -> ChatResult:
+        turn = sum(1 for m in messages if m.type == "ai")
+        reply = self.replies[min(turn, len(self.replies) - 1)]
+        return ChatResult(generations=[ChatGeneration(message=reply.model_copy())])
+
+
 RULES: list[tuple[str, str]] = [
     ("'high' or 'low'", "low"),
     ("question, complaint or other", "question"),

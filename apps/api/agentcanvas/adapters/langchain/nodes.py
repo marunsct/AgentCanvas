@@ -12,6 +12,7 @@ on async nodes, and sync user code is moved off the event loop with ``asyncio.to
 from __future__ import annotations
 
 import asyncio
+import copy
 import functools
 import importlib
 import inspect
@@ -284,6 +285,29 @@ class Resources:
         if type_ == "tool.http":
             return http_tool(name=name, config=config, resolve=self._resolve, transport=self._http_transport)
         return safe_import(config["import_path"])
+
+    def with_mocks(self, mocks: dict[str, list[Any]]) -> Resources:
+        """A copy whose named chat models answer with scripted replies (debug "mock mode", M4-T9).
+
+        A reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}; the last reply repeats."""
+        from langchain_core.messages import AIMessage
+
+        from agentcanvas.adapters.langchain.testing import MockChatModel
+
+        def message(i: int, reply: Any) -> AIMessage:
+            if isinstance(reply, dict):
+                calls = [
+                    {"name": c["name"], "args": c.get("args", {}), "id": f"mock_{i}_{j}"}
+                    for j, c in enumerate(reply.get("tool_calls") or [])
+                ]
+                return AIMessage(content=str(reply.get("content", "")), tool_calls=calls)
+            return AIMessage(content=str(reply))
+
+        clone = Resources({**self._overrides}, self._secrets, self._http_transport)
+        clone._mcp = self._mcp
+        for name, replies in mocks.items():
+            clone._overrides[name] = MockChatModel(replies=[message(i, r) for i, r in enumerate(replies or [""])])
+        return clone
 
     async def load_mcp(self, name: str, config: dict[str, Any], *, refresh: bool = False) -> list[BaseTool]:
         """Discover an MCP server's tools (network I/O, so it happens before the synchronous graph build)."""
@@ -788,6 +812,15 @@ def set_node(*, values: dict[str, str]) -> Callable:
 def script_node(*, import_path: str) -> Callable:
     """User code from the Workspace: 'package.module:function', signature (state) -> dict (sync or async)."""
     return ensure_async(safe_import(import_path))
+
+
+def pinned_node(output: dict[str, Any]) -> Callable:
+    """Debug runs (M4-T9): replay a pinned output instead of running the node (no model call, no side effect)."""
+
+    async def run(state: Any) -> dict:
+        return copy.deepcopy(output)
+
+    return run
 
 
 async def passthrough(state: Any) -> dict:

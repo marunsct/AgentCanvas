@@ -96,8 +96,10 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         def wired(port: str, p=p) -> list[Any]:
             return _flat(objs, p.wired.get(port, []))
 
-        if p.bypass:
-            fn: Any = ac.passthrough
+        if p.pinned is not None:
+            fn: Any = ac.pinned_node(p.pinned)
+        elif p.bypass:
+            fn = ac.passthrough
         elif n.type == "core.llm":
             fn = ac.llm_node(model=wired("model")[0], prompt=cfg["prompt"], output=cfg["output"])
         elif n.type == "core.agent":

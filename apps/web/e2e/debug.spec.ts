@@ -102,3 +102,31 @@ test("tidy, live code diff, copy/paste and command palette", async ({ page }) =>
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("node-set_values")).toBeVisible();
 });
+
+test("pinned output skips the model; mock replies steer a debug run", async ({ page }) => {
+  await openTriage(page);
+  await run(page, "Where is my invoice?");
+  await expect(page.getByRole("group", { name: "Approval needed" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("metrics-classify")).toContainText("tok");
+
+  // pin the classifier's last output: debug runs replay it and never call its model
+  await page.getByTestId("node-classify").click();
+  await page.getByRole("tab", { name: "Inspector" }).click();
+  await page.getByRole("button", { name: "📌 Pin last output" }).click();
+  await expect(page.getByTestId("pinned-classify")).toBeVisible();
+  await run(page, "Where is my invoice?");
+  await expect(page.getByTestId("debug-badge")).toContainText("1 pinned");
+  await expect(page.getByRole("group", { name: "Approval needed" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("metrics-classify")).not.toContainText("tok");
+
+  // unpin, then mock the fast model with "high": the run takes the escalation branch
+  await page.getByTestId("node-classify").click();
+  await page.getByRole("tab", { name: "Inspector" }).click();
+  await page.getByRole("button", { name: "Unpin" }).click();
+  await page.getByTestId("node-fast_model").click();
+  await page.getByLabel("mock replies", { exact: true }).fill("high");
+  await page.getByLabel("mock replies", { exact: true }).blur();
+  await run(page, "Where is my invoice?");
+  await expect(page.getByTestId("debug-badge")).toContainText("1 mocked");
+  await expect(page.getByTestId("node-escalate")).toHaveClass(/status-ok/, { timeout: 10_000 });
+});

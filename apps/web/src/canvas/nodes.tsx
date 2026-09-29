@@ -55,6 +55,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
         <Badges data={data} />
       </header>
       {data.breakpoint && <span className="bp-dot" title="breakpoint: debug runs pause before this node" />}
+      {data.pinned && <span className="pin" title="pinned output: debug runs replay it" data-testid={`pinned-${data.name}`}>📌</span>}
       <div className="subtitle">
         {data.name}{data.disabled ? " · bypassed" : ""}
         {data.metrics && <span className="metrics" data-testid={`metrics-${data.name}`}> · {data.metrics}</span>}

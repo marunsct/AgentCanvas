@@ -147,6 +147,14 @@ export type UpdatedAt = string;
 export type Version = number;
 export type Name7 = string;
 export type Template = string | null;
+export type Mocks = {
+  [k: string]: unknown[];
+} | null;
+export type Pins = {
+  [k: string]: {
+    [k: string]: unknown;
+  };
+} | null;
 export type Kind1 = "cel" | "template";
 export type Source1 = string;
 export type Error = string | null;
@@ -234,6 +242,14 @@ export type CreatedAt3 = string;
 export type Id12 = string;
 export type Name11 = string;
 export type InterruptId = string | null;
+export type Mocks1 = {
+  [k: string]: unknown[];
+} | null;
+export type Pins1 = {
+  [k: string]: {
+    [k: string]: unknown;
+  };
+} | null;
 export type Stream1 = boolean;
 export type CostUsd = number;
 export type EndedAt = string | null;
@@ -247,7 +263,15 @@ export type ThreadId1 = string;
 export type TokensIn = number;
 export type TokensOut = number;
 export type Durability = ("exit" | "async" | "sync") | null;
+export type Mocks2 = {
+  [k: string]: unknown[];
+} | null;
 export type Mode2 = "normal" | "debug";
+export type Pins2 = {
+  [k: string]: {
+    [k: string]: unknown;
+  };
+} | null;
 export type Stream2 = boolean;
 export type ThreadId2 = string | null;
 export type AsNode1 = string | null;
@@ -290,6 +314,7 @@ export interface ApiSchemas {
   Connect?: Connect;
   ContextField?: ContextField;
   CreateWorkflow?: CreateWorkflow;
+  DebugOptions?: DebugOptions;
   Decision?: Decision;
   Diagnostic?: Diagnostic;
   Disconnect?: Disconnect;
@@ -690,6 +715,16 @@ export interface CreateWorkflow {
   template?: Template;
 }
 /**
+ * Debug-run aids (M4-T9); never part of the workflow or its exported code.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "DebugOptions".
+ */
+export interface DebugOptions {
+  mocks?: Mocks;
+  pins?: Pins;
+}
+/**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "Decision".
  */
@@ -920,6 +955,8 @@ export interface Ir1 {
  */
 export interface ResumeRequest {
   interrupt_id?: InterruptId;
+  mocks?: Mocks1;
+  pins?: Pins1;
   stream?: Stream1;
   value?: Value2;
 }
@@ -952,7 +989,9 @@ export interface RunRequest {
   context?: Context1;
   durability?: Durability;
   input?: Input1;
+  mocks?: Mocks2;
   mode?: Mode2;
+  pins?: Pins2;
   stream?: Stream2;
   thread_id?: ThreadId2;
 }

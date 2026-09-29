@@ -28,6 +28,7 @@ export interface RunState {
   highlight: string[]; // node ids emphasised by the timeline/explain views
   next: string[];
   metrics: Record<string, NodeMetrics>; // canvas node id -> tokens, cost and time of this run
+  deltas: Record<string, Record<string, unknown>>; // canvas node id -> last state update it wrote (pin source)
   usage: Usage | null; // run totals
   durationMs: number | null;
   reset: () => void;
@@ -38,7 +39,7 @@ export interface RunState {
 
 const empty = {
   status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], error: null, breakpoint: false,
-  highlight: [], next: [], metrics: {}, usage: null, durationMs: null,
+  highlight: [], next: [], metrics: {}, usage: null, durationMs: null, deltas: {},
 };
 
 export const useRun = create<RunState>((set) => ({
@@ -64,6 +65,9 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         metrics: { ...s.metrics, [ev.canvas_node_id]: { ...m, ms: m.ms + (ev.duration_ms ?? 0) } },
       };
     }
+    case "STATE_DELTA":
+      if (!ev.canvas_node_id) return {};
+      return { deltas: { ...s.deltas, [ev.canvas_node_id]: ev.delta } };
     case "TEXT_MESSAGE_CONTENT":
       if (!ev.canvas_node_id) return {};
       return { output: { ...s.output, [ev.canvas_node_id]: (s.output[ev.canvas_node_id] ?? "") + ev.delta } };

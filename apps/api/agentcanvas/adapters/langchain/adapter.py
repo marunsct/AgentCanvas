@@ -84,6 +84,15 @@ class LangChainAdapter:
             self._graphs.popitem(last=False)
         return graph
 
+    async def _debug_graph(self, wf: Workflow, resources: ac.Resources, pins: dict[str, dict[str, Any]]) -> Any:
+        p = self._persist()
+        plan = lower(wf)
+        for pn in plan.nodes:
+            if pn.node.id in pins:
+                pn.pinned = pins[pn.node.id]
+        await prepare(plan, resources)
+        return build_from_plan(plan, resources, checkpointer=p.checkpointer, store=p.store)
+
     @staticmethod
     def _config(
         wf: Workflow, thread_id: str, checkpoint_id: str | None = None, run_id: str | None = None
@@ -142,7 +151,12 @@ class LangChainAdapter:
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
         wf = spec.workflow
-        graph = await self.graph(wf, resources)
+        if spec.pins or spec.mocks:  # debug aids: a one-off graph, never cached
+            if spec.mocks:
+                resources = resources.with_mocks(spec.mocks)
+            graph = await self._debug_graph(wf, resources, spec.pins)
+        else:
+            graph = await self.graph(wf, resources)
         names = node_index(wf)
         cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id)
         if spec.resume is not None:

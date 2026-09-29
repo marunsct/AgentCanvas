@@ -112,6 +112,8 @@ class Runner:
         user_id: str | None = None,
         decided_by: str | None = None,
         context_from: str | None = None,
+        pins: dict[str, dict[str, Any]] | None = None,
+        mocks: dict[str, list[Any]] | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         thread_id = thread_id or new_id("th")
@@ -150,6 +152,8 @@ class Runner:
             context=context or {},
             durability=durability,
             checkpoint_id=checkpoint_id,
+            pins=pins or {},
+            mocks=mocks or {},
         )
         handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id)
         self.handles[run_id] = handle
