@@ -1,0 +1,39 @@
+# AgentCanvas monorepo tasks. Run `make help`.
+.PHONY: help setup infra dev-api dev-fake dev-web test test-api test-web e2e lint fmt schema
+
+help:       ## show targets
+	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
+
+setup:      ## install Python and web dependencies
+	cd apps/api && uv sync
+	cd apps/web && pnpm install
+
+infra:      ## start local Postgres + Redis (Docker)
+	docker compose -f infra/docker-compose.yml up -d postgres redis
+
+dev-api:    ## API with real models (needs provider keys)
+	cd apps/api && uv run uvicorn agentcanvas.api.app:app --reload --port 8000
+
+dev-fake:   ## API with scripted fake models (no keys)
+	cd apps/api && uv run uvicorn agentcanvas.dev.fake_server:app --reload --port 8000
+
+dev-web:    ## web app on http://localhost:5173
+	cd apps/web && pnpm dev
+
+test: test-api test-web  ## all unit/integration tests
+
+test-api:
+	cd apps/api && uv run pytest -q
+
+test-web:
+	cd apps/web && pnpm test
+
+e2e:        ## Playwright end-to-end (starts servers itself)
+	cd apps/web && pnpm e2e
+
+lint:       ## ruff, pyright, tsc
+	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright
+	cd apps/web && pnpm typecheck
+
+fmt:        ## format Python
+	cd apps/api && uv run ruff format . && uv run ruff check --fix .

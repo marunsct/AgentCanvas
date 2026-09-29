@@ -162,6 +162,6 @@ Updated at the end of each sprint (and as work lands). Commit references are on 
 | Sprint | Status | What landed | Notes |
 |--------|--------|-------------|-------|
 | Spec v0.6 | ✅ done | docs 14, 15, v0.6 corrections, this plan | review verified against PyPI + official docs (2026-09-29) |
-| S0 | ⏳ in progress | — | — |
-| S1 | ⏳ planned | — | — |
+| S0 | ✅ done | monorepo seeded from `reference/` (`apps/api`, `apps/web`, `infra/`), Makefile, CI (api/web/e2e jobs), ADRs 0001–0017, root README, stack pins `stack-2026.09`, async node library (ADR 0015) with timeout regression tests, `examples.` imports dev-only, Playwright spec `e2e/skeleton.spec.ts` | 32 API tests, 2 web tests, 1 e2e pass; ruff/pyright/tsc clean |
+| S1 | ⏳ in progress | — | — |
 | S2 | ⏳ planned | — | — |
