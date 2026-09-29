@@ -108,3 +108,24 @@ async def new_script(body: NewScript, ws: Workspace = Depends(workspace)) -> dic
     )
     _guard(lambda: ws.write(path, SCRIPT_TEMPLATE.format(name=body.name, body="\n".join(lines))))
     return {"path": path, "import_path": f"scripts.{body.name}:run"}
+
+
+class CatalogOut(BaseModel):
+    tools: list[dict[str, Any]]
+    nodes: list[str]  # custom node types (their manifests are in /node-types?project_id=)
+    scripts: list[dict[str, Any]]
+    handlers: list[dict[str, Any]]
+    problems: list[dict[str, str]]
+
+
+@router.get("/workspace/catalog", response_model=CatalogOut)
+async def workspace_catalog(project_id: str, request: Request, _: Workspace = Depends(workspace)) -> CatalogOut:
+    """What the workspace contributes to the palette: tools, custom nodes, scripts, event handlers (AST scan)."""
+    cat = request.app.state.projects.catalog(project_id)
+    return CatalogOut(
+        tools=cat.tools,
+        nodes=[m.type for m in cat.nodes],
+        scripts=cat.scripts,
+        handlers=cat.handlers,
+        problems=cat.problems,
+    )

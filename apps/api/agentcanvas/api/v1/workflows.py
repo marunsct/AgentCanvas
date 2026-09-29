@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +20,10 @@ from agentcanvas.validation import Diagnostic
 router = APIRouter(tags=["workflows"])
 
 
-def service(session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings_dep)):
-    return WorkflowService(session, settings)
+def service(
+    request: Request, session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings_dep)
+):
+    return WorkflowService(session, settings, request.app.state.projects.registry)
 
 
 class WorkflowOut(BaseModel):
@@ -160,7 +162,7 @@ async def validate_workflow(wf_id: str, svc: WorkflowService = Depends(service))
 @router.get("/workflows/{wf_id}/code", response_class=PlainTextResponse)
 async def get_code(wf_id: str, svc: WorkflowService = Depends(service)) -> str:
     view = await svc.get(wf_id)
-    return get_adapter(view.workflow.framework).generate(view.workflow)
+    return get_adapter(view.workflow.framework).generate(view.workflow, svc.registry(view.row.project_id))
 
 
 # ------------------------------------------------------------------ refactorings (M2-T13) ----

@@ -100,6 +100,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             fn: Any = ac.pinned_node(p.pinned)
         elif p.bypass:
             fn = ac.passthrough
+        elif p.impl:
+            fn = ac.custom_node(import_path=p.impl, config=cfg, resources=resources)
         elif n.type == "core.llm":
             fn = ac.llm_node(model=wired("model")[0], prompt=cfg["prompt"], output=cfg["output"])
         elif n.type == "core.agent":

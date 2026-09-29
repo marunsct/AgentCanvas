@@ -81,7 +81,7 @@ class LangChainAdapter:
             self._graphs.move_to_end(key)
             return self._graphs[key][1]
         p = self._persist()
-        plan = lower(wf)
+        plan = lower(wf, _registry(resources))
         await prepare(plan, resources)  # MCP tool discovery happens before the (synchronous) build
         graph = build_from_plan(plan, resources, checkpointer=p.checkpointer, store=p.store)
         self._graphs[key] = (resources, graph)
@@ -91,7 +91,7 @@ class LangChainAdapter:
 
     async def _debug_graph(self, wf: Workflow, resources: ac.Resources, pins: dict[str, dict[str, Any]]) -> Any:
         p = self._persist()
-        plan = lower(wf)
+        plan = lower(wf, _registry(resources))
         for pn in plan.nodes:
             if pn.node.id in pins:
                 pn.pinned = pins[pn.node.id]
@@ -150,8 +150,8 @@ class LangChainAdapter:
             deleted += len(items)
         return deleted
 
-    def generate(self, wf: Workflow) -> str:
-        return generate(wf)
+    def generate(self, wf: Workflow, registry: Any = None) -> str:
+        return generate(wf, registry=registry)
 
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
@@ -303,6 +303,11 @@ class LangChainAdapter:
 
     async def delete_thread(self, thread_id: str) -> None:
         await self._persist().checkpointer.adelete_thread(thread_id)
+
+
+def _registry(resources: Any) -> Any:
+    provider = getattr(resources, "registry", None)
+    return provider() if callable(provider) else None
 
 
 def _outputs(wf: Workflow, values: dict[str, Any]) -> dict[str, Any]:

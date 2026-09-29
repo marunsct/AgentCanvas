@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agentcanvas.ir.models import Node, Resource, Workflow
-from agentcanvas.registry import default_registry
+from agentcanvas.registry import Registry, default_registry
 
 ERROR_CHANNEL = "last_error"  # if declared, error routes write "<node>: <Error>: <message>" into it
 
@@ -41,6 +41,7 @@ class PlannedNode:
     pinned: dict[str, Any] | None = None  # debug runs only: replay this output instead of running the node
     subplan: Plan | None = None  # core.subgraph: the embedded workflow, lowered
     append_outputs: list[str] = field(default_factory=list)  # core.subgraph outputs whose outer reducer is append
+    impl: str | None = None  # workspace custom node: "nodes.<module>:<function>"
 
 
 @dataclass
@@ -116,8 +117,8 @@ def _resource_order(wf: Workflow) -> list[Resource]:
     return ordered
 
 
-def lower(wf: Workflow) -> Plan:
-    registry = default_registry()
+def lower(wf: Workflow, registry: Registry | None = None) -> Plan:
+    registry = registry or default_registry()  # a project's registry adds its workspace custom nodes
     names = {n.id: n.name for n in wf.nodes}
     error_channel = ERROR_CHANNEL if wf.state.channel(ERROR_CHANNEL) else None
     router_ids = {n.id for n in wf.nodes if (m := registry.get(n.type)) and m.dynamic_outputs == "routes"}
@@ -146,7 +147,7 @@ def lower(wf: Workflow) -> Plan:
         m = registry.get(n.type)
         subplan, append_outputs = None, []
         if n.type == "core.subgraph":
-            subplan = lower(wf.subworkflow(n))
+            subplan = lower(wf.subworkflow(n), registry)
             append_outputs = [
                 c for c in n.config.get("outputs", []) if (ch := wf.state.channel(c)) and ch.reducer == "append"
             ]
@@ -160,6 +161,7 @@ def lower(wf: Workflow) -> Plan:
                 fan_out=n.id in map_ids,
                 subplan=subplan,
                 append_outputs=append_outputs,
+                impl=m.impl if m else None,
             )
         )
 

@@ -100,6 +100,60 @@
         "title": "CachePolicySpec",
         "type": "object"
       },
+      "CatalogOut": {
+        "properties": {
+          "handlers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Handlers",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "scripts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Scripts",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tools",
+          "nodes",
+          "scripts",
+          "handlers",
+          "problems"
+        ],
+        "title": "CatalogOut",
+        "type": "object"
+      },
       "Channel": {
         "additionalProperties": false,
         "description": "One field of the shared graph state.",
@@ -1428,6 +1482,17 @@
             "title": "Icon",
             "type": "string"
           },
+          "impl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impl"
+          },
           "inputs": {
             "items": {
               "$ref": "#/components/schemas/PortSpec"
@@ -1474,6 +1539,15 @@
             },
             "title": "Outputs",
             "type": "array"
+          },
+          "provenance": {
+            "default": "builtin",
+            "enum": [
+              "builtin",
+              "workspace"
+            ],
+            "title": "Provenance",
+            "type": "string"
           },
           "read_fields": {
             "items": {
@@ -3273,7 +3347,26 @@
     },
     "/v1/node-types": {
       "get": {
+        "description": "Built-in node types, plus the project's workspace custom nodes when `project_id` is given.",
         "operationId": "node_types_v1_node_types_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3288,6 +3381,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Node Types",
@@ -3691,6 +3794,49 @@
         "summary": "Create Workflow",
         "tags": [
           "workflows"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/workspace/catalog": {
+      "get": {
+        "description": "What the workspace contributes to the palette: tools, custom nodes, scripts, event handlers (AST scan).",
+        "operationId": "workspace_catalog_v1_projects__project_id__workspace_catalog_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Workspace Catalog",
+        "tags": [
+          "workspace"
         ]
       }
     },

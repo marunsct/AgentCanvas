@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel
@@ -21,7 +21,10 @@ _jinja = SandboxedEnvironment()
 
 
 @router.get("/node-types", response_model=list[NodeManifest])
-def node_types() -> list[NodeManifest]:
+def node_types(request: Request, project_id: str | None = None) -> list[NodeManifest]:
+    """Built-in node types, plus the project's workspace custom nodes when `project_id` is given."""
+    if project_id:
+        return request.app.state.projects.registry(project_id).all()
     return default_registry().all()
 
 

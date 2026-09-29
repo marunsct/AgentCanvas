@@ -270,13 +270,15 @@ class Resources:
         secrets: dict[str, str] | None = None,
         http_transport: Any = None,
         workspace: Path | None = None,
-        script_runner: Callable[[str], Callable] | None = None,
+        script_runner: Callable[..., Callable] | None = None,
+        registry: Callable[[], Any] | None = None,
     ):
         self._overrides = overrides or {}
         self._secrets = secrets if secrets is not None else {}
         self._http_transport = http_transport
         self.workspace = workspace  # project workspace root: scripts./tools./nodes. resolve here
         self.script_runner = script_runner  # sandboxed execution of workspace scripts (M5-T4); None = in-process
+        self.registry = registry  # the project's node registry (built-ins + workspace custom nodes)
         self._cache: dict[str, Any] = {}
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
 
@@ -324,7 +326,9 @@ class Resources:
                 return AIMessage(content=str(reply.get("content", "")), tool_calls=calls)
             return AIMessage(content=str(reply))
 
-        clone = Resources({**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner)
+        clone = Resources(
+            {**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner, self.registry
+        )
         clone._mcp = self._mcp
         for name, replies in mocks.items():
             clone._overrides[name] = MockChatModel(replies=[message(i, r) for i, r in enumerate(replies or [""])])
@@ -861,6 +865,28 @@ def subgraph_node(*, graph: Any, inputs: Sequence[str], outputs: Sequence[str], 
             update[k] = value
         return update
 
+    return run
+
+
+def custom_node(*, import_path: str, config: dict[str, Any], resources: Resources | None = None) -> Callable:
+    """A workspace custom node (M5-T7): `fn(state, cfg)` or `fn(state, cfg, runtime)`, sync or async.
+
+    `cfg` is the node's config — an instance of the declared Pydantic model when there is one, else a dict.
+    """
+    if resources is not None and resources.script_runner is not None:
+        return resources.script_runner(import_path, config)  # sandboxed: cfg arrives as a dict
+    fn = safe_import(import_path, resources.workspace if resources else None)
+    model: Any = (getattr(fn, "__canvas_node__", {}) or {}).get("config")
+    cfg = model.model_validate(config) if model is not None and hasattr(model, "model_validate") else dict(config)
+    with_runtime = "runtime" in inspect.signature(fn).parameters
+
+    async def run(state: Any, runtime: Runtime) -> Any:
+        args = (state, cfg, runtime) if with_runtime else (state, cfg)
+        if inspect.iscoroutinefunction(fn):
+            return await fn(*args)
+        return await asyncio.to_thread(fn, *args)
+
+    run.__name__ = getattr(fn, "__name__", "custom_node")
     return run
 
 

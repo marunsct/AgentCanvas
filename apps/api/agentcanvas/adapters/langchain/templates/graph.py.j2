@@ -44,6 +44,8 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
     # ── @canvas-node {{ n.id }} "{{ n.label or n.name }}" ({{ n.type }}{% if p.bypass %}, bypassed{% endif %}) ──
 {%- if p.bypass %}
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
+{%- elif p.impl %}
+    builder.add_node({{ n.name | py }}, ac.custom_node(import_path={{ p.impl | py }}, config={{ n.config | pp }}), {{ meta }})
 {%- elif n.type == "core.llm" %}
     builder.add_node({{ n.name | py }}, ac.llm_node(model={{ p.wired.model[0] }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}), {{ meta }})
 {%- elif n.type == "core.agent" %}

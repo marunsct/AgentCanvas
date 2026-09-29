@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.commands import Command, CommandError, apply_batch
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import Registry
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic, validate
@@ -42,18 +44,28 @@ def list_templates(settings: Settings) -> dict[str, dict[str, Any]]:
 
 
 class WorkflowService:
-    def __init__(self, session: AsyncSession, settings: Settings):
+    def __init__(
+        self, session: AsyncSession, settings: Settings, registry_for: Callable[[str], Registry] | None = None
+    ):
         self.repo = WorkflowRepo(session)
         self.projects = ProjectRepo(session)
         self.settings = settings
+        self.registry_for = registry_for  # project id -> registry incl. workspace custom nodes
 
-    def _validate(self, wf: Workflow) -> list[Diagnostic]:
-        return validate(wf, edition=self.settings.edition, allow_local_mcp=self.settings.allow_local_mcp)
+    def registry(self, project_id: str) -> Registry | None:
+        from agentcanvas.services import projects
+
+        provider = self.registry_for or (projects.CURRENT.registry if projects.CURRENT else None)
+        return provider(project_id) if provider else None
+
+    def _validate(self, wf: Workflow, project_id: str | None = None) -> list[Diagnostic]:
+        registry = self.registry(project_id) if project_id else None
+        return validate(wf, registry, edition=self.settings.edition, allow_local_mcp=self.settings.allow_local_mcp)
 
     def _view(self, row: WorkflowRow) -> WorkflowView:
         wf = Workflow.model_validate(row.draft_ir)
         PROJECT_OF[wf.id] = row.project_id  # lets the runner resolve workspace code for this workflow
-        return WorkflowView(row, wf, self._validate(wf))
+        return WorkflowView(row, wf, self._validate(wf, row.project_id))
 
     async def create(self, project_id: str, name: str, template: str | None, created_by: str | None) -> WorkflowView:
         await self.projects.require(project_id)

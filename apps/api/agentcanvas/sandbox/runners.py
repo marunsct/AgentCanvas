@@ -56,7 +56,14 @@ def docker_command(image: str, workspace: Path, import_path: str) -> list[str]:
 
 
 async def run_in_sandbox(
-    mode: str, workspace: Path, import_path: str, state: dict[str, Any], *, image: str, timeout: float = TIMEOUT_S
+    mode: str,
+    workspace: Path,
+    import_path: str,
+    state: dict[str, Any],
+    *,
+    image: str,
+    timeout: float = TIMEOUT_S,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run `import_path(state)` in the sandbox and return its channel update."""
     if mode == "docker":
@@ -72,7 +79,9 @@ async def run_in_sandbox(
         cwd=cwd,
         preexec_fn=_limits if mode == "subprocess" and os.name == "posix" else None,
     )
-    payload = json.dumps(_jsonable(state)).encode()
+    payload = json.dumps(
+        {"state": _jsonable(state), "config": _jsonable(config) if config is not None else None}
+    ).encode()
     try:
         out, err = await asyncio.wait_for(proc.communicate(payload), timeout)
     except TimeoutError:
@@ -90,13 +99,20 @@ async def run_in_sandbox(
     return result.get("update") or {}
 
 
-def make_runner(settings: Settings, workspace: Path, secrets: dict[str, str]) -> Callable[[str], Callable]:
-    """`import_path -> async node` running each call in the configured sandbox. Secrets are not passed in."""
+def make_runner(settings: Settings, workspace: Path, secrets: dict[str, str]) -> Callable[..., Callable]:
+    """`(import_path, config=None) -> async node` running each call in the configured sandbox.
 
-    def node_for(import_path: str) -> Callable:
+    Secrets are not passed in (FR-SCR-03: they never enter the sandbox)."""
+
+    def node_for(import_path: str, config: dict[str, Any] | None = None) -> Callable:
         async def run(state: Any) -> dict:
             return await run_in_sandbox(
-                settings.script_execution, workspace, import_path, dict(state), image=settings.sandbox_image
+                settings.script_execution,
+                workspace,
+                import_path,
+                dict(state),
+                image=settings.sandbox_image,
+                config=config,
             )
 
         run.__name__ = import_path.rpartition(":")[2] or "script"

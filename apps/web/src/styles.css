@@ -288,3 +288,4 @@ label.row input { width: auto; margin: 0; }
 .code-editor .cm-editor { min-height: 360px; font-size: 13px; }
 .lint-list { font-size: 12px; margin: 4px 0; padding-left: 18px; }
 @media (max-width: 700px) { .workspace-layout { grid-template-columns: 1fr; } }
+.palette-item.kind-workspace { border-left-color: #0f766e; border-style: dashed; border-left-style: solid; }

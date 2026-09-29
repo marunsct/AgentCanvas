@@ -16,6 +16,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import Registry
 from agentcanvas.validation import has_errors, validate
 
 _env = Environment(
@@ -31,12 +32,12 @@ _env.filters["pp"] = lambda v: pprint.pformat(v, width=100, sort_dicts=True)
 CompileError = WorkflowHasErrors  # backwards-compatible name
 
 
-def generate(wf: Workflow, *, format_code: bool = True) -> str:
-    diags = validate(wf)
+def generate(wf: Workflow, *, format_code: bool = True, registry: Registry | None = None) -> str:
+    diags = validate(wf, registry)
     if has_errors(diags):
         errors = [d.model_dump() for d in diags if d.severity == "error"]
         raise WorkflowHasErrors("; ".join(f"{d['code']} {d['message']}" for d in errors), errors=errors)
-    plan = lower(wf)
+    plan = lower(wf, registry)
     source = _env.get_template("graph.py.j2").render(
         plan=plan, options=_options, refs=_refs, sub_fn=_sub_fn, sub_prefix=_sub_prefix
     )

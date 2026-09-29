@@ -43,6 +43,7 @@ export function WorkspacePage() {
       setDraft(null);
       void qc.invalidateQueries({ queryKey: ["files"] });
       void qc.invalidateQueries({ queryKey: ["workspace-catalog"] }); // new tools / custom nodes
+      void qc.invalidateQueries({ queryKey: ["node-types"] });
     },
   });
   const create = useMutation({

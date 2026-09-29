@@ -2,7 +2,7 @@
 
 Standard library only (it also runs inside a bare python image):
 
-    python child.py scripts.score:run   < state.json   > {"ok": true, "update": {...}}
+    python child.py scripts.score:run   < {"state": {...}, "config": {...}|null}   > {"ok": true, "update": {...}}
 
 The working directory is the workspace root. Anything the script prints goes to stderr, so stdout carries only
 the result line. With AC_BLOCK_NETWORK=1 socket connections raise (defense in depth for the subprocess mode;
@@ -49,10 +49,11 @@ def main() -> int:
         _block_network()
     out = sys.stdout
     try:
-        state = json.loads(sys.stdin.read() or "{}")
+        payload = json.loads(sys.stdin.read() or "{}")
+        state, config = payload.get("state", {}), payload.get("config")
         with contextlib.redirect_stdout(sys.stderr):  # user prints must not corrupt the result
             fn = _load(sys.argv[1])
-            result = fn(state)
+            result = fn(state) if config is None else fn(state, config)  # custom nodes get their config
             if inspect.isawaitable(result):
                 result = asyncio.run(result)  # type: ignore[arg-type]
         if result is not None and not isinstance(result, dict):

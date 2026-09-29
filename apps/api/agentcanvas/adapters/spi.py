@@ -19,7 +19,7 @@ class FrameworkAdapter(Protocol):
     id: str
 
     # ---- compilation
-    def generate(self, wf: Workflow) -> str:
+    def generate(self, wf: Workflow, registry: Any = None) -> str:
         """Generated source of the workflow (raises agentcanvas.errors.WorkflowHasErrors when invalid)."""
         ...
 

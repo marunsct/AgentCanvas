@@ -225,9 +225,11 @@ export function Canvas() {
 
   const onDrop = useCallback((ev: DragEvent) => {
     ev.preventDefault();
-    const type = ev.dataTransfer.getData(DND_MIME);
+    const raw = ev.dataTransfer.getData(DND_MIME);
+    const [type, presetJson] = raw.split("\n");
     if (!wf || !manifests.has(type) || useEditor.getState().drill.length) return;
-    addElement(type, rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
+    const preset = presetJson ? (JSON.parse(presetJson) as Preset) : undefined;
+    addElement(type, rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }), preset);
   }, [wf, manifests, rf]);
 
   return (
@@ -262,13 +264,19 @@ export function Canvas() {
   );
 }
 
+/** A palette entry that pre-fills a generic type, e.g. a workspace tool = tool.python with its import path. */
+export interface Preset {
+  name?: string;
+  config?: Record<string, unknown>;
+}
+
 /** Create a node or resource of `type` at `position` (used by drag & drop and the palette's click-to-add). */
-export function addElement(type: string, position?: { x: number; y: number }) {
+export function addElement(type: string, position?: { x: number; y: number }, preset?: Preset) {
   const { wf, dispatch, setPositions, select } = useEditor.getState();
   const m = manifestCache.get(type);
   if (!wf || !m) return;
-  const name = uniqueName(m.label, allNames(wf));
-  const config = defaultsFromSchema(m.config_schema as Record<string, unknown>);
+  const name = uniqueName(preset?.name ?? m.label, allNames(wf));
+  const config = { ...defaultsFromSchema(m.config_schema as Record<string, unknown>), ...preset?.config };
   const cmd: Command = m.kind === "resource"
     ? { op: "AddResource", resource: { id: `r_${ulid()}`, type, name, config } }
     : { op: "AddNode", node: { id: `n_${ulid()}`, type, name, label: m.label, config } };

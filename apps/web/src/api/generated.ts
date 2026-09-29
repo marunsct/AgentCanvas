@@ -27,6 +27,19 @@ export type Name1 = string;
 export type Type1 = string;
 export type After = string[];
 export type Before = string[];
+export type Handlers = {
+  [k: string]: unknown;
+}[];
+export type Nodes = string[];
+export type Problems = {
+  [k: string]: string;
+}[];
+export type Scripts = {
+  [k: string]: unknown;
+}[];
+export type Tools = {
+  [k: string]: unknown;
+}[];
 export type Description = string | null;
 export type Io = "inout" | "in" | "out" | "private";
 export type Name2 = string;
@@ -218,7 +231,7 @@ export type PriceOutPerMtok = number | null;
 export type Provider = string;
 export type Reasoning = boolean;
 export type StructuredOutput = boolean;
-export type Tools = boolean;
+export type Tools1 = boolean;
 export type Vision = boolean;
 export type Namespace1 = string;
 export type Parts = string[];
@@ -234,6 +247,7 @@ export type Docs = string | null;
 export type DynamicOutputs = "routes" | null;
 export type HostedForbidden = boolean;
 export type Icon = string;
+export type Impl = string | null;
 export type Description5 = string | null;
 export type Multi = boolean;
 export type Name11 = string;
@@ -247,6 +261,7 @@ export type Label4 = string;
 export type ListReadFields = string[];
 export type ListWriteFields = string[];
 export type Outputs = PortSpec[];
+export type Provenance = "builtin" | "workspace";
 export type ReadFields = string[];
 export type Reads = string[];
 export type SideEffects = ("external_write" | "message_send" | "code_exec" | "spend" | "pii_read" | "host_exec")[];
@@ -337,6 +352,7 @@ export interface ApiSchemas {
   AddResource?: AddResource;
   Breakpoints?: Breakpoints;
   CachePolicySpec?: CachePolicySpec;
+  CatalogOut?: CatalogOut;
   Channel?: Channel;
   CommandBatch?: CommandBatch;
   CommandResult?: CommandResult;
@@ -504,6 +520,17 @@ export interface Config1 {
 export interface Breakpoints {
   after?: After;
   before?: Before;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "CatalogOut".
+ */
+export interface CatalogOut {
+  handlers: Handlers;
+  nodes: Nodes;
+  problems: Problems;
+  scripts: Scripts;
+  tools: Tools;
 }
 /**
  * One field of the shared graph state.
@@ -947,7 +974,7 @@ export interface ModelInfo {
   provider: Provider;
   reasoning?: Reasoning;
   structured_output?: StructuredOutput;
-  tools?: Tools;
+  tools?: Tools1;
   vision?: Vision;
 }
 /**
@@ -983,6 +1010,7 @@ export interface NodeManifest {
   dynamic_outputs?: DynamicOutputs;
   hosted_forbidden?: HostedForbidden;
   icon?: Icon;
+  impl?: Impl;
   inputs?: Inputs;
   interrupts?: Interrupts;
   kind: Kind3;
@@ -990,6 +1018,7 @@ export interface NodeManifest {
   list_read_fields?: ListReadFields;
   list_write_fields?: ListWriteFields;
   outputs?: Outputs;
+  provenance?: Provenance;
   read_fields?: ReadFields;
   reads?: Reads;
   side_effects?: SideEffects;

@@ -63,3 +63,44 @@ test("script node: scaffold its file, edit it with ruff feedback, run the new co
   await page.getByRole("button", { name: "▶ Run" }).click();
   await expect(page.getByTestId("run-output")).toContainText("HELLO!", { timeout: 10_000 });
 });
+
+test("custom node from the workspace appears in the palette and runs", async ({ page }) => {
+  const stamp = Date.now();
+  const type = `acme.greet_${stamp}`;
+  const src = [
+    "from agentcanvas.sdk import canvas_node",
+    "",
+    "",
+    `@canvas_node(name="${type}", label="Greet ${stamp}", category="Acme", writes=["text"],`,
+    '             config={"type": "object", "properties": {"greeting": {"type": "string", "default": "Hello"}}})',
+    "def greet(state, cfg):",
+    "    return {'text': f\"{cfg.get('greeting', 'Hello')}, {state.get('text')}!\"}",
+    "",
+  ].join("\n");
+  const saved = await page.request.put(`/api/v1/projects/prj_default/files/nodes/greet_${stamp}.py`, { data: { content: src } });
+  expect(saved.ok()).toBeTruthy();
+
+  await page.goto("/");
+  await page.getByLabel("workflow name").fill(`Custom ${stamp}`);
+  await page.getByRole("button", { name: "Create empty" }).click();
+  await page.getByRole("button", { name: "+ Channel" }).click();
+  await page.getByLabel("channel name").first().fill("text");
+  await page.getByLabel("channel name").first().blur();
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+
+  const item = page.getByTestId(`palette-${type}`);
+  await expect(item).toContainText("workspace");
+  await item.dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 330, y: 180 } });
+  const nodeName = `greet_${stamp}`;
+  await expect(page.getByTestId(`node-${nodeName}`)).toBeVisible();
+  await page.locator("input[id$='_greeting']").fill("Hi");
+  await page.locator("input[id$='_greeting']").blur();
+
+  await connect(page, handle(page, "START", "next"), handle(page, nodeName, "in"));
+  await connect(page, handle(page, nodeName, "next"), handle(page, "END", "in"));
+  await expect(page.getByText("No problems — the workflow can run.")).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("tab", { name: "Run" }).click();
+  await page.getByLabel("run input").fill('{"text": "Ada"}');
+  await page.getByRole("button", { name: "▶ Run" }).click();
+  await expect(page.getByTestId("run-output")).toContainText("Hi, Ada!", { timeout: 10_000 });
+});

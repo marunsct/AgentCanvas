@@ -59,6 +59,8 @@ class NodeManifest(BaseModel):
     hosted_forbidden: bool = False  # E041: only allowed in the local/dev edition
     stability: Literal["stable", "beta", "experimental"] = "stable"
     targets: dict[str, Literal["full", "partial", "none"]] = Field(default_factory=lambda: {"python": "full"})
+    impl: str | None = None  # workspace custom nodes: "nodes.<module>:<function>" (M5-T7)
+    provenance: Literal["builtin", "workspace"] = "builtin"
     docs: str | None = None
 
     def input(self, name: str) -> PortSpec | None:
