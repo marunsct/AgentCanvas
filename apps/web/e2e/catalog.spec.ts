@@ -25,6 +25,15 @@ test("research template: map fans out per topic and the Deep Agent saves finding
   await page.getByRole("tab", { name: "Code" }).click();
   await expect(page.getByTestId("code-view")).toContainText("ac.map_fn(");
   await expect(page.getByTestId("code-view")).toContainText("ac.deep_agent_node(");
+
+  // memory inspector (M4-T12): the Deep Agent's /memories/ file is a memory of the signed-in user
+  await page.getByTestId("memory-link").click();
+  await page.getByRole("button", { name: "memories/user/usr_dev" }).click();
+  await page.getByLabel("search memories").fill("cocoa");
+  const item = page.getByTestId("memory-item").filter({ hasText: "/findings.md" });
+  await expect(item).toContainText("Hot drinks");
+  await item.getByRole("button", { name: "delete /findings.md" }).click();
+  await expect(page.getByTestId("memory-item").filter({ hasText: "/findings.md" })).toHaveCount(0);
 });
 
 test("structured output designer adds a schema; the missing channel is reported until declared", async ({ page }) => {

@@ -1,0 +1,62 @@
+{
+  "type": "core.memory_remember",
+  "kind": "runtime",
+  "label": "Remember",
+  "category": "Memory",
+  "icon": "database",
+  "color": "#0F766E",
+  "description": "Saves a channel's value in long-term memory under a key.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "space",
+      "scope",
+      "key",
+      "value"
+    ],
+    "properties": {
+      "space": {
+        "type": "string",
+        "title": "Memory space",
+        "default": "memories",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+      },
+      "scope": {
+        "enum": [
+          "user",
+          "workflow",
+          "thread"
+        ],
+        "title": "Shared per",
+        "default": "user",
+        "description": "user = the run's authenticated user (needs a context field with source 'user')"
+      },
+      "key": {
+        "type": "string",
+        "title": "Key",
+        "format": "template",
+        "minLength": 1,
+        "description": "Jinja template, e.g. preference:{{ state.topic }}"
+      },
+      "value": {
+        "type": "string",
+        "title": "Value channel",
+        "format": "channel"
+      }
+    }
+  },
+  "read_fields": [
+    "value"
+  ],
+  "template_fields": [
+    "key"
+  ]
+}

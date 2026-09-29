@@ -478,6 +478,110 @@ def store_namespace(*, scope: str, namespace: str, workflow_id: str, user_key: s
     return factory
 
 
+# ----------------------------------------------------------------- memory ----
+def _plain(value: Any) -> Any:
+    """JSON-safe copy of a state value for the store (messages and models become dicts)."""
+    if isinstance(value, dict):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_plain(v) for v in value]
+    if hasattr(value, "model_dump"):
+        return _plain(value.model_dump())
+    return value if isinstance(value, str | int | float | bool) or value is None else str(value)
+
+
+def keyword_rank(items: list[Any], query: str, limit: int) -> list[Any]:
+    """Without a semantic index the store ignores `query`: rank by how many query words each key+value contains."""
+    words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 2]
+    if not words:
+        return items[:limit]
+    def text(i: Any) -> str:
+        return f"{i.key} {json.dumps(i.value, default=str)}".lower()
+
+    scored = [(sum(w in text(i) for w in words), n, i) for n, i in enumerate(items)]
+    return [i for score, _, i in sorted(scored, key=lambda t: (-t[0], t[1])) if score > 0][:limit]
+
+
+def memory_node(
+    *,
+    op: str,
+    space: str,
+    scope: str,
+    workflow_id: str,
+    user_key: str | None = None,
+    key: str | None = None,
+    query: str | None = None,
+    top_k: int = 5,
+    value: str | None = None,
+    output: str | None = None,
+) -> Callable:
+    """Recall / Remember / Forget in the long-term store (M3-T14). The namespace is (space, scope, owner) —
+    the same one a Deep Agent's long-term folder uses — and never comes from model output (E072)."""
+    namespace = store_namespace(scope=scope, namespace=space, workflow_id=workflow_id, user_key=user_key)
+
+    async def run(state: Any, runtime: Runtime) -> dict:
+        store = runtime.store
+        if store is None:
+            raise RuntimeError("memory nodes need a long-term store (the runner and exported apps provide one)")
+        ns = namespace(runtime)
+        if op == "recall":
+            q = render_template(query, state).strip() if query else ""
+            indexed = getattr(store, "index_config", None) is not None
+            items = await store.asearch(ns, query=q or None, limit=top_k if indexed or not q else 1000)
+            if q and not indexed:
+                items = keyword_rank(items, q, top_k)
+            return {output: [{"key": i.key, **i.value} for i in items]} if output else {}
+        k = render_template(key or "", state).strip()
+        if not k:
+            raise ValueError("memory key rendered empty")
+        if op == "remember":
+            v = _plain(state.get(value)) if value else None
+            await store.aput(ns, k, v if isinstance(v, dict) else {"value": v})
+        else:
+            await store.adelete(ns, k)
+        return {}
+
+    return run
+
+
+def memory_tools(*, space: str, scope: str, workflow_id: str, user_key: str | None = None) -> list[BaseTool]:
+    """`search_memory` / `save_memory` tools for agents, bound to one memory space (FR-MEM-03)."""
+    from langgraph.runtime import get_runtime
+
+    namespace = store_namespace(scope=scope, namespace=space, workflow_id=workflow_id, user_key=user_key)
+
+    def _ctx() -> tuple[Any, tuple[str, ...]]:
+        rt = get_runtime()
+        if rt.store is None:
+            raise ToolException("no long-term store is configured")
+        return rt.store, namespace(rt)
+
+    async def search_memory(query: str) -> str:
+        store, ns = _ctx()
+        items = keyword_rank(await store.asearch(ns, limit=1000), query, 5)
+        return json.dumps([{"key": i.key, **i.value} for i in items], default=str) if items else "nothing found"
+
+    async def save_memory(key: str, text: str) -> str:
+        store, ns = _ctx()
+        await store.aput(ns, key, {"text": text})
+        return f"saved '{key}'"
+
+    return [
+        StructuredTool.from_function(
+            coroutine=search_memory,
+            name="search_memory",
+            description=f"Search long-term memory ({space}) for facts saved in earlier conversations.",
+            handle_tool_error=True,
+        ),
+        StructuredTool.from_function(
+            coroutine=save_memory,
+            name="save_memory",
+            description=f"Save a fact to long-term memory ({space}) under a short key, for later conversations.",
+            handle_tool_error=True,
+        ),
+    ]
+
+
 def backend(type_: str, config: dict[str, Any], *, workflow_id: str, user_key: str | None = None) -> Mount:
     from deepagents.backends import StateBackend, StoreBackend
 

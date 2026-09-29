@@ -184,6 +184,10 @@ export type Description3 = string;
 export type Destructive = boolean;
 export type Name9 = string;
 export type ReadOnly = boolean;
+export type CreatedAt2 = string | null;
+export type Key = string;
+export type Namespace = string[];
+export type UpdatedAt1 = string | null;
 export type ContextWindow = number | null;
 export type Id11 = string;
 export type Label3 = string;
@@ -194,6 +198,8 @@ export type Reasoning = boolean;
 export type StructuredOutput = boolean;
 export type Tools = boolean;
 export type Vision = boolean;
+export type Namespace1 = string;
+export type Parts = string[];
 export type BuiltinTools = string[];
 export type Category = string;
 export type ChannelFields = string[];
@@ -224,7 +230,7 @@ export type TemplateFields = string[];
 export type Type5 = string;
 export type Version1 = string;
 export type Writes = string[];
-export type CreatedAt2 = string;
+export type CreatedAt3 = string;
 export type Id12 = string;
 export type Name11 = string;
 export type InterruptId = string | null;
@@ -247,25 +253,25 @@ export type Description6 = string;
 export type Id14 = string;
 export type Name12 = string;
 export type NodeCount = number;
-export type CreatedAt3 = string;
+export type CreatedAt4 = string;
 export type Id15 = string;
 export type Status2 = string;
 export type Title = string | null;
-export type UpdatedAt1 = string;
+export type UpdatedAt2 = string;
 export type WorkflowId1 = string;
 export type Items = ThreadOut[];
 export type NextCursor = string | null;
-export type CreatedAt4 = string;
+export type CreatedAt5 = string;
 export type Diagnostics1 = Diagnostic[];
 export type Id16 = string;
 export type IrHash2 = string;
 export type Name13 = string;
 export type ProjectId1 = string;
-export type UpdatedAt2 = string;
+export type UpdatedAt3 = string;
 export type Version2 = number;
 export type Id17 = string;
 export type Name14 = string;
-export type UpdatedAt3 = string;
+export type UpdatedAt4 = string;
 export type Version3 = number;
 export type Items1 = WorkflowSummary[];
 export type NextCursor1 = string | null;
@@ -294,7 +300,9 @@ export interface ApiSchemas {
   LayoutUpdate?: LayoutUpdate;
   McpInspectRequest?: McpInspectRequest;
   McpToolInfo?: McpToolInfo;
+  MemoryItem?: MemoryItem;
   ModelInfo?: ModelInfo;
+  NamespaceOut?: NamespaceOut;
   Node?: Node;
   NodeManifest?: NodeManifest;
   NodePolicies?: NodePolicies;
@@ -794,6 +802,20 @@ export interface McpToolInfo {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "MemoryItem".
+ */
+export interface MemoryItem {
+  created_at?: CreatedAt2;
+  key: Key;
+  namespace: Namespace;
+  updated_at?: UpdatedAt1;
+  value: Value1;
+}
+export interface Value1 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ModelInfo".
  */
 export interface ModelInfo {
@@ -807,6 +829,14 @@ export interface ModelInfo {
   structured_output?: StructuredOutput;
   tools?: Tools;
   vision?: Vision;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "NamespaceOut".
+ */
+export interface NamespaceOut {
+  namespace: Namespace1;
+  parts: Parts;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -867,7 +897,7 @@ export interface Targets {
  * via the `definition` "ProjectOut".
  */
 export interface ProjectOut {
-  created_at: CreatedAt2;
+  created_at: CreatedAt3;
   id: Id12;
   name: Name11;
 }
@@ -888,9 +918,9 @@ export interface Ir1 {
 export interface ResumeRequest {
   interrupt_id?: InterruptId;
   stream?: Stream1;
-  value?: Value1;
+  value?: Value2;
 }
-export interface Value1 {
+export interface Value2 {
   [k: string]: unknown;
 }
 /**
@@ -953,11 +983,11 @@ export interface TemplateInfo {
  * via the `definition` "ThreadOut".
  */
 export interface ThreadOut {
-  created_at: CreatedAt3;
+  created_at: CreatedAt4;
   id: Id15;
   status: Status2;
   title: Title;
-  updated_at: UpdatedAt1;
+  updated_at: UpdatedAt2;
   workflow_id: WorkflowId1;
 }
 /**
@@ -973,7 +1003,7 @@ export interface ThreadPage {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt4;
+  created_at: CreatedAt5;
   diagnostics: Diagnostics1;
   id: Id16;
   ir: Ir2;
@@ -981,7 +1011,7 @@ export interface WorkflowOut {
   layout: Layout1;
   name: Name13;
   project_id: ProjectId1;
-  updated_at: UpdatedAt2;
+  updated_at: UpdatedAt3;
   version: Version2;
 }
 export interface Ir2 {
@@ -1005,6 +1035,6 @@ export interface WorkflowPage {
 export interface WorkflowSummary {
   id: Id17;
   name: Name14;
-  updated_at: UpdatedAt3;
+  updated_at: UpdatedAt4;
   version: Version3;
 }

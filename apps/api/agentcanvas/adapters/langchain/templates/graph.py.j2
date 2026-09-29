@@ -30,6 +30,8 @@ def build_graph(resources: ac.Resources | None = None, checkpointer=None, store=
     {{ r.name }} = ac.subagent(name={{ r.name | py }}, description={{ r.config.description | py }}, system_prompt={{ r.config.system_prompt | py }}, model={{ pr.wired.get("model", ["None"])[0] }}, tools=[{{ refs(pr.wired.get("tools", [])) }}], middleware=[{{ pr.wired.get("middleware", []) | join(", ") }}], approve_tools={{ r.config.get("approve_tools") | py }})
 {%- elif r.type in ("mcp.server", "tool.http") %}
     {{ r.name }} = resources.tool({{ r.name | py }}, {{ r.config | pp }}, {{ r.type | py }})
+{%- elif r.type == "tool.memory" %}
+    {{ r.name }} = ac.memory_tools(space={{ r.config.get("space", "memories") | py }}, scope={{ r.config.get("scope", "user") | py }}, workflow_id={{ plan.wf.id | py }}, user_key={{ plan.user_key | py }})
 {%- elif r.type.startswith("backend.") %}
     {{ r.name }} = ac.backend({{ r.type | py }}, {{ r.config | pp }}, workflow_id={{ plan.wf.id | py }}, user_key={{ plan.user_key | py }})
 {%- else %}
@@ -58,6 +60,8 @@ def build_graph(resources: ac.Resources | None = None, checkpointer=None, store=
     builder.add_node({{ n.name | py }}, ac.human_input_node(node_id={{ n.id | py }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}, response_schema={{ n.config.get("response_schema") | pp }}), {{ meta }})
 {%- elif n.type == "core.approval" %}
     builder.add_node({{ n.name | py }}, ac.approval_node(node_id={{ n.id | py }}, show={{ n.config.show | py }}, output={{ n.config.output | py }}), {{ meta }})
+{%- elif n.type.startswith("core.memory_") %}
+    builder.add_node({{ n.name | py }}, ac.memory_node(op={{ n.type[12:] | py }}, space={{ n.config.get("space", "memories") | py }}, scope={{ n.config.get("scope", "user") | py }}, workflow_id={{ plan.wf.id | py }}, user_key={{ plan.user_key | py }}, key={{ n.config.get("key") | py }}, query={{ n.config.get("query") | py }}, top_k={{ n.config.get("top_k", 5) | py }}, value={{ n.config.get("value") | py }}, output={{ n.config.get("output") | py }}), {{ meta }})
 {%- elif n.type == "core.set" %}
     builder.add_node({{ n.name | py }}, ac.set_node(values={{ n.config["values"] | pp }}), {{ meta }})
 {%- elif n.type == "core.script" %}

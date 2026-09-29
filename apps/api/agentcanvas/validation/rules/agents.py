@@ -59,6 +59,8 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
                             node_id=el.id,
                             hint="add it to the tools that need approval",
                         )
+            elif (tm := ctx.manifest(t)) is not None and tm.builtin_tools:
+                names |= set(tm.builtin_tools)  # e.g. memory tools: search_memory, save_memory
             else:
                 names.add(t.name)
         for t in approve if known else []:
@@ -90,6 +92,7 @@ def _mw_key(r: Resource) -> str:
 
 
 _DEEP_BUILTIN_MW = {"mw.summarization": "summarization"}
+USER_SCOPED = {"backend.store", "tool.memory", "core.memory_recall", "core.memory_remember", "core.memory_forget"}
 
 
 @rule
@@ -127,11 +130,12 @@ def deep_agents(ctx: ValidationContext) -> Iterator[Diagnostic]:
     for r in ctx.wf.resources:
         if r.type == "agent.subagent" and not str(r.config.get("description", "")).strip():
             yield error("E032", f"subagent '{r.name}' needs a description (when to delegate to it)", node_id=r.id)
-        if r.type == "backend.store" and r.config.get("scope", "user") == "user" and not has_user:
+    for el in [*ctx.wf.resources, *ctx.wf.nodes]:
+        if el.type in USER_SCOPED and el.config.get("scope", "user") == "user" and not has_user:
             yield error(
                 "E071",
-                f"'{r.name}' is shared per user but the workflow has no context field with source 'user'",
-                node_id=r.id,
+                f"'{el.name}' is shared per user but the workflow has no context field with source 'user'",
+                node_id=el.id,
                 hint="add a context field (e.g. user_id) with source 'user' in the workflow settings",
             )
     for n in ctx.wf.nodes:

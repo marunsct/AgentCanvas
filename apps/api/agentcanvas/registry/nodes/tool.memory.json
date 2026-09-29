@@ -1,0 +1,46 @@
+{
+  "type": "tool.memory",
+  "kind": "resource",
+  "label": "Memory tools",
+  "category": "Memory",
+  "icon": "database",
+  "color": "#0F766E",
+  "description": "Gives an agent search_memory and save_memory tools for one memory space.",
+  "outputs": [
+    {
+      "name": "tools",
+      "type": "Tool"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "space",
+      "scope"
+    ],
+    "properties": {
+      "space": {
+        "type": "string",
+        "title": "Memory space",
+        "default": "memories",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+      },
+      "scope": {
+        "enum": [
+          "user",
+          "workflow",
+          "thread"
+        ],
+        "title": "Shared per",
+        "default": "user",
+        "description": "user = the run's authenticated user (needs a context field with source 'user')"
+      }
+    }
+  },
+  "builtin_tools": [
+    "search_memory",
+    "save_memory"
+  ]
+}

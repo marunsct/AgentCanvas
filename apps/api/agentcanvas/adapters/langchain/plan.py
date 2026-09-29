@@ -17,7 +17,7 @@ from agentcanvas.registry import default_registry
 ERROR_CHANNEL = "last_error"  # if declared, error routes write "<node>: <Error>: <message>" into it
 
 
-LIST_RESOURCES = {"mcp.server"}  # resources that stand for several objects (all tools of an MCP server)
+LIST_RESOURCES = {"mcp.server", "tool.memory"}  # resources standing for several tools (spread where wired)
 
 
 @dataclass

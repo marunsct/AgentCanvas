@@ -919,6 +919,81 @@
     "docs": null
   },
   {
+    "type": "core.memory_forget",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Forget",
+    "category": "Memory",
+    "icon": "database",
+    "color": "#0F766E",
+    "description": "Deletes one memory by key.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space",
+        "scope",
+        "key"
+      ],
+      "properties": {
+        "space": {
+          "type": "string",
+          "title": "Memory space",
+          "default": "memories",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+        },
+        "scope": {
+          "enum": [
+            "user",
+            "workflow",
+            "thread"
+          ],
+          "title": "Shared per",
+          "default": "user",
+          "description": "user = the run's authenticated user (needs a context field with source 'user')"
+        },
+        "key": {
+          "type": "string",
+          "title": "Key",
+          "format": "template",
+          "minLength": 1
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "key"
+    ],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
     "type": "backend.store",
     "version": "1.0.0",
     "kind": "resource",
@@ -980,6 +1055,248 @@
     "list_write_fields": [],
     "conditional_writes": {},
     "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "tool.memory",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Memory tools",
+    "category": "Memory",
+    "icon": "database",
+    "color": "#0F766E",
+    "description": "Gives an agent search_memory and save_memory tools for one memory space.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space",
+        "scope"
+      ],
+      "properties": {
+        "space": {
+          "type": "string",
+          "title": "Memory space",
+          "default": "memories",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+        },
+        "scope": {
+          "enum": [
+            "user",
+            "workflow",
+            "thread"
+          ],
+          "title": "Shared per",
+          "default": "user",
+          "description": "user = the run's authenticated user (needs a context field with source 'user')"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [
+      "search_memory",
+      "save_memory"
+    ],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.memory_recall",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Recall",
+    "category": "Memory",
+    "icon": "database",
+    "color": "#0F766E",
+    "description": "Searches long-term memory and writes the matches (list of {key, \u2026}) to a channel.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space",
+        "scope",
+        "output"
+      ],
+      "properties": {
+        "space": {
+          "type": "string",
+          "title": "Memory space",
+          "default": "memories",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+        },
+        "scope": {
+          "enum": [
+            "user",
+            "workflow",
+            "thread"
+          ],
+          "title": "Shared per",
+          "default": "user",
+          "description": "user = the run's authenticated user (needs a context field with source 'user')"
+        },
+        "query": {
+          "type": "string",
+          "title": "Search for",
+          "format": "template",
+          "description": "Jinja template; empty = the most recent memories. Without a semantic index, words are matched."
+        },
+        "top_k": {
+          "type": "integer",
+          "title": "At most",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5
+        },
+        "output": {
+          "type": "string",
+          "title": "Output channel",
+          "format": "channel"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "query"
+    ],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "docs": null
+  },
+  {
+    "type": "core.memory_remember",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Remember",
+    "category": "Memory",
+    "icon": "database",
+    "color": "#0F766E",
+    "description": "Saves a channel's value in long-term memory under a key.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space",
+        "scope",
+        "key",
+        "value"
+      ],
+      "properties": {
+        "space": {
+          "type": "string",
+          "title": "Memory space",
+          "default": "memories",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+        },
+        "scope": {
+          "enum": [
+            "user",
+            "workflow",
+            "thread"
+          ],
+          "title": "Shared per",
+          "default": "user",
+          "description": "user = the run's authenticated user (needs a context field with source 'user')"
+        },
+        "key": {
+          "type": "string",
+          "title": "Key",
+          "format": "template",
+          "minLength": 1,
+          "description": "Jinja template, e.g. preference:{{ state.topic }}"
+        },
+        "value": {
+          "type": "string",
+          "title": "Value channel",
+          "format": "channel"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [
+      "value"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "key"
+    ],
     "builtin_tools": [],
     "interrupts": false,
     "side_effects": [],

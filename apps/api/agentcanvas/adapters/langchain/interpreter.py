@@ -16,6 +16,7 @@ from agentcanvas.adapters.langchain.plan import Plan, PlannedResource, lower
 from agentcanvas.ir.models import Workflow
 
 _SPECIAL = {"START": START, "END": END}
+MEMORY_OPS = {"core.memory_recall": "recall", "core.memory_remember": "remember", "core.memory_forget": "forget"}
 
 
 def build_graph(wf: Workflow, resources: ac.Resources, checkpointer=None, store=None, cache: BaseCache | None = None):
@@ -51,6 +52,13 @@ def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: di
 
     if r.type == "model.chat":
         return resources.model(r.name, cfg)
+    if r.type == "tool.memory":
+        return ac.memory_tools(
+            space=cfg.get("space", "memories"),
+            scope=cfg.get("scope", "user"),
+            workflow_id=plan.wf.id,
+            user_key=plan.user_key,
+        )
     if r.type.startswith("tool.") or r.type == "mcp.server":
         return resources.tool(r.name, cfg, r.type)
     if r.type.startswith("mw."):
@@ -137,6 +145,19 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         elif n.type == "core.human_input":
             fn = ac.human_input_node(
                 node_id=n.id, prompt=cfg["prompt"], output=cfg["output"], response_schema=cfg.get("response_schema")
+            )
+        elif n.type in MEMORY_OPS:
+            fn = ac.memory_node(
+                op=MEMORY_OPS[n.type],
+                space=cfg.get("space", "memories"),
+                scope=cfg.get("scope", "user"),
+                workflow_id=plan.wf.id,
+                user_key=plan.user_key,
+                key=cfg.get("key"),
+                query=cfg.get("query"),
+                top_k=cfg.get("top_k", 5),
+                value=cfg.get("value"),
+                output=cfg.get("output"),
             )
         elif n.type == "core.set":
             fn = ac.set_node(values=cfg["values"])

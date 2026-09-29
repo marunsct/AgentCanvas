@@ -104,6 +104,37 @@ class LangChainAdapter:
         tools = await resources.load_mcp(name, {**config, "tool_filter": []}, refresh=True)
         return [ac.mcp_tool_info(t) for t in tools]
 
+    # ---------------------------------------------------------- memory (M4-T12) ----
+    async def memory_namespaces(self, prefix: tuple[str, ...], limit: int = 200) -> list[tuple[str, ...]]:
+        return list(await self.store.alist_namespaces(prefix=prefix or None, limit=limit))
+
+    async def memory_items(self, namespace: tuple[str, ...], query: str | None, limit: int) -> list[dict[str, Any]]:
+        items = await self.store.asearch(namespace, limit=1000 if query else limit)
+        if query:
+            items = ac.keyword_rank(items, query, limit)
+        return [
+            {
+                "namespace": list(i.namespace),
+                "key": i.key,
+                "value": jsonable(i.value),
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+                "updated_at": i.updated_at.isoformat() if i.updated_at else None,
+            }
+            for i in items
+        ]
+
+    async def memory_delete(self, namespace: tuple[str, ...], key: str) -> None:
+        await self.store.adelete(namespace, key)
+
+    async def memory_erase(self, prefix: tuple[str, ...]) -> int:
+        """Delete everything under a namespace prefix (e.g. one user's memories: right to erasure)."""
+        deleted = 0
+        while items := await self.store.asearch(prefix, limit=500):
+            for i in items:
+                await self.store.adelete(i.namespace, i.key)
+            deleted += len(items)
+        return deleted
+
     def generate(self, wf: Workflow) -> str:
         return generate(wf)
 

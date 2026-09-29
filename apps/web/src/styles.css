@@ -257,3 +257,12 @@ label.row input { width: auto; margin: 0; }
 .wired li code { flex: 1; }
 .mcp-browser ul { list-style: none; padding: 0; margin: 4px 0; }
 .mcp-browser li label { margin: 2px 0; display: flex; gap: 6px; align-items: center; }
+/* memory inspector */
+.memory-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+.memory-layout nav { display: flex; flex-direction: column; gap: 4px; }
+.memory-layout nav button { text-align: left; font-family: ui-monospace, monospace; font-size: 12px; }
+.memory-layout nav button.active { border-color: var(--accent); background: #7c3aed14; }
+.memory-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.memory-table td, .memory-table th { border-bottom: 1px solid var(--border); padding: 6px; text-align: left; vertical-align: top; }
+.memory-table pre { margin: 0; max-height: 120px; overflow: auto; }
+@media (max-width: 700px) { .memory-layout { grid-template-columns: 1fr; } }
