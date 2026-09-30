@@ -85,6 +85,15 @@ The agent subgraph shares only matching keys. The workflow state must have a `me
 **P-23 ✅ LangSmith Sandboxes: every host reachable, or a memory change ignored (Sprint 7, SP-2).**
 Without `access_control` a sandbox reaches **every** host on every port; AgentCanvas always sends an `allow_list` (empty = offline, plus port 443 for hosts that header rules target). `update_sandbox(name, proxy_config=…)` patches egress and injected headers in place, but the size (`mem_bytes`, `vcpus`) is fixed at creation — a new `memory_mb` replaces the sandbox. TTLs must be multiples of 60. Secrets go into `opaque` header values (write-only), never into the sandbox environment.
 
+**P-24 ✅ `astream_events(version="v3")`: "'async for' requires … got coroutine" (Sprint 8, SP-3).**
+In LangGraph 1.2.x the v3 call is a coroutine: `run = await graph.astream_events(x, cfg, version="v3")`, then `async for ev in run` and `await run.output()` (a method). It is still marked experimental and its default stream has `values` events only; AgentCanvas keeps `astream` v2.
+
+**P-25 ✅ Agent Server: a graph factory is called with the wrong arguments (Sprint 8, SP-4).**
+The server injects by *type hint*: annotate `runtime: ServerRuntime` (from `langgraph_sdk.runtime`) and/or `config: RunnableConfig`. String annotations (`from __future__ import annotations`) work if the name is importable in the module. Return the same topology for runs and introspection.
+
+**P-26 ✅ A LangChain callback collector only sees the root run (Sprint 8).**
+`collect_runs()` / `run_collector_var` is a non-inheritable configure hook: child runs (graph nodes) never reach it. Assert node names through the canonical STEP events instead, or pass a handler in `config["callbacks"]`.
+
 ## B. Templates & code generation
 
 **T-01 ✅ `jinja2.exceptions.UndefinedError: 'dict object' has no attribute '<key>'` during code generation.**

@@ -72,7 +72,9 @@ async def test_export_zip_runs_its_own_tests(app, api_client, tmp_path):
     assert 'version = "1.0.0"' in (root / "pyproject.toml").read_text()
     cases = json.loads((root / "tests/test_cases.json").read_text())
     assert [c["name"] for c in cases] == [HIGH_CASE["name"]]  # the pinned case cannot run outside AgentCanvas
-    assert json.loads((root / "langgraph.json").read_text())["graphs"] == {"triage": "./src/triage/server.py:graph"}
+    assert json.loads((root / "langgraph.json").read_text())["graphs"] == {
+        "triage": "./src/triage/server.py:make_graph"
+    }
 
     env = {k: v for k, v in os.environ.items() if not k.startswith(("AGENTCANVAS_", "PYTEST"))}
     proc = subprocess.run(

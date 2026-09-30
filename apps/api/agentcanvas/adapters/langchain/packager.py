@@ -5,7 +5,7 @@
       README.md  .env.example   provider keys + the project secrets the workflow references
       Dockerfile  langgraph.json
       src/<pkg>/graph.py        generated code (the same file as the Code tab)
-      src/<pkg>/server.py       `graph` for LangGraph Server / `langgraph dev`
+      src/<pkg>/server.py       `make_graph` (ServerRuntime factory) for LangGraph Server / `langgraph dev`
       src/<pkg>/__main__.py     `python -m <pkg> '{"input": ...}'`
       src/agentcanvas/...       the node library the generated code calls (vendored, Apache-2.0)
       src/scripts|tools|nodes/  the workspace code at export time
@@ -153,10 +153,11 @@ interrupts). In your own code: `from {pkg}.graph import build_graph` and pass yo
 """
 
 
-SERVER = '''"""LangGraph Server entry point (`langgraph.json`): the graph with resources from the environment."""
+SERVER = '''"""LangGraph Server entry point (`langgraph.json` -> make_graph): resources from the environment."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -164,6 +165,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # src/: agentcanvas + workspace code
 
 from agentcanvas.adapters.langchain.nodes import Resources  # noqa: E402
+
+try:  # the server resolves the annotation below to inject its runtime
+    from langgraph_sdk.runtime import ServerRuntime
+except ImportError:  # pragma: no cover
+    from typing import Any as ServerRuntime
 
 from {pkg} import graph as generated  # noqa: E402
 
@@ -173,7 +179,16 @@ SECRETS = {secrets}
 def make_resources() -> Resources:
     return Resources(secrets={{k: os.environ[k] for k in SECRETS if k in os.environ}})
 
-{graph}
+
+async def _build():
+    build = getattr(generated, "abuild_graph", None)  # MCP tools are discovered asynchronously
+    return await build(make_resources()) if build else generated.build_graph(make_resources())
+
+
+@contextlib.asynccontextmanager
+async def make_graph(runtime: ServerRuntime):
+    """Graph factory for Agent Server (it injects a ServerRuntime): the same topology for runs and introspection."""
+    yield await _build()
 '''
 
 MAIN = '''"""`python -m {pkg} '{{"input": {{...}}, "thread_id": "t1"}}'`: one turn, printed as JSON."""
@@ -290,13 +305,6 @@ def package(
     pkg = package_name(wf.name)
     root = pkg.replace("_", "-")
     secrets = sorted(_secret_names(wf.model_dump(mode="json")))
-    is_async = "async def abuild_graph(" in source
-    graph = (
-        "\nasync def graph(config):  # MCP tools are discovered asynchronously: a graph factory\n"
-        "    return await generated.abuild_graph(make_resources())\n"
-        if is_async
-        else "\ngraph = generated.build_graph(make_resources())\n"
-    )
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, pkg, version),
         "README.md": _readme(wf, pkg),
@@ -304,12 +312,12 @@ def package(
         ".gitignore": ".venv/\n__pycache__/\n.env\n",
         "Dockerfile": DOCKERFILE.format(pkg=pkg),
         "langgraph.json": json.dumps(
-            {"dependencies": ["."], "graphs": {pkg: f"./src/{pkg}/server.py:graph"}, "env": ".env"}, indent=2
+            {"dependencies": ["."], "graphs": {pkg: f"./src/{pkg}/server.py:make_graph"}, "env": ".env"}, indent=2
         )
         + "\n",
         f"src/{pkg}/__init__.py": f'"""{wf.name} (exported from AgentCanvas)."""\n',
         f"src/{pkg}/graph.py": source,
-        f"src/{pkg}/server.py": SERVER.format(pkg=pkg, secrets=json.dumps(secrets), graph=graph),
+        f"src/{pkg}/server.py": SERVER.format(pkg=pkg, secrets=json.dumps(secrets)),
         f"src/{pkg}/__main__.py": MAIN.format(pkg=pkg),
         "src/agentcanvas/NOTICE.md": "The AgentCanvas node library (Apache-2.0), vendored so the project runs alone.\n",
         "tests/test_smoke.py": SMOKE.format(pkg=pkg, models=json.dumps(sorted({n for n, _ in _models(wf)}))),
