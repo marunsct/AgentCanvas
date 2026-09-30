@@ -1,0 +1,88 @@
+[project]
+name = "agentcanvas"
+version = "0.1.0.dev0"
+description = "AgentCanvas control plane and runner: visual agentic workflows compiled to LangGraph/LangChain/Deep Agents"
+requires-python = ">=3.12"
+# Stack "stack-2026.09" (ADR 0017), verified together on 2026-09-29 (spec doc 14)
+dependencies = [
+  "langgraph>=1.2.12,<1.3",
+  "langchain[mcp]>=1.4.3,<1.5",
+  "langchain-core>=1.6.5,<2",
+  "deepagents>=0.7.19,<0.8",
+  "langsmith>=0.14.1,<0.15",
+  "langgraph-checkpoint-postgres>=3.1",
+  "psycopg[binary,pool]>=3.2",
+  "fastapi>=0.141",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.9",
+  "jinja2>=3.1",
+  "cel-python>=0.4",
+  "ruff>=0.9", # used at runtime by the code generator (ruff format)
+  "sqlalchemy[asyncio]>=2.0.36",
+  "alembic>=1.14",
+  "aiosqlite>=0.20",
+  "python-ulid>=3.0",
+  "structlog>=24.4",
+  "pydantic-settings>=2.6",
+  "jsonschema>=4.23",
+  "httpx>=0.27",  # HTTP request tool (M3-T6)
+  "cryptography>=43",  # project secrets (M5-T6)
+  "langgraph-checkpoint-sqlite>=3.1.1,<4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "pyright>=1.1.390",
+    "ruff>=0.9",
+    "hypothesis>=6.120",
+    "import-linter>=2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentcanvas"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF", "BLE", "PLW"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.pyright]
+include = ["agentcanvas"]
+typeCheckingMode = "standard"
+
+[tool.importlinter]
+root_package = "agentcanvas"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core stays framework-neutral (ADR 0011): only agentcanvas.adapters may import LangChain/LangGraph"
+type = "forbidden"
+source_modules = [
+  "agentcanvas.ir",
+  "agentcanvas.validation",
+  "agentcanvas.registry",
+  "agentcanvas.db",
+  "agentcanvas.services",
+  "agentcanvas.runtime",
+  "agentcanvas.security",
+  "agentcanvas.api",
+  "agentcanvas.settings",
+  "agentcanvas.errors",
+]
+forbidden_modules = ["langchain", "langchain_core", "langgraph", "deepagents"]
+allow_indirect_imports = true

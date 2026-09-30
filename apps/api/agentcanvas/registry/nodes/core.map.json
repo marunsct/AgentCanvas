@@ -1,0 +1,60 @@
+{
+  "type": "core.map",
+  "kind": "runtime",
+  "label": "Map (for each)",
+  "category": "Logic",
+  "icon": "git-fork",
+  "color": "#0891B2",
+  "description": "Runs the step wired to `each` once per list item, in parallel (Send). Results must go to an `append` channel.",
+  "outputs": [
+    {
+      "name": "each",
+      "type": "Flow",
+      "required": true,
+      "description": "Worker step, run once per item"
+    },
+    {
+      "name": "empty",
+      "type": "Flow",
+      "description": "Taken when the list is empty (default: END)"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "items",
+      "item"
+    ],
+    "properties": {
+      "items": {
+        "type": "string",
+        "title": "List channel",
+        "format": "channel"
+      },
+      "item": {
+        "type": "string",
+        "title": "Each item goes to",
+        "format": "channel",
+        "description": "The worker sees the current item in this channel"
+      },
+      "carry": {
+        "type": "array",
+        "title": "Also give the worker",
+        "items": {
+          "type": "string",
+          "format": "channel"
+        },
+        "uniqueItems": true
+      },
+      "max_items": {
+        "type": "integer",
+        "title": "Max items",
+        "minimum": 1
+      }
+    }
+  },
+  "read_fields": [
+    "items"
+  ]
+}

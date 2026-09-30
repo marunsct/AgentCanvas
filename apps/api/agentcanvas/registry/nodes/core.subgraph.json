@@ -1,0 +1,57 @@
+{
+  "type": "core.subgraph",
+  "kind": "runtime",
+  "label": "Subgraph",
+  "category": "Logic",
+  "icon": "layers",
+  "color": "#0E7490",
+  "description": "A group of steps with its own state, run as one step. Input channels are copied in; output channels are copied back (append channels get only the new items).",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "workflow",
+      "inputs",
+      "outputs"
+    ],
+    "properties": {
+      "workflow": {
+        "type": "object",
+        "title": "Steps",
+        "format": "subgraph",
+        "description": "The embedded workflow (double-click the node to open it)"
+      },
+      "inputs": {
+        "type": "array",
+        "title": "Channels passed in",
+        "items": {
+          "type": "string",
+          "format": "channel"
+        },
+        "uniqueItems": true
+      },
+      "outputs": {
+        "type": "array",
+        "title": "Channels passed back",
+        "items": {
+          "type": "string",
+          "format": "channel"
+        },
+        "uniqueItems": true
+      }
+    }
+  },
+  "list_read_fields": [
+    "inputs"
+  ],
+  "list_write_fields": [
+    "outputs"
+  ],
+  "interrupts": true
+}

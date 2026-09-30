@@ -1,0 +1,218 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_classify_and_route",
+  "name": "Classify and route",
+  "description": "An LLM classifies the input, a router picks a branch, each branch writes a reply.",
+  "state": {
+    "channels": [
+      {
+        "name": "request",
+        "description": "The incoming text",
+        "io": "in"
+      },
+      {
+        "name": "category",
+        "description": "question | complaint | other"
+      },
+      {
+        "name": "reply",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_classify",
+      "type": "core.llm",
+      "name": "classify",
+      "label": "Classify",
+      "config": {
+        "prompt": "Answer with one word: question, complaint or other.\n\n{{ state.request }}",
+        "output": "category"
+      },
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      }
+    },
+    {
+      "id": "n_route",
+      "type": "core.router",
+      "name": "route",
+      "label": "Route",
+      "config": {
+        "cases": [
+          {
+            "when": "state.category == \"question\"",
+            "route": "question"
+          },
+          {
+            "when": "state.category == \"complaint\"",
+            "route": "complaint"
+          }
+        ],
+        "default": "other"
+      }
+    },
+    {
+      "id": "n_answer",
+      "type": "core.llm",
+      "name": "answer",
+      "label": "Answer question",
+      "config": {
+        "prompt": "Answer briefly: {{ state.request }}",
+        "output": "reply"
+      }
+    },
+    {
+      "id": "n_apology",
+      "type": "core.set",
+      "name": "apologise",
+      "label": "Apologise",
+      "config": {
+        "values": {
+          "reply": "Sorry to hear that \u2014 a person will follow up on: {{ state.request }}"
+        }
+      }
+    },
+    {
+      "id": "n_other",
+      "type": "core.set",
+      "name": "fallback",
+      "label": "Fallback",
+      "config": {
+        "values": {
+          "reply": "Thanks, we received your message."
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_classify"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_classify"
+      },
+      "target": {
+        "node": "n_route"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:question"
+      },
+      "target": {
+        "node": "n_answer"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:complaint"
+      },
+      "target": {
+        "node": "n_apology"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:other"
+      },
+      "target": {
+        "node": "n_other"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_answer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_apology"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e8",
+      "kind": "flow",
+      "source": {
+        "node": "n_other"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w1",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_classify",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w2",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_answer",
+        "port": "model"
+      }
+    }
+  ],
+  "settings": {
+    "output_channels": [
+      "category",
+      "reply"
+    ]
+  }
+}

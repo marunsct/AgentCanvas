@@ -1,0 +1,42 @@
+{
+  "type": "core.approval",
+  "kind": "runtime",
+  "label": "Approval",
+  "category": "Human-in-the-loop",
+  "icon": "user-check",
+  "color": "#D97706",
+  "description": "Pauses for a human to approve or reject (optionally editing the shown value).",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "show",
+      "output"
+    ],
+    "properties": {
+      "show": {
+        "type": "string",
+        "title": "Channel to review",
+        "format": "channel"
+      },
+      "output": {
+        "type": "string",
+        "title": "Decision channel (bool)",
+        "format": "channel"
+      }
+    }
+  },
+  "read_fields": [
+    "show"
+  ],
+  "channel_fields": [
+    "output"
+  ],
+  "interrupts": true
+}

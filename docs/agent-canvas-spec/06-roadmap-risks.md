@@ -35,6 +35,8 @@
 - Hybrid/BYOC and air-gapped self-hosted editions; VS Code extension.
 - Dynamic subagents & interpreters (as they exit beta upstream).
 
+> **v0.6 delta:** the phases below are scheduled as two-week sprints S0–S12 in [build-guide/13-sprint-plan.md](./build-guide/13-sprint-plan.md), which is the executable plan and records execution status. New v0.6 requirements (FR-X, doc 15) are slotted into those sprints. New risks: R14 *upstream beta APIs* (MCP namespace, `ServerRuntime`, v3 streaming, `DeltaChannel`, forked/dynamic subagents) — mitigated by capability flags and stable fallbacks (D16); R15 *stale upstream packages* (e.g. `langmem`) — mitigated by building on core primitives (ADR 0014).
+
 > **v0.2 delta:** persistence, Data Studio and self-improvement scope is sequenced into these phases in [10-improvement-plan.md §3](./10-improvement-plan.md#3-updated-delivery-sequencing-delta-to-doc-06). Add ~2 engineers (data modelling/codegen, persistence/data plane) and ~0.5 ML engineer (learning loops) to the team below.
 
 > **v0.4 delta:** multi-framework ordering and staffing now follow [doc 12 Part D](./12-multi-framework-technical-spec.md#part-d--detailed-delivery-plan) (source-verified).

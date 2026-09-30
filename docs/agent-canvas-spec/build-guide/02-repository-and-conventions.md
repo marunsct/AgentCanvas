@@ -2,7 +2,9 @@
 
 ## 1. Create the product repository (ticket M0-T1)
 
-Create a **new** repository `agentcanvas` (the spec lives in the current repo; the product gets its own). Start from the reference implementation:
+> **v0.6 (ADR 0012):** the product is built **in this repository**, next to the spec (`apps/`, `packages/`, `infra/` at the root; the spec stays in `docs/`). Spec and code change in the same pull request. The commands below still describe how the monorepo was seeded from the reference implementation.
+
+Original instruction (superseded by ADR 0012): create a **new** repository `agentcanvas`. Start from the reference implementation:
 
 ```bash
 mkdir agentcanvas && cd agentcanvas && git init
@@ -128,6 +130,12 @@ Each ADR is a short file in `docs/adr/NNNN-title.md` with *Context / Decision / 
 | 0009 | Alembic migrations; prefixed ULIDs; problem+json errors (D-06, D-08, D-09) |
 | 0010 | OIDC auth, single org in MVP (D-07) |
 | 0011 | Framework-neutral core with adapter boundary (spec 11/12) |
+| 0012 | Spec and product in one repository (review v0.6 C-09) |
+| 0013 | LangSmith Deployment target may host interpreted mode via a `ServerRuntime` graph factory (V-05) |
+| 0014 | No hard dependency on `langmem` (V-08) |
+| 0015 | Node-library callables are always async; sync user code via `asyncio.to_thread` (V-03) |
+| 0016 | `DeltaChannel` is a channel storage mode; representation changes on live workflows are blocked (V-06) |
+| 0017 | Stack `stack-2026.09` pins (V-09) |
 
 Template:
 ```markdown

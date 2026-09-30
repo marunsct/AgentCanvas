@@ -1,0 +1,223 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_ticket_triage",
+  "name": "Support triage",
+  "description": "Classify a ticket's urgency; urgent tickets are escalated and wait for a manager, the rest get a drafted reply.",
+  "state": {
+    "channels": [
+      {
+        "name": "ticket",
+        "description": "The customer's message",
+        "io": "in"
+      },
+      {
+        "name": "urgency",
+        "description": "high | low"
+      },
+      {
+        "name": "summary",
+        "io": "out"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "out"
+      },
+      {
+        "name": "reply",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_cls",
+      "type": "core.llm",
+      "name": "classify",
+      "label": "Classify urgency",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Answer only 'high' or 'low'. How urgent is this support ticket?\n\n{{ state.ticket }}",
+        "output": "urgency"
+      }
+    },
+    {
+      "id": "n_rt",
+      "type": "core.router",
+      "name": "route_urgency",
+      "label": "Urgent?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.urgency == \"high\"",
+            "route": "high"
+          }
+        ],
+        "default": "normal"
+      }
+    },
+    {
+      "id": "n_esc",
+      "type": "core.set",
+      "name": "escalate",
+      "label": "Escalate",
+      "config": {
+        "values": {
+          "summary": "ESCALATED: {{ state.ticket }}"
+        }
+      }
+    },
+    {
+      "id": "n_ok",
+      "type": "core.approval",
+      "name": "manager_approval",
+      "label": "Manager approval",
+      "config": {
+        "show": "summary",
+        "output": "approved"
+      }
+    },
+    {
+      "id": "n_draft",
+      "type": "core.llm",
+      "name": "draft_reply",
+      "label": "Draft reply",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a short, friendly reply to this support ticket.\n\n{{ state.ticket }}",
+        "output": "reply"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_cls"
+      }
+    },
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "n_cls"
+      },
+      "target": {
+        "node": "n_rt"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:high"
+      },
+      "target": {
+        "node": "n_esc"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:normal"
+      },
+      "target": {
+        "node": "n_draft"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_esc"
+      },
+      "target": {
+        "node": "n_ok"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_ok"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_draft"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w100",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_cls",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w101",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_draft",
+        "port": "model"
+      }
+    }
+  ]
+}

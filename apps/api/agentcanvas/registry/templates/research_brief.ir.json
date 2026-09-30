@@ -1,0 +1,287 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_research_brief",
+  "name": "Research brief",
+  "description": "Map-reduce research: one LLM call per topic in parallel, then a Deep Agent writes the brief and keeps findings in the user's long-term /memories/ folder.",
+  "state": {
+    "channels": [
+      {
+        "name": "question",
+        "type": {
+          "type": "string"
+        },
+        "io": "in",
+        "description": "What the brief should answer"
+      },
+      {
+        "name": "topics",
+        "type": {
+          "type": "array"
+        },
+        "io": "in",
+        "description": "Sub-topics to research in parallel"
+      },
+      {
+        "name": "topic",
+        "type": {
+          "type": "string"
+        },
+        "io": "private",
+        "description": "The topic a research worker is looking at"
+      },
+      {
+        "name": "notes",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "append",
+        "io": "private",
+        "description": "One entry per research worker"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "out"
+      }
+    ]
+  },
+  "context": {
+    "fields": [
+      {
+        "name": "user_id",
+        "type": {
+          "type": "string"
+        },
+        "source": "user",
+        "description": "Authenticated user: scopes the /memories/ folder"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5"
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_mem",
+      "type": "backend.store",
+      "name": "memories",
+      "config": {
+        "mount": "/memories/",
+        "scope": "user",
+        "namespace": "memories"
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 25
+      }
+    },
+    {
+      "id": "r_checker",
+      "type": "agent.subagent",
+      "name": "fact_checker",
+      "config": {
+        "description": "Checks a draft claim against the research notes and flags anything unsupported.",
+        "system_prompt": "You check claims against the research notes you are given. Reply with the unsupported claims, or 'all supported'."
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_map",
+      "type": "core.map",
+      "name": "each_topic",
+      "label": "For each topic",
+      "config": {
+        "items": "topics",
+        "item": "topic",
+        "carry": [
+          "question"
+        ],
+        "max_items": 8
+      }
+    },
+    {
+      "id": "n_research",
+      "type": "core.llm",
+      "name": "research",
+      "label": "Research a topic",
+      "config": {
+        "prompt": "You are researching: {{ state.question }}\nList three short, factual bullet points about: {{ state.topic }}",
+        "output": "notes"
+      }
+    },
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "brief_request",
+      "label": "Hand notes to the writer",
+      "config": {
+        "values": {
+          "messages": "Write a one-page brief answering: {{ state.question }}\n\nResearch notes:\n{% for n in state.notes %}- {{ n }}\n{% endfor %}"
+        }
+      }
+    },
+    {
+      "id": "n_writer",
+      "type": "agent.deep",
+      "name": "writer",
+      "label": "Brief writer (Deep Agent)",
+      "config": {
+        "system_prompt": "You write concise, well-structured research briefs. Save the key findings to /memories/findings.md so future briefs for this user can build on them. Ask the fact_checker subagent when a claim is not clearly in the notes.",
+        "planning": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_map"
+      }
+    },
+    {
+      "id": "e_each",
+      "kind": "flow",
+      "source": {
+        "node": "n_map",
+        "port": "each"
+      },
+      "target": {
+        "node": "n_research"
+      }
+    },
+    {
+      "id": "e_empty",
+      "kind": "flow",
+      "source": {
+        "node": "n_map",
+        "port": "empty"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e_notes",
+      "kind": "flow",
+      "source": {
+        "node": "n_research"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e_write",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_writer"
+      }
+    },
+    {
+      "id": "e_end",
+      "kind": "flow",
+      "source": {
+        "node": "n_writer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w_fast",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_smart",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_writer",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_mem",
+      "kind": "wiring",
+      "source": {
+        "node": "r_mem"
+      },
+      "target": {
+        "node": "n_writer",
+        "port": "backend"
+      }
+    },
+    {
+      "id": "w_limit",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_writer",
+        "port": "middleware"
+      },
+      "order": 0
+    },
+    {
+      "id": "w_checker",
+      "kind": "wiring",
+      "source": {
+        "node": "r_checker"
+      },
+      "target": {
+        "node": "n_writer",
+        "port": "subagents"
+      },
+      "order": 0
+    },
+    {
+      "id": "w_checker_model",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "r_checker",
+        "port": "model"
+      }
+    }
+  ]
+}

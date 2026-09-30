@@ -1,0 +1,192 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_approval_workflow",
+  "name": "Approval workflow",
+  "description": "An LLM drafts, a human approves (or edits) the draft, and only approved drafts are published.",
+  "state": {
+    "channels": [
+      {
+        "name": "brief",
+        "description": "What to write",
+        "io": "in"
+      },
+      {
+        "name": "draft",
+        "io": "out"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "out"
+      },
+      {
+        "name": "status",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_draft",
+      "type": "core.llm",
+      "name": "write_draft",
+      "label": "Write draft",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a concise announcement for:\n\n{{ state.brief }}",
+        "output": "draft"
+      }
+    },
+    {
+      "id": "n_review",
+      "type": "core.approval",
+      "name": "review",
+      "label": "Human review",
+      "config": {
+        "show": "draft",
+        "output": "approved"
+      }
+    },
+    {
+      "id": "n_gate",
+      "type": "core.router",
+      "name": "approved_gate",
+      "label": "Approved?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.approved == true",
+            "route": "yes"
+          }
+        ],
+        "default": "no"
+      }
+    },
+    {
+      "id": "n_pub",
+      "type": "core.set",
+      "name": "publish",
+      "label": "Publish",
+      "config": {
+        "values": {
+          "status": "published"
+        }
+      }
+    },
+    {
+      "id": "n_rej",
+      "type": "core.set",
+      "name": "discard",
+      "label": "Discard",
+      "config": {
+        "values": {
+          "status": "rejected"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_draft"
+      }
+    },
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "n_draft"
+      },
+      "target": {
+        "node": "n_review"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_review"
+      },
+      "target": {
+        "node": "n_gate"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:yes"
+      },
+      "target": {
+        "node": "n_pub"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:no"
+      },
+      "target": {
+        "node": "n_rej"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_pub"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_rej"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w100",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_draft",
+        "port": "model"
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+test-results/
+playwright-report/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.tsbuildinfo
+apps/api/workspaces/

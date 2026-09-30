@@ -1,0 +1,72 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_chat_assistant",
+  "name": "Chat assistant",
+  "description": "A single tool-less agent that chats over the `messages` channel. Start here and add tools.",
+  "state": {
+    "channels": [
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "storage": "delta"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "chat_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_agent",
+      "type": "core.agent",
+      "name": "assistant",
+      "label": "Assistant",
+      "config": {
+        "system_prompt": "You are a helpful assistant. Answer concisely."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_agent"
+      }
+    },
+    {
+      "id": "e_end",
+      "kind": "flow",
+      "source": {
+        "node": "n_agent"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w_model",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "model"
+      }
+    }
+  ]
+}

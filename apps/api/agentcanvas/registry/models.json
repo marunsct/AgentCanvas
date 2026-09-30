@@ -1,0 +1,48 @@
+[
+  {
+    "id": "anthropic:claude-opus-5-5",
+    "label": "Claude Opus 5.5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true
+  },
+  {
+    "id": "anthropic:claude-sonnet-5-5",
+    "label": "Claude Sonnet 5.5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true
+  },
+  {
+    "id": "anthropic:claude-haiku-4-5",
+    "label": "Claude Haiku 4.5",
+    "provider": "anthropic",
+    "vision": true
+  },
+  {
+    "id": "openai:gpt-5.5",
+    "label": "GPT-5.5",
+    "provider": "openai",
+    "vision": true,
+    "reasoning": true
+  },
+  {
+    "id": "openai:gpt-5-mini",
+    "label": "GPT-5 mini",
+    "provider": "openai",
+    "vision": true,
+    "reasoning": true
+  },
+  {
+    "id": "fake:scripted",
+    "label": "Scripted fake (tests)",
+    "provider": "fake"
+  },
+  {
+    "id": "fake:no-tools",
+    "label": "Fake without tool calling (tests)",
+    "provider": "fake",
+    "tools": false,
+    "structured_output": false
+  }
+]

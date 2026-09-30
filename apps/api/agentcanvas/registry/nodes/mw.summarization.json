@@ -1,0 +1,46 @@
+{
+  "type": "mw.summarization",
+  "kind": "resource",
+  "label": "Summarization",
+  "category": "Middleware",
+  "icon": "scroll",
+  "color": "#9333EA",
+  "description": "Summarizes old messages when the conversation grows too long (SummarizationMiddleware).",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": true,
+      "description": "Model that writes the summary"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "trigger_tokens": {
+        "type": "integer",
+        "title": "Summarize above (tokens)",
+        "minimum": 100,
+        "default": 4000
+      },
+      "trigger_messages": {
+        "type": "integer",
+        "title": "\u2026or above (messages)",
+        "minimum": 2
+      },
+      "keep_messages": {
+        "type": "integer",
+        "title": "Keep last (messages)",
+        "minimum": 1,
+        "default": 20
+      }
+    }
+  }
+}

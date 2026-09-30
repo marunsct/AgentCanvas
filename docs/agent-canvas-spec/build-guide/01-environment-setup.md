@@ -2,7 +2,7 @@
 
 Follow top to bottom. Every command has an **expected result** — if you don't see it, check [11-troubleshooting-faq.md](./11-troubleshooting-faq.md).
 
-## 1. Versions (verified together on 2026-09-28)
+## 1. Versions (verified together on 2026-09-28; re-verified 2026-09-29 — doc 14)
 
 | Tool / library | Version | Why this version |
 |----------------|---------|------------------|
@@ -12,8 +12,9 @@ Follow top to bottom. Every command has an **expected result** — if you don't 
 | pnpm | **10** | frontend package manager |
 | Docker + Docker Compose | recent | local Postgres/Redis/Keycloak |
 | langgraph | 1.2.12 | runtime |
-| langchain / langchain-core | 1.4.2 / 1.6.5 | agents, models, tools, middleware |
-| deepagents | 0.7.19 | Deep Agent widget |
+| langchain (with `mcp` extra) / langchain-core | 1.4.3 / 1.6.5 | agents, models, tools, middleware; `langchain[mcp]` pulls `fastmcp>=4,<5` for `langchain.mcp` |
+| langsmith | 0.14.1 | tracing, datasets, sandboxes SDK |
+| deepagents | 0.7.19 | Deep Agent widget (`deepagents[quickjs]` adds `langchain-quickjs>=0.3.7` for interpreters) |
 | langgraph-checkpoint-postgres | 3.1.2 | durable checkpoints + store |
 | langgraph-checkpoint-redis | 0.5.2 | optional Redis checkpointer (needs Redis 8 / Redis Stack) |
 | fastapi | 0.141 | HTTP API |

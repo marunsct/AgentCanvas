@@ -1,0 +1,67 @@
+{
+  "type": "core.memory_recall",
+  "kind": "runtime",
+  "label": "Recall",
+  "category": "Memory",
+  "icon": "database",
+  "color": "#0F766E",
+  "description": "Searches long-term memory and writes the matches (list of {key, \u2026}) to a channel.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "space",
+      "scope",
+      "output"
+    ],
+    "properties": {
+      "space": {
+        "type": "string",
+        "title": "Memory space",
+        "default": "memories",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Same space + scope = same memories (a Deep Agent's long-term folder uses them too)"
+      },
+      "scope": {
+        "enum": [
+          "user",
+          "workflow",
+          "thread"
+        ],
+        "title": "Shared per",
+        "default": "user",
+        "description": "user = the run's authenticated user (needs a context field with source 'user')"
+      },
+      "query": {
+        "type": "string",
+        "title": "Search for",
+        "format": "template",
+        "description": "Jinja template; empty = the most recent memories. Without a semantic index, words are matched."
+      },
+      "top_k": {
+        "type": "integer",
+        "title": "At most",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 5
+      },
+      "output": {
+        "type": "string",
+        "title": "Output channel",
+        "format": "channel"
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "template_fields": [
+    "query"
+  ]
+}

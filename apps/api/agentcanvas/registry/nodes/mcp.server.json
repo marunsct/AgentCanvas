@@ -1,0 +1,107 @@
+{
+  "type": "mcp.server",
+  "kind": "resource",
+  "label": "MCP server",
+  "category": "Tools",
+  "icon": "plug",
+  "color": "#4B5563",
+  "stability": "beta",
+  "description": "All tools of a Model Context Protocol server (langchain.mcp). Use Browse tools to pick tools and see which are destructive.",
+  "outputs": [
+    {
+      "name": "tools",
+      "type": "Tool",
+      "description": "Every (selected) tool of the server"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "transport": {
+        "enum": [
+          "http",
+          "stdio"
+        ],
+        "title": "Transport",
+        "default": "http",
+        "description": "stdio starts a local process: local edition + admin setting only (E042)"
+      },
+      "url": {
+        "type": "string",
+        "title": "Server URL",
+        "format": "uri",
+        "pattern": "^https?://"
+      },
+      "headers": {
+        "type": "object",
+        "title": "Headers",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string",
+              "title": "Value"
+            },
+            {
+              "type": "object",
+              "title": "Secret",
+              "required": [
+                "$secret"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "$secret": {
+                  "type": "string",
+                  "title": "Secret name"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "command": {
+        "type": "string",
+        "title": "Command (stdio)"
+      },
+      "args": {
+        "type": "array",
+        "title": "Arguments (stdio)",
+        "items": {
+          "type": "string"
+        }
+      },
+      "tool_filter": {
+        "type": "array",
+        "title": "Only these tools",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true,
+        "description": "Empty = every tool the server offers"
+      },
+      "discovered": {
+        "type": "array",
+        "title": "Discovered tools",
+        "readOnly": true,
+        "description": "Filled by Browse tools; used to check approvals (W002, E033)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "destructive": {
+              "type": "boolean"
+            },
+            "read_only": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}

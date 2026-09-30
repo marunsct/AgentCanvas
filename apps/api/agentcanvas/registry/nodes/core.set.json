@@ -1,0 +1,42 @@
+{
+  "type": "core.set",
+  "kind": "runtime",
+  "label": "Set values",
+  "category": "Data",
+  "icon": "pencil",
+  "color": "#059669",
+  "description": "Writes templated values into channels, e.g. summary = \"Ticket: {{ state.ticket }}\".",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "values"
+    ],
+    "properties": {
+      "values": {
+        "type": "object",
+        "title": "Values",
+        "minProperties": 1,
+        "additionalProperties": {
+          "type": "string",
+          "format": "template"
+        },
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    }
+  },
+  "channel_map_fields": [
+    "values"
+  ],
+  "template_fields": [
+    "values"
+  ]
+}

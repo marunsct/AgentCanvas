@@ -32,6 +32,8 @@ A **working miniature of this whole loop already exists** in [`reference/`](./re
 | 11 | [10-security-checklist.md](./10-security-checklist.md) | reference | pass security review |
 | 12 | [11-troubleshooting-faq.md](./11-troubleshooting-faq.md) | when stuck | fix known problems fast |
 | 13 | [12-traceability.md](./12-traceability.md) | reference | see which ticket implements which requirement |
+| 14 | [13-sprint-plan.md](./13-sprint-plan.md) | reference | see which sprint delivers which milestone tickets, and the live status of execution |
+| 15 | [spikes/](./spikes/) | reference | read the time-boxed spike reports (e.g. SP-2 LangSmith sandbox runner) |
 
 ## 3. Suggested team roles (a beginner can take any of these)
 

@@ -1,0 +1,117 @@
+{
+  "type": "tool.http",
+  "kind": "resource",
+  "label": "HTTP request tool",
+  "category": "Tools",
+  "icon": "globe",
+  "color": "#4B5563",
+  "description": "Calls an HTTP API. The resource name is the tool name; the URL is a template over the tool's arguments, e.g. https://api.example.com/orders/{{ args.order_id }}.",
+  "outputs": [
+    {
+      "name": "tool",
+      "type": "Tool"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "description",
+      "url",
+      "allowed_domains"
+    ],
+    "properties": {
+      "description": {
+        "type": "string",
+        "title": "What it does (shown to the model)",
+        "minLength": 1
+      },
+      "method": {
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE"
+        ],
+        "title": "Method",
+        "default": "GET"
+      },
+      "url": {
+        "type": "string",
+        "title": "URL template",
+        "format": "url_template",
+        "pattern": "^https?://"
+      },
+      "args_schema": {
+        "type": "object",
+        "title": "Arguments (JSON Schema)",
+        "format": "json_schema",
+        "description": "What the model must provide; used in the URL as {{ args.<name> }}"
+      },
+      "send_args": {
+        "enum": [
+          "auto",
+          "none",
+          "query",
+          "json"
+        ],
+        "title": "Send arguments as",
+        "default": "auto",
+        "description": "auto = none for GET/DELETE, JSON body otherwise"
+      },
+      "headers": {
+        "type": "object",
+        "title": "Headers",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string",
+              "title": "Value"
+            },
+            {
+              "type": "object",
+              "title": "Secret",
+              "required": [
+                "$secret"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "$secret": {
+                  "type": "string",
+                  "title": "Secret name"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allowed_domains": {
+        "type": "array",
+        "title": "Allowed domains",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9.-]+$"
+        },
+        "description": "Requests to any other host are refused (subdomains are allowed)"
+      },
+      "timeout": {
+        "type": "number",
+        "title": "Timeout (s)",
+        "exclusiveMinimum": 0,
+        "default": 20
+      },
+      "max_response_chars": {
+        "type": "integer",
+        "title": "Max response characters",
+        "minimum": 100,
+        "default": 20000
+      }
+    }
+  },
+  "side_effects": [
+    "external_write"
+  ]
+}

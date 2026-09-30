@@ -1,0 +1,111 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_rag_qa",
+  "name": "RAG Q&A",
+  "description": "Answer questions from a knowledge base: recall the most relevant passages from memory, answer only from them. Fill the `knowledge` memory space first (Memory Remember node or the Memory page).",
+  "state": {
+    "channels": [
+      {
+        "name": "question",
+        "io": "in"
+      },
+      {
+        "name": "passages",
+        "type": {
+          "type": "array"
+        }
+      },
+      {
+        "name": "answer",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_recall",
+      "type": "core.memory_recall",
+      "name": "retrieve",
+      "label": "Retrieve passages",
+      "config": {
+        "space": "knowledge",
+        "scope": "workflow",
+        "query": "{{ state.question }}",
+        "top_k": 5,
+        "output": "passages"
+      }
+    },
+    {
+      "id": "n_answer",
+      "type": "core.llm",
+      "name": "answer",
+      "label": "Answer from passages",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Answer the question using only these passages. If they do not contain the answer, say you don't know.\n\nPassages:\n{% for p in state.passages %}- {{ p.value }}\n{% endfor %}\nQuestion: {{ state.question }}",
+        "output": "answer"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_recall"
+      }
+    },
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "n_recall"
+      },
+      "target": {
+        "node": "n_answer"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_answer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w100",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_answer",
+        "port": "model"
+      }
+    }
+  ]
+}

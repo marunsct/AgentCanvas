@@ -1,0 +1,70 @@
+{
+  "type": "mw.pii",
+  "kind": "resource",
+  "label": "PII guard",
+  "category": "Middleware",
+  "icon": "shield",
+  "color": "#9333EA",
+  "description": "Detects PII in messages and blocks, redacts, masks or hashes it (PIIMiddleware).",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "pii_type": {
+        "enum": [
+          "email",
+          "credit_card",
+          "ip",
+          "mac_address",
+          "url"
+        ],
+        "title": "PII type",
+        "default": "email"
+      },
+      "strategy": {
+        "enum": [
+          "redact",
+          "mask",
+          "hash",
+          "block"
+        ],
+        "title": "Strategy",
+        "default": "redact"
+      },
+      "detector": {
+        "type": "string",
+        "title": "Custom detector (regex)",
+        "format": "regex",
+        "description": "Optional regular expression that replaces the built-in detector."
+      },
+      "apply_to_input": {
+        "type": "boolean",
+        "title": "Check user input",
+        "default": true
+      },
+      "apply_to_output": {
+        "type": "boolean",
+        "title": "Check model output",
+        "default": false
+      },
+      "apply_to_tool_results": {
+        "type": "boolean",
+        "title": "Check tool results",
+        "default": false
+      }
+    },
+    "required": [
+      "pii_type"
+    ]
+  },
+  "side_effects": [
+    "pii_read"
+  ]
+}

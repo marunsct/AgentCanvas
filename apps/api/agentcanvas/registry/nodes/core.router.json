@@ -1,0 +1,47 @@
+{
+  "type": "core.router",
+  "kind": "runtime",
+  "label": "Router",
+  "category": "Logic",
+  "icon": "split",
+  "color": "#0891B2",
+  "description": "Chooses the next step: the first case whose CEL condition is true wins, otherwise `default`.",
+  "outputs": [],
+  "dynamic_outputs": "routes",
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "cases": {
+        "type": "array",
+        "title": "Cases",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "when",
+            "route"
+          ],
+          "properties": {
+            "when": {
+              "type": "string",
+              "title": "Condition (CEL)",
+              "format": "cel"
+            },
+            "route": {
+              "type": "string",
+              "title": "Route",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        }
+      },
+      "default": {
+        "type": "string",
+        "title": "Default route",
+        "default": "default",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    }
+  }
+}

@@ -1,8 +1,8 @@
 # AgentCanvas — Visual Agentic Workflow Builder
 
-**Functional & Technical Specification — v0.5 (Draft)** — **v0.5 adds a deep review ([13](./13-deep-review-report.md)) and a beginner [Build Guide](./build-guide/README.md) with a tested reference implementation.** v0.2 adds persistence, multi-database data modelling and self-improving agents (docs 08–10); v0.3 makes the architecture framework-agnostic (doc 11); v0.4 adds source-verified multi-framework research and the full adapter technical specification (doc 12 + adapters/).
+**Functional & Technical Specification — v0.6 (Draft)** — **v0.6 re-verifies the spec against the current LangChain stack ([14](./14-deep-review-v0.6.md)), deepens the product concept with 24 new requirements ([15](./15-concept-evolution-and-new-features.md)) and adds an executable [sprint plan](./build-guide/13-sprint-plan.md); the product is now being built in this repository (`apps/`, `packages/`, `infra/`).** v0.5 adds a deep review ([13](./13-deep-review-report.md)) and a beginner [Build Guide](./build-guide/README.md) with a tested reference implementation.** v0.2 adds persistence, multi-database data modelling and self-improving agents (docs 08–10); v0.3 makes the architecture framework-agnostic (doc 11); v0.4 adds source-verified multi-framework research and the full adapter technical specification (doc 12 + adapters/).
 Working name: **AgentCanvas** (rename freely).
-Target frameworks: **LangChain 1.4+, LangGraph 1.2+, Deep Agents 0.7+, LangSmith** (researched against the official `langchain-ai/docs`, `langchain-ai/deepagents`, `langchain-ai/langchain` and `langchain-ai/langgraph` repositories, September 2026).
+Target frameworks: **LangChain 1.4.3+ (`langchain[mcp]`), LangGraph 1.2.12+, Deep Agents 0.7.19+, LangSmith SDK 0.14+** — stack `stack-2026.09` (researched against the official `langchain-ai/docs` repository at commit `1a30368`, 2026-09-28, plus `deepagents`, `langchain` and `langgraph` sources; APIs verified by introspection and execution on 2026-09-29).
 
 ---
 
@@ -24,7 +24,9 @@ Target frameworks: **LangChain 1.4+, LangGraph 1.2+, Deep Agents 0.7+, LangSmith
 | 11 | [11-framework-agnostic-plan.md](./11-framework-agnostic-plan.md) | Framework-agnostic architecture (Core IR + dialects, Adapter SPI, canonical events, hosting modes) and phased plan: LangChain in R1, then interop, OpenAI Agents SDK, Google ADK, Microsoft Agent Framework, CrewAI, Pydantic AI, … |
 | 12 | [12-multi-framework-technical-spec.md](./12-multi-framework-technical-spec.md) | **Source-verified** research on 10 frameworks + protocols (versions, APIs, licences), verified concept matrix, adapter SPI (normative), AG-UI-based canonical events, canonical HITL/resume envelope, persistence/tool/model bridges, hosting wrappers, conformance suite, tiers, detailed delivery plan; per-framework specs in [adapters/](./adapters/) |
 | 13 | [13-deep-review-report.md](./13-deep-review-report.md) | Deep review v0.4 → v0.5: verified API errors, runtime pitfalls, contradictions, decisions (ADRs), scope changes |
-| **BG** | [**build-guide/**](./build-guide/README.md) | **Start here to build the product:** concepts primer, environment setup, walking-skeleton tutorial with tested reference code (backend + canvas), milestone/ticket plan M0–M9, backend/frontend/compiler guides, testing, deployment, security checklist, FAQ, traceability |
+| 14 | [14-deep-review-v0.6.md](./14-deep-review-v0.6.md) | Deep review v0.5 → v0.6: current versions, new verified pitfalls (async-only timeouts, MCP extra, DeltaChannel storage), `ServerRuntime` factories, unused upstream features, new security rules, ADRs 0012–0017 |
+| 15 | [15-concept-evolution-and-new-features.md](./15-concept-evolution-and-new-features.md) | The concept revisited: three contracts, the seven-rung WYSIWYG ladder, language decision, positioning, **events-as-code** for Workspaces, new requirements FR-X-01…24 |
+| **BG** | [**build-guide/**](./build-guide/README.md) | **Start here to build the product:** concepts primer, environment setup, walking-skeleton tutorial with tested reference code (backend + canvas), milestone/ticket plan M0–M9, **sprint plan (S0–S12)**, backend/frontend/compiler guides, testing, deployment, security checklist, FAQ, traceability |
 
 Requirement IDs: `FR-` functional, `NFR-` non-functional, `TR-` technical. Priority: **P0** (MVP), **P1** (GA), **P2** (later).
 
@@ -61,6 +63,9 @@ A literal "what you see is what you get" for agents has to solve something Comfy
 | D11 | **Persistence is explicit and layered** (execution state / long-term memory / agent files / business data / caches / learning artifacts), bound per environment to real databases, with a visual **Data Studio** for business data. | Agents that remember, learn and act on data need clear ownership, retention and safety per layer (doc 08). |
 | D12 | **Self-improvement is a governed ladder**, not magic: every learned artifact is versioned, evaluated, reviewable and revertible. | Learning without gates degrades production silently (doc 09). |
 | D13 | **Framework-agnostic core, LangChain first.** The IR is split into a portable core plus namespaced framework dialects; all framework code lives behind a Framework Adapter SPI; the platform consumes canonical run events. R1 ships only the LangChain adapter. | Lets us add OpenAI Agents SDK, Google ADK, Microsoft Agent Framework, CrewAI, etc. as adapters without rewriting the product (doc 11). |
+| D14 | **Seven-rung WYSIWYG ladder** (v0.6): besides structure, code, execution and history, users see *consequences* (blast radius, cost) and the *external contract* of every workflow. | Agents act on the world and cost money; seeing that before running is part of "what you get" (doc 15 §2). |
+| D15 | **Events as code** (v0.6): trigger handlers, lifecycle hooks, in-graph emitters and stream projections share one typed event catalog and appear on an Event Map. | The brief's "workspaces for custom events" becomes one coherent, testable model (doc 15 §6). |
+| D16 | **No beta upstream API on the critical path without a stable fallback** (v0.6): MCP namespace, `ServerRuntime`, v3 streaming, `DeltaChannel`, forked/dynamic subagents are capability-flagged. | The ecosystem moves weekly; the product must not break with it (doc 14). |
 
 ## 4. How AgentCanvas maps to the LangChain ecosystem
 
@@ -106,6 +111,16 @@ A literal "what you see is what you get" for agents has to solve something Comfy
 18. **Memory Spaces & Memory Inspector** — typed long-term memory across multiple databases via a routed store (doc 08).
 19. **Data Studio** — draw your data model once, map it to Postgres/Redis/Mongo/Neo4j/Elastic/vector DBs, generate models, migrations, repositories and safe agent tools (doc 08).
 20. **Self-improving agents** — feedback capture, example banks, prompt optimisation, skill learning, bandits and fine-tuning behind eval gates (doc 09).
+21. **Live Code Mirror** — select a node, see its generated code; edits preview the exact lines they change (FR-X-01).
+22. **Blast-radius map & dry run** — see every node that can write, send, spend or execute, and run with side effects stubbed (FR-X-02).
+23. **Headless client-side tools & generative UI designer** — tools that run in the end user's browser; agent-composed UI from an approved component catalog (FR-X-03/04).
+24. **Per-node trace policy, budgets and channel lineage** — control what each node traces, cap tokens/$/time per run, and see which node wrote each state value (FR-X-07/15/18).
+25. **Sandbox policy designer** — egress allow-lists, secret injection via auth proxy, mounts and snapshots for scripts and agent sandboxes (FR-X-08).
+26. **Record/replay from production & contract view** — turn production runs into deterministic regression tests; flag breaking API changes between versions (FR-X-13/14).
+27. **Events as code** — typed event catalog, handler replay/dry-run, Event Map (FR-X-22).
+28. **Safe redeploy** — drain in-flight runs at a superstep boundary and resume on the new revision when compatible (FR-X-10).
+29. **LangSmith Engine bridge & decision-model nodes** — production issues pinned to canvas nodes; cheap typed classifiers/guardrails (FR-X-05/06).
+30. **Explain mode & guided build** — step-through of super-steps for learning and reviews; a tutor that builds a first workflow with new users (FR-X-17/24).
 
 ## 6. Glossary
 
