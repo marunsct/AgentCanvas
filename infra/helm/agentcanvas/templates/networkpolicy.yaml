@@ -17,4 +17,11 @@ spec:
               {{- include "agentcanvas.selector" (dict "root" . "component" "web") | nindent 14 }}
       ports:
         - { port: 8000 }
+    {{- if .Values.observability.metrics.enabled }}
+    - from:   # Prometheus
+        - namespaceSelector:
+            {{- toYaml .Values.observability.metrics.scraperNamespaceSelector | nindent 12 }}
+      ports:
+        - { port: 8000 }
+    {{- end }}
 {{- end }}

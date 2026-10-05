@@ -50,6 +50,14 @@ app.kubernetes.io/component: {{ .component }}
   value: {{ .Values.config.scriptExecution | quote }}
 - name: FORWARDED_ALLOW_IPS
   value: {{ .Values.config.forwardedAllowIps | quote }}
+- name: AGENTCANVAS_METRICS_ENABLED
+  value: {{ .Values.observability.metrics.enabled | quote }}
+{{- with .Values.observability.otlpEndpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ . | quote }}
+- name: OTEL_SERVICE_NAME
+  value: agentcanvas-api
+{{- end }}
 {{- range $name, $value := .Values.config.extraEnv }}
 - name: {{ $name }}
   value: {{ $value | quote }}

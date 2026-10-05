@@ -23,6 +23,7 @@ from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, g
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
+from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.types import ResumeSpec
@@ -154,7 +155,7 @@ def _sse(events: AsyncIterator[dict[str, Any]]) -> AsyncIterator[str]:
         async for ev in events:
             yield f"id: {ev.get('seq', '')}\ndata: {json.dumps(ev, default=str)}\n\n"
 
-    return gen()
+    return counted_stream(gen())
 
 
 def _respond(r: Runner, h: RunHandle, stream: bool) -> Response:

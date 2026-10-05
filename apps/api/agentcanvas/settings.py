@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     recursion_limit: int = 50
     cors_origins: list[str] = ["http://localhost:5173"]
     log_json: bool = False
+    metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
 
 
 @cache

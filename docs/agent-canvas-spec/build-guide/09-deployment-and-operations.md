@@ -71,10 +71,21 @@ helm install agentcanvas infra/helm/agentcanvas \
 - Rotate `AGENTCANVAS_SECRET_KEY` with a re-encryption job (decrypt with old, encrypt with new); M8 moves to KMS envelope encryption.
 
 ## 6. Observability
-- **Logs:** JSON (structlog) to stdout; ship with your platform's collector. Fields: `request_id`, `workflow_id`, `thread_id`, `run_id`, `level`, `event`.
-- **Traces:** OpenTelemetry (`opentelemetry-instrumentation-fastapi`, `-sqlalchemy`, `-httpx`); LLM traces in LangSmith when `LANGSMITH_TRACING=true` (runs tagged with `workflow_id`).
-- **Metrics:** `runs_total{status}`, `run_duration_seconds`, `tokens_total{direction}`, `interrupts_pending`, `sse_clients`, HTTP RED metrics.
-- **Alerts:** error rate > 5 % over 10 min; p95 run start latency > 2 s; pending interrupts older than SLA; DB connections > 80 %.
+- **Logs:** JSON (structlog) to stdout in the images; ship with your platform's collector. Fields: `request_id`, `workflow_id`, `thread_id`, `run_id`, `level`, `event`, and `trace_id` / `span_id` inside a traced request.
+- **Metrics:** Prometheus at `GET /metrics` on each API pod (`AGENTCANVAS_METRICS_ENABLED`, on by default). The web image's nginx answers 404 for `/api/metrics`, so scrape the pods directly; the Helm chart adds `prometheus.io/*` pod annotations and lets the `monitoring` namespace through its NetworkPolicy (`observability.metrics.*`).
+
+  | Metric | Labels | Meaning |
+  |---|---|---|
+  | `agentcanvas_runs_started_total` | `origin` (user, trigger, event, test, api…) | runs started |
+  | `agentcanvas_runs_finished_total` | `origin`, `status` (success, interrupted, error, cancelled) | runs finished or paused |
+  | `agentcanvas_run_duration_seconds` | `status` | histogram of run duration |
+  | `agentcanvas_runs_active` | | runs in progress in this pod |
+  | `agentcanvas_tokens_total` / `agentcanvas_cost_usd_total` | `direction` | model usage and cost |
+  | `agentcanvas_sse_clients` | | open run event streams |
+  | `agentcanvas_http_requests_total` / `agentcanvas_http_request_duration_seconds` | `method`, `route` (template, never ids), `status` | HTTP traffic |
+
+- **Traces:** OpenTelemetry spans for FastAPI, the control database (SQLAlchemy) and outgoing httpx calls when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (OTLP/HTTP; the standard `OTEL_*` variables configure it; Helm: `observability.otlpEndpoint`). Request spans carry `request.id`. LLM traces go to LangSmith when `LANGSMITH_TRACING=true` (runs tagged with `workflow_id`).
+- **Dashboard and alerts:** `infra/observability/grafana-dashboard.json` (import it and pick the Prometheus data source) and `infra/observability/alerts.yaml`: server errors above 5 % for 10 min, more than 20 % of runs failing, API p95 above 2 s (streams excluded), no API pod scraped.
 
 ## 7. Backups, retention, disaster recovery
 - Postgres: managed PITR (≥ 7 days) + nightly logical dump of the control tables.

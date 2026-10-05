@@ -8,8 +8,11 @@ import structlog
 
 
 def configure_logging(json: bool = False, level: int = logging.INFO) -> None:
+    from agentcanvas.observability import add_trace_ids
+
     processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
+        add_trace_ids,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]

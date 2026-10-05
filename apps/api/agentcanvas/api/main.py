@@ -12,10 +12,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
+from agentcanvas import observability
 from agentcanvas.adapters import get_adapter
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.problems import install_problem_handlers
@@ -53,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async with db.sessionmaker() as s:
                 await retire_dev_user(s)
         app.state.db = db
+        observability.trace_engine(db.engine)
         adapter = get_adapter("langchain")
         async with adapter.persistence(settings.persistence_url or settings.database_url):
             if moved := await adapter.memory_adopt(DEV_ORG):  # memories from before organisations (M7-T2)
@@ -66,6 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.runner = runner
             app.state.events = EventService(db, runner, app.state.projects)
             runner.finish_hooks.append(app.state.events.on_run_finished)
+            runner.start_hooks.append(observability.run_started)
+            runner.finish_hooks.append(observability.run_finished)
             app.state.cron = CronScheduler(db, runner, settings.secret_key)
             if settings.env != "test":  # tests drive the scheduler with explicit ticks
                 app.state.cron.start()
@@ -84,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="AgentCanvas API", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     install_problem_handlers(app)
+    observability.setup_tracing(app)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -97,8 +102,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request_id = request.headers.get("x-request-id") or new_id("req")
         clear_contextvars()
         bind_contextvars(request_id=request_id)
+        observability.tag_current_span(**{"request.id": request_id})
         start = time.perf_counter()
         response = await call_next(request)
+        route = observability.route_label(request.scope)
+        observability.observe_request(request.method, route, response.status_code, time.perf_counter() - start)
         await audit_record(request, response)
         response.headers["x-request-id"] = request_id
         log.debug(
@@ -109,6 +117,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ms=round((time.perf_counter() - start) * 1000, 1),
         )
         return response
+
+    if settings.metrics_enabled:
+
+        @app.get("/metrics", tags=["ops"], include_in_schema=False)
+        def metrics() -> Response:
+            """Prometheus metrics (M8-T3); scrape the API directly, the web image does not proxy it."""
+            body, content_type = observability.metrics_response()
+            return Response(body, media_type=content_type)
 
     @app.get("/healthz", tags=["ops"])
     def healthz() -> dict[str, str]:

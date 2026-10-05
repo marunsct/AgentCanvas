@@ -25,6 +25,17 @@ config:
   forwardedAllowIps: "*"
   extraEnv: {}                    # more AGENTCANVAS_* settings, as NAME: value
 
+observability:
+  # Prometheus scrapes GET /metrics on the API pods (port 8000)
+  metrics:
+    enabled: true
+    podAnnotations: true          # prometheus.io/scrape, /port, /path on the API pods
+    # namespaces allowed through the NetworkPolicy to scrape the API (matched by label)
+    scraperNamespaceSelector:
+      matchLabels: { kubernetes.io/metadata.name: monitoring }
+  # OpenTelemetry traces: the OTLP/HTTP endpoint of your collector, e.g. http://otel-collector.monitoring:4318
+  otlpEndpoint: ""
+
 api:
   replicas: 2
   resources:

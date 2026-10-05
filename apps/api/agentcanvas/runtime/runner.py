@@ -118,6 +118,8 @@ class Runner:
         self._keep = keep_finished
         # called after every run (event delivery: run.completed / run.failed / interrupt.raised, sdk.emit events)
         self.finish_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
+        # called when a run starts (metrics)
+        self.start_hooks: list[Callable[[RunHandle], None]] = []
 
     def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
@@ -220,6 +222,11 @@ class Runner:
             handle.input = input
         self.handles[run_id] = handle
         self.active_by_thread[thread_id] = run_id
+        for hook in self.start_hooks:
+            try:
+                hook(handle)
+            except Exception:
+                log.exception("run.start_hook_failed", run_id=run_id)
         handle.task = asyncio.create_task(self._pump(handle, spec), name=f"run:{run_id}")
         self._evict()
         return handle
