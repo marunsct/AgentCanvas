@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, useTemplates, useWorkflows } from "../api/queries";
+import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 
 export function HomePage() {
@@ -21,6 +22,15 @@ export function HomePage() {
     },
   });
 
+  const tour = useMutation({
+    mutationFn: () => apiFetch<{ id: string }>(`/projects/${PROJECT_ID}/workflows`, { method: "POST", json: { name: "My first workflow" } }),
+    onSuccess: (wf) => {
+      startTour(wf.id);
+      void qc.invalidateQueries({ queryKey: ["workflows"] });
+      navigate(`/workflows/${wf.id}`);
+    },
+  });
+
   return (
     <div className="page home">
       <header className="topbar">
@@ -30,6 +40,12 @@ export function HomePage() {
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
         <Link to="/events" data-testid="events-link">Events</Link>
       </header>
+      <section className="guided">
+        <h2>New here?</h2>
+        <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
+        <button type="button" className="primary" data-testid="start-tour" onClick={() => tour.mutate()}>Start the guided build</button>
+        {tour.error && <p className="error-text">{(tour.error as Error).message}</p>}
+      </section>
       <section>
         <h2>New workflow</h2>
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); create.mutate({ name: name.trim() || "Untitled workflow" }); }}>

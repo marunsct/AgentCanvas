@@ -16,6 +16,7 @@ import { RunPanel } from "../run/RunPanel";
 import { useRun } from "../run/runStore";
 import { Timeline } from "../run/Timeline";
 import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
+import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
 import { useEditor } from "./store";
 import { type DockTab, useUi } from "./ui";
@@ -133,6 +134,7 @@ export function EditorPage() {
         </ErrorBoundary>
       </footer>
       <CommandPalette onRun={() => setTab("run")} />
+      <Tutor />
     </div>
   );
 }
