@@ -1,11 +1,17 @@
 /** Auto-layout (M2-T11): ELK layered, left to right, using React Flow's measured node sizes. */
-import ELK from "elkjs/lib/elk.bundled.js";
 import type { Edge, Node } from "@xyflow/react";
+import type { ELK } from "elkjs/lib/elk-api";
 
-const elk = new ELK();
+let elk: Promise<ELK> | null = null;
+
+/** ELK is large (~1.5 MB): loaded on the first "Tidy", not with the editor. */
+function engine(): Promise<ELK> {
+  elk ??= import("elkjs/lib/elk.bundled.js").then(({ default: Elk }) => new Elk());
+  return elk;
+}
 
 export async function tidyLayout(nodes: Node[], edges: Edge[]): Promise<Record<string, { x: number; y: number }>> {
-  const res = await elk.layout({
+  const res = await (await engine()).layout({
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
