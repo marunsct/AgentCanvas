@@ -113,7 +113,7 @@ class Authenticator:
             subject=str(claims["sub"]),
             email=str(email),
             name=claims.get("name") or claims.get("preferred_username"),
-            email_verified=bool(claims.get("email_verified", False)),
+            email_verified=bool(claims.get("email_verified", False)) or s.oidc_trust_email,
         )
 
 

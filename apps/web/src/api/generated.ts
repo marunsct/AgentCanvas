@@ -314,6 +314,16 @@ export type Email = string;
 export type Id15 = string;
 export type OrgId = string;
 export type Role = string;
+export type Email1 = string;
+export type Role1 = "admin" | "builder" | "reviewer" | "viewer";
+export type DisplayName = string | null;
+export type Email2 = string;
+/**
+ * has not signed in yet
+ */
+export type Invited = boolean;
+export type Role2 = "admin" | "builder" | "reviewer" | "viewer";
+export type UserId1 = string;
 export type CreatedAt4 = string | null;
 export type Key = string;
 export type Namespace = string[];
@@ -561,6 +571,8 @@ export interface ApiSchemas {
   McpInspectRequest?: McpInspectRequest;
   McpToolInfo?: McpToolInfo;
   MeOut?: MeOut;
+  MemberIn?: MemberIn;
+  MemberOut?: MemberOut;
   MemoryItem?: MemoryItem;
   ModelInfo?: ModelInfo;
   NamespaceOut?: NamespaceOut;
@@ -1439,6 +1451,25 @@ export interface MeOut {
 }
 export interface Memberships {
   [k: string]: string;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "MemberIn".
+ */
+export interface MemberIn {
+  email: Email1;
+  role: Role1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "MemberOut".
+ */
+export interface MemberOut {
+  display_name: DisplayName;
+  email: Email2;
+  invited: Invited;
+  role: Role2;
+  user_id: UserId1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

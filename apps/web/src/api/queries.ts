@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { apiFetch } from "./client";
+import { can } from "./session";
 import type { ModelInfo, NodeManifest, TemplateInfo, WorkflowPage } from "./types";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
@@ -13,7 +14,10 @@ const PROJECT_KEY = "agentcanvas.project";
  * (creating one when the organisation has none). Runs once, after sign-in and before any page loads. */
 export async function chooseProject(): Promise<string> {
   let projects = await apiFetch<{ id: string; name: string }[]>("/projects");
-  if (projects.length === 0) projects = [await apiFetch<{ id: string; name: string }>("/projects", { method: "POST", json: { name: "Default project" } })];
+  if (projects.length === 0) {
+    if (!can("builder")) throw new Error("your organisation has no projects yet; ask a builder or admin to create one");
+    projects = [await apiFetch<{ id: string; name: string }>("/projects", { method: "POST", json: { name: "Default project" } })];
+  }
   let saved: string | null = null;
   try { saved = localStorage.getItem(PROJECT_KEY); } catch { /* storage blocked */ }
   PROJECT_ID = projects.find((p) => p.id === saved)?.id ?? projects[0].id;

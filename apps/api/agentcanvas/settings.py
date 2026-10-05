@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     oidc_jwks_url: str | None = None  # None = from the issuer's discovery document
     oidc_scopes: str = "openid profile email"
     oidc_email_claim: str = "email"
+    # treat the email claim as verified when the provider sends no `email_verified` (e.g. a corporate IdP that
+    # owns the domain); leave off for providers where users choose their own email
+    oidc_trust_email: bool = False
     oidc_jwks_cache_s: int = 3600
     oidc_leeway_s: int = 30  # clock skew tolerated on exp/nbf/iat
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)

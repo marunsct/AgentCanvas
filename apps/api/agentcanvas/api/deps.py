@@ -57,7 +57,9 @@ async def current_user(
         return CurrentUser(id=DEV_USER, org_id=DEV_ORG, role="admin", memberships={DEV_ORG: "admin"})
     identity = await _authenticator(request).verify(bearer(authorization))
     repo = UserRepo(session)
-    user = await repo.provision(identity.subject, identity.email, identity.name)
+    # only a verified email is stored: invitations and the admin bootstrap match people by it
+    email = identity.email if identity.email_verified else ""
+    user = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
     memberships = await repo.memberships(user.id)
     if (
         not memberships
@@ -100,6 +102,37 @@ async def org_scope(
         rid = named.get(param)
         if rid and await repo.org_of(kind, rid) != user.org_id:
             raise NotFound(f"{kind} '{rid}' not found")
+
+
+# Roles (M7-T3), weakest first. viewer: read only. reviewer: read and answer inbox items. builder: build, run,
+# publish. admin: everything, including members.
+ROLES = ("viewer", "reviewer", "builder", "admin")
+RANK = {r: i for i, r in enumerate(ROLES)}
+# requests that need something other than the default (reads: viewer; any other method: builder)
+ROLE_EXCEPTIONS = {
+    ("POST", "/workflows/{wf_id}/validate"): "viewer",  # read-only checks
+    ("POST", "/expressions/check"): "viewer",
+    ("POST", "/inbox/{interrupt_id}/decision"): "reviewer",
+    ("POST", "/threads/{thread_id}/resume"): "reviewer",
+}
+
+
+def required_role(method: str, path: str) -> str:
+    """The weakest role allowed `method` on the route template `path` (with or without the /v1 prefix)."""
+    path = path.removeprefix("/v1")
+    if path.startswith("/org/"):
+        return "viewer" if method == "GET" else "admin"
+    if (method, path) in ROLE_EXCEPTIONS:
+        return ROLE_EXCEPTIONS[(method, path)]
+    return "viewer" if method in ("GET", "HEAD", "OPTIONS") else "builder"
+
+
+async def role_policy(request: Request, user: CurrentUser = Depends(current_user)) -> None:
+    """Every signed-in route needs the role its method and path call for (403 otherwise)."""
+    route = request.scope.get("route")
+    needed = required_role(request.method, getattr(route, "path", request.url.path))
+    if RANK.get(user.role, -1) < RANK[needed]:
+        raise Forbidden(f"your role '{user.role}' cannot do this; it needs '{needed}' or above")
 
 
 def if_match(if_match: str | None = Header(default=None, alias="If-Match")) -> int:

@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { fetchAuthConfig, initAuth } from "../api/auth";
 import { chooseProject } from "../api/queries";
+import { loadMe } from "../api/session";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<"pending" | "ready" | Error>("pending");
@@ -12,8 +13,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
       .then(initAuth)
       .then((back) => {
         if (back) history.replaceState(null, "", back); // leave the callback URL before the router reads it
-        return chooseProject();
+        return loadMe();
       })
+      .then(() => chooseProject())
       .then(() => { if (live) setState("ready"); })
       .catch((e: unknown) => { if (live) setState(e instanceof Error ? e : new Error(String(e))); });
     return () => { live = false; };

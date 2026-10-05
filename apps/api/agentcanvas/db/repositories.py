@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,9 +44,17 @@ class UserRepo:
     async def by_subject(self, subject: str) -> AppUser | None:
         return await self.s.scalar(select(AppUser).where(AppUser.oidc_subject == subject))
 
-    async def provision(self, subject: str, email: str, name: str | None) -> AppUser:
-        """The user of an OIDC subject, created on first sign-in; email and name follow the latest token."""
+    async def provision(self, subject: str, email: str, name: str | None, email_verified: bool = False) -> AppUser:
+        """The user of an OIDC subject, created on first sign-in; email and name follow the latest token.
+
+        A first sign-in with a verified email claims the invitation an admin made for that email (see `invite`).
+        """
         user = await self.by_subject(subject)
+        if user is None and email and email_verified:
+            user = await self.by_subject(pending_subject(email))
+            if user is not None:
+                user.oidc_subject = subject
+                await self.s.commit()
         if user is None:
             user = AppUser(id=new_id("usr"), oidc_subject=subject, email=email, display_name=name)
             self.s.add(user)
@@ -75,6 +83,66 @@ class UserRepo:
         except IntegrityError:
             await self.s.rollback()
         return await self.memberships(user_id)
+
+
+def pending_subject(email: str) -> str:
+    """The placeholder subject of an invited user who has not signed in yet."""
+    return f"pending:{email.strip().lower()}"
+
+
+class MemberRepo:
+    """Members of an organisation and their roles (M7-T3)."""
+
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def list(self, org_id: str) -> list[tuple[AppUser, str]]:
+        q = (
+            select(AppUser, Membership.role)
+            .join(Membership, Membership.user_id == AppUser.id)
+            .where(Membership.org_id == org_id)
+            .order_by(AppUser.email)
+        )
+        return [(u, role) for u, role in (await self.s.execute(q)).all()]
+
+    async def set_role(self, org_id: str, email: str, role: str) -> tuple[AppUser, str]:
+        """Add the person with this email to the organisation, or change their role. Someone who has never
+        signed in gets a placeholder user that their first verified sign-in claims."""
+        email = email.strip().lower()
+        user = await self.s.scalar(select(AppUser).where(func.lower(AppUser.email) == email).order_by(AppUser.id))
+        if user is None:
+            user = AppUser(id=new_id("usr"), oidc_subject=pending_subject(email), email=email)
+            self.s.add(user)
+            await self.s.flush()
+        m = await self.s.get(Membership, (org_id, user.id))
+        if m is None:
+            self.s.add(Membership(org_id=org_id, user_id=user.id, role=role))
+        else:
+            await self._keep_an_admin(org_id, user.id, role)
+            m.role = role
+        await self.s.commit()
+        return user, role
+
+    async def remove(self, org_id: str, user_id: str) -> None:
+        m = await self.s.get(Membership, (org_id, user_id))
+        if m is None:
+            raise NotFound(f"user '{user_id}' is not a member")
+        await self._keep_an_admin(org_id, user_id, None)
+        await self.s.delete(m)
+        await self.s.commit()
+
+    async def _keep_an_admin(self, org_id: str, user_id: str, new_role: str | None) -> None:
+        if new_role == "admin":
+            return
+        admins = set(
+            (
+                await self.s.scalars(
+                    select(Membership.user_id).where(Membership.org_id == org_id, Membership.role == "admin")
+                )
+            ).all()
+        )
+        if admins == {user_id}:
+            raise Conflict("an organisation needs at least one admin; make someone else admin first")
 
 
 class ScopeRepo:

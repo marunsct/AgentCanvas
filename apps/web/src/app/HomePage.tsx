@@ -1,9 +1,11 @@
-/** Home: workflows of the default project; create empty or from a template. */
+/** Home: workflows of the current project; builders create empty or from a template. */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
+import { signOut } from "../api/auth";
 import { PROJECT_ID, useTemplates, useWorkflows } from "../api/queries";
+import { can, ME } from "../api/session";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 
@@ -39,7 +41,14 @@ export function HomePage() {
         <Link to="/memory" data-testid="memory-link">Memory</Link>
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
         <Link to="/events" data-testid="events-link">Events</Link>
+        {can("admin") && <Link to="/members" data-testid="members-link">Members</Link>}
+        <span className="muted small" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
+        {ME.email && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
       </header>
+      {!can("builder") && (
+        <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({ME.role}) cannot create or edit them.</p>
+      )}
+      {can("builder") && <>
       <section className="guided">
         <h2>New here?</h2>
         <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
@@ -66,6 +75,7 @@ export function HomePage() {
         </div>
         {create.error && <p className="error-text">{(create.error as Error).message}</p>}
       </section>
+      </>}
       <section>
         <h2>Workflows</h2>
         <QueryStatus q={workflows} what="workflows" />
