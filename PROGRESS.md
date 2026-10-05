@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/trusting-curie-n0i720`. S0–S8 were merged into `main` via [#1](https://github.com/marunsct/AgentCanvas/pull/1); S9 is in [#2](https://github.com/marunsct/AgentCanvas/pull/2), rebased onto `main`.
+- **Branch:** `claude/project-thread-sj4pqp` for S10, in [#3](https://github.com/marunsct/AgentCanvas/pull/3). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1) and S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** end of Sprint 9 (v0.1.0 prepared).
+- **Last updated:** Sprint 10, accounts and access (M7-T1…T4) done; FR-X-19 next.
 
 ## At a glance
 
@@ -22,17 +22,17 @@ Live status of the project. Update it with every commit that finishes or changes
 | S7 Workspaces & events | ✅ done |
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
-| **S10 Accounts & access → v0.2.0** | ⏳ **next** |
+| **S10 Accounts & access → v0.2.0** | 🚧 **in progress** (M7-T1…T4 done; FR-X-19 next) |
 | S11 Production readiness → v0.3.0 | ⬜ pending |
 | S12+ GA backlog | ⬜ pending |
 
-**Test totals** at the end of S9:
+**Test totals** during S10:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 198 passed, 1 skipped, 1 known upstream canary (xfail) |
-| Web unit tests (vitest) | 44 passed |
-| Browser journeys (Playwright) | 27 passed |
+| API (pytest) | 225 passed, 1 skipped, 1 known upstream canary (xfail) |
+| Web unit tests (vitest) | 50 passed |
+| Browser journeys (Playwright) | 29 passed |
 
 `make check` runs every CI gate except the browser journeys: lint, format, types, the import contract, schema/type drift, tests and the build.
 
@@ -108,15 +108,23 @@ Live status of the project. Update it with every commit that finishes or changes
 - **Performance:** pages and the layout engine load on demand; the entry bundle went from 2.8 MB to 0.3 MB.
 - **Release prep:** version 0.1.0, `CHANGELOG.md`, MkDocs documentation site (`make docs`, CI job).
 
+### S10: accounts & access → v0.2.0 (in progress)
+- **Sign-in (M7-T1):** `AGENTCANVAS_AUTH_MODE=oidc` requires a bearer JWT on every `/v1` route except deployment endpoints, signed webhooks and `/v1/auth/config`. Users are created on first sign-in; `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS` seeds the first admins. The web app signs in with authorization code + PKCE. Dev mode is unchanged and refused in staging/prod.
+- **Organisations (M7-T2):** every id a request names must belong to the caller's organisation (404 otherwise); `X-Org-Id` picks among several; `POST /v1/projects`.
+- **Roles (M7-T3):** viewer, reviewer, builder, admin; member invitations by email (`/v1/org/members`) and a Members page; the editor is view-only below builder.
+- **Audit log (M7-T4):** every successful change with actor, target and IP; approvals carry the payload's SHA-256; `GET /v1/org/audit` and an Audit log page.
+
 ## What is pending
 
 ### Still open from S9
 - [ ] Tag `v0.1.0`. A tag is outward-facing, so it needs the maintainer's go-ahead.
 - [ ] Exit criterion: 10 design partners complete journey J1 unaided. This needs real users.
 
-### S10 — accounts & access → v0.2.0 (next)
-- [ ] OIDC login, organisations and projects, roles, audit log (M7-T1…T4). Until then every request acts as a seeded dev admin.
+### S10 — accounts & access → v0.2.0 (in progress)
+- [x] OIDC login, organisations and projects, roles, audit log (M7-T1…T4), in #3.
 - [ ] FR-X-19 policy-as-code lint profiles.
+- [ ] Memory inspector across organisations: the long-term memory store is shared, so an admin can list another organisation's memory namespaces. Namespaces need an organisation prefix.
+- [ ] Tag `v0.2.0` after #3 merges.
 
 ### S11 — production readiness → v0.3.0
 - [ ] Containers, Helm, observability, backups, load test and security review (M8-T1…T6).

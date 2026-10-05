@@ -55,7 +55,10 @@ Put a TLS-terminating proxy (Caddy/Traefik/cloud LB) in front; keep **response b
 **Sticky sessions are not required:** runs persist in Postgres; a reconnecting client reads state via `GET /v1/threads/{id}`.
 
 ## 5. Configuration & secrets in production
-- Required env: `AGENTCANVAS_ENV=prod`, `DATABASE_URL`, `AGENTCANVAS_SECRET_KEY` (64+ random chars), `LANGGRAPH_AES_KEY` (encrypts checkpoints; with it set, use `EncryptedSerializer.from_pycryptodome_aes()` as the checkpointer `serde`), `OIDC_ISSUER`, `OIDC_AUDIENCE`, `CORS_ORIGINS`.
+- Required env: `AGENTCANVAS_ENV=prod`, `DATABASE_URL`, `AGENTCANVAS_SECRET_KEY` (64+ random chars), `LANGGRAPH_AES_KEY` (encrypts checkpoints; with it set, use `EncryptedSerializer.from_pycryptodome_aes()` as the checkpointer `serde`), `AGENTCANVAS_AUTH_MODE=oidc` with `AGENTCANVAS_OIDC_ISSUER`, `AGENTCANVAS_OIDC_AUDIENCE` and `AGENTCANVAS_OIDC_CLIENT_ID`, `AGENTCANVAS_CORS_ORIGINS`. The API refuses to start in staging, prod or the hosted edition with `AUTH_MODE=dev`.
+- **Sign-in (M7-T1).** Register a public SPA client at your identity provider with redirect URI `https://<app>/auth/callback` and post-logout URI `https://<app>/`; the web app uses authorization code + PKCE. The API checks the access token's signature (JWKS from the issuer's discovery document, or `AGENTCANVAS_OIDC_JWKS_URL`), `iss`, `aud` and `exp`. Optional: `AGENTCANVAS_OIDC_SCOPES`, `AGENTCANVAS_OIDC_EMAIL_CLAIM`, `AGENTCANVAS_OIDC_TRUST_EMAIL=true` for providers that send no `email_verified` but own the email domain.
+- **First admin.** List one or more emails in `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS` (JSON list); on their first verified sign-in they become admins of the default organisation. Admins then invite everyone else from the Members page (`PUT /v1/org/members`).
+- **Roles (M7-T3):** `viewer` reads; `reviewer` also answers the Inbox; `builder` also builds, runs and publishes; `admin` also manages members and reads the audit log (`GET /v1/org/audit`, M7-T4).
 - Model provider keys are **per project secrets** (M5-T6), not process env vars.
 - Rotate `AGENTCANVAS_SECRET_KEY` with a re-encryption job (decrypt with old, encrypt with new); M8 moves to KMS envelope encryption.
 
