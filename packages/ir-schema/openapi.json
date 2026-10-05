@@ -4589,22 +4589,19 @@
     },
     "/readyz": {
       "get": {
-        "description": "Readiness probe: the control database answers.",
+        "description": "Readiness probe: the control database and the run store (checkpoints, memory) answer within 2 s.",
         "operationId": "readyz_readyz_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Readyz Readyz Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "description": "a dependency does not answer"
           }
         },
         "summary": "Readyz",

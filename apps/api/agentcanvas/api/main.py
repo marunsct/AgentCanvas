@@ -6,11 +6,13 @@ uvicorn agentcanvas.dev.fake_server:app --reload   # scripted fake models (no ke
 
 from __future__ import annotations
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
@@ -113,12 +115,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Liveness probe."""
         return {"status": "ok"}
 
-    @app.get("/readyz", tags=["ops"])
-    async def readyz(request: Request) -> dict[str, str]:
-        """Readiness probe: the control database answers."""
-        async with request.app.state.db.engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return {"status": "ready"}
+    @app.get("/readyz", tags=["ops"], responses={503: {"description": "a dependency does not answer"}})
+    async def readyz(request: Request) -> JSONResponse:
+        """Readiness probe: the control database and the run store (checkpoints, memory) answer within 2 s."""
+
+        async def database() -> None:
+            async with request.app.state.db.engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        async def store() -> None:
+            await request.app.state.runner.adapter.store.alist_namespaces(limit=1)
+
+        failed = []
+        for name, check in (("database", database), ("store", store)):
+            try:
+                await asyncio.wait_for(check(), 2)
+            except Exception as exc:  # noqa: BLE001 - any failure means not ready
+                log.warning("readyz.failed", dependency=name, error=repr(exc))
+                failed.append(name)
+        if failed:
+            return JSONResponse({"status": "unavailable", "failed": failed}, status_code=503)
+        return JSONResponse({"status": "ready"})
 
     app.include_router(v1_router)
     return app

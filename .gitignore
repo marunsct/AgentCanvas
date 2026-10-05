@@ -13,3 +13,6 @@ playwright-report/
 *.db-wal
 *.tsbuildinfo
 apps/api/workspaces/
+
+# filled-in production settings
+infra/.env.prod

@@ -232,6 +232,8 @@ class Trigger(Base):
     kind: Mapped[str] = mapped_column(Text)
     config: Mapped[dict[str, Any]]
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    # cron: the UTC minute ("YYYY-mm-ddTHH:MM") it last fired for, claimed atomically so replicas fire it once
+    last_fired: Mapped[str | None] = mapped_column(String(16))
     created_at: Mapped[datetime] = _now()
 
 

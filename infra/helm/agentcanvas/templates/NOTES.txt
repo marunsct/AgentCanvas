@@ -1,0 +1,11 @@
+AgentCanvas {{ .Chart.AppVersion }} is installed as "{{ .Release.Name }}".
+
+{{- if .Values.ingress.enabled }}
+Open https://{{ .Values.ingress.host }} and sign in.
+{{- else }}
+  kubectl port-forward svc/{{ include "agentcanvas.fullname" . }}-web 8080:{{ .Values.service.web.port }}
+and open http://localhost:8080.
+{{- end }}
+
+Register the redirect URI <app URL>/auth/callback with your identity provider (client "{{ .Values.config.oidc.clientId }}").
+The first admins are {{ .Values.config.bootstrapAdminEmails | join ", " | default "not set: set config.bootstrapAdminEmails" }}.

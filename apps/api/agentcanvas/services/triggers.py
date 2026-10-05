@@ -4,8 +4,9 @@
   header `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of the raw body>` — and mapped to the workflow
   input with templates over `body` (e.g. `{"ticket": "{{ body.issue.title }}"}`); without a mapping the body
   itself is the input.
-- **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process; each
-  minute fires at most once. Multi-instance deployments need a leader lock (Postgres advisory lock, S11).
+- **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process. Each
+  minute fires at most once across every replica: a scheduler claims it by moving the trigger's `last_fired`
+  forward in one conditional UPDATE, and only the replica whose update matched starts the run.
 
 A trigger runs its deployment's pinned version when it has one, otherwise the draft.
 """
@@ -21,7 +22,7 @@ from typing import Any, Literal
 
 import structlog
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Deployment, Trigger, WorkflowRow, WorkflowVersion
@@ -196,11 +197,10 @@ class TriggerService:
 
 # ------------------------------------------------------------------------------------------- scheduler ----
 class CronScheduler:
-    """Fires due cron triggers once per minute (single API instance; see module docstring)."""
+    """Fires due cron triggers once per minute, across replicas (see module docstring)."""
 
     def __init__(self, db: Any, runner: Any, secret_key: str, tick_s: float = 15.0):
         self.db, self.runner, self.secret_key, self.tick_s = db, runner, secret_key, tick_s
-        self.fired: dict[str, str] = {}  # trigger id -> "YYYY-mm-ddTHH:MM" it last fired for
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -227,9 +227,8 @@ class CronScheduler:
             rows = (await s.scalars(select(Trigger).where(Trigger.kind == "cron", Trigger.enabled))).all()
             svc = TriggerService(s, self.secret_key)
             for trig in rows:
-                if self.fired.get(trig.id) == minute or not Cron(trig.config["schedule"]).matches(now):
+                if not Cron(trig.config["schedule"]).matches(now) or not await self._claim(s, trig.id, minute):
                     continue
-                self.fired[trig.id] = minute
                 try:
                     wf, kw = await svc.target(trig)
                     h = await self.runner.start(wf, input=dict(trig.config.get("input") or {}), origin="trigger", **kw)
@@ -238,3 +237,14 @@ class CronScheduler:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("cron.failed", trigger=trig.id, error=str(exc))
         return started
+
+    @staticmethod
+    async def _claim(s: AsyncSession, trigger_id: str, minute: str) -> bool:
+        """True for exactly one scheduler per trigger and minute, however many replicas tick."""
+        claimed = await s.execute(
+            update(Trigger)
+            .where(Trigger.id == trigger_id, or_(Trigger.last_fired.is_(None), Trigger.last_fired < minute))
+            .values(last_fired=minute)
+        )
+        await s.commit()
+        return claimed.rowcount == 1  # type: ignore[attr-defined]

@@ -4,7 +4,7 @@ Live status of the project. Update it with every commit that finishes or changes
 
 - **Branch:** `claude/project-thread-sj4pqp` for S10, in [#3](https://github.com/marunsct/AgentCanvas/pull/3). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1) and S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** Sprint 10 done and reviewed (fixes in #3, waiting on the maintainer's merge); Sprint 11 planned (backlog in the sprint plan §3).
+- **Last updated:** Sprint 10 done and reviewed (fixes in #3, waiting on the maintainer's merge); Sprint 11 started on `claude/sprint-11-production-readiness` (containers, compose prod, Helm, cron across replicas done).
 
 ## At a glance
 
@@ -23,14 +23,14 @@ Live status of the project. Update it with every commit that finishes or changes
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
 | S10 Accounts & access → v0.2.0 | ✅ done (#3 in review; tag after merge) |
-| **S11 Production readiness → v0.3.0** | 📋 **planned** (23 days: M8-T1…T6, FR-X-10, S10 carry-overs) |
+| **S11 Production readiness → v0.3.0** | 🚧 **in progress** (M8-T1, M8-T2 and the cron leader lock done) |
 | S12+ GA backlog | ⬜ pending |
 
-**Test totals** at the end of S10:
+**Test totals** during S11:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 252 passed, 1 skipped, 1 known upstream canary (xfail) |
+| API (pytest) | 255 passed, 1 skipped, 1 known upstream canary (xfail) |
 | Web unit tests (vitest) | 51 passed |
 | Browser journeys (Playwright) | 31 passed |
 
@@ -136,10 +136,10 @@ Live status of the project. Update it with every commit that finishes or changes
 - [x] End-of-sprint review and fixes, in #3.
 - [ ] Merge #3 (maintainer) and tag `v0.2.0`.
 
-### S11 — production readiness → v0.3.0 (planned; detail in the sprint plan §3)
-- [ ] M8-T1 containers: non-root images built in CI, SSE-safe nginx.
-- [ ] M8-T2 compose prod and Helm chart; `/readyz` pings the database and the store.
-- [ ] Leader lock for the cron scheduler with more than one API replica (Postgres advisory lock).
+### S11 — production readiness → v0.3.0 (in progress; detail in the sprint plan §3)
+- [x] M8-T1 containers: non-root images built in CI, SSE-safe nginx.
+- [x] M8-T2 compose prod and Helm chart; `/readyz` pings the database and the store.
+- [x] Cron across replicas: each minute is claimed with a conditional update, so it fires once (works on SQLite too, no advisory lock needed).
 - [ ] M8-T3 observability: OpenTelemetry, Prometheus `/metrics`, a Grafana dashboard.
 - [ ] M8-T4 retention job and a rehearsed restore runbook.
 - [ ] FR-X-10 safe redeploy: drain on shutdown, resume on another replica or a compatible new version.
@@ -150,7 +150,7 @@ Live status of the project. Update it with every commit that finishes or changes
   - invitations need acceptance when the person already belongs to another organisation;
   - the default organisation is the one used last;
   - silent token refresh (`offline_access`); the web app reads its project per request;
-  - document `FORWARDED_ALLOW_IPS` for the proxy in front of the API.
+  - ~~document `FORWARDED_ALLOW_IPS`~~ done: deployment guide §4.
 
 ### S12+ — GA backlog
 - [ ] Evals studio, multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.

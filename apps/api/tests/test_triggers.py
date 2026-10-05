@@ -91,3 +91,22 @@ async def test_cron_trigger_on_a_deployment(app, api_client):
 
     await api_client.delete(f"/v1/deployments/{pub['deployment']['id']}")
     assert await cron.tick(at("2026-09-29T10:02")) == []  # unpublished: nothing runs
+
+
+async def test_replicas_fire_each_cron_minute_once(app, api_client):
+    """S11: with several API replicas (one scheduler each), a due minute starts one run, not one per replica."""
+    from agentcanvas.services.triggers import CronScheduler
+
+    wf = await make_greeter(api_client)
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/triggers", json={"kind": "cron", "config": {"schedule": "* * * * *", "input": {}}}
+    )
+    assert r.status_code == 201, r.text
+    replicas = [app.state.cron, CronScheduler(app.state.db, app.state.runner, app.state.settings.secret_key)]
+    fired = await asyncio.gather(*(c.tick(at("2026-10-06T09:00")) for c in replicas))
+    assert sorted(len(f) for f in fired) == [0, 1]
+    assert [len(await c.tick(at("2026-10-06T09:00"))) for c in replicas] == [0, 0]
+    later = [rid for c in reversed(replicas) for rid in await c.tick(at("2026-10-06T09:01"))]
+    assert len(later) == 1  # whichever ticks first takes the next minute
+    for rid in [*fired[0], *fired[1], *later]:
+        await asyncio.wait_for(app.state.runner.handles[rid].done.wait(), 10)
