@@ -8,7 +8,18 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import AppUser, Membership, Organization, Project, WorkflowRow
+from agentcanvas.db.models import (
+    AppUser,
+    Deployment,
+    InterruptTask,
+    Membership,
+    Organization,
+    Project,
+    Run,
+    Thread,
+    Trigger,
+    WorkflowRow,
+)
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
 
@@ -66,12 +77,53 @@ class UserRepo:
         return await self.memberships(user_id)
 
 
+class ScopeRepo:
+    """Which organisation owns a resource (M7-T2): the API checks every id a request names against the caller's."""
+
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def org_of(self, kind: str, rid: str) -> str | None:
+        """The owning organisation of `kind` ('project', 'workflow', 'thread', 'run', 'deployment', 'trigger',
+        'interrupt') with id `rid`, or None when it does not exist."""
+        via_workflow = select(Project.org_id).join(WorkflowRow, WorkflowRow.project_id == Project.id)
+        via_thread = via_workflow.join(Thread, Thread.workflow_id == WorkflowRow.id)
+        q = {
+            "project": select(Project.org_id).where(Project.id == rid),
+            "workflow": via_workflow.where(WorkflowRow.id == rid),
+            "thread": via_thread.where(Thread.id == rid),
+            "run": via_thread.join(Run, Run.thread_id == Thread.id).where(Run.id == rid),
+            "deployment": via_workflow.join(Deployment, Deployment.workflow_id == WorkflowRow.id).where(
+                Deployment.id == rid
+            ),
+            "trigger": via_workflow.join(Trigger, Trigger.workflow_id == WorkflowRow.id).where(Trigger.id == rid),
+            "interrupt": via_thread.join(InterruptTask, InterruptTask.thread_id == Thread.id).where(
+                InterruptTask.id == rid
+            ),
+        }[kind]
+        return await self.s.scalar(q)
+
+    async def member_ids(self, org_id: str) -> set[str]:
+        return set((await self.s.scalars(select(Membership.user_id).where(Membership.org_id == org_id))).all())
+
+
 class ProjectRepo:
     def __init__(self, s: AsyncSession):
         self.s = s
 
     async def list(self, org_id: str) -> list[Project]:
         return list((await self.s.scalars(select(Project).where(Project.org_id == org_id).order_by(Project.id))).all())
+
+    async def create(self, org_id: str, name: str) -> Project:
+        p = Project(id=new_id("prj"), org_id=org_id, name=name)
+        self.s.add(p)
+        try:
+            await self.s.commit()
+        except IntegrityError:
+            await self.s.rollback()
+            raise Conflict(f"a project named '{name}' already exists") from None
+        await self.s.refresh(p)
+        return p
 
     async def require(self, project_id: str) -> Project:
         p = await self.s.get(Project, project_id)

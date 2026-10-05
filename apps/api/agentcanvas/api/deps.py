@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.repositories import DEV_ORG, DEV_USER, UserRepo
+from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
-from agentcanvas.errors import Forbidden, InvalidInput, PreconditionRequired
+from agentcanvas.errors import Forbidden, InvalidInput, NotFound, PreconditionRequired
 from agentcanvas.security.auth import Authenticator, bearer
 from agentcanvas.settings import Settings
 
@@ -71,6 +71,35 @@ async def current_user(
     if org_id not in memberships:
         raise Forbidden(f"you are not a member of organisation '{org_id}'")
     return CurrentUser(id=user.id, org_id=org_id, role=memberships[org_id], email=user.email, memberships=memberships)
+
+
+# path/query parameters that name a resource, and its kind (M7-T2)
+SCOPED_PARAMS = {
+    "project_id": "project",
+    "wf_id": "workflow",
+    "workflow_id": "workflow",
+    "thread_id": "thread",
+    "run_id": "run",
+    "dep_id": "deployment",
+    "trigger_id": "trigger",
+    "interrupt_id": "interrupt",
+}
+
+
+async def org_scope(
+    request: Request, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> None:
+    """Every resource a request names must belong to the caller's organisation.
+
+    Another organisation's resource answers 404, exactly like a missing one, so ids cannot be probed.
+    Runs on every signed-in route; list endpoints without an id filter by `user.org_id` themselves.
+    """
+    named = {**request.query_params, **request.path_params}
+    repo = ScopeRepo(session)
+    for param, kind in SCOPED_PARAMS.items():
+        rid = named.get(param)
+        if rid and await repo.org_of(kind, rid) != user.org_id:
+            raise NotFound(f"{kind} '{rid}' not found")
 
 
 def if_match(if_match: str | None = Header(default=None, alias="If-Match")) -> int:

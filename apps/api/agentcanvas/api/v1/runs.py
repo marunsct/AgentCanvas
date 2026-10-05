@@ -19,7 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle, Runner
@@ -316,8 +316,14 @@ async def list_threads(
     limit: int = Query(50, ge=1, le=200),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
 ) -> ThreadPage:
-    q = select(Thread)
+    q = (
+        select(Thread)
+        .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+        .join(Project, Project.id == WorkflowRow.project_id)
+        .where(Project.org_id == user.org_id)
+    )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
     if status:
@@ -538,12 +544,14 @@ async def inbox(
     workflow_id: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
     q = (
         select(InterruptTask, Thread.workflow_id, WorkflowRow.name)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
-        .where(InterruptTask.status == status)
+        .join(Project, Project.id == WorkflowRow.project_id)
+        .where(InterruptTask.status == status, Project.org_id == user.org_id)
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)

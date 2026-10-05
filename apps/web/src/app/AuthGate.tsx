@@ -1,6 +1,8 @@
-/** Holds the app back until sign-in is settled (M7-T1): immediately in dev mode, after the OIDC redirect otherwise. */
+/** Holds the app back until sign-in is settled (M7-T1: at once in dev mode, after the OIDC redirect otherwise)
+ * and the session's project is chosen (M7-T2). */
 import { useEffect, useState, type ReactNode } from "react";
 import { fetchAuthConfig, initAuth } from "../api/auth";
+import { chooseProject } from "../api/queries";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<"pending" | "ready" | Error>("pending");
@@ -10,8 +12,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
       .then(initAuth)
       .then((back) => {
         if (back) history.replaceState(null, "", back); // leave the callback URL before the router reads it
-        if (live) setState("ready");
+        return chooseProject();
       })
+      .then(() => { if (live) setState("ready"); })
       .catch((e: unknown) => { if (live) setState(e instanceof Error ? e : new Error(String(e))); });
     return () => { live = false; };
   }, []);

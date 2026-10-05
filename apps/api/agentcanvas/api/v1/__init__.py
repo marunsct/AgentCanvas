@@ -1,12 +1,13 @@
 """Versioned public API (/v1).
 
-Every route requires a signed-in user (M7-T1) except the deployment endpoints (deployment API keys),
+Every route requires a signed-in user (M7-T1), and every id it names must belong to the user's
+organisation (M7-T2), except the deployment endpoints (deployment API keys),
 signed webhooks (HMAC) and the sign-in configuration.
 """
 
 from fastapi import APIRouter, Depends
 
-from agentcanvas.api.deps import current_user
+from agentcanvas.api.deps import current_user, org_scope
 from agentcanvas.api.v1 import (
     auth,
     catalog,
@@ -23,7 +24,7 @@ from agentcanvas.api.v1 import (
     workspace,
 )
 
-signed_in = APIRouter(dependencies=[Depends(current_user)])
+signed_in = APIRouter(dependencies=[Depends(current_user), Depends(org_scope)])
 signed_in.include_router(auth.router)
 signed_in.include_router(catalog.router)
 signed_in.include_router(projects.router)

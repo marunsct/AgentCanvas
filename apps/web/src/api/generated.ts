@@ -365,9 +365,10 @@ export type TemplateFields = string[];
 export type Type7 = string;
 export type Version1 = string;
 export type Writes1 = string[];
+export type Name17 = string;
 export type CreatedAt5 = string;
 export type Id17 = string;
-export type Name17 = string;
+export type Name18 = string;
 export type Environment1 = string;
 export type Message4 = string;
 /**
@@ -420,28 +421,28 @@ export type Path4 = string;
 export type Size1 = number;
 export type Value4 = string;
 export type CreatedAt6 = string;
-export type Name18 = string;
+export type Name19 = string;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
-export type Name19 = string | null;
+export type Name20 = string | null;
 /**
  * @minItems 1
  */
 export type NodeIds = [string, ...string[]];
 export type Description6 = string;
 export type Id19 = string;
-export type Name20 = string;
+export type Name21 = string;
 export type NodeCount = number;
 export type Context4 = {
   [k: string]: unknown;
 } | null;
-export type Name21 = string;
+export type Name22 = string;
 export type Context5 = {
   [k: string]: unknown;
 } | null;
 export type CreatedAt7 = string;
 export type Id20 = string;
-export type Name22 = string;
+export type Name23 = string;
 /**
  * run only these cases (default: all)
  */
@@ -496,12 +497,12 @@ export type CreatedAt13 = string;
 export type Diagnostics3 = Diagnostic[];
 export type Id26 = string;
 export type IrHash4 = string;
-export type Name23 = string;
+export type Name24 = string;
 export type ProjectId1 = string;
 export type UpdatedAt3 = string;
 export type Version3 = number;
 export type Id27 = string;
-export type Name24 = string;
+export type Name25 = string;
 export type UpdatedAt4 = string;
 export type Version4 = number;
 export type Items2 = WorkflowSummary[];
@@ -569,6 +570,7 @@ export interface ApiSchemas {
   NodeManifest?: NodeManifest;
   NodePolicies?: NodePolicies;
   PortSpec?: PortSpec;
+  ProjectIn?: ProjectIn;
   ProjectOut?: ProjectOut;
   PublishIn?: PublishIn;
   PublishOut?: PublishOut;
@@ -1543,12 +1545,19 @@ export interface Targets {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ProjectIn".
+ */
+export interface ProjectIn {
+  name: Name17;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ProjectOut".
  */
 export interface ProjectOut {
   created_at: CreatedAt5;
   id: Id17;
-  name: Name17;
+  name: Name18;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -1664,7 +1673,7 @@ export interface SecretIn {
  */
 export interface SecretOut {
   created_at: CreatedAt6;
-  name: Name18;
+  name: Name19;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -1683,7 +1692,7 @@ export interface Values1 {
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
-  name?: Name19;
+  name?: Name20;
   node_ids: NodeIds;
 }
 /**
@@ -1693,7 +1702,7 @@ export interface SubgraphRequest {
 export interface TemplateInfo {
   description: Description6;
   id: Id19;
-  name: Name20;
+  name: Name21;
   node_count: NodeCount;
 }
 /**
@@ -1705,7 +1714,7 @@ export interface TestCaseIn {
   expect?: Expect;
   input?: Input4;
   mocks?: Mocks3;
-  name: Name21;
+  name: Name22;
   pins?: Pins3;
 }
 export interface Input4 {
@@ -1737,7 +1746,7 @@ export interface TestCaseOut {
   input?: Input5;
   last_result?: CaseResult | null;
   mocks?: Mocks4;
-  name: Name22;
+  name: Name23;
   pins?: Pins4;
 }
 export interface Input5 {
@@ -1892,7 +1901,7 @@ export interface WorkflowOut {
   ir: Ir3;
   ir_hash: IrHash4;
   layout: Layout2;
-  name: Name23;
+  name: Name24;
   project_id: ProjectId1;
   updated_at: UpdatedAt3;
   version: Version3;
@@ -1917,7 +1926,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id27;
-  name: Name24;
+  name: Name25;
   updated_at: UpdatedAt4;
   version: Version4;
 }

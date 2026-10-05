@@ -4,7 +4,22 @@ import { useMemo } from "react";
 import { apiFetch } from "./client";
 import type { ModelInfo, NodeManifest, TemplateInfo, WorkflowPage } from "./types";
 
-export const PROJECT_ID = "prj_default"; // single project until accounts land (Sprint 10)
+/** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
+export let PROJECT_ID = "prj_default";
+
+const PROJECT_KEY = "agentcanvas.project";
+
+/** Pick the project for this session: the last one used if it is still visible, else the organisation's first
+ * (creating one when the organisation has none). Runs once, after sign-in and before any page loads. */
+export async function chooseProject(): Promise<string> {
+  let projects = await apiFetch<{ id: string; name: string }[]>("/projects");
+  if (projects.length === 0) projects = [await apiFetch<{ id: string; name: string }>("/projects", { method: "POST", json: { name: "Default project" } })];
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(PROJECT_KEY); } catch { /* storage blocked */ }
+  PROJECT_ID = projects.find((p) => p.id === saved)?.id ?? projects[0].id;
+  try { localStorage.setItem(PROJECT_KEY, PROJECT_ID); } catch { /* storage blocked */ }
+  return PROJECT_ID;
+}
 
 export function useNodeTypes() {
   // includes the project's workspace custom nodes, so it refreshes quickly after workspace edits (FR-CN-01)
