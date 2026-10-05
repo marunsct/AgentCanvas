@@ -120,6 +120,8 @@ ROLE_EXCEPTIONS = {
 def required_role(method: str, path: str) -> str:
     """The weakest role allowed `method` on the route template `path` (with or without the /v1 prefix)."""
     path = path.removeprefix("/v1")
+    if path.startswith("/org/audit"):
+        return "admin"
     if path.startswith("/org/"):
         return "viewer" if method == "GET" else "admin"
     if (method, path) in ROLE_EXCEPTIONS:
@@ -129,6 +131,7 @@ def required_role(method: str, path: str) -> str:
 
 async def role_policy(request: Request, user: CurrentUser = Depends(current_user)) -> None:
     """Every signed-in route needs the role its method and path call for (403 otherwise)."""
+    request.state.user = user  # the audit log's actor (M7-T4)
     route = request.scope.get("route")
     needed = required_role(request.method, getattr(route, "path", request.url.path))
     if RANK.get(user.role, -1) < RANK[needed]:

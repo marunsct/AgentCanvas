@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
@@ -410,6 +411,7 @@ async def thread_runs(thread_id: str, session: AsyncSession = Depends(get_sessio
 async def resume_thread(
     thread_id: str,
     body: ResumeRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
     r: Runner = Depends(runner),
@@ -417,6 +419,7 @@ async def resume_thread(
 ) -> Response:
     t = await _thread(session, thread_id)
     wf, target_kw = await _thread_target(session, settings, t)
+    note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     h = await r.start(
         wf,
         thread_id=thread_id,
@@ -564,6 +567,7 @@ async def inbox(
 async def decide(
     interrupt_id: str,
     body: Decision,
+    request: Request,
     stream: bool = False,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
@@ -573,6 +577,7 @@ async def decide(
     task = await session.get(InterruptTask, interrupt_id)
     if task is None:
         raise NotFound(f"inbox item '{interrupt_id}' not found")
+    note(request, kind=task.kind, payload_sha256=payload_hash(body.value))
     if task.status != "pending":
         raise InvalidInput(f"inbox item '{interrupt_id}' is already {task.status}")
     t = await _thread(session, task.thread_id)

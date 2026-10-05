@@ -42,6 +42,7 @@ export function HomePage() {
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
         <Link to="/events" data-testid="events-link">Events</Link>
         {can("admin") && <Link to="/members" data-testid="members-link">Members</Link>}
+        {can("admin") && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
         <span className="muted small" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
         {ME.email && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
       </header>

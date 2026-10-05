@@ -17,3 +17,13 @@ test("invite a member, change their role, remove them", async ({ page }) => {
   await row.getByRole("button", { name: "Remove" }).click();
   await expect(row).toHaveCount(0);
 });
+
+test("the audit log shows who changed a member", async ({ page }) => {
+  const email = `audit-${Date.now()}@example.com`;
+  await page.request.put("/api/v1/org/members", { data: { email, role: "viewer" } });
+  await page.goto("/");
+  await page.getByTestId("audit-link").click();
+  await page.getByLabel("action").fill("set_member");
+  await expect(page.getByTestId("audit").locator("tr").first()).toContainText("dev@localhost");
+  await expect(page.getByTestId("audit").locator("tr").first()).toContainText("set_member");
+});

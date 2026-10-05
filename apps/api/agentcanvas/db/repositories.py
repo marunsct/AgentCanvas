@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import (
     AppUser,
+    AuditLog,
     Deployment,
     InterruptTask,
     Membership,
@@ -143,6 +144,43 @@ class MemberRepo:
         )
         if admins == {user_id}:
             raise Conflict("an organisation needs at least one admin; make someone else admin first")
+
+
+class AuditRepo:
+    """The append-only audit log (M7-T4): rows are added, never changed or deleted by the application."""
+
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def add(self, row: AuditLog) -> None:
+        self.s.add(row)
+        await self.s.commit()
+
+    async def list(
+        self,
+        org_id: str,
+        *,
+        action: str | None = None,
+        actor_id: str | None = None,
+        target: str | None = None,
+        before: int | None = None,
+        limit: int = 100,
+    ) -> list[tuple[AuditLog, str | None]]:
+        q = (
+            select(AuditLog, AppUser.email)
+            .outerjoin(AppUser, AppUser.id == AuditLog.actor_id)
+            .where(AuditLog.org_id == org_id)
+        )
+        if action:
+            q = q.where(AuditLog.action == action)
+        if actor_id:
+            q = q.where(AuditLog.actor_id == actor_id)
+        if target:
+            q = q.where(AuditLog.target.contains(target))
+        if before:
+            q = q.where(AuditLog.id < before)
+        rows = await self.s.execute(q.order_by(AuditLog.id.desc()).limit(limit))
+        return [(row, email) for row, email in rows.all()]
 
 
 class ScopeRepo:

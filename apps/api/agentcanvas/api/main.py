@@ -15,6 +15,7 @@ from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from agentcanvas.adapters import get_adapter
+from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.db.repositories import seed_dev
@@ -91,6 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bind_contextvars(request_id=request_id)
         start = time.perf_counter()
         response = await call_next(request)
+        await audit_record(request, response)
         response.headers["x-request-id"] = request_id
         log.debug(
             "http.request",

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
@@ -250,6 +251,7 @@ async def api_resume(
     t = await _thread(session, thread_id)
     if t.deployment_id != dep.id:
         raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
+    note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
         deployment_id=dep.id, version_id=dep.version_id,
