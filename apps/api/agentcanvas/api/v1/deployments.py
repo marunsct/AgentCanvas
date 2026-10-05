@@ -31,6 +31,7 @@ from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
 
 router = APIRouter(tags=["deployments"])
+public_router = APIRouter(tags=["deployments"])  # deployment API keys, not user sign-in
 WAIT_TIMEOUT_S = 300.0
 
 
@@ -210,7 +211,7 @@ async def _result(h: RunHandle) -> ApiResult:
     return res
 
 
-@router.post("/deployments/{dep_id}/runs/wait", response_model=ApiResult)
+@public_router.post("/deployments/{dep_id}/runs/wait", response_model=ApiResult)
 async def api_run_wait(
     dep_id: str,
     body: ApiRunIn,
@@ -222,7 +223,7 @@ async def api_run_wait(
     return await _result(await _start(request, session, dep_id, body, authorization))
 
 
-@router.post("/deployments/{dep_id}/runs/stream")
+@public_router.post("/deployments/{dep_id}/runs/stream")
 async def api_run_stream(
     dep_id: str,
     body: ApiRunIn,
@@ -235,7 +236,7 @@ async def api_run_stream(
     return _respond(request.app.state.runner, h, True)
 
 
-@router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)
+@public_router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)
 async def api_resume(
     dep_id: str,
     thread_id: str,

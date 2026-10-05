@@ -1,8 +1,14 @@
-"""Versioned public API (/v1)."""
+"""Versioned public API (/v1).
 
-from fastapi import APIRouter
+Every route requires a signed-in user (M7-T1) except the deployment endpoints (deployment API keys),
+signed webhooks (HMAC) and the sign-in configuration.
+"""
 
+from fastapi import APIRouter, Depends
+
+from agentcanvas.api.deps import current_user
 from agentcanvas.api.v1 import (
+    auth,
     catalog,
     deployments,
     events,
@@ -17,16 +23,23 @@ from agentcanvas.api.v1 import (
     workspace,
 )
 
+signed_in = APIRouter(dependencies=[Depends(current_user)])
+signed_in.include_router(auth.router)
+signed_in.include_router(catalog.router)
+signed_in.include_router(projects.router)
+signed_in.include_router(workflows.router)
+signed_in.include_router(runs.router)
+signed_in.include_router(tools.router)
+signed_in.include_router(memory.router)
+signed_in.include_router(workspace.router)
+signed_in.include_router(secrets.router)
+signed_in.include_router(events.router)
+signed_in.include_router(versions.router)
+signed_in.include_router(deployments.router)
+signed_in.include_router(triggers.router)
+
 router = APIRouter(prefix="/v1")
-router.include_router(catalog.router)
-router.include_router(projects.router)
-router.include_router(workflows.router)
-router.include_router(runs.router)
-router.include_router(tools.router)
-router.include_router(memory.router)
-router.include_router(workspace.router)
-router.include_router(secrets.router)
-router.include_router(events.router)
-router.include_router(versions.router)
-router.include_router(deployments.router)
-router.include_router(triggers.router)
+router.include_router(signed_in)
+router.include_router(auth.public_router)
+router.include_router(deployments.public_router)
+router.include_router(triggers.public_router)

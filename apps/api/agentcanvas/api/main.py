@@ -22,6 +22,7 @@ from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime.runner import Runner
+from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
@@ -35,6 +36,7 @@ log = get_logger(__name__)
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
+    check_auth_settings(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -59,7 +61,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.cron = CronScheduler(db, runner, settings.secret_key)
             if settings.env != "test":  # tests drive the scheduler with explicit ticks
                 app.state.cron.start()
-            log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
+            log.info(
+                "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
+                database=db.engine.dialect.name,
+            )  # fmt: skip
             try:
                 yield
             finally:

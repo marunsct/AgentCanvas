@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import AppUser, Membership, Organization, Project, WorkflowRow
 from agentcanvas.errors import Conflict, NotFound
+from agentcanvas.ids import new_id
 
 DEV_ORG, DEV_USER, DEV_PROJECT = "org_default", "usr_dev", "prj_default"
 
@@ -22,6 +24,46 @@ async def seed_dev(session: AsyncSession) -> None:
         session.add(Membership(org_id=DEV_ORG, user_id=DEV_USER, role="admin"))
         session.add(Project(id=DEV_PROJECT, org_id=DEV_ORG, name="Default project"))
         await session.commit()
+
+
+class UserRepo:
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def by_subject(self, subject: str) -> AppUser | None:
+        return await self.s.scalar(select(AppUser).where(AppUser.oidc_subject == subject))
+
+    async def provision(self, subject: str, email: str, name: str | None) -> AppUser:
+        """The user of an OIDC subject, created on first sign-in; email and name follow the latest token."""
+        user = await self.by_subject(subject)
+        if user is None:
+            user = AppUser(id=new_id("usr"), oidc_subject=subject, email=email, display_name=name)
+            self.s.add(user)
+            try:
+                await self.s.commit()
+            except IntegrityError:  # a parallel first request created it
+                await self.s.rollback()
+                user = await self.by_subject(subject)
+                assert user is not None
+        elif (email and user.email != email) or (name and user.display_name != name):
+            user.email, user.display_name = email or user.email, name or user.display_name
+            await self.s.commit()
+        return user
+
+    async def memberships(self, user_id: str) -> dict[str, str]:
+        rows = await self.s.execute(select(Membership.org_id, Membership.role).where(Membership.user_id == user_id))
+        return {org: role for org, role in rows.all()}
+
+    async def bootstrap_admin(self, user_id: str, org_id: str) -> dict[str, str]:
+        if await self.s.get(Organization, org_id) is None:
+            self.s.add(Organization(id=org_id, name="Default organisation"))
+            await self.s.flush()
+        self.s.add(Membership(org_id=org_id, user_id=user_id, role="admin"))
+        try:
+            await self.s.commit()
+        except IntegrityError:
+            await self.s.rollback()
+        return await self.memberships(user_id)
 
 
 class ProjectRepo:

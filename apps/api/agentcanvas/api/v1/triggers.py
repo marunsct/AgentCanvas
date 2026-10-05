@@ -18,6 +18,7 @@ from agentcanvas.services.triggers import SIGNATURE_HEADER, TriggerIn, TriggerSe
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["triggers"])
+public_router = APIRouter(tags=["triggers"])  # signed webhooks, not user sign-in
 
 
 class TriggerOut(BaseModel):
@@ -72,7 +73,7 @@ async def delete_trigger(trigger_id: str, s: TriggerService = Depends(svc)) -> R
     return Response(status_code=204)
 
 
-@router.post("/hooks/{trigger_id}", status_code=202)
+@public_router.post("/hooks/{trigger_id}", status_code=202)
 async def webhook(
     trigger_id: str,
     request: Request,
