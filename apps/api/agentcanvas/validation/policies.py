@@ -13,20 +13,24 @@ enforces them. Policies for named environments are enforced when publishing ther
 warnings so builders find out before they publish. A predicate that cannot be evaluated counts as a
 violation (fail closed).
 
+Steps and resources inside subgraphs are checked too; their diagnostics point at the subgraph step and name the
+inner element ("research/writer"). A subgraph behind an approval counts as gated inside.
+
 CEL names: `node`, `resource` (per scope), `workflow` and `env` (the publish environment, "" in the editor).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from celpy.celtypes import BoolType
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from agentcanvas.expr import ExpressionError, check_condition, eval_expression
 from agentcanvas.ir.models import Node, Resource, Workflow
 from agentcanvas.registry import Registry, default_registry
-from agentcanvas.validation.blast import RISKY, blast_radius
+from agentcanvas.validation.blast import RISKY, _gated_by_humans, blast_radius
 from agentcanvas.validation.engine import Diagnostic
 
 Scope = Literal["node", "resource", "workflow"]
@@ -57,9 +61,20 @@ def _models(wf: Workflow) -> dict[str, str]:
     return {r.id: str(r.config.get("model", "")) for r in wf.resources if r.type.startswith("model.")}
 
 
-def _context(wf: Workflow, registry: Registry) -> tuple[dict[str, dict], dict[str, dict], dict[str, Any]]:
-    """The CEL view of every node and resource, and of the workflow as a whole."""
+@dataclass
+class _Element:
+    anchor: str  # the canvas element a diagnostic points at: the subgraph step for elements inside one
+    path: str  # display name; "outer/inner" inside subgraphs
+    view: dict[str, Any]  # what CEL sees as `node` / `resource`
+
+
+def _elements(
+    wf: Workflow, registry: Registry, *, gated: bool = False, anchor: str | None = None, path: str = ""
+) -> tuple[list[_Element], list[_Element]]:
+    """The CEL view of every enabled step and every resource, subgraphs included (their elements anchor on the
+    subgraph step). `gated`: a person approves before the whole (sub)workflow runs."""
     blast = {nb.node_id: nb for nb in blast_radius(wf, registry).nodes}
+    behind_gate = _gated_by_humans(wf)
     models = _models(wf)
     resources = {r.id: r for r in wf.resources}
     wired: dict[str, list[Resource]] = {}
@@ -72,6 +87,10 @@ def _context(wf: Workflow, registry: Registry) -> tuple[dict[str, dict], dict[st
     def node_view(n: Node) -> dict[str, Any]:
         m = registry.get(n.type)
         caps = blast[n.id].capabilities if n.id in blast else []
+        if n.type == "core.subgraph":  # inner steps are checked themselves; keep the step's own ("a/b" are inner)
+            caps = [c for c in caps if "/" not in c.source]
+        if gated:
+            caps = [c.model_copy(update={"gated": True}) for c in caps]
         return {
             "id": n.id, "type": n.type, "name": n.name, "disabled": n.disabled, "config": n.config,
             "category": m.category if m else "",
@@ -89,16 +108,33 @@ def _context(wf: Workflow, registry: Registry) -> tuple[dict[str, dict], dict[st
             "category": m.category if m else "", "used_by": used_by.get(r.id, []),
         }  # fmt: skip
 
-    nodes = {n.id: node_view(n) for n in wf.nodes}
-    res = {r.id: resource_view(r) for r in wf.resources}
-    workflow = {
+    nodes = [_Element(anchor or n.id, path + n.name, node_view(n)) for n in wf.nodes if not n.disabled]
+    res = [_Element(anchor or r.id, path + r.name, resource_view(r)) for r in wf.resources]
+    for n in wf.nodes:
+        if n.type != "core.subgraph" or n.disabled:
+            continue
+        try:
+            inner = wf.subworkflow(n)
+        except ValidationError:  # reported by the subgraph rule (E018)
+            continue
+        inner_nodes, inner_res = _elements(
+            inner, registry, gated=gated or n.id in behind_gate, anchor=anchor or n.id, path=f"{path}{n.name}/"
+        )
+        nodes += inner_nodes
+        res += inner_res
+    return nodes, res
+
+
+def _workflow_view(wf: Workflow, nodes: list[_Element], res: list[_Element]) -> dict[str, Any]:
+    """`workflow`: the workflow with every step and resource, those inside subgraphs included."""
+    return {
         "id": wf.id, "name": wf.name, "kind": wf.kind, "settings": wf.settings.model_dump(mode="json"),
-        "nodes": [v for n, v in nodes.items() if not v["disabled"]], "resources": list(res.values()),
-        "node_types": sorted({n.type for n in wf.nodes if not n.disabled}),
-        "resource_types": sorted({r.type for r in wf.resources}),
-        "models": sorted({m for m in models.values() if m}),
+        "nodes": [e.view for e in nodes], "resources": [e.view for e in res],
+        "node_types": sorted({e.view["type"] for e in nodes}),
+        "resource_types": sorted({e.view["type"] for e in res}),
+        "models": sorted({str(e.view["config"].get("model")) for e in res
+                          if e.view["type"].startswith("model.") and e.view["config"].get("model")}),
     }  # fmt: skip
-    return nodes, res, workflow
 
 
 def _holds(source: str, names: dict[str, Any]) -> bool:
@@ -120,7 +156,8 @@ def check_policies(
                                                     or environment in p.environments)]  # fmt: skip
     if not active:
         return []
-    nodes, resources, workflow = _context(wf, registry or default_registry())
+    nodes, resources = _elements(wf, registry or default_registry())
+    workflow = _workflow_view(wf, nodes, resources)
     env = environment or ""
     out: list[Diagnostic] = []
     for p in active:
@@ -128,9 +165,9 @@ def check_policies(
         severity = "warning" if early else p.severity
         when = f" (enforced when publishing to {', '.join(p.environments)})" if early else ""
         if p.scope == "node":
-            targets = [(v["id"], v["name"], {"node": v}) for v in nodes.values() if not v["disabled"]]
+            targets = [(e.anchor, e.path, {"node": e.view}) for e in nodes]
         elif p.scope == "resource":
-            targets = [(v["id"], v["name"], {"resource": v}) for v in resources.values()]
+            targets = [(e.anchor, e.path, {"resource": e.view}) for e in resources]
         else:
             targets = [(None, wf.name, {})]
         for element_id, name, own in targets:

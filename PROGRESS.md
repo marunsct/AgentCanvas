@@ -30,7 +30,7 @@ Live status of the project. Update it with every commit that finishes or changes
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 241 passed, 1 skipped, 1 known upstream canary (xfail) |
+| API (pytest) | 246 passed, 1 skipped, 1 known upstream canary (xfail) |
 | Web unit tests (vitest) | 50 passed |
 | Browser journeys (Playwright) | 31 passed |
 
@@ -113,7 +113,8 @@ Live status of the project. Update it with every commit that finishes or changes
 - **Organisations (M7-T2):** every id a request names must belong to the caller's organisation (404 otherwise); `X-Org-Id` picks among several; `POST /v1/projects`.
 - **Roles (M7-T3):** viewer, reviewer, builder, admin; member invitations by email (`/v1/org/members`) and a Members page; the editor is view-only below builder.
 - **Audit log (M7-T4):** every successful change with actor, target and IP; approvals carry the payload's SHA-256; `GET /v1/org/audit` and an Audit log page.
-- **Policies (FR-X-19):** organisation rules as CEL predicates over steps, resources or the whole workflow (`/v1/org/policies`, Policies page). The validator reports breaches (`E095`/`W095`, `E096` when a rule cannot be evaluated, which fails closed); publishing checks the rules for its environment in a "policies" checklist item. Rules inside subgraphs are not checked yet.
+- **Policies (FR-X-19):** organisation rules as CEL predicates over steps, resources or the whole workflow (`/v1/org/policies`, Policies page). The validator reports breaches (`E095`/`W095`, `E096` when a rule cannot be evaluated, which fails closed); publishing checks the rules for its environment in a "policies" checklist item. Steps and resources inside subgraphs are checked too, and their breaches point at the subgraph step.
+- **Memory per organisation (M7-T2):** runs keep long-term memory under the workflow's organisation (`org:<id>` root), and the Memory inspector only sees the caller's organisation. Memories saved before Sprint 10 move to the default organisation at startup.
 
 ## What is pending
 
@@ -124,7 +125,7 @@ Live status of the project. Update it with every commit that finishes or changes
 ### S10 — accounts & access → v0.2.0 (in progress)
 - [x] OIDC login, organisations and projects, roles, audit log (M7-T1…T4), in #3.
 - [x] FR-X-19 policy-as-code lint profiles, in #3.
-- [ ] Memory inspector across organisations: the long-term memory store is shared, so an admin can list another organisation's memory namespaces. Namespaces need an organisation prefix.
+- [x] Long-term memory separated per organisation, and policies checked inside subgraphs, in #3.
 - [ ] Tag `v0.2.0` after #3 merges.
 
 ### S11 — production readiness → v0.3.0

@@ -124,3 +124,41 @@ async def test_policies_belong_to_one_organisation(app, api_client):
         assert (await api_client.put(f"/v1/org/policies/{pid}", json=NEEDS_A_PERSON)).status_code == 404
     finally:
         app.dependency_overrides.pop(current_user)
+
+
+def nested(gate: bool = False) -> Workflow:
+    """agent_wf() embedded as a subgraph step, optionally behind an approval."""
+    inner = {k: v for k, v in agent_wf().items() if k != "id"}
+    nodes = [{"id": "n_sub", "type": "core.subgraph", "name": "support", "config": {"workflow": inner}}]
+    flow = [("START", "n_sub"), ("n_sub", "END")]
+    if gate:
+        nodes.insert(0, {"id": "n_ok", "type": "core.approval", "name": "ok",
+                         "config": {"show": "messages", "output": "approved"}})  # fmt: skip
+        flow = [("START", "n_ok"), ("n_ok", "n_sub"), ("n_sub", "END")]
+    return Workflow.model_validate({
+        "id": "wf_outer", "name": "Outer",
+        "state": {"channels": [{"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"},
+                               {"name": "approved", "type": {"type": "boolean"}}]},
+        "nodes": nodes,
+        "edges": [{"id": f"e{i}", "kind": "flow", "source": {"node": a}, "target": {"node": b}}
+                  for i, (a, b) in enumerate(flow)],
+    })  # fmt: skip
+
+
+def test_steps_and_resources_inside_subgraphs_are_checked():
+    [d] = check_policies(nested(), [WRITES_NEED_APPROVAL])  # the subgraph step itself is not flagged a second time
+    assert (d.code, d.node_id) == ("E095", "n_sub")
+    assert "'support/assistant' breaks policy" in d.message
+    [m] = check_policies(nested(), [PROD_MODELS], environment="prod")
+    assert m.node_id == "n_sub" and "'support/model'" in m.message
+
+
+def test_an_approval_before_the_subgraph_gates_the_steps_inside():
+    assert check_policies(nested(gate=True), [WRITES_NEED_APPROVAL]) == []
+
+
+def test_workflow_policies_see_the_steps_inside_subgraphs():
+    no_agents = Policy(name="no agents", scope="workflow", require='!("core.agent" in workflow.node_types)')
+    assert [d.code for d in check_policies(nested(), [no_agents])] == ["E095"]
+    models = Policy(name="models", scope="workflow", require='workflow.models == ["fake:scripted"]')
+    assert check_policies(nested(), [models]) == []

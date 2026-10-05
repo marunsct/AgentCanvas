@@ -1,4 +1,7 @@
-"""Memory inspector (M4-T12, FR-MEM-04): browse, search and delete long-term memories; erase a namespace."""
+"""Memory inspector (M4-T12, FR-MEM-04): browse, search and delete long-term memories; erase a namespace.
+
+Runs keep each organisation's memories under its own root ("org:<id>", see the adapter's `org_prefix`). The
+inspector works inside the caller's organisation only: namespaces are shown and taken without that root."""
 
 from __future__ import annotations
 
@@ -29,14 +32,19 @@ class MemoryItem(BaseModel):
     updated_at: str | None = None
 
 
+def _root(user: CurrentUser) -> tuple[str, ...]:
+    return (f"org:{user.org_id}",)
+
+
 def _parse(namespace: str, user: CurrentUser, *, allow_empty: bool = False) -> tuple[str, ...]:
+    """The store namespace for `namespace`, inside the caller's organisation."""
     parts = tuple(p for p in namespace.strip("/").split("/") if p)
     if not parts and not allow_empty:
         raise InvalidInput("namespace is required, e.g. memories/user/<user id>")
-    # until roles land (Sprint 10) only admins may look into other users' memories
+    # only admins look into other users' memories
     if user.role != "admin" and user.id not in parts:
         raise Forbidden("you can only inspect your own memories")
-    return parts
+    return _root(user) + parts
 
 
 @router.get("/namespaces", response_model=list[NamespaceOut])
@@ -44,7 +52,8 @@ async def namespaces(
     prefix: str = "", r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)
 ) -> list[NamespaceOut]:
     found = await r.adapter.memory_namespaces(_parse(prefix, user, allow_empty=True))
-    return [NamespaceOut(namespace="/".join(ns), parts=list(ns)) for ns in sorted(found)]
+    own = [ns[len(_root(user)) :] for ns in sorted(found)]
+    return [NamespaceOut(namespace="/".join(ns), parts=list(ns)) for ns in own]
 
 
 @router.get("/items", response_model=list[MemoryItem])
@@ -55,7 +64,8 @@ async def items(
     r: Runner = Depends(runner),
     user: CurrentUser = Depends(current_user),
 ) -> list[MemoryItem]:
-    return [MemoryItem(**i) for i in await r.adapter.memory_items(_parse(namespace, user), q or None, limit)]
+    found = await r.adapter.memory_items(_parse(namespace, user), q or None, limit)
+    return [MemoryItem(**{**i, "namespace": i["namespace"][len(_root(user)) :]}) for i in found]
 
 
 @router.delete("/items", status_code=204)

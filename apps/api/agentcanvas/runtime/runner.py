@@ -20,6 +20,7 @@ from sqlalchemy import func, select, update
 
 from agentcanvas.adapters.spi import FrameworkAdapter
 from agentcanvas.db.models import InterruptTask, Run, Thread
+from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
@@ -173,6 +174,7 @@ class Runner:
                 thread.status = "running"
             if context is None:
                 context = await self._last_context(s, context_from or thread_id)
+            org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
             await s.flush()
             s.add(
                 Run(
@@ -205,6 +207,7 @@ class Runner:
             pins=pins or {},
             dry_run=dry_run,
             mocks=mocks or {},
+            org_id=org_id,
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()

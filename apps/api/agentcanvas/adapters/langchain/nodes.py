@@ -554,20 +554,32 @@ class Mount:
     backend: Any
 
 
+ORG_KEY = "agentcanvas_org_id"  # run config: the organisation whose memories a run reads and writes
+
+
+def org_prefix(org_id: str | None) -> tuple[str, ...]:
+    """Long-term memory of an organisation lives under ("org:<id>", ...); exported apps run without one."""
+    return (f"org:{org_id}",) if org_id else ()
+
+
 def store_namespace(*, scope: str, namespace: str, workflow_id: str, user_key: str | None) -> Callable:
-    """Namespace factory for a long-term folder: never derived from model output (E072)."""
+    """Namespace factory for a long-term folder: never derived from model output (E072).
+
+    Inside the platform every namespace starts with the run's organisation, so organisations never share memory.
+    """
 
     def factory(rt: Any) -> tuple[str, ...]:
+        configurable = get_config().get("configurable", {})
         if scope == "workflow":
             owner = workflow_id
         elif scope == "thread":
-            owner = get_config().get("configurable", {}).get("thread_id")
+            owner = configurable.get("thread_id")
         else:
             ctx = getattr(rt, "context", None) or {}
             owner = ctx.get(user_key) if user_key and isinstance(ctx, dict) else None
             if not owner:
                 raise PermissionError("a user-scoped folder needs the run's user (context field with source 'user')")
-        return (namespace, scope, str(owner))
+        return (*org_prefix(configurable.get(ORG_KEY)), namespace, scope, str(owner))
 
     return factory
 
