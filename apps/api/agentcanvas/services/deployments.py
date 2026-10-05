@@ -74,10 +74,14 @@ class DeploymentService:
         errors: list[str],
         project_secrets: set[str],
         run_tests: Callable[[], Any],
+        policies: list[str] | None = None,
     ) -> list[Check]:
+        broken = policies or []
         checks = [
             Check(name="validation", ok=not errors, detail=f"{len(errors)} error(s)" if errors else "no errors",
                   items=errors[:10]),
+            Check(name="policies", ok=not broken, items=broken[:10],
+                  detail=f"{len(broken)} violation(s)" if broken else "every organisation policy holds"),
         ]  # fmt: skip
         missing = sorted(secret_refs(wf.model_dump(mode="json")) - project_secrets)
         checks.append(

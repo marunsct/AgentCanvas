@@ -248,6 +248,29 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class OrgPolicy(Base):
+    """An organisation rule over workflows (FR-X-19): CEL predicates checked by the validator and at publish."""
+
+    __tablename__ = "org_policy"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name"),
+        CheckConstraint("scope IN ('node','resource','workflow')", name="org_policy_scope"),
+        CheckConstraint("severity IN ('error','warning')", name="org_policy_severity"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    scope: Mapped[str] = mapped_column(Text)
+    match: Mapped[str] = mapped_column(Text, server_default=text("'true'"), default="true")
+    require: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(Text, server_default=text("'error'"), default="error")
+    environments: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
 class EventLog(Base):
     """Events delivered to a project's handlers (FR-X-22): what came in, what the handlers asked for."""
 

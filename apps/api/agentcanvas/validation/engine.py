@@ -12,13 +12,16 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
 from agentcanvas.ir.models import Node, Resource, Workflow
 from agentcanvas.registry import NodeManifest, Registry, default_registry
 from agentcanvas.validation import analysis
+
+if TYPE_CHECKING:
+    from agentcanvas.validation.policies import Policy
 
 Severity = Literal["error", "warning", "info"]
 Edition = Literal["dev", "hosted"]
@@ -111,13 +114,20 @@ def validate(
     *,
     edition: Edition = "dev",
     allow_local_mcp: bool = False,
+    policies: list[Policy] | None = None,
+    environment: str | None = None,
 ) -> list[Diagnostic]:
+    """Every rule's diagnostics, plus the organisation's `policies` (FR-X-19) as they apply to `environment`
+    (None: the editor; see `check_policies`)."""
     from agentcanvas.validation import rules  # noqa: F401  (registers the rules)
+    from agentcanvas.validation.policies import check_policies
 
     ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp)
     out: list[Diagnostic] = []
     for fn in RULES:
         out.extend(fn(ctx))
+    if policies:
+        out.extend(check_policies(wf, policies, ctx.registry, environment=environment))
     # de-duplicate and sort deterministically: errors first, then by code/element
     unique = {(d.code, d.node_id, d.edge_id, d.path, d.message): d for d in out}
     return sorted(

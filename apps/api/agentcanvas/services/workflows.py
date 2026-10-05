@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import WorkflowRow
-from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
+from agentcanvas.db.repositories import PolicyRepo, ProjectRepo, WorkflowRepo
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.canonical import ir_hash
@@ -22,6 +22,7 @@ from agentcanvas.registry import Registry
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic, validate
+from agentcanvas.validation.policies import Policy
 
 TEMPLATES = Path(__file__).parents[1] / "registry" / "templates"
 DEV_TEMPLATES = Path(__file__).parents[2] / "examples"  # demo workflows with dev-only imports
@@ -51,6 +52,7 @@ class WorkflowService:
         self.projects = ProjectRepo(session)
         self.settings = settings
         self.registry_for = registry_for  # project id -> registry incl. workspace custom nodes
+        self._policies: dict[str, list[Policy]] = {}  # project id -> its organisation's policies (FR-X-19)
 
     def registry(self, project_id: str) -> Registry | None:
         from agentcanvas.services import projects
@@ -58,14 +60,27 @@ class WorkflowService:
         provider = self.registry_for or (projects.CURRENT.registry if projects.CURRENT else None)
         return provider(project_id) if provider else None
 
-    def _validate(self, wf: Workflow, project_id: str | None = None) -> list[Diagnostic]:
-        registry = self.registry(project_id) if project_id else None
-        return validate(wf, registry, edition=self.settings.edition, allow_local_mcp=self.settings.allow_local_mcp)
+    async def policies(self, project_id: str) -> list[Policy]:
+        if project_id not in self._policies:
+            rows = await PolicyRepo(self.repo.s).of_project(project_id)
+            self._policies[project_id] = [Policy.model_validate(r, from_attributes=True) for r in rows]
+        return self._policies[project_id]
 
-    def _view(self, row: WorkflowRow) -> WorkflowView:
+    async def _validate(
+        self, wf: Workflow, project_id: str | None = None, *, environment: str | None = None
+    ) -> list[Diagnostic]:
+        """Validation diagnostics, with the organisation's policies for `environment` (None: as the editor sees
+        them)."""
+        registry = self.registry(project_id) if project_id else None
+        return validate(
+            wf, registry, edition=self.settings.edition, allow_local_mcp=self.settings.allow_local_mcp,
+            policies=await self.policies(project_id) if project_id else None, environment=environment,
+        )  # fmt: skip
+
+    async def _view(self, row: WorkflowRow) -> WorkflowView:
         wf = Workflow.model_validate(row.draft_ir)
         PROJECT_OF[wf.id] = row.project_id  # lets the runner resolve workspace code for this workflow
-        return WorkflowView(row, wf, self._validate(wf, row.project_id))
+        return WorkflowView(row, wf, await self._validate(wf, row.project_id))
 
     async def create(self, project_id: str, name: str, template: str | None, created_by: str | None) -> WorkflowView:
         await self.projects.require(project_id)
@@ -88,10 +103,10 @@ class WorkflowService:
             ir_hash=ir_hash(ir),
             created_by=created_by,
         )
-        return self._view(await self.repo.create(row))
+        return await self._view(await self.repo.create(row))
 
     async def get(self, wf_id: str) -> WorkflowView:
-        return self._view(await self.repo.require(wf_id))
+        return await self._view(await self.repo.require(wf_id))
 
     async def list(self, project_id: str, limit: int, cursor: str | None) -> list[WorkflowRow]:
         await self.projects.require(project_id)
@@ -122,7 +137,7 @@ class WorkflowService:
         await self.repo.save_ir(wf_id, ir, ir_hash(ir), wf.name, expected_version)
         row = await self.repo.require(wf_id)
         await self.repo.s.refresh(row)
-        return self._view(row)
+        return await self._view(row)
 
     async def set_layout(self, wf_id: str, positions: dict[str, dict[str, float]], replace: bool) -> dict[str, Any]:
         row = await self.repo.require(wf_id)

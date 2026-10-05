@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from agentcanvas.api.deps import get_settings_dep
@@ -30,7 +30,11 @@ class McpToolInfo(BaseModel):
 
 @router.post("/mcp/inspect", response_model=list[McpToolInfo])
 async def inspect_mcp(
-    body: McpInspectRequest, settings: Settings = Depends(get_settings_dep), r: Runner = Depends(runner)
+    body: McpInspectRequest,
+    request: Request,
+    project_id: str = Query(description="the project whose secrets the server's headers may reference"),
+    settings: Settings = Depends(get_settings_dep),
+    r: Runner = Depends(runner),
 ) -> list[McpToolInfo]:
     cfg = body.config
     url = str(cfg.get("url") or "")
@@ -38,7 +42,10 @@ async def inspect_mcp(
     if local and not settings.allow_local_mcp:  # same condition as validator E042
         raise Forbidden("local (stdio) MCP servers are disabled; an admin must enable allow_local_mcp")
     try:
-        tools = await r.adapter.inspect_mcp(body.name, cfg, r.resources("mcp-inspect", None))
+        # the project's own resources (its secrets fill `$secret` headers); the org guard checked project_id
+        factory = getattr(request.app.state, "resources_factory", None)
+        resources = factory("mcp-inspect", None) if factory else request.app.state.projects.resources(project_id)
+        tools = await r.adapter.inspect_mcp(body.name, cfg, resources)
     except Exception as exc:  # network errors, protocol errors, auth failures
         raise UpstreamError(f"could not list tools of '{body.name}': {type(exc).__name__}: {exc}") from exc
     return [McpToolInfo(**t) for t in tools]

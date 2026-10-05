@@ -47,7 +47,7 @@ async def test_publish_pins_the_version_and_keys_rotate(api_client):
         json={"name": "hello", "input": {"who": "Ada"}, "expect": {"channels": {"out": "Hello Ada"}}},
     )
     pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
-    assert [c["name"] for c in pub["checklist"]] == ["validation", "secrets", "tests", "contract"]
+    assert [c["name"] for c in pub["checklist"]] == ["validation", "policies", "secrets", "tests", "contract"]
     assert all(c["ok"] for c in pub["checklist"]) and pub["deployment"]["semver"] == "1.0.0"
     dep, key = pub["deployment"]["id"], pub["api_key"]
     assert key.startswith("ac_") and pub["deployment"]["key_prefix"] == key[:10]
@@ -140,3 +140,22 @@ async def test_published_approval_resumes_through_the_api(app, api_client):
     ).json()  # fmt: skip
     assert done["status"] == "success" and done["output"]["approved"] is True
     assert cur["id"] == wf["id"]
+
+
+async def test_api_end_users_live_under_the_deployment():
+    """A key holder passing an organisation member's id does not get that member's identity (or memories)."""
+    from types import SimpleNamespace
+
+    from agentcanvas.api.v1.deployments import ApiRunIn, _api_context
+    from agentcanvas.ir.models import Workflow
+
+    class NoRows:
+        async def get(self, *_):
+            return None
+
+    uid = {"name": "uid", "type": {"type": "string"}, "source": "user"}
+    wf = Workflow.model_validate({"id": "wf_ctx", "name": "Ctx", "context": {"fields": [uid]}, "nodes": []})
+    dep = SimpleNamespace(id="dep_1", workflow_id="wf_ctx")
+    ctx = await _api_context(NoRows(), dep, wf, ApiRunIn(user_id="usr_alice"))  # type: ignore[arg-type]
+    assert ctx == {"uid": "api:dep_1:usr_alice"}
+    assert await _api_context(NoRows(), dep, wf, ApiRunIn()) == {"uid": "api:dep_1"}  # type: ignore[arg-type]

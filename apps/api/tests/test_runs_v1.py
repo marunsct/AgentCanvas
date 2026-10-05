@@ -379,7 +379,7 @@ async def test_research_template_map_reduce_and_deep_agent_memory(app, api_clien
     assert set(fin["output"]) == {"messages"}  # output schema: only `messages` is io "out"
     state = (await api_client.get("/v1/threads/th_research")).json()["values"]
     assert len(state["notes"]) == 3 and all("Demo reply" in n for n in state["notes"])
-    items = await app.state.runner.adapter.store.asearch(("memories", "user", "usr_dev"))
+    items = await app.state.runner.adapter.store.asearch(("org:org_default", "memories", "user", "usr_dev"))  # org root
     assert [i.key for i in items] == ["/findings.md"]
     saved = str(items[0].value["content"])
     assert "cocoa" in saved and "Hot drinks" in saved

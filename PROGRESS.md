@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/trusting-curie-n0i720`. S0–S8 were merged into `main` via [#1](https://github.com/marunsct/AgentCanvas/pull/1); S9 is in [#2](https://github.com/marunsct/AgentCanvas/pull/2), rebased onto `main`.
+- **Branch:** `claude/project-thread-sj4pqp` for S10, in [#3](https://github.com/marunsct/AgentCanvas/pull/3). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1) and S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** end of Sprint 9 (v0.1.0 prepared).
+- **Last updated:** Sprint 10 done and reviewed (fixes in #3, waiting on the maintainer's merge); Sprint 11 planned (backlog in the sprint plan §3).
 
 ## At a glance
 
@@ -22,17 +22,17 @@ Live status of the project. Update it with every commit that finishes or changes
 | S7 Workspaces & events | ✅ done |
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
-| **S10 Accounts & access → v0.2.0** | ⏳ **next** |
-| S11 Production readiness → v0.3.0 | ⬜ pending |
+| S10 Accounts & access → v0.2.0 | ✅ done (#3 in review; tag after merge) |
+| **S11 Production readiness → v0.3.0** | 📋 **planned** (23 days: M8-T1…T6, FR-X-10, S10 carry-overs) |
 | S12+ GA backlog | ⬜ pending |
 
-**Test totals** at the end of S9:
+**Test totals** at the end of S10:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 198 passed, 1 skipped, 1 known upstream canary (xfail) |
-| Web unit tests (vitest) | 44 passed |
-| Browser journeys (Playwright) | 27 passed |
+| API (pytest) | 252 passed, 1 skipped, 1 known upstream canary (xfail) |
+| Web unit tests (vitest) | 51 passed |
+| Browser journeys (Playwright) | 31 passed |
 
 `make check` runs every CI gate except the browser journeys: lint, format, types, the import contract, schema/type drift, tests and the build.
 
@@ -108,21 +108,49 @@ Live status of the project. Update it with every commit that finishes or changes
 - **Performance:** pages and the layout engine load on demand; the entry bundle went from 2.8 MB to 0.3 MB.
 - **Release prep:** version 0.1.0, `CHANGELOG.md`, MkDocs documentation site (`make docs`, CI job).
 
+### S10: accounts & access → v0.2.0
+- **Sign-in (M7-T1):** `AGENTCANVAS_AUTH_MODE=oidc` requires a bearer JWT on every `/v1` route except deployment endpoints, signed webhooks and `/v1/auth/config`. Users are created on first sign-in; `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS` seeds the first admins. The web app signs in with authorization code + PKCE. Dev mode is unchanged and refused in staging/prod.
+- **Organisations (M7-T2):** every id a request names must belong to the caller's organisation (404 otherwise); `X-Org-Id` picks among several; `POST /v1/projects`.
+- **Roles (M7-T3):** viewer, reviewer, builder, admin; member invitations by email (`/v1/org/members`) and a Members page; the editor is view-only below builder.
+- **Audit log (M7-T4):** every successful change with actor, target and IP; approvals carry the payload's SHA-256; `GET /v1/org/audit` and an Audit log page.
+- **Policies (FR-X-19):** organisation rules as CEL predicates over steps, resources or the whole workflow (`/v1/org/policies`, Policies page). The validator reports breaches (`E095`/`W095`, `E096` when a rule cannot be evaluated, which fails closed); publishing checks the rules for its environment in a "policies" checklist item. Steps and resources inside subgraphs are checked too, and their breaches point at the subgraph step.
+- **Memory per organisation (M7-T2):** runs keep long-term memory under the workflow's organisation (`org:<id>` root), and the Memory inspector only sees the caller's organisation. Memories saved before Sprint 10 move to the default organisation at startup.
+- **End-of-sprint review:** three parallel reviews (web, auth and roles, policies and memory). Fixed:
+  - policy checks were quadratic in workflow size (6 s for 120 steps, now under 0.4 s) and returned 500 on a malformed embedded subgraph;
+  - policies blocked draft and test runs; they are now enforced at publish only, as designed;
+  - reviewers could resume with debug pins and mocks; an organisation could lose its last signed-in admin through concurrent changes;
+  - deployment API callers could pass a member's user id and reach that member's memories (now `api:<deployment>:<user_id>`);
+  - pre-S10 memory adoption now runs once (marker) and pages through namespaces;
+  - web: silent token renewal and retry, sign out and account switch, actions hidden for roles that cannot use them.
+
 ## What is pending
 
 ### Still open from S9
 - [ ] Tag `v0.1.0`. A tag is outward-facing, so it needs the maintainer's go-ahead.
 - [ ] Exit criterion: 10 design partners complete journey J1 unaided. This needs real users.
 
-### S10 — accounts & access → v0.2.0 (next)
-- [ ] OIDC login, organisations and projects, roles, audit log (M7-T1…T4). Until then every request acts as a seeded dev admin.
-- [ ] FR-X-19 policy-as-code lint profiles.
+### S10 — accounts & access → v0.2.0
+- [x] OIDC login, organisations and projects, roles, audit log (M7-T1…T4), in #3.
+- [x] FR-X-19 policy-as-code lint profiles, in #3.
+- [x] Long-term memory separated per organisation, and policies checked inside subgraphs, in #3.
+- [x] End-of-sprint review and fixes, in #3.
+- [ ] Merge #3 (maintainer) and tag `v0.2.0`.
 
-### S11 — production readiness → v0.3.0
-- [ ] Containers, Helm, observability, backups, load test and security review (M8-T1…T6).
-- [ ] FR-X-10 safe redeploy.
-- [ ] Leader lock for the cron scheduler when running more than one API instance (Postgres advisory lock).
+### S11 — production readiness → v0.3.0 (planned; detail in the sprint plan §3)
+- [ ] M8-T1 containers: non-root images built in CI, SSE-safe nginx.
+- [ ] M8-T2 compose prod and Helm chart; `/readyz` pings the database and the store.
+- [ ] Leader lock for the cron scheduler with more than one API replica (Postgres advisory lock).
+- [ ] M8-T3 observability: OpenTelemetry, Prometheus `/metrics`, a Grafana dashboard.
+- [ ] M8-T4 retention job and a rehearsed restore runbook.
+- [ ] FR-X-10 safe redeploy: drain on shutdown, resume on another replica or a compatible new version.
+- [ ] M8-T5 k6 load test: 200 concurrent streams, p95 event latency under 250 ms.
+- [ ] M8-T6 security review, with dependency and container scanning in CI.
 - [ ] KMS envelope encryption for secrets; today the key is derived from `AGENTCANVAS_SECRET_KEY`.
+- [ ] S10 review carry-overs:
+  - invitations need acceptance when the person already belongs to another organisation;
+  - the default organisation is the one used last;
+  - silent token refresh (`offline_access`); the web app reads its project per request;
+  - document `FORWARDED_ALLOW_IPS` for the proxy in front of the API.
 
 ### S12+ — GA backlog
 - [ ] Evals studio, multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.

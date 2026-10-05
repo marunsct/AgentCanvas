@@ -1,8 +1,9 @@
 /** Versions (M6-T1): save the draft as a version, compare a version with the draft on the canvas, restore it. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { API_BASE, apiFetch } from "../api/client";
+import { apiDownload, apiFetch } from "../api/client";
 import type { DiffOut, ElementDiff, VersionOut } from "../api/generated";
+import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import { ContractSection } from "./ContractSection";
@@ -15,6 +16,11 @@ export function VersionsPanel() {
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
   const [diff, setDiff] = useState<DiffOut | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const download = (path: string, name: string) => {
+    setDownloadError(null);
+    apiDownload(path, name).catch((e: Error) => setDownloadError(e.message));
+  };
   const uiDiff = useUi((s) => s.diff);
   const key = ["versions", wf?.id];
   const versions = useQuery({ queryKey: key, enabled: Boolean(wf), queryFn: () => apiFetch<VersionOut[]>(`/workflows/${wf!.id}/versions`) });
@@ -46,14 +52,17 @@ export function VersionsPanel() {
   return (
     <div className="panel-body versions-panel">
       <h3>Versions</h3>
-      <form className="row gap" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      {can("builder") && <form className="row gap" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <input placeholder="What changed?" value={message} onChange={(e) => setMessage(e.target.value)} aria-label="version message" />
         <button type="submit" className="primary" disabled={save.isPending}>Save version</button>
-      </form>
+      </form>}
       {save.error && <p className="error-text small">{(save.error as Error).message}</p>}
       <p className="small">
-        <a href={`${API_BASE}/workflows/${wf.id}/export.zip`} download data-testid="export-draft">⬇ Export draft as a Python project</a>
+        <button type="button" className="link" data-testid="export-draft"
+          onClick={() => download(`/workflows/${wf.id}/export.zip`, "export.zip")}>
+          ⬇ Export draft as a Python project</button>
       </p>
+      {downloadError && <p className="error-text small" role="alert">{downloadError}</p>}
       {diff && (
         <div className="diff-box" data-testid="diff-summary">
           <div className="row gap"><b>Draft vs v{uiDiff?.against}</b>: {diff.summary}
@@ -74,8 +83,10 @@ export function VersionsPanel() {
               <b>v{v.semver}</b><span className="muted small">{new Date(v.created_at).toLocaleString()}</span>
               <span className="spacer" />
               <button type="button" className="small" onClick={() => void compare(v)}>Compare</button>
-              <button type="button" className="small" onClick={() => void restore(v)}>Restore</button>
-              <a className="small" href={`${API_BASE}/workflows/${wf.id}/export.zip?version=${v.semver}`} download>⬇ zip</a>
+              {can("builder") && <button type="button" className="small" onClick={() => void restore(v)}>Restore</button>}
+              <button type="button" className="link small"
+                onClick={() => download(`/workflows/${wf.id}/export.zip?version=${v.semver}`, `export-${v.semver}.zip`)}>
+                ⬇ zip</button>
             </div>
             {v.message && <p className="small">{v.message}</p>}
           </li>

@@ -8,6 +8,7 @@
  */
 import { create } from "zustand";
 import { ApiError, apiFetch } from "../api/client";
+import { can, ME } from "../api/session";
 import type { Diagnostic, Layout, Position } from "../api/types";
 import { applyAll, applyLocal, type Command, CommandError, composePatches } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
@@ -140,6 +141,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   dispatch: (cmds, opts = {}) => {
     const { wf, pending } = get();
     if (!wf || cmds.length === 0) return;
+    if (!can("builder")) {
+      set({ notice: { kind: "info", text: `View only: your role (${ME.role}) cannot edit workflows.` } });
+      return;
+    }
     try {
       const next = applyAll(wf, cmds);
       set({ wf: next, pending: cmds.reduce(coalesce, pending), notice: null });
@@ -206,7 +211,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setPositions: (positions, persist = false) => {
     set({ layout: { ...get().layout, ...positions } });
-    if (!persist) return;
+    if (!persist || !can("builder")) return;
     layoutDirty = { ...layoutDirty, ...positions };
     if (layoutTimer) clearTimeout(layoutTimer);
     const save = () => {
@@ -232,7 +237,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setFrame: (frame) => set({ frame }),
   refactor: async (kind, body) => {
     const { workflowId, flush } = get();
-    if (!workflowId) return null;
+    if (!workflowId || !can("builder")) return null;
     await flush(); // the server computes the refactoring from the saved workflow
     try {
       const out = await apiFetch<{ commands: Command[] }>(`/workflows/${workflowId}/refactor/${kind}`, { method: "POST", json: body });

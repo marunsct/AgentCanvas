@@ -36,6 +36,7 @@ class RunSpec:
     mocks: dict[str, list[Any]] = field(default_factory=dict)  # model resource name -> scripted replies (debug)
     labels: dict[str, str] = field(default_factory=dict)  # trace metadata: origin, deployment, version (M6-T6)
     dry_run: bool = False  # stub every risky tool with a recorder (FR-X-02)
+    org_id: str | None = None  # the workflow's organisation: long-term memory lives under it (M7-T2)
 
 
 @dataclass

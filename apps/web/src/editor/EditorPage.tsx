@@ -19,6 +19,7 @@ import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
 import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
 import { useEditor } from "./store";
+import { can, ME } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 
 type Tab = "inspect" | "run" | "tests" | "versions" | "code";
@@ -77,7 +78,9 @@ export function EditorPage() {
       <header className="topbar">
         <Link to="/" className="brand">AgentCanvas</Link>
         <span className="crumb">/ {wf.name}</span>
-        <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
+        {can("builder")
+          ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
+          : <span className="save-state" data-testid="view-only" title={`your role is ${ME.role}`}>View only</span>}
         <span className="spacer" />
         <Link to="/workspace" className="inbox-link" data-testid="workspace-link">Workspace</Link>
         <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>

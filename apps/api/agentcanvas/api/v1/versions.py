@@ -24,6 +24,7 @@ from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.testcases import CaseResult, Expect, TestCaseService
 from agentcanvas.services.versions import Bump, VersionService
 from agentcanvas.services.workflows import WorkflowService
+from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 router = APIRouter(tags=["versions"])
 
@@ -223,8 +224,9 @@ async def run_test_cases(
     view = await svc.get(wf_id)  # also registers the workflow's project for workspace code
     wf = view.workflow if body.version is None else await VersionService(session).workflow_at(wf_id, body.version)
     PROJECT_OF[wf.id] = view.row.project_id
-    diagnostics = svc._validate(wf, view.row.project_id)
-    errors = [d.model_dump() for d in diagnostics if d.severity == "error"]
+    diagnostics = await svc._validate(wf, view.row.project_id)
+    # organisation policies are enforced at publish, not when trying the workflow out
+    errors = [d.model_dump() for d in diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
     if errors:
         raise WorkflowHasErrors(f"workflow has {len(errors)} error(s); fix them before running tests", errors=errors)
     tests = TestCaseService(session)

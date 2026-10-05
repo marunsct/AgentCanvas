@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
+import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
 import { QueryStatus } from "../ui/QueryStatus";
 
@@ -41,7 +42,7 @@ export function InboxPage() {
               {item.workflow_id ? <Link to={`/workflows/${item.workflow_id}`}>{item.workflow_name}</Link> : <span>unknown workflow</span>}
               <small className="muted">node {item.canvas_node_id} · thread {item.thread_id} · {new Date(item.created_at).toLocaleString()}</small>
             </header>
-            <DecisionCard intr={item} busy={decide.isPending} onDecide={(value) => decide.mutate({ id: item.id, value })} />
+            <DecisionCard intr={item} busy={decide.isPending || !can("reviewer")} onDecide={(value) => decide.mutate({ id: item.id, value })} />
           </article>
         ))}
       </div>

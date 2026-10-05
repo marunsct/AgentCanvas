@@ -119,15 +119,21 @@ def test_mcp_approval_rules():
 async def test_mcp_inspect_endpoint(app, api_client):
     app.state.resources_factory = lambda thread_id, wf: Resources(overrides={"support": support_server()})
     r = await api_client.post(
-        "/v1/mcp/inspect", json={"name": "support", "config": {"url": "https://mcp.example.com/mcp"}}
+        "/v1/mcp/inspect?project_id=prj_default",
+        json={"name": "support", "config": {"url": "https://mcp.example.com/mcp"}},
     )
     assert r.status_code == 200, r.text
     tools = {t["name"]: t for t in r.json()}
     assert tools["delete_ticket"]["destructive"] is True and tools["lookup_order"]["destructive"] is False
     r = await api_client.post(
-        "/v1/mcp/inspect", json={"name": "local", "config": {"transport": "stdio", "command": "python"}}
+        "/v1/mcp/inspect?project_id=prj_default",
+        json={"name": "local", "config": {"transport": "stdio", "command": "python"}},
     )
     assert r.status_code == 403  # local servers need the admin setting (E042)
+    other = await api_client.post(
+        "/v1/mcp/inspect?project_id=prj_elsewhere", json={"name": "support", "config": {"url": "https://x.test/mcp"}}
+    )
+    assert other.status_code == 404  # only a project of the caller's organisation lends its secrets
 
 
 # ------------------------------------------------------------------------------------------------ HTTP ----

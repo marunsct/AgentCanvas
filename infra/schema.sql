@@ -151,3 +151,19 @@ CREATE TABLE audit_log (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX audit_org_time_idx ON audit_log(org_id, created_at DESC);
+
+CREATE TABLE org_policy (                         -- FR-X-19: organisation rules over workflows (CEL)
+  id            text PRIMARY KEY,
+  org_id        text NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  description   text NOT NULL DEFAULT '',
+  scope         text NOT NULL CHECK (scope IN ('node','resource','workflow')),
+  match         text NOT NULL DEFAULT 'true',     -- CEL: which elements the rule is about
+  require       text NOT NULL,                    -- CEL: what must hold for each
+  severity      text NOT NULL DEFAULT 'error' CHECK (severity IN ('error','warning')),
+  environments  jsonb NOT NULL DEFAULT '[]'::jsonb, -- empty: always; else enforced when publishing there
+  enabled       boolean NOT NULL DEFAULT true,
+  created_by    text REFERENCES app_user(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, name)
+);

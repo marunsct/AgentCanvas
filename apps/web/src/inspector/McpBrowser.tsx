@@ -1,6 +1,7 @@
 /** "Browse tools" for an MCP server resource (M3-T5): list the server's tools, pick some, flag destructive ones. */
 import { useState } from "react";
 import { apiFetch } from "../api/client";
+import { PROJECT_ID } from "../api/queries";
 import { useEditor } from "../editor/store";
 import type { IRResource } from "../ir/model";
 
@@ -25,7 +26,7 @@ export function McpBrowser({ resource }: { resource: IRResource }) {
     setBusy(true);
     setError(null);
     try {
-      const found = await apiFetch<McpTool[]>("/mcp/inspect", {
+      const found = await apiFetch<McpTool[]>(`/mcp/inspect?project_id=${encodeURIComponent(PROJECT_ID)}`, {
         method: "POST", json: { name: resource.name, config: { ...resource.config, discovered: undefined } },
       });
       save({ discovered: found });

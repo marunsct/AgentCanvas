@@ -1,11 +1,11 @@
-"""Projects (single organisation until M7)."""
+"""Projects of the signed-in user's organisation (M7-T2)."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
@@ -26,3 +26,16 @@ async def list_projects(
 ) -> list[ProjectOut]:
     rows = await ProjectRepo(session).list(user.org_id)
     return [ProjectOut(id=p.id, name=p.name, created_at=p.created_at) for p in rows]
+
+
+class ProjectIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+@router.post("/projects", response_model=ProjectOut, status_code=201)
+async def create_project(
+    body: ProjectIn, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> ProjectOut:
+    """A new project in the caller's organisation (409 when the name is taken there)."""
+    p = await ProjectRepo(session).create(user.org_id, body.name.strip())
+    return ProjectOut(id=p.id, name=p.name, created_at=p.created_at)

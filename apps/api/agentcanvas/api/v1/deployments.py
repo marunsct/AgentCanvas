@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
@@ -29,8 +30,10 @@ from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
+from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 router = APIRouter(tags=["deployments"])
+public_router = APIRouter(tags=["deployments"])  # deployment API keys, not user sign-in
 WAIT_TIMEOUT_S = 300.0
 
 
@@ -76,10 +79,14 @@ async def publish(
     svc: WorkflowService = Depends(service),
     user: CurrentUser = Depends(current_user),
 ) -> PublishOut:
-    """Pre-publish checklist (validation, test cases, secrets), then pin the draft as a version behind a key."""
+    """Pre-publish checklist (validation, policies, secrets, test cases), then pin the draft as a version behind a
+    key."""
     view = await svc.get(wf_id)
     wf, project_id = view.workflow, view.row.project_id
-    errors = [f"{d.code} {d.message}" for d in view.diagnostics if d.severity == "error"]
+    # the organisation's policies as they apply to this environment (FR-X-19) are their own checklist item
+    diagnostics = await svc._validate(wf, project_id, environment=body.environment)
+    errors = [f"{d.code} {d.message}" for d in diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
+    broken = [f"{d.code} {d.message}" for d in diagnostics if d.severity == "error" and d.code in POLICY_CODES]
     projects = request.app.state.projects
     tests = TestCaseService(session)
 
@@ -88,7 +95,7 @@ async def publish(
         return await tests.run(request.app.state.runner, wf, cases, lambda g: _context(wf, g, user), user_id=user.id)
 
     deps = DeploymentService(session)
-    checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests)
+    checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
     failed = [c for c in checks if not c.ok]
     if failed:
@@ -146,7 +153,9 @@ class ApiRunIn(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     thread_id: str | None = Field(None, description="continue a conversation this deployment started")
     context: dict[str, Any] = Field(default_factory=dict)
-    user_id: str | None = Field(None, description="your end user's id (context fields with source 'user')")
+    user_id: str | None = Field(
+        None, description="your end user's id; context fields with source 'user' get api:<deployment>:<user_id>"
+    )
 
 
 class ApiResumeIn(BaseModel):
@@ -174,12 +183,15 @@ async def _caller(session: AsyncSession, dep_id: str, authorization: str | None)
 
 
 async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, body: ApiRunIn) -> dict[str, Any]:
-    """Identity fields come from the key's deployment (tenant) and the caller's `user_id`, never from `context`."""
+    """Identity fields come from the key's deployment (tenant) and the caller's `user_id`, never from `context`.
+    The caller's end users live under the deployment ("api:<deployment>:<user_id>"), so a key holder cannot
+    pass an organisation member's id and reach that member's memories."""
     from agentcanvas.db.models import WorkflowRow
 
     row = await session.get(WorkflowRow, dep.workflow_id)
     project = await session.get(Project, row.project_id) if row else None
-    user = CurrentUser(id=body.user_id or f"api:{dep.id}", org_id=project.org_id if project else "", role="api")
+    end_user = f"api:{dep.id}:{body.user_id}" if body.user_id else f"api:{dep.id}"
+    user = CurrentUser(id=end_user, org_id=project.org_id if project else "", role="api")
     return _context(wf, body.context, user)
 
 
@@ -210,7 +222,7 @@ async def _result(h: RunHandle) -> ApiResult:
     return res
 
 
-@router.post("/deployments/{dep_id}/runs/wait", response_model=ApiResult)
+@public_router.post("/deployments/{dep_id}/runs/wait", response_model=ApiResult)
 async def api_run_wait(
     dep_id: str,
     body: ApiRunIn,
@@ -222,7 +234,7 @@ async def api_run_wait(
     return await _result(await _start(request, session, dep_id, body, authorization))
 
 
-@router.post("/deployments/{dep_id}/runs/stream")
+@public_router.post("/deployments/{dep_id}/runs/stream")
 async def api_run_stream(
     dep_id: str,
     body: ApiRunIn,
@@ -235,7 +247,7 @@ async def api_run_stream(
     return _respond(request.app.state.runner, h, True)
 
 
-@router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)
+@public_router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)
 async def api_resume(
     dep_id: str,
     thread_id: str,
@@ -249,6 +261,7 @@ async def api_resume(
     t = await _thread(session, thread_id)
     if t.deployment_id != dep.id:
         raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
+    note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
         deployment_id=dep.id, version_id=dep.version_id,

@@ -2,6 +2,30 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## Unreleased (v0.2.0)
+
+### Accounts & access
+- **Sign-in with your identity provider (OIDC).** Set `AGENTCANVAS_AUTH_MODE=oidc`; the web app signs in with authorization code + PKCE and the API checks every token. Deployment API keys and signed webhooks work as before.
+- **Organisations.** Everything belongs to an organisation, and nobody sees another organisation's workflows, runs, secrets or deployments. Create projects with `POST /v1/projects`.
+- **Roles:** viewer, reviewer (answers approvals), builder and admin. Admins invite people by email from the new Members page.
+- **Audit log.** Every change is recorded with who made it, what it touched and from where; approvals include a hash of what was approved. Admins read it on the Audit log page.
+- **Policies.** Admins write organisation rules as CEL on the new Policies page, for example "every external write needs approval" or "only approved models in prod". The editor flags workflows that break them (`E095`), and publishing refuses them in a new "policies" checklist item. Rules for one environment show as warnings in the editor (`W095`) and block publishing there. Steps inside subgraphs are checked too.
+- **Memory per organisation.** Long-term memory is kept per organisation, and the Memory inspector shows only your organisation's. Memories saved before this release move to the default organisation the first time the API starts.
+
+### Changed
+- Downloads and the "Open trace" link now go through the signed-in API (`GET /v1/runs/{id}/trace?format=json`).
+- Requests that name an id from another organisation, or one that doesn't exist, as a query parameter (`?workflow_id=…`) now answer 404 instead of an empty list.
+- Policies are enforced when publishing. Draft runs, debug runs and test-case runs are no longer blocked by a broken policy.
+- Deployment API end users are kept apart from organisation members: a `user_id` passed to a deployment becomes `api:<deployment>:<user_id>` in the run context and in user-scoped memory.
+- Memories from before organisations are moved once; the API records that it has done so and never moves memories again.
+
+### Fixed
+- Checking policies took seconds on large workflows (about 6 s for 120 steps); it now takes a fraction of a second.
+- A workflow with a malformed embedded subgraph no longer fails to open (500) once the organisation has a policy.
+- Reviewers can resume runs but can no longer add debug pins, mocks or dry runs to them.
+- An organisation can no longer be left without an admin who has signed in, including through concurrent role changes.
+- The web app renews an expired sign-in in the background, has Sign out and "Sign in with a different account", and hides actions your role cannot take.
+
 ## v0.1.0 — MVP (2026-10-05)
 
 The first usable release. You can build an agentic workflow on a canvas, run and debug it, test it, export it as plain Python and publish it behind an API.

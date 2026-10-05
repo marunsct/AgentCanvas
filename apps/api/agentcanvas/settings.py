@@ -21,6 +21,22 @@ class Settings(BaseSettings):
     auto_migrate: bool = True  # run Alembic `upgrade head` at startup
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
     secret_key: str = "dev-only-change-me"
+    # Authentication (M7-T1). dev = every request is the seeded development admin (refused in staging/prod);
+    # oidc = bearer JWTs from the identity provider, checked against its JWKS.
+    auth_mode: Literal["dev", "oidc"] = "dev"
+    oidc_issuer: str | None = None  # e.g. https://login.example.com/realms/acme (the token's `iss`)
+    oidc_audience: str | None = None  # the token's `aud` the API accepts
+    oidc_client_id: str | None = None  # public SPA client id, handed to the web app by /v1/auth/config
+    oidc_jwks_url: str | None = None  # None = from the issuer's discovery document
+    oidc_scopes: str = "openid profile email"
+    oidc_email_claim: str = "email"
+    # treat the email claim as verified when the provider sends no `email_verified` (e.g. a corporate IdP that
+    # owns the domain); leave off for providers where users choose their own email
+    oidc_trust_email: bool = False
+    oidc_jwks_cache_s: int = 3600
+    oidc_leeway_s: int = 30  # clock skew tolerated on exp/nbf/iat
+    # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
+    bootstrap_admin_emails: list[str] = []
     allow_local_mcp: bool = False
     workspaces_dir: str = "./workspaces"  # one git repository per project (M5-T1)
     # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith

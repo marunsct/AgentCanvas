@@ -183,3 +183,24 @@ async def test_sandboxed_handler(app, api_client):
     assert res["status"] == "handled", res
     await finished(app, res["handlers"][0]["runs"])
     assert (await api_client.get("/v1/threads/lead-S1")).json()["values"]["out"] == "Hello Sandboxed"
+
+
+async def test_resume_only_reaches_threads_of_the_handlers_project(app, api_client):
+    """A handler's `act.resume` naming a missing thread, or another project's, fails instead of resuming it."""
+    await setup(api_client)
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    ask = {"id": "n_a", "type": "core.approval", "name": "sign", "config": {"show": "out", "output": "ok"}}
+    ir = linear("Theirs", [ask], ["out", "ok"])
+    wf = (await api_client.post(f"/v1/projects/{other}/workflows", json={"name": "Theirs"})).json()
+    r = await api_client.put(
+        f"/v1/workflows/{wf['id']}", json={"ir": {**ir, "id": wf["id"]}}, headers={"If-Match": "1"}
+    )
+    assert r.status_code == 200, r.text
+    await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"thread_id": "th_theirs"})
+    for thread in ("th_theirs", "th_nowhere"):
+        res = (
+            await api_client.post(f"{P}/events", json={"type": "contract.signed", "data": {"thread_id": thread}})
+        ).json()
+        assert res["status"] == "error", res
+        assert "not found" in res["handlers"][0]["error"]
+    assert (await api_client.get("/v1/threads/th_theirs")).json()["values"].get("ok") is None

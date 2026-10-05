@@ -111,15 +111,17 @@ def test_memory_rules():
 @pytest.mark.asyncio
 async def test_memory_inspector_api(app, api_client):
     store = app.state.runner.adapter.store
-    await store.aput(("prefs", "user", "usr_dev"), "about:drinks", {"value": "likes green tea"})
-    await store.aput(("prefs", "user", "usr_dev"), "about:music", {"value": "jazz"})
-    await store.aput(("prefs", "user", "usr_other"), "about:drinks", {"value": "coffee"})
+    org = "org:org_default"  # runs keep each organisation's memories under its own root
+    await store.aput((org, "prefs", "user", "usr_dev"), "about:drinks", {"value": "likes green tea"})
+    await store.aput((org, "prefs", "user", "usr_dev"), "about:music", {"value": "jazz"})
+    await store.aput((org, "prefs", "user", "usr_other"), "about:drinks", {"value": "coffee"})
 
     spaces = (await api_client.get("/v1/memory/namespaces", params={"prefix": "prefs"})).json()
     assert [s["namespace"] for s in spaces] == ["prefs/user/usr_dev", "prefs/user/usr_other"]
     ns = "prefs/user/usr_dev"
     found = (await api_client.get("/v1/memory/items", params={"namespace": ns, "q": "tea"})).json()
     assert [i["key"] for i in found] == ["about:drinks"]
+    assert found[0]["namespace"] == ["prefs", "user", "usr_dev"]  # shown without the organisation root
     r = await api_client.delete("/v1/memory/items", params={"namespace": ns, "key": "about:drinks"})
     assert r.status_code == 204
     left = (await api_client.get("/v1/memory/items", params={"namespace": ns})).json()
@@ -128,3 +130,39 @@ async def test_memory_inspector_api(app, api_client):
     assert erased == {"deleted": 1}
     assert (await api_client.get("/v1/memory/items", params={"namespace": "prefs/user/usr_other"})).json() == []
     assert (await api_client.get("/v1/memory/items", params={"namespace": ""})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_memory_inspector_stays_inside_the_organisation(app, api_client):
+    from agentcanvas.api.deps import CurrentUser, current_user
+
+    store = app.state.runner.adapter.store
+    await store.aput(("org:org_default", "prefs", "user", "usr_dev"), "k", {"value": "mine"})
+    await store.aput(("org:org_b", "prefs", "user", "usr_b"), "k", {"value": "theirs"})
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_b", org_id="org_b", role="admin")
+    try:
+        spaces = (await api_client.get("/v1/memory/namespaces")).json()
+        assert [s["namespace"] for s in spaces] == ["prefs/user/usr_b"]
+        assert (await api_client.get("/v1/memory/items", params={"namespace": "prefs/user/usr_dev"})).json() == []
+        erased = await api_client.delete("/v1/memory/namespaces", params={"namespace": "prefs"})
+        assert erased.json() == {"deleted": 1}
+    finally:
+        app.dependency_overrides.pop(current_user)
+    assert (await store.aget(("org:org_default", "prefs", "user", "usr_dev"), "k")).value == {"value": "mine"}
+
+
+@pytest.mark.asyncio
+async def test_memories_from_before_organisations_move_to_the_default_one(app):
+    adapter = app.state.runner.adapter
+    await adapter.store.adelete(*adapter.ADOPTED)  # startup already adopted the (empty) store: start over
+    await adapter.store.aput(("prefs", "user", "usr_dev"), "old", {"value": "from v0.1"})
+    await adapter.store.aput(("prefs", "user", "usr_dev", "deeper"), "older", {"value": "nested"})
+    assert await adapter.memory_adopt("org_default") == 2
+    assert (await adapter.store.aget(("org:org_default", "prefs", "user", "usr_dev"), "old")).value == {
+        "value": "from v0.1"
+    }
+    assert await adapter.store.aget(("prefs", "user", "usr_dev"), "old") is None
+    # it runs once: namespaces written later without an organisation root are not misfiled on the next start
+    await adapter.store.aput(("exported",), "k", {"value": "an exported app sharing the store"})
+    assert await adapter.memory_adopt("org_default") == 0
+    assert await adapter.store.aget(("exported",), "k") is not None

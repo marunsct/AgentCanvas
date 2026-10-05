@@ -164,6 +164,32 @@ class LangChainAdapter:
             deleted += len(items)
         return deleted
 
+    ADOPTED = (("org:_system", "migrations"), "memory_adopt")
+
+    async def memory_adopt(self, org_id: str) -> int:
+        """Before Sprint 10 the store had no organisation root and every install had one organisation: its
+        memories move under that organisation. Runs once per store (a marker records it), so namespaces
+        written later without a root, e.g. by an exported app sharing the database, are never misfiled."""
+        if await self.store.aget(*self.ADOPTED):
+            return 0
+        root = ac.org_prefix(org_id)
+        unrooted, offset = [], 0
+        while page := await self.store.alist_namespaces(limit=1000, offset=offset):
+            unrooted += [ns for ns in page if not (ns and str(ns[0]).startswith("org:"))]
+            offset += len(page)
+        moved = 0
+        for ns in unrooted:
+            items, offset = [], 0
+            while batch := await self.store.asearch(ns, limit=500, offset=offset):  # matches deeper namespaces too
+                items += [i for i in batch if tuple(i.namespace) == tuple(ns)]
+                offset += len(batch)
+            for i in items:
+                await self.store.aput((*root, *i.namespace), i.key, i.value)
+                await self.store.adelete(i.namespace, i.key)
+            moved += len(items)
+        await self.store.aput(*self.ADOPTED, {"org_id": org_id, "items": moved})
+        return moved
+
     def generate(self, wf: Workflow, registry: Any = None) -> str:
         return generate(wf, registry=registry)
 
@@ -194,6 +220,8 @@ class LangChainAdapter:
             graph = await self.graph(wf, resources)
         names, nested = node_index(wf), nested_index(wf)
         cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id, spec.labels)
+        if spec.org_id:  # memory nodes, memory tools and Deep Agent folders prefix their namespaces with it
+            cfg.setdefault("configurable", {})[ac.ORG_KEY] = spec.org_id
         if spec.resume is not None:
             value = {spec.resume.interrupt_id: spec.resume.value} if spec.resume.interrupt_id else spec.resume.value
             graph_input: Any = Command(resume=value)

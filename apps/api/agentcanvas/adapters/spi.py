@@ -73,6 +73,10 @@ class FrameworkAdapter(Protocol):
 
     async def memory_erase(self, prefix: tuple[str, ...]) -> int: ...
 
+    async def memory_adopt(self, org_id: str) -> int:
+        """Move memories written before organisations existed under `org_id`'s root; returns how many moved."""
+        ...
+
     # ---- tools
     async def inspect_mcp(self, name: str, config: dict[str, Any], resources: Any) -> list[dict[str, Any]]:
         """Tools of an MCP server: name, description, destructive/read_only annotations."""

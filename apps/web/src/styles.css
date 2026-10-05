@@ -334,3 +334,7 @@ td.status-handled { color: var(--ok); }
 /* visual groups (layout frames) */
 .frame { position: absolute; left: 0; top: 0; border: 2px dashed; border-radius: 10px; pointer-events: none; z-index: -1; }
 .frame-label { position: absolute; left: 10px; top: 2px; font-size: 12px; font-weight: 600; pointer-events: auto; display: flex; gap: 6px; align-items: center; }
+
+/* Policies (FR-X-19) */
+.policy-form { display: flex; flex-direction: column; gap: 6px; max-width: 760px; margin-bottom: 12px; }
+.policy-form > input { width: 100%; font-family: var(--mono, monospace); }

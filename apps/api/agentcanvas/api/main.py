@@ -15,13 +15,15 @@ from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from agentcanvas.adapters import get_adapter
+from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
-from agentcanvas.db.repositories import seed_dev
+from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime.runner import Runner
+from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
@@ -35,6 +37,7 @@ log = get_logger(__name__)
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
+    check_auth_settings(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -44,9 +47,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.seed_dev_data:
             async with db.sessionmaker() as s:
                 await seed_dev(s)
+        if settings.auth_mode == "oidc":
+            async with db.sessionmaker() as s:
+                await retire_dev_user(s)
         app.state.db = db
         adapter = get_adapter("langchain")
         async with adapter.persistence(settings.persistence_url or settings.database_url):
+            if moved := await adapter.memory_adopt(DEV_ORG):  # memories from before organisations (M7-T2)
+                log.info("memory.adopted", org_id=DEV_ORG, items=moved)
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
             async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
@@ -59,7 +67,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.cron = CronScheduler(db, runner, settings.secret_key)
             if settings.env != "test":  # tests drive the scheduler with explicit ticks
                 app.state.cron.start()
-            log.info("api.started", env=settings.env, edition=settings.edition, database=db.engine.dialect.name)
+            log.info(
+                "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
+                database=db.engine.dialect.name,
+            )  # fmt: skip
             try:
                 yield
             finally:
@@ -86,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bind_contextvars(request_id=request_id)
         start = time.perf_counter()
         response = await call_next(request)
+        await audit_record(request, response)
         response.headers["x-request-id"] = request_id
         log.debug(
             "http.request",
