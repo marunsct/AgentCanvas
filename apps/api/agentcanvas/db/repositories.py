@@ -15,6 +15,7 @@ from agentcanvas.db.models import (
     InterruptTask,
     Membership,
     Organization,
+    OrgPolicy,
     Project,
     Run,
     Thread,
@@ -274,6 +275,53 @@ class ProjectRepo:
         if p is None:
             raise NotFound(f"project '{project_id}' not found")
         return p
+
+
+class PolicyRepo:
+    """An organisation's workflow policies (FR-X-19)."""
+
+    FIELDS = ("name", "description", "scope", "match", "require", "severity", "environments", "enabled")
+
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def list(self, org_id: str) -> list[OrgPolicy]:
+        q = select(OrgPolicy).where(OrgPolicy.org_id == org_id).order_by(OrgPolicy.name)
+        return list((await self.s.scalars(q)).all())
+
+    async def of_project(self, project_id: str) -> list[OrgPolicy]:
+        """The policies that govern a project's workflows: its organisation's."""
+        q = select(OrgPolicy).join(Project, Project.org_id == OrgPolicy.org_id).where(Project.id == project_id)
+        return list((await self.s.scalars(q.order_by(OrgPolicy.name))).all())
+
+    async def require(self, org_id: str, policy_id: str) -> OrgPolicy:
+        p = await self.s.get(OrgPolicy, policy_id)
+        if p is None or p.org_id != org_id:
+            raise NotFound(f"policy '{policy_id}' not found")
+        return p
+
+    async def save(
+        self, org_id: str, data: dict[str, Any], policy_id: str | None = None, created_by: str | None = None
+    ) -> OrgPolicy:
+        """Create a policy, or replace `policy_id`'s fields (409 when another policy has the name)."""
+        if policy_id is None:
+            p = OrgPolicy(id=new_id("pol"), org_id=org_id, created_by=created_by)
+            self.s.add(p)
+        else:
+            p = await self.require(org_id, policy_id)
+        for k in self.FIELDS:
+            setattr(p, k, data[k])
+        try:
+            await self.s.commit()
+        except IntegrityError:
+            await self.s.rollback()
+            raise Conflict(f"a policy named '{data['name']}' already exists") from None
+        await self.s.refresh(p)
+        return p
+
+    async def delete(self, org_id: str, policy_id: str) -> None:
+        await self.s.delete(await self.require(org_id, policy_id))
+        await self.s.commit()
 
 
 class WorkflowRepo:

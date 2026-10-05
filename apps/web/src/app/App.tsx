@@ -11,6 +11,7 @@ const EventsPage = lazy(() => import("../events/EventsPage").then((m) => ({ defa
 const InboxPage = lazy(() => import("../inbox/InboxPage").then((m) => ({ default: m.InboxPage })));
 const MemoryPage = lazy(() => import("../memory/MemoryPage").then((m) => ({ default: m.MemoryPage })));
 const AuditPage = lazy(() => import("./AuditPage").then((m) => ({ default: m.AuditPage })));
+const PoliciesPage = lazy(() => import("./PoliciesPage").then((m) => ({ default: m.PoliciesPage })));
 const MembersPage = lazy(() => import("./MembersPage").then((m) => ({ default: m.MembersPage })));
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 
@@ -37,6 +38,7 @@ export function App() {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/policies" element={<PoliciesPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>

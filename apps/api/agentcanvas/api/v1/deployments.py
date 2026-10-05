@@ -30,6 +30,7 @@ from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
+from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 router = APIRouter(tags=["deployments"])
 public_router = APIRouter(tags=["deployments"])  # deployment API keys, not user sign-in
@@ -78,10 +79,14 @@ async def publish(
     svc: WorkflowService = Depends(service),
     user: CurrentUser = Depends(current_user),
 ) -> PublishOut:
-    """Pre-publish checklist (validation, test cases, secrets), then pin the draft as a version behind a key."""
+    """Pre-publish checklist (validation, policies, secrets, test cases), then pin the draft as a version behind a
+    key."""
     view = await svc.get(wf_id)
     wf, project_id = view.workflow, view.row.project_id
-    errors = [f"{d.code} {d.message}" for d in view.diagnostics if d.severity == "error"]
+    # the organisation's policies as they apply to this environment (FR-X-19) are their own checklist item
+    diagnostics = await svc._validate(wf, project_id, environment=body.environment)
+    errors = [f"{d.code} {d.message}" for d in diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
+    broken = [f"{d.code} {d.message}" for d in diagnostics if d.severity == "error" and d.code in POLICY_CODES]
     projects = request.app.state.projects
     tests = TestCaseService(session)
 
@@ -90,7 +95,7 @@ async def publish(
         return await tests.run(request.app.state.runner, wf, cases, lambda g: _context(wf, g, user), user_id=user.id)
 
     deps = DeploymentService(session)
-    checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests)
+    checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
     failed = [c for c in checks if not c.ok]
     if failed:

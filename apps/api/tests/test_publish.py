@@ -47,7 +47,7 @@ async def test_publish_pins_the_version_and_keys_rotate(api_client):
         json={"name": "hello", "input": {"who": "Ada"}, "expect": {"channels": {"out": "Hello Ada"}}},
     )
     pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
-    assert [c["name"] for c in pub["checklist"]] == ["validation", "secrets", "tests", "contract"]
+    assert [c["name"] for c in pub["checklist"]] == ["validation", "policies", "secrets", "tests", "contract"]
     assert all(c["ok"] for c in pub["checklist"]) and pub["deployment"]["semver"] == "1.0.0"
     dep, key = pub["deployment"]["id"], pub["api_key"]
     assert key.startswith("ac_") and pub["deployment"]["key_prefix"] == key[:10]

@@ -223,7 +223,7 @@ async def run_test_cases(
     view = await svc.get(wf_id)  # also registers the workflow's project for workspace code
     wf = view.workflow if body.version is None else await VersionService(session).workflow_at(wf_id, body.version)
     PROJECT_OF[wf.id] = view.row.project_id
-    diagnostics = svc._validate(wf, view.row.project_id)
+    diagnostics = await svc._validate(wf, view.row.project_id)
     errors = [d.model_dump() for d in diagnostics if d.severity == "error"]
     if errors:
         raise WorkflowHasErrors(f"workflow has {len(errors)} error(s); fix them before running tests", errors=errors)

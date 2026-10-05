@@ -4,7 +4,7 @@ Live status of the project. Update it with every commit that finishes or changes
 
 - **Branch:** `claude/project-thread-sj4pqp` for S10, in [#3](https://github.com/marunsct/AgentCanvas/pull/3). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1) and S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** Sprint 10, accounts and access (M7-T1…T4) done; FR-X-19 next.
+- **Last updated:** Sprint 10, accounts and access (M7-T1…T4) and policy-as-code lint profiles (FR-X-19) done; review and merge of #3 next.
 
 ## At a glance
 
@@ -22,7 +22,7 @@ Live status of the project. Update it with every commit that finishes or changes
 | S7 Workspaces & events | ✅ done |
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
-| **S10 Accounts & access → v0.2.0** | 🚧 **in progress** (M7-T1…T4 done; FR-X-19 next) |
+| **S10 Accounts & access → v0.2.0** | 🚧 **in progress** (M7-T1…T4 and FR-X-19 done; #3 in review) |
 | S11 Production readiness → v0.3.0 | ⬜ pending |
 | S12+ GA backlog | ⬜ pending |
 
@@ -30,9 +30,9 @@ Live status of the project. Update it with every commit that finishes or changes
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 225 passed, 1 skipped, 1 known upstream canary (xfail) |
+| API (pytest) | 241 passed, 1 skipped, 1 known upstream canary (xfail) |
 | Web unit tests (vitest) | 50 passed |
-| Browser journeys (Playwright) | 29 passed |
+| Browser journeys (Playwright) | 31 passed |
 
 `make check` runs every CI gate except the browser journeys: lint, format, types, the import contract, schema/type drift, tests and the build.
 
@@ -113,6 +113,7 @@ Live status of the project. Update it with every commit that finishes or changes
 - **Organisations (M7-T2):** every id a request names must belong to the caller's organisation (404 otherwise); `X-Org-Id` picks among several; `POST /v1/projects`.
 - **Roles (M7-T3):** viewer, reviewer, builder, admin; member invitations by email (`/v1/org/members`) and a Members page; the editor is view-only below builder.
 - **Audit log (M7-T4):** every successful change with actor, target and IP; approvals carry the payload's SHA-256; `GET /v1/org/audit` and an Audit log page.
+- **Policies (FR-X-19):** organisation rules as CEL predicates over steps, resources or the whole workflow (`/v1/org/policies`, Policies page). The validator reports breaches (`E095`/`W095`, `E096` when a rule cannot be evaluated, which fails closed); publishing checks the rules for its environment in a "policies" checklist item. Rules inside subgraphs are not checked yet.
 
 ## What is pending
 
@@ -122,7 +123,7 @@ Live status of the project. Update it with every commit that finishes or changes
 
 ### S10 — accounts & access → v0.2.0 (in progress)
 - [x] OIDC login, organisations and projects, roles, audit log (M7-T1…T4), in #3.
-- [ ] FR-X-19 policy-as-code lint profiles.
+- [x] FR-X-19 policy-as-code lint profiles, in #3.
 - [ ] Memory inspector across organisations: the long-term memory store is shared, so an admin can list another organisation's memory namespaces. Namespaces need an organisation prefix.
 - [ ] Tag `v0.2.0` after #3 merges.
 

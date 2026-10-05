@@ -2660,6 +2660,157 @@
         "title": "NodePolicies",
         "type": "object"
       },
+      "PolicyIn": {
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "shown with every violation",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environments": {
+            "description": "enforce only when publishing to these (empty: always, also in the editor)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "match": {
+            "default": "true",
+            "description": "CEL: which elements the policy is about",
+            "maxLength": 2000,
+            "title": "Match",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "require": {
+            "description": "CEL: what must hold for each of them",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Require",
+            "type": "string"
+          },
+          "scope": {
+            "default": "node",
+            "description": "what each check is about: every step, every resource, or the workflow once",
+            "enum": [
+              "node",
+              "resource",
+              "workflow"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "severity": {
+            "default": "error",
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "require"
+        ],
+        "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "shown with every violation",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environments": {
+            "description": "enforce only when publishing to these (empty: always, also in the editor)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "match": {
+            "default": "true",
+            "description": "CEL: which elements the policy is about",
+            "maxLength": 2000,
+            "title": "Match",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "require": {
+            "description": "CEL: what must hold for each of them",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Require",
+            "type": "string"
+          },
+          "scope": {
+            "default": "node",
+            "description": "what each check is about: every step, every resource, or the workflow once",
+            "enum": [
+              "node",
+              "resource",
+              "workflow"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "severity": {
+            "default": "error",
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "require",
+          "id",
+          "created_at"
+        ],
+        "title": "PolicyOut",
+        "type": "object"
+      },
       "PortSpec": {
         "additionalProperties": false,
         "properties": {
@@ -6095,6 +6246,262 @@
         ]
       }
     },
+    "/v1/org/policies": {
+      "get": {
+        "description": "The organisation's workflow policies, checked by the validator and when publishing.",
+        "operationId": "list_policies_v1_org_policies_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: your first)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: your first)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolicyOut"
+                  },
+                  "title": "Response List Policies V1 Org Policies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Policies",
+        "tags": [
+          "organisation"
+        ]
+      },
+      "post": {
+        "operationId": "create_policy_v1_org_policies_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: your first)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: your first)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Policy",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/policies/{policy_id}": {
+      "delete": {
+        "operationId": "delete_policy_v1_org_policies__policy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: your first)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: your first)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Policy",
+        "tags": [
+          "organisation"
+        ]
+      },
+      "put": {
+        "operationId": "replace_policy_v1_org_policies__policy_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: your first)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: your first)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replace Policy",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
     "/v1/projects": {
       "get": {
         "operationId": "list_projects_v1_projects_get",
@@ -9354,7 +9761,7 @@
     },
     "/v1/workflows/{wf_id}/publish": {
       "post": {
-        "description": "Pre-publish checklist (validation, test cases, secrets), then pin the draft as a version behind a key.",
+        "description": "Pre-publish checklist (validation, policies, secrets, test cases), then pin the draft as a version behind a\nkey.",
         "operationId": "publish_v1_workflows__wf_id__publish_post",
         "parameters": [
           {

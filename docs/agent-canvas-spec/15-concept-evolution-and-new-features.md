@@ -146,9 +146,12 @@ Priorities follow the spec convention (P0 MVP, P1 GA, P2 later). "Sprint" refers
 | `E074` | error | Channel storage mode changed (delta ↔ full) or delta channel removed while the previous version has live threads |
 | `E081` | error | Event handler filter/mapping references a field missing from the event schema |
 | `E090` | error | Budget below the static minimum for one successful path |
+| `E095` | error | An element breaks an organisation policy (FR-X-19) |
+| `E096` | error | An organisation policy cannot be evaluated on an element (fails closed) |
 | `W074` | warning | Sandbox without an egress allow-list |
 | `W080` | warning | Side-effecting node (`external_write`/`message_send`/`spend`) reachable without an approval or dry-run stub |
 | `W081` | warning | Breaking change to the external contract without a major version bump |
+| `W095` | warning | An element breaks a warning-level policy, or a policy enforced only when publishing to another environment |
 | `I010` | info | Workflow uses an upstream beta/experimental API (listed) |
 
 ## 8. What we deliberately do *not* do

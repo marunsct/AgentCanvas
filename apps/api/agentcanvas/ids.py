@@ -23,6 +23,7 @@ PREFIXES = {
     "evt",
     "dd",
     "tc",
+    "pol",
 }
 
 
