@@ -10,7 +10,7 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)** |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) in review |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 
 ## Repository layout
@@ -53,7 +53,21 @@ scripts and custom widgets) → run and debug (breakpoints, time travel, Explain
 blast radius and dry runs) → test (saved test cases, record/replay) → ship (versions & diffs, export as a plain
 Python project, publish behind an API key, webhooks and cron). Details in the [changelog](CHANGELOG.md).
 
+## Coming in v0.2.0 (accounts & access)
+
+Sign in with your identity provider (OIDC, `AGENTCANVAS_AUTH_MODE=oidc`), organisations that cannot see each
+other's work, roles (viewer, reviewer, builder, admin) with email invitations, an audit log of every change, and
+organisation **policies** written as CEL ("every external write needs approval", "only approved models in prod")
+that the editor reports and publishing enforces. Long-term memory is kept per organisation. See the
+[Unreleased section of the changelog](CHANGELOG.md#unreleased-v020).
+
 ## Status
 
 The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for what is done and pending, and the
 [execution log](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#5-execution-log) for per-sprint detail.
+
+| Sprint | State |
+|---|---|
+| S0–S9: foundations to MVP (v0.1.0) | ✅ merged |
+| S10: accounts & access (v0.2.0) | ✅ done, in review ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
+| S11: production readiness (v0.3.0) | 📋 planned: containers, compose prod and Helm, observability, backups and retention, safe redeploy, load test, security review ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s11--production-readiness--v030)) |
