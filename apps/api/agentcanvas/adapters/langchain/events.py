@@ -87,7 +87,10 @@ def translate(
             parent = ns[0].split(":")[0] if ns else meta.get("langgraph_node")
             yield {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": names.get(parent), "delta": text}
     elif kind == "custom":
-        yield {"type": "CUSTOM", "name": "ac.custom", "value": jsonable(data)}
+        if isinstance(data, dict) and "ac_dry_run" in data:  # a stubbed tool recorded a call (FR-X-02)
+            yield {"type": "CUSTOM", "name": "ac.dry_run", "value": jsonable(data["ac_dry_run"])}
+        else:
+            yield {"type": "CUSTOM", "name": "ac.custom", "value": jsonable(data)}
 
 
 class UsageTracker(BaseCallbackHandler):

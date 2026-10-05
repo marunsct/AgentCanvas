@@ -140,6 +140,7 @@ class Runner:
         context_from: str | None = None,
         pins: dict[str, dict[str, Any]] | None = None,
         mocks: dict[str, list[Any]] | None = None,
+        dry_run: bool = False,
         origin: str = "user",
         deployment_id: str | None = None,
         version_id: str | None = None,
@@ -202,6 +203,7 @@ class Runner:
             durability=durability,
             checkpoint_id=checkpoint_id,
             pins=pins or {},
+            dry_run=dry_run,
             mocks=mocks or {},
             labels={
                 k: v

@@ -31,6 +31,7 @@ export function EditorPage() {
   const nodeTypes = useNodeTypes();
   const dock = useUi((s) => s.dock);
   const setDock = useUi((s) => s.setDock);
+  const blast = useUi((s) => s.blast);
   const inbox = useInbox();
   const pendingDecisions = inbox.data?.length ?? 0;
 
@@ -82,6 +83,8 @@ export function EditorPage() {
         </Link>
         <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
         <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
+        <button type="button" className={blast ? "active" : ""} aria-pressed={blast} onClick={() => useUi.getState().toggleBlast()}
+          title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
         <button type="button" onClick={() => void useEditor.getState().group?.()}
           title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
         <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>

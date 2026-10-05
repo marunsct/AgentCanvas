@@ -182,6 +182,33 @@
         "title": "ApiRunIn",
         "type": "object"
       },
+      "BlastRadius": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeBlast"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Summary",
+            "type": "object"
+          },
+          "ungated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ungated",
+            "type": "array"
+          }
+        },
+        "title": "BlastRadius",
+        "type": "object"
+      },
       "Breakpoints": {
         "properties": {
           "after": {
@@ -219,6 +246,29 @@
           }
         },
         "title": "CachePolicySpec",
+        "type": "object"
+      },
+      "Capability": {
+        "properties": {
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "gated": {
+            "title": "Gated",
+            "type": "boolean"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effect",
+          "source",
+          "gated"
+        ],
+        "title": "Capability",
         "type": "object"
       },
       "CaseResult": {
@@ -875,6 +925,11 @@
       "DebugOptions": {
         "description": "Debug-run aids (M4-T9); never part of the workflow or its exported code.",
         "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
           "mocks": {
             "anyOf": [
               {
@@ -2036,6 +2091,31 @@
         "title": "Node",
         "type": "object"
       },
+      "NodeBlast": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "name"
+        ],
+        "title": "NodeBlast",
+        "type": "object"
+      },
       "NodeManifest": {
         "additionalProperties": false,
         "properties": {
@@ -2658,6 +2738,11 @@
       },
       "ResumeRequest": {
         "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
           "interrupt_id": {
             "anyOf": [
               {
@@ -2855,6 +2940,11 @@
             "additionalProperties": true,
             "title": "Context",
             "type": "object"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
           },
           "durability": {
             "anyOf": [
@@ -6793,6 +6883,49 @@
           }
         },
         "summary": "Replace Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/blast-radius": {
+      "get": {
+        "description": "What each step can do to the outside world and whether a human gates it (FR-X-02).",
+        "operationId": "get_blast_radius_v1_workflows__wf_id__blast_radius_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlastRadius"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Blast Radius",
         "tags": [
           "workflows"
         ]

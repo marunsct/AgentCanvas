@@ -1,6 +1,7 @@
 /** Run actions used by the run panel, timeline, explain view and inbox. Events stream into the run store. */
 import { apiFetch, ApiError } from "../api/client";
 import { useEditor } from "../editor/store";
+import { useUi } from "../editor/ui";
 import type { RunEvent } from "./events";
 import { useRun } from "./runStore";
 import { postStream } from "./sse";
@@ -38,13 +39,13 @@ async function stream(path: string, body: unknown): Promise<void> {
 }
 
 /** Pinned outputs and mock models of this viewer (sent with every debug run, M4-T9). */
-export function debugAids(): { pins?: Record<string, unknown>; mocks?: Record<string, unknown[]> } {
+export function debugAids(): { pins?: Record<string, unknown>; mocks?: Record<string, unknown[]>; dry_run?: boolean } {
   const { wf, pins, mocks } = useEditor.getState();
   const known = new Set(wf?.nodes.map((n) => n.id));
   const models = new Set(wf?.resources.filter((r) => r.type === "model.chat").map((r) => r.name));
   const p = Object.fromEntries(Object.entries(pins).filter(([id]) => known.has(id)));
   const m = Object.fromEntries(Object.entries(mocks).filter(([name]) => models.has(name)));
-  return { ...(Object.keys(p).length ? { pins: p } : {}), ...(Object.keys(m).length ? { mocks: m } : {}) };
+  return { ...(Object.keys(p).length ? { pins: p } : {}), ...(Object.keys(m).length ? { mocks: m } : {}) , ...(useUi.getState().dryRun ? { dry_run: true } : {}) };
 }
 
 export async function startRun(input: Record<string, unknown>, opts: { continueThread?: boolean } = {}) {

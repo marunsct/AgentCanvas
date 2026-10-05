@@ -99,3 +99,14 @@ test("add a webhook and a cron trigger", async ({ page }) => {
   await page.getByTestId("trigger-cron").getByRole("button", { name: "Disable" }).click();
   await expect(page.getByTestId("trigger-cron")).toContainText("off");
 });
+
+test("blast radius overlay and dry-run toggle", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Blast ${Date.now()}`, template: "ticket_triage" } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("button", { name: "Blast radius" }).click();
+  await expect(page.getByTestId("blast-classify")).toHaveText("$"); // model calls spend money
+  await page.getByRole("tab", { name: "Run" }).click();
+  await page.getByLabel("dry run").check();
+  await expect(page.getByTestId("debug-badge")).toContainText("dry run");
+});

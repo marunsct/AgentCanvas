@@ -10,9 +10,23 @@ const ICONS: Record<string, string> = {
 };
 const STATUS_LABEL: Record<string, string> = { running: "running", ok: "done", error: "error", interrupted: "waiting" };
 
+export const EFFECT_ICONS: Record<string, [string, string]> = {
+  external_write: ["✎", "writes to external systems"],
+  message_send: ["✉", "sends messages"],
+  code_exec: ["⚙", "executes code"],
+  spend: ["$", "spends money (model calls)"],
+  pii_read: ["👁", "reads personal data"],
+};
+
 function Badges({ data }: { data: CanvasData }) {
   return (
     <span className="badges">
+      {data.blast && (
+        <span className={`badge blast${data.blast.ungated ? " err" : ""}`} data-testid={`blast-${data.name}`}
+          title={`${data.blast.effects.map((e) => EFFECT_ICONS[e]?.[1] ?? e).join(", ")}${data.blast.ungated ? " — no human approval before it" : ""}`}>
+          {data.blast.effects.map((e) => EFFECT_ICONS[e]?.[0] ?? "•").join("")}
+        </span>
+      )}
       {data.status !== "idle" && <span className={`badge status-${data.status}`}>{STATUS_LABEL[data.status]}</span>}
       {data.errors > 0 && <span className="badge err" title={`${data.errors} error(s)`}>⛔ {data.errors}</span>}
       {data.warnings > 0 && <span className="badge warn" title={`${data.warnings} warning(s)`}>⚠ {data.warnings}</span>}
@@ -44,7 +58,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
   const rows = Math.max(wiring.length, outs.length, 1);
   return (
     <div
-      className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}${data.highlight ? " highlight" : ""}${data.diff ? ` diff-${data.diff}` : ""}`}
+      className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}${data.highlight ? " highlight" : ""}${data.diff ? ` diff-${data.diff}` : ""}${data.blast?.ungated ? " blast-ungated" : ""}`}
       style={{ borderTopColor: m?.color ?? "#64748b", minHeight: HEAD + rows * ROW + 8 + (data.preview ? 34 : 0) }}
       data-testid={`node-${data.name}`}
     >

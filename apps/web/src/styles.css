@@ -311,3 +311,6 @@ td.status-handled { color: var(--ok); }
 .diff-box { border: 1px dashed #d97706; border-radius: 6px; padding: 6px 8px; margin: 8px 0; }
 .checklist { list-style: none; padding: 0; }
 .key-box { border: 1px solid #16a34a; border-radius: 6px; padding: 6px 8px; margin: 8px 0; overflow-wrap: anywhere; }
+.widget.blast-ungated { box-shadow: 0 0 0 3px #dc2626; }
+.badge.blast { background: #fef3c7; color: #92400e; letter-spacing: 1px; }
+.badge.blast.err { background: #fee2e2; color: #991b1b; }

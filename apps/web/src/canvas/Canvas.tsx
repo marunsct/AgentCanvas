@@ -6,6 +6,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ulid } from "ulid";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "../api/client";
+import type { BlastRadius } from "../api/generated";
 import { useManifests } from "../api/queries";
 import type { NodeManifest } from "../api/types";
 import type { Command } from "../ir/commands";
@@ -36,6 +39,19 @@ export function Canvas() {
   const breakpoints = useEditor((s) => s.breakpoints);
   const pins = useEditor((s) => s.pins);
   const diff = useUi((s) => s.diff);
+  const showBlast = useUi((s) => s.blast);
+  const irHash = useEditor((s) => s.irHash);
+  const blastQuery = useQuery({
+    queryKey: ["blast", wf?.id, irHash], enabled: Boolean(wf && showBlast),
+    queryFn: () => apiFetch<BlastRadius>(`/workflows/${wf!.id}/blast-radius`),
+  });
+  const blast = useMemo(() => {
+    if (!showBlast || !blastQuery.data) return null;
+    const ungated = new Set(blastQuery.data.ungated ?? []);
+    return Object.fromEntries((blastQuery.data.nodes ?? []).map((n) => [
+      n.node_id, { effects: [...new Set((n.capabilities ?? []).map((c) => c.effect))], ungated: ungated.has(n.node_id) },
+    ]));
+  }, [showBlast, blastQuery.data]);
   const manifests = useManifests();
   const rf = useReactFlow();
 
@@ -49,9 +65,9 @@ export function Canvas() {
   const derived = useMemo(
     () => (view
       ? irToFlow(view, readOnly ? {} : layout, manifests, readOnly ? [] : diagnostics, status, readOnly ? null : selected,
-        { highlight, breakpoints, output, metrics, pins, diff: readOnly ? null : diff })
+        { highlight, breakpoints, output, metrics, pins, diff: readOnly ? null : diff, blast: readOnly ? null : blast })
       : { nodes: [], edges: [] }),
-    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff],
+    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff, blast],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);
