@@ -6,6 +6,7 @@ import { useEditor } from "../editor/store";
 import { DecisionCard } from "../inbox/DecisionCard";
 import type { WF } from "../ir/model";
 import { formatMetrics, useRun } from "./runStore";
+import { useUi } from "../editor/ui";
 import { testCaseFromRun } from "../release/testcases";
 import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
 
@@ -40,6 +41,7 @@ export function RunPanel() {
   const breakpoints = useEditor((s) => s.breakpoints.length);
   const pinned = useEditor((s) => Object.keys(s.pins).length);
   const mocked = useEditor((s) => Object.keys(s.mocks).length);
+  const dryRun = useUi((s) => s.dryRun);
   const run = useRun();
   const [chatOverride, setChatOverride] = useState<boolean | null>(null);
   if (!wf) return null;
@@ -50,9 +52,9 @@ export function RunPanel() {
     <div className="panel-body run-panel">
       <h3>
         Test run{" "}
-        {(breakpoints > 0 || pinned > 0 || mocked > 0) && (
+        {(breakpoints > 0 || pinned > 0 || mocked > 0 || dryRun) && (
           <small className="badge warn" data-testid="debug-badge">
-            debug{breakpoints > 0 && ` · ${breakpoints} breakpoint(s)`}{pinned > 0 && ` · ${pinned} pinned`}{mocked > 0 && ` · ${mocked} mocked`}
+            debug{breakpoints > 0 && ` · ${breakpoints} breakpoint(s)`}{pinned > 0 && ` · ${pinned} pinned`}{mocked > 0 && ` · ${mocked} mocked`}{dryRun && " · dry run"}
           </small>
         )}
       </h3>
@@ -60,6 +62,10 @@ export function RunPanel() {
         <button type="button" role="radio" aria-checked={!chat} className={!chat ? "active" : ""} onClick={() => setChatOverride(false)}>JSON</button>
         <button type="button" role="radio" aria-checked={chat} className={chat ? "active" : ""} onClick={() => setChatOverride(true)}>Chat</button>
       </div>
+      <label className="row small" title="Tools that write, send or execute only record what they would have done">
+        <input type="checkbox" checked={dryRun} onChange={(e) => useUi.getState().setDryRun(e.target.checked)} aria-label="dry run" />
+        Dry run (stub risky tools)
+      </label>
       {chat ? <ChatInput wf={wf} disabled={blocked} /> : <FormInput wf={wf} disabled={blocked || busyEditing} />}
       {errors > 0 && <p className="muted">{errors} error(s) block running — see Problems.</p>}
       <div className="row gap">

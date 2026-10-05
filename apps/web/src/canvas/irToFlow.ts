@@ -23,6 +23,7 @@ export interface CanvasData extends Record<string, unknown> {
   metrics?: string; // "1.2k tok · $0.003 · 850 ms" for the last run (M4-T11)
   pinned?: boolean; // debug runs replay a pinned output (M4-T9)
   diff?: "added" | "changed"; // compared with a saved version (M6-T1)
+  blast?: { effects: string[]; ungated: boolean }; // blast-radius overlay (FR-X-02)
 }
 
 export interface FlowExtras {
@@ -32,6 +33,7 @@ export interface FlowExtras {
   metrics?: Record<string, NodeMetrics>;
   pins?: Record<string, unknown>;
   diff?: { added: string[]; changed: string[] } | null;
+  blast?: Record<string, { effects: string[]; ungated: boolean }> | null;
 }
 
 export const PORT_COLORS: Record<string, string> = {
@@ -118,6 +120,7 @@ export function irToFlow(
         preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
         metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
         diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : undefined,
+        blast: extras.blast?.[el.id],
       },
     };
   };

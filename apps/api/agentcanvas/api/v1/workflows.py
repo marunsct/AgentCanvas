@@ -16,6 +16,7 @@ from agentcanvas.ir.commands import Command
 from agentcanvas.services.workflows import WorkflowService, WorkflowView
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic
+from agentcanvas.validation.blast import BlastRadius, blast_radius
 
 router = APIRouter(tags=["workflows"])
 
@@ -197,3 +198,10 @@ async def refactor_inline(wf_id: str, body: InlineRequest, svc: WorkflowService 
 
     wf = (await svc.get(wf_id)).workflow
     return RefactorOut(commands=[c.model_dump(mode="json") for c in inline_subgraph(wf, body.node_id)])
+
+
+@router.get("/workflows/{wf_id}/blast-radius", response_model=BlastRadius)
+async def get_blast_radius(wf_id: str, svc: WorkflowService = Depends(service)) -> BlastRadius:
+    """What each step can do to the outside world and whether a human gates it (FR-X-02)."""
+    view = await svc.get(wf_id)
+    return blast_radius(view.workflow, svc.registry(view.row.project_id))

@@ -119,7 +119,8 @@ test("pinned output skips the model; mock replies steer a debug run", async ({ p
   await run(page, "Where is my invoice?");
   await expect(page.getByTestId("debug-badge")).toContainText("1 pinned");
   await expect(page.getByRole("group", { name: "Approval needed" })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId("metrics-classify")).not.toContainText("tok");
+  // a pinned step has no tokens; its metrics badge may be absent altogether when it took under 1 ms
+  await expect(page.getByTestId("node-classify")).not.toContainText("tok");
 
   // unpin, then mock the fast model with "high": the run takes the escalation branch
   await page.getByTestId("node-classify").click();

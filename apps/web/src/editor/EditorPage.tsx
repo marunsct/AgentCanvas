@@ -15,6 +15,8 @@ import { ExplainView } from "../run/ExplainView";
 import { RunPanel } from "../run/RunPanel";
 import { useRun } from "../run/runStore";
 import { Timeline } from "../run/Timeline";
+import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
+import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
 import { useEditor } from "./store";
 import { type DockTab, useUi } from "./ui";
@@ -31,6 +33,7 @@ export function EditorPage() {
   const nodeTypes = useNodeTypes();
   const dock = useUi((s) => s.dock);
   const setDock = useUi((s) => s.setDock);
+  const blast = useUi((s) => s.blast);
   const inbox = useInbox();
   const pendingDecisions = inbox.data?.length ?? 0;
 
@@ -66,7 +69,8 @@ export function EditorPage() {
   }, []);
 
   if (error) return <div className="page"><p className="error-text">Could not load workflow: {error}</p><Link to="/">Back</Link></div>;
-  if (!wf || !nodeTypes.data) return <div className="page muted">Loading workflow…</div>;
+  if (nodeTypes.isError) return <div className="page"><QueryStatus q={nodeTypes} what="the widget catalogue" /><Link to="/">Back</Link></div>;
+  if (!wf || !nodeTypes.data) return <div className="page muted" role="status">Loading workflow…</div>;
 
   return (
     <div className="editor">
@@ -82,8 +86,12 @@ export function EditorPage() {
         </Link>
         <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
         <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
+        <button type="button" className={blast ? "active" : ""} aria-pressed={blast} onClick={() => useUi.getState().toggleBlast()}
+          title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
         <button type="button" onClick={() => void useEditor.getState().group?.()}
           title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
+        <button type="button" onClick={() => useEditor.getState().frame?.()}
+          title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
         <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
         <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
@@ -106,11 +114,13 @@ export function EditorPage() {
               onClick={() => setTab(t)}>{{ inspect: "Inspector", run: "Run", tests: "Tests", versions: "Versions", code: "Code" }[t]}</button>
           ))}
         </nav>
-        {tab === "inspect" && <Inspector />}
-        {tab === "run" && <RunPanel />}
-        {tab === "tests" && <TestsPanel />}
-        {tab === "versions" && <VersionsPanel />}
-        {tab === "code" && <CodePanel />}
+        <ErrorBoundary key={tab} label="This panel">
+          {tab === "inspect" && <Inspector />}
+          {tab === "run" && <RunPanel />}
+          {tab === "tests" && <TestsPanel />}
+          {tab === "versions" && <VersionsPanel />}
+          {tab === "code" && <CodePanel />}
+        </ErrorBoundary>
       </aside>
       <footer className="dock">
         <nav className="tabs dock-tabs" role="tablist">
@@ -119,11 +129,14 @@ export function EditorPage() {
               onClick={() => setDock(t)}>{{ problems: "Problems", timeline: "Timeline", explain: "Explain" }[t]}</button>
           ))}
         </nav>
-        {dock === "problems" && <ProblemsPanel />}
-        {dock === "timeline" && <Timeline />}
-        {dock === "explain" && <ExplainView />}
+        <ErrorBoundary key={dock} label="This panel">
+          {dock === "problems" && <ProblemsPanel />}
+          {dock === "timeline" && <Timeline />}
+          {dock === "explain" && <ExplainView />}
+        </ErrorBoundary>
       </footer>
       <CommandPalette onRun={() => setTab("run")} />
+      <Tutor />
     </div>
   );
 }

@@ -44,7 +44,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from langgraph.channels import DeltaChannel
-from langgraph.config import get_config
+from langgraph.config import get_config, get_stream_writer
 from langgraph.errors import NodeError
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
@@ -282,6 +282,7 @@ class Resources:
         self.workspace = workspace  # project workspace root: scripts./tools./nodes. resolve here
         self.script_runner = script_runner  # sandboxed execution of workspace scripts (M5-T4); None = in-process
         self.registry = registry  # the project's node registry (built-ins + workspace custom nodes)
+        self.dry_run: set[str] | None = None  # tool names replaced by recorders (FR-X-02 dry run)
         self._cache: dict[str, Any] = {}
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
 
@@ -295,6 +296,21 @@ class Resources:
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:
         """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`)."""
+        found = self._tool(name, config, type_)
+        if self.dry_run is None:
+            return found
+        if isinstance(found, list):  # MCP: also the live `destructive_hint`, in case "Browse tools" is stale or unused
+            return [dry_run_tool(t) if t.name in self.dry_run or mcp_tool_info(t)["destructive"] else t for t in found]
+        return dry_run_tool(found) if name in self.dry_run or getattr(found, "name", None) in self.dry_run else found
+
+    def with_dry_run(self, tools: set[str]) -> Resources:
+        """A copy whose named tools only record what they would have done (FR-X-02 dry run)."""
+        clone = copy.copy(self)
+        clone._overrides = {**self._overrides}
+        clone.dry_run = set(tools)
+        return clone
+
+    def _tool(self, name: str, config: dict[str, Any], type_: str) -> Any:
         if type_ == "mcp.server":
             key = (name, _config_key(config))
             if key not in self._mcp:
@@ -361,6 +377,25 @@ class Resources:
                 raise KeyError(f"secret '{key}' is not set for this project")
             return self._secrets[key]
         return value
+
+
+# ------------------------------------------------------------ dry run (FR-X-02) ----
+def dry_run_tool(t: Any) -> Any:
+    """The same tool (name, description, arguments) that records the call instead of making it."""
+    if not isinstance(t, BaseTool):
+        return t
+
+    async def record(**kwargs: Any) -> str:
+        args = json.loads(json.dumps(kwargs, default=str))
+        try:
+            get_stream_writer()({"ac_dry_run": {"tool": t.name, "args": args}})
+        except Exception:  # noqa: BLE001 - outside a graph run there is no stream to record to
+            pass
+        return f"[dry run] '{t.name}' was not called. It would have received: {json.dumps(args)[:800]}"
+
+    return StructuredTool.from_function(
+        coroutine=record, name=t.name, description=t.description, args_schema=t.args_schema
+    )
 
 
 # ------------------------------------------------------------ tools: MCP ----

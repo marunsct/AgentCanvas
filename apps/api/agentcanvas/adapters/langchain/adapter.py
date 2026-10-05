@@ -28,6 +28,7 @@ from agentcanvas.runtime.tracing import trace_id
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
 from agentcanvas.sdk import _SECRETS
 from agentcanvas.services.secrets import redact
+from agentcanvas.validation.blast import dry_run_tools
 
 STREAM_MODES = ["tasks", "updates", "messages", "custom"]
 # langgraph 1.2.12 skips node `error_handler`s when streaming "messages"/"custom" or with subgraphs=True
@@ -183,9 +184,11 @@ class LangChainAdapter:
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
         wf = spec.workflow
-        if spec.pins or spec.mocks:  # debug aids: a one-off graph, never cached
+        if spec.pins or spec.mocks or spec.dry_run:  # debug aids: a one-off graph, never cached
             if spec.mocks:
                 resources = resources.with_mocks(spec.mocks)
+            if spec.dry_run:
+                resources = resources.with_dry_run(dry_run_tools(wf, _registry(resources)))
             graph = await self._debug_graph(wf, resources, spec.pins)
         else:
             graph = await self.graph(wf, resources)

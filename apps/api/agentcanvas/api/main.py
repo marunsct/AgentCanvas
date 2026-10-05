@@ -68,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.projects.aclose()
                 await db.dispose()
 
-    app = FastAPI(title="AgentCanvas API", version="0.1.0.dev0", lifespan=lifespan)
+    app = FastAPI(title="AgentCanvas API", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     install_problem_handlers(app)
     app.add_middleware(

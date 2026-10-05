@@ -8,6 +8,7 @@ import { useUi } from "../editor/ui";
 import { ContractSection } from "./ContractSection";
 import { PublishSection } from "./PublishSection";
 import { TriggersSection } from "./TriggersSection";
+import { QueryStatus } from "../ui/QueryStatus";
 
 export function VersionsPanel() {
   const wf = useEditor((s) => s.wf);
@@ -65,6 +66,7 @@ export function VersionsPanel() {
           </ul>
         </div>
       )}
+      <QueryStatus q={versions} what="versions" />
       <ul className="version-list">
         {(versions.data ?? []).map((v) => (
           <li key={v.id} data-testid={`version-${v.semver}`}>

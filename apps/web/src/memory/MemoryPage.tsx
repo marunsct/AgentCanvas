@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
+import { QueryStatus } from "../ui/QueryStatus";
 
 interface Namespace {
   namespace: string;
@@ -44,6 +45,7 @@ export function MemoryPage() {
       <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Memory</span></header>
       <h2>Long-term memory</h2>
       <p className="muted">What agents and memory nodes remember across conversations, per space and owner.</p>
+      <QueryStatus q={spaces} what="memory spaces" />
       {spaces.data?.length === 0 && <p className="muted" data-testid="memory-empty">Nothing has been remembered yet.</p>}
       <div className="memory-layout">
         <nav aria-label="memory namespaces">
@@ -61,6 +63,7 @@ export function MemoryPage() {
                 Erase all
               </button>
             </div>
+            <QueryStatus q={items} what="memories" />
             <table className="memory-table">
               <thead><tr><th>Key</th><th>Value</th><th>Updated</th><th /></tr></thead>
               <tbody>

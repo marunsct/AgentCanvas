@@ -6,6 +6,7 @@ import { useEditor } from "../editor/store";
 import { lineageAt } from "./lineage";
 import { useRun } from "./runStore";
 import { editState, forkRun } from "./session";
+import { QueryStatus } from "../ui/QueryStatus";
 
 export interface Checkpoint {
   checkpoint_id: string;
@@ -66,6 +67,7 @@ export function Timeline() {
           </button>
         ))}
         {history.isFetching && <span className="muted">…</span>}
+        {history.isError && <QueryStatus q={history} what="the history" />}
       </div>
       {cp && (
         <div className="checkpoint">

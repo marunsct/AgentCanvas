@@ -6,6 +6,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ulid } from "ulid";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "../api/client";
+import type { BlastRadius } from "../api/generated";
 import { useManifests } from "../api/queries";
 import type { NodeManifest } from "../api/types";
 import type { Command } from "../ir/commands";
@@ -13,10 +16,12 @@ import { allNames, defaultsFromSchema, innerWorkflow, uniqueName } from "../ir/m
 import { useEditor } from "../editor/store";
 import { useRun } from "../run/runStore";
 import { useUi } from "../editor/ui";
+import { QueryStatus } from "../ui/QueryStatus";
 import { type Clip, copySelection, pasteCommands } from "./clipboard";
 import { checkConnection, flowPort, nextOrder } from "./connect";
 import { tidyLayout } from "./layout";
 import { type CanvasData, irToFlow } from "./irToFlow";
+import { Frames, frameSelection } from "./Frames";
 import { NODE_TYPES } from "./nodes";
 
 export const DND_MIME = "application/agentcanvas";
@@ -36,6 +41,19 @@ export function Canvas() {
   const breakpoints = useEditor((s) => s.breakpoints);
   const pins = useEditor((s) => s.pins);
   const diff = useUi((s) => s.diff);
+  const showBlast = useUi((s) => s.blast);
+  const irHash = useEditor((s) => s.irHash);
+  const blastQuery = useQuery({
+    queryKey: ["blast", wf?.id, irHash], enabled: Boolean(wf && showBlast),
+    queryFn: () => apiFetch<BlastRadius>(`/workflows/${wf!.id}/blast-radius`),
+  });
+  const blast = useMemo(() => {
+    if (!showBlast || !blastQuery.data) return null;
+    const ungated = new Set(blastQuery.data.ungated ?? []);
+    return Object.fromEntries((blastQuery.data.nodes ?? []).map((n) => [
+      n.node_id, { effects: [...new Set((n.capabilities ?? []).map((c) => c.effect))], ungated: ungated.has(n.node_id) },
+    ]));
+  }, [showBlast, blastQuery.data]);
   const manifests = useManifests();
   const rf = useReactFlow();
 
@@ -49,9 +67,9 @@ export function Canvas() {
   const derived = useMemo(
     () => (view
       ? irToFlow(view, readOnly ? {} : layout, manifests, readOnly ? [] : diagnostics, status, readOnly ? null : selected,
-        { highlight, breakpoints, output, metrics, pins, diff: readOnly ? null : diff })
+        { highlight, breakpoints, output, metrics, pins, diff: readOnly ? null : diff, blast: readOnly ? null : blast })
       : { nodes: [], edges: [] }),
-    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff],
+    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff, blast],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);
@@ -92,6 +110,23 @@ export function Canvas() {
       }
     });
     return () => useEditor.getState().setGroup(null);
+  }, [rf]);
+
+  // "Frame" (layout only): a labelled box around the selected steps and resources
+  useEffect(() => {
+    useEditor.getState().setFrame(() => {
+      const st = useEditor.getState();
+      if (st.drill.length) return;
+      const picked = rf.getNodes().filter((n) => n.selected && n.data.kind !== "terminal").map((n) => n.id);
+      const chosen = picked.length ? picked : st.selected ? [st.selected] : [];
+      if (!chosen.length) {
+        st.setNotice({ kind: "info", text: "Select the steps to frame first (Ctrl/⌘-click them or drag a selection box)." });
+        return;
+      }
+      const label = window.prompt("Frame label", "Group")?.trim();
+      if (label) frameSelection(chosen, label);
+    });
+    return () => useEditor.getState().setFrame(null);
   }, [rf]);
 
   // keep React Flow's measurements and its (multi-)selection when the IR changes; the editor's selected
@@ -252,11 +287,16 @@ export function Canvas() {
         zoomOnDoubleClick={false}
         deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]} minZoom={0.1} proOptions={{ hideAttribution: false }}
       >
+        <Frames />
         <Background gap={16} />
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
       {hint && <div className="connect-hint" role="status">✋ {hint}</div>}
+      {showBlast && !readOnly && (blastQuery.isLoading || blastQuery.isError) && (
+        // a safety view: a failed request must not look like "no effects"
+        <div className="blast-status" data-testid="blast-status"><QueryStatus q={blastQuery} what="the blast radius" /></div>
+      )}
       {readOnly && <SubgraphCrumbs />}
       {wf && wf.nodes.length === 0 && (
         <div className="empty-hint">Drag a widget from the palette, or start from a template on the home page.</div>

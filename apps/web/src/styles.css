@@ -116,6 +116,8 @@ label.row input { width: auto; margin: 0; }
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff;
   padding: 6px 12px; border-radius: 8px; font-size: 13px; z-index: 5;
 }
+.blast-status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 80%; }
+.blast-status > * { margin: 0; background: var(--panel); }
 .empty-hint { position: absolute; top: 40%; width: 100%; text-align: center; color: var(--muted); pointer-events: none; }
 
 .widget {
@@ -311,3 +313,24 @@ td.status-handled { color: var(--ok); }
 .diff-box { border: 1px dashed #d97706; border-radius: 6px; padding: 6px 8px; margin: 8px 0; }
 .checklist { list-style: none; padding: 0; }
 .key-box { border: 1px solid #16a34a; border-radius: 6px; padding: 6px 8px; margin: 8px 0; overflow-wrap: anywhere; }
+.widget.blast-ungated { box-shadow: 0 0 0 3px #dc2626; }
+.badge.blast { background: #fef3c7; color: #92400e; letter-spacing: 1px; }
+.badge.blast.err { background: #fee2e2; color: #991b1b; }
+
+/* states (Sprint 9, M6-T8) */
+.error-box { border: 1px solid #fca5a5; background: #fef2f2; color: #991b1b; border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+.empty-state { border: 1px dashed var(--border, #cbd5e1); border-radius: 6px; padding: 12px; margin: 8px 0; color: #475569; }
+.skeleton { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+/* guided build (FR-X-24) */
+.tutor { position: fixed; left: 16px; bottom: 16px; width: 320px; z-index: 30; background: var(--panel, #fff); border: 1px solid #93c5fd; border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 24px rgba(15, 23, 42, 0.18); }
+.tutor h4 { margin: 6px 0 4px; }
+.tutor-progress { display: flex; gap: 4px; }
+.tutor-progress span { flex: 1; height: 4px; border-radius: 2px; background: #e2e8f0; }
+.tutor-progress span.done { background: #16a34a; }
+.tutor-progress span.now { background: #2563eb; }
+
+/* visual groups (layout frames) */
+.frame { position: absolute; left: 0; top: 0; border: 2px dashed; border-radius: 10px; pointer-events: none; z-index: -1; }
+.frame-label { position: absolute; left: 10px; top: 2px; font-size: 12px; font-weight: 600; pointer-events: auto; display: flex; gap: 6px; align-items: center; }

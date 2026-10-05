@@ -6,6 +6,7 @@ import { apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type LintItem } from "./CodeEditor";
 import { SecretsPanel } from "./SecretsPanel";
+import { QueryStatus } from "../ui/QueryStatus";
 
 interface FileOut {
   path: string;
@@ -77,6 +78,7 @@ export function WorkspacePage() {
           </form>
           {create.error && <p className="error-text small">{(create.error as Error).message}</p>}
           <button type="button" className="link" onClick={openPolicy}>Sandbox policy</button>
+          <QueryStatus q={files} what="workspace files" />
           <ul className="file-tree">
             {files.data?.map((f) => (
               <li key={f.path}>
@@ -89,6 +91,7 @@ export function WorkspacePage() {
           <SecretsPanel />
         </aside>
         <section aria-label="editor">
+          {selected && !file.data && <QueryStatus q={file} what={selected} />}
           {selected && file.data ? (
             <>
               <div className="row gap">

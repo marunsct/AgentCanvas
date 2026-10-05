@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { DecisionCard } from "./DecisionCard";
+import { QueryStatus } from "../ui/QueryStatus";
 
 export interface InboxItem {
   id: string;
@@ -31,7 +32,7 @@ export function InboxPage() {
     <div className="page">
       <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Inbox</span></header>
       <h2>Pending decisions</h2>
-      {inbox.isLoading && <p className="muted">Loading…</p>}
+      <QueryStatus q={inbox} what="the inbox" />
       {inbox.data?.length === 0 && <p className="muted" data-testid="inbox-empty">Nothing is waiting for you.</p>}
       <div className="inbox-list">
         {inbox.data?.map((item) => (

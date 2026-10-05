@@ -49,6 +49,7 @@ class DebugOptions(BaseModel):
 
     pins: dict[str, dict[str, Any]] | None = None  # canvas node id -> output to replay instead of running it
     mocks: dict[str, list[Any]] | None = None  # model resource name -> replies (text or {"tool_calls": [...]})
+    dry_run: bool = False  # risky tools only record what they would do (FR-X-02)
 
 
 class RunRequest(DebugOptions):
@@ -196,10 +197,10 @@ async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:
 
 def _debug(wf: Workflow, opts: DebugOptions, mode: str) -> dict[str, Any]:
     """Validated pins/mocks as Runner.start keyword arguments."""
-    if not (opts.pins or opts.mocks):
+    if not (opts.pins or opts.mocks or opts.dry_run):
         return {}
     if mode != "debug":
-        raise InvalidInput("pinned outputs and mock models require mode 'debug'")
+        raise InvalidInput("pinned outputs, mock models and dry runs require mode 'debug'")
     for node_id in opts.pins or {}:
         n = wf.node(node_id)
         if n is None or n.type in ("core.router", "core.map"):
@@ -208,7 +209,7 @@ def _debug(wf: Workflow, opts: DebugOptions, mode: str) -> dict[str, Any]:
     for name in opts.mocks or {}:
         if name not in models:
             raise InvalidInput(f"'{name}' is not a chat model resource of this workflow")
-    return {"pins": opts.pins or {}, "mocks": opts.mocks or {}}
+    return {"pins": opts.pins or {}, "mocks": opts.mocks or {}, "dry_run": opts.dry_run}
 
 
 def _context(wf: Workflow, given: dict[str, Any], user: CurrentUser) -> dict[str, Any]:
@@ -408,7 +409,7 @@ async def resume_thread(
         thread_id=thread_id,
         resume=ResumeSpec(body.value, body.interrupt_id),
         user_id=user.id,
-        mode="debug" if body.pins or body.mocks else "normal",
+        mode="debug" if body.pins or body.mocks or body.dry_run else "normal",
         **_debug(wf, body, "debug"),
         **target_kw,
     )

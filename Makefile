@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup infra dev-api dev-fake dev-web test test-api test-web e2e lint fmt schema check
+.PHONY: help setup infra dev-api dev-fake dev-web test test-api test-web e2e lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -44,10 +44,13 @@ schema:     ## export IR JSON Schema + node manifests to packages/ir-schema
 migrate:    ## apply database migrations (DATABASE_URL)
 	cd apps/api && uv run alembic upgrade head
 
-check:      ## every CI gate except e2e (lint, formats, types, contracts, schema/type drift, tests, build)
+check:      ## every CI gate except e2e and the docs build (lint, formats, types, contracts, schema/type drift, tests, build)
 	$(MAKE) lint
 	$(MAKE) schema
 	cd apps/web && pnpm gen
 	git diff --exit-code -- packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts
 	$(MAKE) test
 	cd apps/web && pnpm build
+
+docs:       ## documentation site on http://localhost:8001 (MkDocs Material)
+	uvx --with mkdocs-material mkdocs serve -a localhost:8001

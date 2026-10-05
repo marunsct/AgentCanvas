@@ -27,6 +27,13 @@ jobs:
           AGENTCANVAS_ENV: test
           TEST_DATABASE_URL: "postgresql://agentcanvas:agentcanvas@localhost:5432/agentcanvas"
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uvx --with mkdocs-material mkdocs build --strict -d site
+
   web:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/web } }

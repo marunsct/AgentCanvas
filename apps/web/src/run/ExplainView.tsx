@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { apiFetch } from "../api/client";
 import { useRun } from "./runStore";
+import { QueryStatus } from "../ui/QueryStatus";
 
 interface ExplainStep {
   step: number;
@@ -26,6 +27,7 @@ export function ExplainView() {
   if (!threadId) return <p className="muted pad">Run the workflow, then read how it executed, step by step.</p>;
   return (
     <ol className="explain" data-testid="explain">
+      <QueryStatus q={steps} what="the explanation" />
       {steps.data?.map((s) => (
         <li key={s.checkpoint_id} onMouseEnter={() => setHighlight(s.ran.map((r) => r.node_id))}
           onMouseLeave={() => setHighlight([])}>
