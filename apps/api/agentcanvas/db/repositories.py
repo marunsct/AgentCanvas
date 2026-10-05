@@ -386,3 +386,11 @@ class WorkflowRepo:
         await self.require(wf_id)
         await self.s.execute(delete(WorkflowRow).where(WorkflowRow.id == wf_id))
         await self.s.commit()
+
+
+async def delete_thread_rows(session: AsyncSession, thread_id: str) -> None:
+    """A conversation's control rows: its decisions, runs and the thread itself. Explicit, because SQLite (the
+    local edition) does not enforce the ON DELETE CASCADE the schema declares."""
+    await session.execute(delete(InterruptTask).where(InterruptTask.thread_id == thread_id))
+    await session.execute(delete(Run).where(Run.thread_id == thread_id))
+    await session.execute(delete(Thread).where(Thread.id == thread_id))

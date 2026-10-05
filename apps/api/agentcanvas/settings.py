@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     log_json: bool = False
     metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
+    # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
+    # unless the organisation sets its own (M8-T4); 0 keeps them forever
+    retention_days: int = 90
+    retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
 
 
 @cache

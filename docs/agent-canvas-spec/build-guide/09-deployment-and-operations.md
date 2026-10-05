@@ -88,9 +88,14 @@ helm install agentcanvas infra/helm/agentcanvas \
 - **Dashboard and alerts:** `infra/observability/grafana-dashboard.json` (import it and pick the Prometheus data source) and `infra/observability/alerts.yaml`: server errors above 5 % for 10 min, more than 20 % of runs failing, API p95 above 2 s (streams excluded), no API pod scraped.
 
 ## 7. Backups, retention, disaster recovery
-- Postgres: managed PITR (≥ 7 days) + nightly logical dump of the control tables.
-- Checkpoint retention job (daily): delete threads older than the project's retention (default 30 days) → `await checkpointer.adelete_thread(thread_id)` + delete `thread` rows.
-- Restore drill quarterly: restore to a new instance, run smoke tests, measure RTO.
+- **Retention (M8-T4).** A job in every API pod deletes conversations (threads with their checkpoints, runs and decisions) that have been inactive longer than the organisation keeps them: `PUT /v1/org/settings {"retention_days": 30}` (admin; `null` = the server default `AGENTCANVAS_RETENTION_DAYS`, 90; `0` = keep forever). Conversations that are running or waiting for a person are never deleted. It checks every `AGENTCANVAS_RETENTION_INTERVAL_S` (1 h) and counts deletions in `agentcanvas_threads_expired_total`. Long-term memory is not affected; erase it from the Memory inspector.
+- **Managed Postgres:** turn on point-in-time recovery (7 days or more). Restoring to a point in time is the provider's operation; then point `DATABASE_URL` at the restored instance and roll the API pods (the migration hook runs first).
+- **Portable copy:** `infra/scripts/backup.sh` writes a `pg_dump` (custom format) of the whole database: control tables, checkpoints and long-term memory. Run it nightly and keep the files off the database host. Workspaces live on their own volume (`/data/workspaces`, git repositories): back that volume up with your platform's snapshots.
+- **Restore runbook** (rehearsed on compose prod, 2026-10-05: a conversation deleted after the backup came back with its state; about 11 s for a small database):
+  1. `ENV_FILE=infra/.env.prod infra/scripts/restore.sh <file.dump>`. This stops `web` and `api`, recreates the database from the dump, runs migrations (a backup from an older release is brought up to date), and starts the API and web again.
+  2. Check `GET /readyz`, sign in, and open a recent conversation.
+  3. Runs that were in progress when the backup was taken show as running; cancel or resume them from the Run panel.
+- **Drill** quarterly: restore into a scratch environment, run the smoke checks above and record how long it took.
 
 ## 8. Release process
 1. Merge to `main` → CI builds images tagged with the commit SHA.

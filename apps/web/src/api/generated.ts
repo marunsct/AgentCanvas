@@ -383,6 +383,18 @@ export type Type7 = string;
 export type Version1 = string;
 export type Writes1 = string[];
 /**
+ * days a conversation is kept after its last activity; null = the server default, 0 = forever
+ */
+export type RetentionDays = number | null;
+/**
+ * what applies now (0 = conversations are kept forever)
+ */
+export type EffectiveRetentionDays = number;
+/**
+ * days a conversation is kept after its last activity; null = the server default, 0 = forever
+ */
+export type RetentionDays1 = number | null;
+/**
  * shown with every violation
  */
 export type Description6 = string;
@@ -637,6 +649,8 @@ export interface ApiSchemas {
   NodeBlast?: NodeBlast;
   NodeManifest?: NodeManifest;
   NodePolicies?: NodePolicies;
+  OrgSettings?: OrgSettings;
+  OrgSettingsOut?: OrgSettingsOut;
   PolicyIn?: PolicyIn;
   PolicyOut?: PolicyOut;
   PortSpec?: PortSpec;
@@ -1648,6 +1662,21 @@ export interface PortSpec {
 }
 export interface Targets {
   [k: string]: "full" | "partial" | "none";
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "OrgSettings".
+ */
+export interface OrgSettings {
+  retention_days?: RetentionDays;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "OrgSettingsOut".
+ */
+export interface OrgSettingsOut {
+  effective_retention_days: EffectiveRetentionDays;
+  retention_days?: RetentionDays1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

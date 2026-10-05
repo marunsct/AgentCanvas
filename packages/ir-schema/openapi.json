@@ -2660,6 +2660,54 @@
         "title": "NodePolicies",
         "type": "object"
       },
+      "OrgSettings": {
+        "properties": {
+          "retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "days a conversation is kept after its last activity; null = the server default, 0 = forever",
+            "title": "Retention Days"
+          }
+        },
+        "title": "OrgSettings",
+        "type": "object"
+      },
+      "OrgSettingsOut": {
+        "properties": {
+          "effective_retention_days": {
+            "description": "what applies now (0 = conversations are kept forever)",
+            "title": "Effective Retention Days",
+            "type": "integer"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "days a conversation is kept after its last activity; null = the server default, 0 = forever",
+            "title": "Retention Days"
+          }
+        },
+        "required": [
+          "effective_retention_days"
+        ],
+        "title": "OrgSettingsOut",
+        "type": "object"
+      },
       "PolicyIn": {
         "properties": {
           "description": {
@@ -6494,6 +6542,127 @@
           }
         ],
         "summary": "Replace Policy",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/settings": {
+      "get": {
+        "description": "Organisation settings: how long conversations are kept (M8-T4).",
+        "operationId": "get_org_settings_v1_org_settings_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: your first)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: your first)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Org Settings",
+        "tags": [
+          "organisation"
+        ]
+      },
+      "put": {
+        "operationId": "put_org_settings_v1_org_settings_put",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: your first)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: your first)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Org Settings",
         "tags": [
           "organisation"
         ]

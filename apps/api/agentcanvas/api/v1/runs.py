@@ -15,12 +15,13 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
+from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.errors import Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
@@ -523,7 +524,7 @@ async def delete_thread(
     if thread_id in r.active_by_thread:
         await r.cancel(r.active_by_thread[thread_id])
     await r.adapter.delete_thread(thread_id)
-    await session.execute(delete(Thread).where(Thread.id == thread_id))
+    await delete_thread_rows(session, thread_id)
     await session.commit()
     return Response(status_code=204)
 

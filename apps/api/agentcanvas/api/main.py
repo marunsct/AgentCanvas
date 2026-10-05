@@ -30,6 +30,7 @@ from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
+from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.secrets import SecretService
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -71,8 +72,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
             app.state.cron = CronScheduler(db, runner, settings.secret_key)
-            if settings.env != "test":  # tests drive the scheduler with explicit ticks
+            app.state.retention = RetentionJob(db, runner, settings.retention_days, settings.retention_interval_s)
+            if settings.env != "test":  # tests drive the schedulers with explicit ticks
                 app.state.cron.start()
+                app.state.retention.start()
             log.info(
                 "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
                 database=db.engine.dialect.name,
@@ -81,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 yield
             finally:
                 await app.state.cron.stop()
+                await app.state.retention.stop()
                 await runner.shutdown()
                 await app.state.projects.aclose()
                 await db.dispose()

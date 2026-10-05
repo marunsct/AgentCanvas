@@ -46,6 +46,8 @@ class Organization(Base):
     __tablename__ = "organization"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(Text)
+    # days a conversation is kept after its last activity (M8-T4); NULL = AGENTCANVAS_RETENTION_DAYS, 0 = forever
+    retention_days: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _now()
 
 
@@ -141,6 +143,7 @@ class Thread(Base):
     __table_args__ = (
         CheckConstraint("status IN ('idle','running','interrupted','error')", name="thread_status"),
         Index("thread_workflow_idx", "workflow_id", "updated_at"),
+        Index("thread_updated_idx", "updated_at"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
