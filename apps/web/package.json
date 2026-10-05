@@ -26,6 +26,7 @@
     "@xyflow/react": "^12.12.0",
     "codemirror": "^6.0.2",
     "elkjs": "^0.11.1",
+    "oidc-client-ts": "^3.5.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router": "^7.18.4",

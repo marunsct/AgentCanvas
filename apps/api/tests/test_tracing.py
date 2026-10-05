@@ -49,3 +49,5 @@ async def test_open_trace_redirects(app, api_client, monkeypatch):
     assert (
         r.headers["location"] == f"https://smith.example/o/org/projects/p/prj/r/{tracing.trace_id(h.run_id)}?poll=true"
     )
+    j = await api_client.get(f"/v1/runs/{h.run_id}/trace", params={"format": "json"})  # the web app's form
+    assert j.status_code == 200 and j.json() == {"url": r.headers["location"]}

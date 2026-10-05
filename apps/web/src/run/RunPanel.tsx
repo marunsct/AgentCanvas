@@ -10,6 +10,19 @@ import { useUi } from "../editor/ui";
 import { testCaseFromRun } from "../release/testcases";
 import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
 
+/** Open the run's LangSmith trace in a new tab (asks the API for the URL: a plain link carries no sign-in). */
+async function openTrace(runId: string) {
+  const tab = window.open("", "_blank");
+  try {
+    const { url } = await apiFetch<{ url: string }>(`/runs/${runId}/trace?format=json`);
+    if (tab) tab.location.href = url;
+    else window.open(url, "_blank", "noreferrer");
+  } catch (e) {
+    tab?.close();
+    useRun.setState((s) => ({ warnings: [...s.warnings, `Could not open the trace: ${(e as Error).message}`] }));
+  }
+}
+
 interface ChatMessage {
   type?: string;
   content?: unknown;
@@ -87,7 +100,7 @@ export function RunPanel() {
         </p>
       )}
       {run.traced && run.runId && !run.running && (
-        <p className="small"><a href={`/api/v1/runs/${run.runId}/trace`} target="_blank" rel="noreferrer">Open trace in LangSmith ↗</a></p>
+        <p className="small"><button type="button" className="link" onClick={() => void openTrace(run.runId!)}>Open trace in LangSmith ↗</button></p>
       )}
       {run.warnings.map((w, i) => <p key={i} className="warn-text">⚠ {w}</p>)}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}

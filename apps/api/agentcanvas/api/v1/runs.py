@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -279,8 +279,13 @@ async def get_run(run_id: str, session: AsyncSession = Depends(get_session)) -> 
 
 
 @router.get("/runs/{run_id}/trace", status_code=307)
-async def open_trace(run_id: str, session: AsyncSession = Depends(get_session)) -> Response:
-    """Redirect to the run's LangSmith trace (M6-T6)."""
+async def open_trace(
+    run_id: str,
+    format: Literal["redirect", "json"] = Query("redirect", description="json: return {url} instead of redirecting"),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Redirect to the run's LangSmith trace (M6-T6). The web app asks for `format=json`: a browser link
+    cannot carry the sign-in token."""
     run = await session.get(Run, run_id)
     if run is None or not run.trace_url:
         raise NotFound(f"run '{run_id}' was not traced (set LANGSMITH_TRACING=true and LANGSMITH_API_KEY)")
@@ -288,6 +293,8 @@ async def open_trace(run_id: str, session: AsyncSession = Depends(get_session)) 
         url = await asyncio.to_thread(web_url, run.trace_url)
     except Exception as exc:  # noqa: BLE001 - LangSmith unreachable or misconfigured
         raise UpstreamError(f"could not reach LangSmith: {exc}") from None
+    if format == "json":
+        return JSONResponse({"url": url})
     return Response(status_code=307, headers={"Location": url})
 
 

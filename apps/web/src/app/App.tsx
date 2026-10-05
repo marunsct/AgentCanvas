@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router";
 import { ErrorBoundary } from "../ui/QueryStatus";
+import { AuthGate } from "./AuthGate";
 import { HomePage } from "./HomePage";
 
 // each page is its own chunk: the home page does not download the editor, CodeMirror or ELK
@@ -20,6 +21,7 @@ function NotFound() {
 
 export function App() {
   return (
+    <AuthGate>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ErrorBoundary label="This page">
@@ -37,5 +39,6 @@ export function App() {
         </ErrorBoundary>
       </BrowserRouter>
     </QueryClientProvider>
+    </AuthGate>
   );
 }
