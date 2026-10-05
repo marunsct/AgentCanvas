@@ -80,3 +80,16 @@ async def test_log_is_per_organisation(app, api_client):
         assert (await api_client.get("/v1/org/audit")).json() == []
     finally:
         app.dependency_overrides.pop(current_user)
+
+
+async def test_mutations_without_an_id_in_the_path_name_their_target(api_client):
+    """Member and memory changes carry their target in the body or query: the log still names it."""
+    carol = (await api_client.put("/v1/org/members", json={"email": "carol@example.com", "role": "viewer"})).json()
+    [entry] = await log(api_client, action="set_member")
+    assert entry["target"] == f"user_id={carol['user_id']}"
+    assert entry["detail"]["email"] == "carol@example.com" and entry["detail"]["role"] == "viewer"
+    ns = "memories/user/usr_dev"
+    r = await api_client.delete("/v1/memory/items", params={"namespace": ns, "key": "about:drinks"})
+    assert r.status_code == 204
+    [entry] = await log(api_client, action="delete_item")
+    assert entry["target"] == f"namespace={ns}" and entry["detail"]["key"] == "about:drinks"

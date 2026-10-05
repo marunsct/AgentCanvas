@@ -179,10 +179,10 @@ class EventService:
 
             async with self.db.sessionmaker() as s:
                 t = await s.get(Thread, thread_id)
-                if t is None:
-                    raise InvalidInput(f"thread '{thread_id}' not found")
-                row = await s.get(WorkflowRow, t.workflow_id)
-            assert row is not None
+                row = await s.get(WorkflowRow, t.workflow_id) if t is not None else None
+            # a handler acts only inside its own project: another project's thread is as good as missing
+            if row is None or row.project_id != project_id:
+                raise InvalidInput(f"thread '{thread_id}' not found")
             h = await self.runner.start(
                 Workflow.model_validate(row.draft_ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),
                 user_id=user_id, origin="event",

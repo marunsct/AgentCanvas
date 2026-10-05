@@ -6,10 +6,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.repositories import AuditRepo, MemberRepo
 
@@ -46,10 +47,14 @@ async def list_members(
 
 @router.put("/members", response_model=MemberOut)
 async def set_member(
-    body: MemberIn, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+    body: MemberIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
 ) -> MemberOut:
     """Invite someone by email or change their role. Invitations take effect at their first verified sign-in."""
     u, role = await MemberRepo(session).set_role(user.org_id, body.email, body.role)
+    note(request, target=f"user_id={u.id}", email=u.email, role=role)
     return _out(u, role)
 
 

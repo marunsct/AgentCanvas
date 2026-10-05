@@ -5,17 +5,26 @@ import { fetchAuthConfig, initAuth } from "../api/auth";
 import { chooseProject } from "../api/queries";
 import { loadMe } from "../api/session";
 
+// one start-up per page load: StrictMode runs effects twice in development, and a second redirect callback would
+// find its sign-in state already consumed
+let startup: Promise<void> | null = null;
+
+function start(): Promise<void> {
+  startup ??= fetchAuthConfig()
+    .then(initAuth)
+    .then((back) => {
+      if (back) history.replaceState(null, "", back); // leave the callback URL before the router reads it
+      return loadMe();
+    })
+    .then(async () => { await chooseProject(); });
+  return startup;
+}
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<"pending" | "ready" | Error>("pending");
   useEffect(() => {
     let live = true;
-    fetchAuthConfig()
-      .then(initAuth)
-      .then((back) => {
-        if (back) history.replaceState(null, "", back); // leave the callback URL before the router reads it
-        return loadMe();
-      })
-      .then(() => chooseProject())
+    start()
       .then(() => { if (live) setState("ready"); })
       .catch((e: unknown) => { if (live) setState(e instanceof Error ? e : new Error(String(e))); });
     return () => { live = false; };

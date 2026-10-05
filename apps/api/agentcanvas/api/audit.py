@@ -62,13 +62,15 @@ async def record(request: Request, response: Response) -> None:
     org_id = user.org_id if user is not None else await _org_of_public_call(request, params)
     if org_id is None:
         return
-    target = next((f"{k}={params[k]}" for k in TARGETS if k in params), request.url.path)
+    extra = dict(getattr(request.state, "audit", {}))
+    # a route that changes something not named in its URL (a member by email, a memory key) names it itself
+    target = extra.pop("target", None) or next((f"{k}={params[k]}" for k in TARGETS if k in params), request.url.path)
     detail: dict[str, Any] = {"method": request.method, "path": request.url.path, "status": response.status_code}
     if params:
         detail["params"] = params
     if user is None:
         detail["caller"] = "deployment key"
-    detail.update(getattr(request.state, "audit", {}))
+    detail.update(extra)
     row = AuditLog(
         org_id=org_id,
         actor_id=user.id if user is not None and user.role != "api" else None,

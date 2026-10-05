@@ -95,5 +95,55 @@ class TestInvitationInOidcMode:
             assert (await c.post("/v1/projects", json={"name": "nope"}, headers=dave)).status_code == 403
         async with app.state.db.sessionmaker() as s:
             user = await s.get(AppUser, me["id"])
-            assert user is not None and user.oidc_subject == "dave-sub"
+            assert user is not None and user.oidc_subject == "oidc:dave-sub"
             assert await s.get(Membership, ("org_default", me["id"])) is not None
+
+
+class TestSignInEdgeCasesInOidcMode:
+    @pytest.fixture
+    def settings(self, oidc_settings):  # noqa: F811
+        return oidc_settings
+
+    @pytest.fixture
+    async def c(self, app):
+        import httpx
+
+        app.state.authenticator = Authenticator(app.state.settings, jwks={"keys": [SIGNING_JWK]})
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            yield client
+
+    async def test_a_removed_bootstrap_admin_stays_removed(self, c):
+        alice = bearer(token())
+        alice_id = (await c.get("/v1/me", headers=alice)).json()["id"]
+        await c.put("/v1/org/members", json={"email": "bob@example.com", "role": "admin"}, headers=alice)
+        bob = bearer(token(sub="bob-sub", email="bob@example.com"))
+        assert (await c.get("/v1/me", headers=bob)).json()["role"] == "admin"
+        assert (await c.delete(f"/v1/org/members/{alice_id}", headers=bob)).status_code == 204
+        assert (await c.get("/v1/me", headers=alice)).status_code == 403  # not re-bootstrapped
+
+    async def test_a_token_cannot_take_over_an_invitation_by_subject(self, c, app):
+        alice = bearer(token())
+        await c.get("/v1/me", headers=alice)
+        await c.put("/v1/org/members", json={"email": "dave@example.com", "role": "viewer"}, headers=alice)
+        forged = bearer(token(sub="pending:dave@example.com", email="eve@example.com"))
+        assert (await c.get("/v1/me", headers=forged)).status_code == 403
+        async with app.state.db.sessionmaker() as s:
+            from agentcanvas.db.repositories import UserRepo
+
+            assert await UserRepo(s).by_subject("pending:dave@example.com") is not None
+
+    async def test_a_user_who_signed_in_before_being_invited_gets_the_invitation(self, c, app):
+        from agentcanvas.db.repositories import UserRepo
+
+        alice = bearer(token())
+        await c.get("/v1/me", headers=alice)
+        bob = bearer(token(sub="bob-sub", email="bob@example.com"))
+        assert (await c.get("/v1/me", headers=bob)).status_code == 403  # not a member yet, but now a user
+        await c.put("/v1/org/members", json={"email": "bob@example.com", "role": "reviewer"}, headers=alice)
+        me = (await c.get("/v1/me", headers=bob)).json()
+        assert me["role"] == "reviewer"
+        async with app.state.db.sessionmaker() as s:
+            repo = UserRepo(s)
+            existing = await repo.by_subject("oidc:bob-sub")
+            assert existing is not None and existing.id == me["id"]
+            assert await repo.by_subject("pending:bob@example.com") is None

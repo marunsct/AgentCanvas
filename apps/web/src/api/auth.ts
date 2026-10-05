@@ -59,9 +59,11 @@ export async function initAuth(config: AuthConfig): Promise<string | null> {
   manager.events.addUserLoaded((u) => { user = u; });
   manager.events.addUserUnloaded(() => { user = null; });
   if (location.pathname === CALLBACK_PATH) {
-    user = await manager.signinRedirectCallback();
-    const back = typeof user.state === "string" && user.state.startsWith("/") ? user.state : "/";
-    return back;
+    // the redirect back from sign-in, or the hidden iframe of a silent renew: signinCallback tells them apart
+    const signedIn = await manager.signinCallback();
+    if (!signedIn) return new Promise<never>(() => {}); // silent renew: the parent window picks up the new token
+    user = signedIn;
+    return typeof user.state === "string" && user.state.startsWith("/") ? user.state : "/";
   }
   user = await manager.getUser();
   if (!user || user.expired) {

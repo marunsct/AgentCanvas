@@ -45,30 +45,49 @@ class UserRepo:
     async def by_subject(self, subject: str) -> AppUser | None:
         return await self.s.scalar(select(AppUser).where(AppUser.oidc_subject == subject))
 
-    async def provision(self, subject: str, email: str, name: str | None, email_verified: bool = False) -> AppUser:
-        """The user of an OIDC subject, created on first sign-in; email and name follow the latest token.
+    async def provision(
+        self, subject: str, email: str, name: str | None, email_verified: bool = False
+    ) -> tuple[AppUser, bool]:
+        """The user of an OIDC subject and whether this sign-in created it; email and name follow the latest token.
 
-        A first sign-in with a verified email claims the invitation an admin made for that email (see `invite`).
+        Provider subjects are stored as `oidc:<sub>`, apart from the seeded `dev` user and `pending:<email>`
+        invitations, so no token can take over either. A verified email claims the invitation an admin made for
+        it (see `MemberRepo.set_role`): a first sign-in takes over the placeholder, a returning user (who signed
+        in before being invited) gets its memberships moved over.
         """
-        user = await self.by_subject(subject)
-        if user is None and email and email_verified:
-            user = await self.by_subject(pending_subject(email))
-            if user is not None:
-                user.oidc_subject = subject
-                await self.s.commit()
+        user = await self.by_subject(oidc_subject(subject))
+        pending = await self.by_subject(pending_subject(email)) if email and email_verified else None
+        created = False
+        if user is None and pending is not None:
+            pending.oidc_subject, user, created = oidc_subject(subject), pending, True
+            await self.s.commit()
+        elif user is not None and pending is not None:
+            await self._merge_invitation(pending, user)
         if user is None:
-            user = AppUser(id=new_id("usr"), oidc_subject=subject, email=email, display_name=name)
+            user = AppUser(id=new_id("usr"), oidc_subject=oidc_subject(subject), email=email, display_name=name)
             self.s.add(user)
             try:
                 await self.s.commit()
+                created = True
             except IntegrityError:  # a parallel first request created it
                 await self.s.rollback()
-                user = await self.by_subject(subject)
+                user = await self.by_subject(oidc_subject(subject))
                 assert user is not None
-        elif (email and user.email != email) or (name and user.display_name != name):
+        if (email and user.email != email) or (name and user.display_name != name):
             user.email, user.display_name = email or user.email, name or user.display_name
             await self.s.commit()
-        return user
+        return user, created
+
+    async def _merge_invitation(self, pending: AppUser, user: AppUser) -> None:
+        """Move an invitation's memberships to the user who claimed it (existing memberships win), then drop it."""
+        mine = await self.memberships(user.id)
+        for m in (await self.s.scalars(select(Membership).where(Membership.user_id == pending.id))).all():
+            if m.org_id not in mine:
+                self.s.add(Membership(org_id=m.org_id, user_id=user.id, role=m.role))
+            await self.s.delete(m)
+        await self.s.flush()
+        await self.s.delete(pending)
+        await self.s.commit()
 
     async def memberships(self, user_id: str) -> dict[str, str]:
         rows = await self.s.execute(select(Membership.org_id, Membership.role).where(Membership.user_id == user_id))
@@ -84,6 +103,18 @@ class UserRepo:
         except IntegrityError:
             await self.s.rollback()
         return await self.memberships(user_id)
+
+
+def oidc_subject(sub: str) -> str:
+    """How an identity provider's subject is stored (apart from `dev` and `pending:` placeholders)."""
+    return f"oidc:{sub}"
+
+
+async def retire_dev_user(session: AsyncSession) -> None:
+    """With OIDC on, the seeded development user keeps no memberships: nobody can sign in as it, and it must not
+    count as an organisation's admin."""
+    await session.execute(delete(Membership).where(Membership.user_id == DEV_USER))
+    await session.commit()
 
 
 def pending_subject(email: str) -> str:
@@ -110,6 +141,7 @@ class MemberRepo:
         """Add the person with this email to the organisation, or change their role. Someone who has never
         signed in gets a placeholder user that their first verified sign-in claims."""
         email = email.strip().lower()
+        await self._lock(org_id)
         user = await self.s.scalar(select(AppUser).where(func.lower(AppUser.email) == email).order_by(AppUser.id))
         if user is None:
             user = AppUser(id=new_id("usr"), oidc_subject=pending_subject(email), email=email)
@@ -125,12 +157,18 @@ class MemberRepo:
         return user, role
 
     async def remove(self, org_id: str, user_id: str) -> None:
+        await self._lock(org_id)
         m = await self.s.get(Membership, (org_id, user_id))
         if m is None:
             raise NotFound(f"user '{user_id}' is not a member")
         await self._keep_an_admin(org_id, user_id, None)
         await self.s.delete(m)
         await self.s.commit()
+
+    async def _lock(self, org_id: str) -> None:
+        """Serialise membership changes of one organisation until commit (row lock on Postgres; SQLite allows one
+        writer at a time), so two admins demoting each other cannot both pass the last-admin check."""
+        await self.s.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
 
     async def _keep_an_admin(self, org_id: str, user_id: str, new_role: str | None) -> None:
         if new_role == "admin":

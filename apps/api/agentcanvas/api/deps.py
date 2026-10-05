@@ -6,12 +6,13 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from fastapi import Depends, Header, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
-from agentcanvas.errors import Forbidden, InvalidInput, NotFound, PreconditionRequired
-from agentcanvas.security.auth import Authenticator, bearer
+from agentcanvas.errors import Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
+from agentcanvas.security.auth import Authenticator
 from agentcanvas.settings import Settings
 
 
@@ -41,9 +42,14 @@ def _authenticator(request: Request) -> Authenticator:
     return auth
 
 
+# declared as a security scheme so OpenAPI clients and Swagger UI know how to authenticate; absence is allowed here
+# (dev mode needs no token) and turned into 401 problem+json below
+bearer_scheme = HTTPBearer(auto_error=False, description="the identity provider's access token (OIDC mode)")
+
+
 async def current_user(
     request: Request,
-    authorization: str | None = Header(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     org: str | None = Header(None, alias="X-Org-Id", description="organisation to act in (default: your first)"),
     session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
@@ -55,14 +61,17 @@ async def current_user(
     settings: Settings = request.app.state.settings
     if settings.auth_mode == "dev":
         return CurrentUser(id=DEV_USER, org_id=DEV_ORG, role="admin", memberships={DEV_ORG: "admin"})
-    identity = await _authenticator(request).verify(bearer(authorization))
+    if credentials is None or not credentials.credentials:
+        raise Unauthorized("sign in: send Authorization: Bearer <token>")
+    identity = await _authenticator(request).verify(credentials.credentials)
     repo = UserRepo(session)
     # only a verified email is stored: invitations and the admin bootstrap match people by it
     email = identity.email if identity.email_verified else ""
-    user = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
+    user, created = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
     memberships = await repo.memberships(user.id)
-    if (
-        not memberships
+    if (  # bootstrap happens once, at the first sign-in: removing a bootstrap admin later sticks
+        created
+        and not memberships
         and identity.email_verified
         and identity.email.lower() in {e.lower() for e in settings.bootstrap_admin_emails}
     ):

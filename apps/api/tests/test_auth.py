@@ -122,3 +122,22 @@ def test_dev_mode_is_refused_in_production():
         check_auth_settings(Settings(env="prod", auth_mode="oidc"))
     check_auth_settings(Settings(env="prod", auth_mode="oidc", oidc_issuer=ISSUER, oidc_audience=AUDIENCE))
     check_auth_settings(Settings(env="dev"))
+
+
+async def test_email_trust_override_only_covers_a_missing_claim(settings):
+    """`oidc_trust_email` accepts an email the provider sends without `email_verified`, never an explicit false."""
+    trusting = Authenticator(settings.model_copy(update={"oidc_trust_email": True}), jwks={"keys": [SIGNING_JWK]})
+    strict = Authenticator(settings, jwks={"keys": [SIGNING_JWK]})
+    assert (await trusting.verify(token(email_verified=None))).email_verified is True
+    assert (await trusting.verify(token(email_verified=False))).email_verified is False
+    assert (await trusting.verify(token(email_verified="true"))).email_verified is False
+    assert (await strict.verify(token(email_verified=None))).email_verified is False
+
+
+async def test_seeded_dev_user_has_no_rights_with_sign_in_on(client):
+    """The dev admin is retired at startup: it is not a member, so it cannot count as the organisation's admin."""
+    me = (await client.get("/v1/me", headers=bearer(token()))).json()
+    members = (await client.get("/v1/org/members", headers=bearer(token()))).json()
+    assert [m["user_id"] for m in members] == [me["id"]]
+    # a token whose subject is the dev user's is just another stranger
+    assert (await client.get("/v1/me", headers=bearer(token(sub="dev", email="x@example.com")))).status_code == 403

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel
 
+from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user
 from agentcanvas.api.v1.runs import runner
 from agentcanvas.errors import Forbidden, InvalidInput
@@ -59,13 +60,22 @@ async def items(
 
 @router.delete("/items", status_code=204)
 async def delete_item(
-    namespace: str, key: str, r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)
+    namespace: str,
+    key: str,
+    request: Request,
+    r: Runner = Depends(runner),
+    user: CurrentUser = Depends(current_user),
 ) -> Response:
     await r.adapter.memory_delete(_parse(namespace, user), key)
+    note(request, target=f"namespace={namespace}", key=key)
     return Response(status_code=204)
 
 
 @router.delete("/namespaces")
-async def erase(namespace: str, r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)) -> dict:
+async def erase(
+    namespace: str, request: Request, r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)
+) -> dict:
     """Delete every memory under a namespace prefix (e.g. all of one user's memories)."""
-    return {"deleted": await r.adapter.memory_erase(_parse(namespace, user))}
+    deleted = await r.adapter.memory_erase(_parse(namespace, user))
+    note(request, target=f"namespace={namespace}", deleted=deleted)
+    return {"deleted": deleted}

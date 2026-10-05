@@ -62,7 +62,10 @@ class Authenticator:
         async with self._lock:
             if self._client is None:
                 url = self.settings.oidc_jwks_url or await self._discover_jwks_url()
-                self._client = PyJWKClient(url, cache_keys=True, lifespan=self.settings.oidc_jwks_cache_s)
+                # only the JWK Set is cached, and it expires: a key the issuer drops stops verifying after the lifespan
+                self._client = PyJWKClient(
+                    url, cache_jwk_set=True, cache_keys=False, lifespan=self.settings.oidc_jwks_cache_s
+                )
             return self._client
 
     async def _discover_jwks_url(self) -> str:
@@ -113,8 +116,16 @@ class Authenticator:
             subject=str(claims["sub"]),
             email=str(email),
             name=claims.get("name") or claims.get("preferred_username"),
-            email_verified=bool(claims.get("email_verified", False)) or s.oidc_trust_email,
+            email_verified=_verified(claims.get("email_verified"), trust_absent=s.oidc_trust_email),
         )
+
+
+def _verified(claim: Any, *, trust_absent: bool) -> bool:
+    """`email_verified` must be boolean true; with `oidc_trust_email`, a missing claim counts as verified
+    (never an explicit false or a string)."""
+    if claim is None:
+        return trust_absent
+    return claim is True
 
 
 def bearer(authorization: str | None) -> str:

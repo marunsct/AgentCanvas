@@ -18,7 +18,7 @@ from agentcanvas.adapters import get_adapter
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
-from agentcanvas.db.repositories import seed_dev
+from agentcanvas.db.repositories import retire_dev_user, seed_dev
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
@@ -47,6 +47,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.seed_dev_data:
             async with db.sessionmaker() as s:
                 await seed_dev(s)
+        if settings.auth_mode == "oidc":
+            async with db.sessionmaker() as s:
+                await retire_dev_user(s)
         app.state.db = db
         adapter = get_adapter("langchain")
         async with adapter.persistence(settings.persistence_url or settings.database_url):
