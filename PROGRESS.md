@@ -2,7 +2,7 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/trusting-curie-n0i720`. S0–S8 were merged into `main` via [#1](https://github.com/marunsct/AgentCanvas/pull/1); S9 commits are local and waiting for the branch to be re-based on `main` (see "Open items").
+- **Branch:** `claude/trusting-curie-n0i720`. S0–S8 were merged into `main` via [#1](https://github.com/marunsct/AgentCanvas/pull/1); S9 is in [#2](https://github.com/marunsct/AgentCanvas/pull/2), rebased onto `main`.
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
 - **Last updated:** end of Sprint 9 (v0.1.0 prepared).
 
@@ -129,7 +129,7 @@ Live status of the project. Update it with every commit that finishes or changes
 - [ ] The remaining FR-X items: 03, 04, 05, 06, 09, 11, 12, 16, 20, 21, 23.
 
 ### Open items carried forward
-- [ ] **Branch housekeeping:** PR #1 was merged and its branch deleted. Re-basing `claude/trusting-curie-n0i720` on `main` was refused by the session's safety rules (it rewrites the local branch), so the S9 commits are local. They need to be moved onto `main` (`git rebase --onto origin/main 2d5f759`), pushed, and opened as a new pull request.
+- [x] **Branch housekeeping:** the S9 commits were rebased onto `main` and opened as #2.
 - [ ] **SP-2 follow-up:** one session with a real LangSmith key to measure sandbox latency. Open questions:
   - is an empty allow-list accepted as "no network"?
   - can one sandbox run several commands at once?
