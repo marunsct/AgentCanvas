@@ -59,7 +59,11 @@ async def record(request: Request, response: Response) -> None:
         return
     params = {k: str(v) for k, v in request.path_params.items()}
     user = getattr(request.state, "user", None)
-    org_id = user.org_id if user is not None else await _org_of_public_call(request, params)
+    try:  # the change is already committed: a failing lookup must not turn it into a 500 the client retries
+        org_id = user.org_id if user is not None else await _org_of_public_call(request, params)
+    except Exception:
+        log.exception("audit.org_lookup_failed", action=name)
+        return
     if org_id is None:
         return
     extra = dict(getattr(request.state, "audit", {}))
@@ -77,7 +81,7 @@ async def record(request: Request, response: Response) -> None:
         action=name,
         target=target,
         detail=detail,
-        ip=request.client.host if request.client else None,
+        ip=request.client.host if request.client else None,  # the caller behind proxies with uvicorn --proxy-headers
     )
     try:
         async with request.app.state.db.sessionmaker() as s:

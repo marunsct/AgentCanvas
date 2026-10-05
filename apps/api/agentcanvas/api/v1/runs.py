@@ -19,9 +19,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
-from agentcanvas.errors import InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
+from agentcanvas.errors import Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
@@ -29,7 +29,7 @@ from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.explain import explain
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
-from agentcanvas.validation import has_errors
+from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 router = APIRouter(tags=["runs"])
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
@@ -190,8 +190,9 @@ async def _thread_target(
 
 async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:
     view = await svc.get(wf_id)
-    if has_errors(view.diagnostics):
-        errors = [d.model_dump() for d in view.diagnostics if d.severity == "error"]
+    # organisation policies are enforced at publish; they do not stop builders trying a draft
+    errors = [d.model_dump() for d in view.diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
+    if errors:
         raise WorkflowHasErrors(f"workflow has {len(errors)} error(s); fix them before running", errors=errors)
     return view.workflow
 
@@ -417,6 +418,9 @@ async def resume_thread(
     r: Runner = Depends(runner),
     user: CurrentUser = Depends(current_user),
 ) -> Response:
+    if (body.pins or body.mocks or body.dry_run) and RANK.get(user.role, -1) < RANK["builder"]:
+        # reviewers answer what the run asks; pins and scripted replies would let them drive its tools
+        raise Forbidden(f"your role '{user.role}' can resume but not with debug pins, mocks or dry runs")
     t = await _thread(session, thread_id)
     wf, target_kw = await _thread_target(session, settings, t)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))

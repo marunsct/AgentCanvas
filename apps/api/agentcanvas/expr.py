@@ -50,6 +50,20 @@ def eval_expression(source: str, variables: dict[str, Any]) -> Any:
         raise ExpressionError(f"cannot evaluate '{source}': {exc}") from exc
 
 
+def to_cel(value: Any) -> Any:
+    """Convert a value for CEL once, to evaluate many expressions over it with `eval_cel`."""
+    return json_to_cel(_jsonable(value))
+
+
+def eval_cel(source: str, variables: dict[str, Any]) -> Any:
+    """`eval_expression` over variables already converted with `to_cel` (no per-call conversion)."""
+    program = _compile_cel(source)
+    try:
+        return program.evaluate(variables)
+    except Exception as exc:  # missing fields, type errors
+        raise ExpressionError(f"cannot evaluate '{source}': {exc}") from exc
+
+
 def render_template(source: str, state: dict[str, Any], **names: Any) -> str:
     """Render a sandboxed Jinja template with `state` (and extra names, e.g. `args` for HTTP tool URLs)."""
     try:

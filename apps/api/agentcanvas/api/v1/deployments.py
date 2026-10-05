@@ -153,7 +153,9 @@ class ApiRunIn(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     thread_id: str | None = Field(None, description="continue a conversation this deployment started")
     context: dict[str, Any] = Field(default_factory=dict)
-    user_id: str | None = Field(None, description="your end user's id (context fields with source 'user')")
+    user_id: str | None = Field(
+        None, description="your end user's id; context fields with source 'user' get api:<deployment>:<user_id>"
+    )
 
 
 class ApiResumeIn(BaseModel):
@@ -181,12 +183,15 @@ async def _caller(session: AsyncSession, dep_id: str, authorization: str | None)
 
 
 async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, body: ApiRunIn) -> dict[str, Any]:
-    """Identity fields come from the key's deployment (tenant) and the caller's `user_id`, never from `context`."""
+    """Identity fields come from the key's deployment (tenant) and the caller's `user_id`, never from `context`.
+    The caller's end users live under the deployment ("api:<deployment>:<user_id>"), so a key holder cannot
+    pass an organisation member's id and reach that member's memories."""
     from agentcanvas.db.models import WorkflowRow
 
     row = await session.get(WorkflowRow, dep.workflow_id)
     project = await session.get(Project, row.project_id) if row else None
-    user = CurrentUser(id=body.user_id or f"api:{dep.id}", org_id=project.org_id if project else "", role="api")
+    end_user = f"api:{dep.id}:{body.user_id}" if body.user_id else f"api:{dep.id}"
+    user = CurrentUser(id=end_user, org_id=project.org_id if project else "", role="api")
     return _context(wf, body.context, user)
 
 

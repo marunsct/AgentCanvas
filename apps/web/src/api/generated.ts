@@ -41,7 +41,7 @@ export type InterruptId = string | null;
  */
 export type ThreadId1 = string | null;
 /**
- * your end user's id (context fields with source 'user')
+ * your end user's id; context fields with source 'user' get api:<deployment>:<user_id>
  */
 export type UserId = string | null;
 export type Action = string;

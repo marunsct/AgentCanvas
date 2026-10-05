@@ -154,6 +154,7 @@ async def test_memory_inspector_stays_inside_the_organisation(app, api_client):
 @pytest.mark.asyncio
 async def test_memories_from_before_organisations_move_to_the_default_one(app):
     adapter = app.state.runner.adapter
+    await adapter.store.adelete(*adapter.ADOPTED)  # startup already adopted the (empty) store: start over
     await adapter.store.aput(("prefs", "user", "usr_dev"), "old", {"value": "from v0.1"})
     await adapter.store.aput(("prefs", "user", "usr_dev", "deeper"), "older", {"value": "nested"})
     assert await adapter.memory_adopt("org_default") == 2
@@ -161,4 +162,7 @@ async def test_memories_from_before_organisations_move_to_the_default_one(app):
         "value": "from v0.1"
     }
     assert await adapter.store.aget(("prefs", "user", "usr_dev"), "old") is None
-    assert await adapter.memory_adopt("org_default") == 0  # idempotent
+    # it runs once: namespaces written later without an organisation root are not misfiled on the next start
+    await adapter.store.aput(("exported",), "k", {"value": "an exported app sharing the store"})
+    assert await adapter.memory_adopt("org_default") == 0
+    assert await adapter.store.aget(("exported",), "k") is not None

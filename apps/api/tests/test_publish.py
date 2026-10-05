@@ -140,3 +140,22 @@ async def test_published_approval_resumes_through_the_api(app, api_client):
     ).json()  # fmt: skip
     assert done["status"] == "success" and done["output"]["approved"] is True
     assert cur["id"] == wf["id"]
+
+
+async def test_api_end_users_live_under_the_deployment():
+    """A key holder passing an organisation member's id does not get that member's identity (or memories)."""
+    from types import SimpleNamespace
+
+    from agentcanvas.api.v1.deployments import ApiRunIn, _api_context
+    from agentcanvas.ir.models import Workflow
+
+    class NoRows:
+        async def get(self, *_):
+            return None
+
+    uid = {"name": "uid", "type": {"type": "string"}, "source": "user"}
+    wf = Workflow.model_validate({"id": "wf_ctx", "name": "Ctx", "context": {"fields": [uid]}, "nodes": []})
+    dep = SimpleNamespace(id="dep_1", workflow_id="wf_ctx")
+    ctx = await _api_context(NoRows(), dep, wf, ApiRunIn(user_id="usr_alice"))  # type: ignore[arg-type]
+    assert ctx == {"uid": "api:dep_1:usr_alice"}
+    assert await _api_context(NoRows(), dep, wf, ApiRunIn()) == {"uid": "api:dep_1"}  # type: ignore[arg-type]

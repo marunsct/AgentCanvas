@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from agentcanvas.db.models import (
     AppUser,
@@ -80,26 +81,30 @@ class UserRepo:
         return user, created
 
     async def _merge_invitation(self, pending: AppUser, user: AppUser) -> None:
-        """Move an invitation's memberships to the user who claimed it (existing memberships win), then drop it."""
-        mine = await self.memberships(user.id)
-        for m in (await self.s.scalars(select(Membership).where(Membership.user_id == pending.id))).all():
-            if m.org_id not in mine:
-                self.s.add(Membership(org_id=m.org_id, user_id=user.id, role=m.role))
-            await self.s.delete(m)
-        await self.s.flush()
-        await self.s.delete(pending)
-        await self.s.commit()
+        """Move an invitation's memberships to the user who claimed it (existing memberships win), then drop it.
+        Two first requests in parallel may both try: the loser finds the work done and lets it be."""
+        try:
+            mine = await self.memberships(user.id)
+            for m in (await self.s.scalars(select(Membership).where(Membership.user_id == pending.id))).all():
+                if m.org_id not in mine:
+                    self.s.add(Membership(org_id=m.org_id, user_id=user.id, role=m.role))
+                await self.s.delete(m)
+            await self.s.flush()
+            await self.s.delete(pending)
+            await self.s.commit()
+        except (IntegrityError, StaleDataError):
+            await self.s.rollback()
 
     async def memberships(self, user_id: str) -> dict[str, str]:
         rows = await self.s.execute(select(Membership.org_id, Membership.role).where(Membership.user_id == user_id))
         return {org: role for org, role in rows.all()}
 
     async def bootstrap_admin(self, user_id: str, org_id: str) -> dict[str, str]:
-        if await self.s.get(Organization, org_id) is None:
-            self.s.add(Organization(id=org_id, name="Default organisation"))
-            await self.s.flush()
-        self.s.add(Membership(org_id=org_id, user_id=user_id, role="admin"))
-        try:
+        try:  # a parallel bootstrap may create the organisation or the membership first
+            if await self.s.get(Organization, org_id) is None:
+                self.s.add(Organization(id=org_id, name="Default organisation"))
+                await self.s.flush()
+            self.s.add(Membership(org_id=org_id, user_id=user_id, role="admin"))
             await self.s.commit()
         except IntegrityError:
             await self.s.rollback()
@@ -138,7 +143,7 @@ class MemberRepo:
         )
         return [(u, role) for u, role in (await self.s.execute(q)).all()]
 
-    async def set_role(self, org_id: str, email: str, role: str) -> tuple[AppUser, str]:
+    async def set_role(self, org_id: str, email: str, role: str, *, retry: bool = True) -> tuple[AppUser, str]:
         """Add the person with this email to the organisation, or change their role. Someone who has never
         signed in gets a placeholder user that their first verified sign-in claims."""
         email = email.strip().lower()
@@ -147,13 +152,19 @@ class MemberRepo:
         if user is None:
             user = AppUser(id=new_id("usr"), oidc_subject=pending_subject(email), email=email)
             self.s.add(user)
-            await self.s.flush()
+            try:
+                await self.s.flush()
+            except IntegrityError:  # another organisation invited the same new email at the same moment
+                await self.s.rollback()
+                if not retry:
+                    raise
+                return await self.set_role(org_id, email, role, retry=False)
         m = await self.s.get(Membership, (org_id, user.id))
         if m is None:
             self.s.add(Membership(org_id=org_id, user_id=user.id, role=role))
         else:
-            await self._keep_an_admin(org_id, user.id, role)
             m.role = role
+            await self._keep_an_admin(org_id)
         await self.s.commit()
         return user, role
 
@@ -162,8 +173,8 @@ class MemberRepo:
         m = await self.s.get(Membership, (org_id, user_id))
         if m is None:
             raise NotFound(f"user '{user_id}' is not a member")
-        await self._keep_an_admin(org_id, user_id, None)
         await self.s.delete(m)
+        await self._keep_an_admin(org_id)
         await self.s.commit()
 
     async def _lock(self, org_id: str) -> None:
@@ -171,18 +182,22 @@ class MemberRepo:
         writer at a time), so two admins demoting each other cannot both pass the last-admin check."""
         await self.s.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
 
-    async def _keep_an_admin(self, org_id: str, user_id: str, new_role: str | None) -> None:
-        if new_role == "admin":
-            return
-        admins = set(
-            (
-                await self.s.scalars(
-                    select(Membership.user_id).where(Membership.org_id == org_id, Membership.role == "admin")
-                )
-            ).all()
+    async def _keep_an_admin(self, org_id: str) -> None:
+        """After the change, inside its transaction: someone who can sign in must still be admin, or nothing is
+        committed. Checking after the write also holds on SQLite, where the row lock is a no-op: the write takes the
+        database's write lock, so a parallel change is either seen here or waits for this one. Invitations nobody
+        has claimed yet do not count: they may never sign in."""
+        await self.s.flush()
+        q = (
+            select(func.count())
+            .select_from(Membership)
+            .join(AppUser, AppUser.id == Membership.user_id)
+            .where(Membership.org_id == org_id, Membership.role == "admin")
+            .where(~AppUser.oidc_subject.startswith("pending:"))
         )
-        if admins == {user_id}:
-            raise Conflict("an organisation needs at least one admin; make someone else admin first")
+        if not await self.s.scalar(q):
+            await self.s.rollback()
+            raise Conflict("an organisation needs at least one admin who has signed in; make someone else admin first")
 
 
 class AuditRepo:

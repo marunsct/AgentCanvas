@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pytest
 from test_blast import agent_wf
 from test_publish import make_greeter
@@ -162,3 +164,49 @@ def test_workflow_policies_see_the_steps_inside_subgraphs():
     assert [d.code for d in check_policies(nested(), [no_agents])] == ["E095"]
     models = Policy(name="models", scope="workflow", require='workflow.models == ["fake:scripted"]')
     assert check_policies(nested(), [models]) == []
+
+
+def test_an_invalid_subgraph_is_left_to_the_subgraph_rule():
+    wf = nested().model_dump(mode="json")
+    wf["nodes"][0]["config"]["workflow"] = {"name": "broken", "nodes": "not a list"}
+    diags = validate(Workflow.model_validate(wf), policies=[Policy(name="p", require="true")])
+    assert "E018" in {d.code for d in diags}
+
+
+def wide(steps: int) -> Workflow:
+    """agent_wf() with `steps` agents in a row, each wired to the model and the CRM tool."""
+    wf = agent_wf()
+    wf["nodes"] = [{**wf["nodes"][0], "id": f"n_{i}", "name": f"a{i}"} for i in range(steps)]
+    chain = ["START", *(f"n_{i}" for i in range(steps)), "END"]
+    wf["edges"] = [{"id": f"e{i}", "kind": "flow", "source": {"node": a}, "target": {"node": b}}
+                   for i, (a, b) in enumerate(pairwise(chain))]  # fmt: skip
+    wf["edges"] += [{"id": f"w{i}{r}", "kind": "wiring", "source": {"node": r},
+                     "target": {"node": f"n_{i}", "port": "model" if r == "r_m" else "tools"}}
+                    for i in range(steps) for r in ("r_m", "r_crm")]  # fmt: skip
+    return Workflow.model_validate(wf)
+
+
+def test_policies_stay_fast_on_large_workflows():
+    """Each view is converted for CEL once, not once per evaluation (was policies x steps x workflow size)."""
+    import time
+
+    policies = [WRITES_NEED_APPROVAL.model_copy(update={"name": f"p{i}"}) for i in range(5)]
+    start = time.perf_counter()
+    diags = check_policies(wide(120), policies)
+    assert len(diags) == 5 * 120
+    assert time.perf_counter() - start < 1.5
+
+
+async def test_policies_do_not_stop_draft_runs(api_client):
+    """Policies are reported in the editor and enforced at publish; builders can still try the draft."""
+    wf = await make_greeter(api_client)
+    r = await api_client.post("/v1/org/policies", json={"name": "never", "scope": "workflow", "require": "false"})
+    assert r.status_code == 201, r.text
+    diags = (await api_client.get(f"/v1/workflows/{wf}")).json()["diagnostics"]
+    assert "E095" in {d["code"] for d in diags}
+    run = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}})
+    assert run.status_code == 200, run.text
+    tests = await api_client.post(f"/v1/workflows/{wf}/test-cases/run", json={})
+    assert tests.status_code == 200, tests.text
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "prod"})
+    assert refused.status_code == 422

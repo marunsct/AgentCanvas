@@ -27,7 +27,7 @@ from typing import Any, Literal
 from celpy.celtypes import BoolType
 from pydantic import BaseModel, Field, ValidationError
 
-from agentcanvas.expr import ExpressionError, check_condition, eval_expression
+from agentcanvas.expr import ExpressionError, check_condition, eval_cel, to_cel
 from agentcanvas.ir.models import Node, Resource, Workflow
 from agentcanvas.registry import Registry, default_registry
 from agentcanvas.validation.blast import RISKY, _gated_by_humans, blast_radius
@@ -73,7 +73,10 @@ def _elements(
 ) -> tuple[list[_Element], list[_Element]]:
     """The CEL view of every enabled step and every resource, subgraphs included (their elements anchor on the
     subgraph step). `gated`: a person approves before the whole (sub)workflow runs."""
-    blast = {nb.node_id: nb for nb in blast_radius(wf, registry).nodes}
+    try:
+        blast = {nb.node_id: nb for nb in blast_radius(wf, registry).nodes}
+    except ValidationError:  # an invalid embedded subgraph: reported by the subgraph rule (E018)
+        blast = {}
     behind_gate = _gated_by_humans(wf)
     models = _models(wf)
     resources = {r.id: r for r in wf.resources}
@@ -138,7 +141,7 @@ def _workflow_view(wf: Workflow, nodes: list[_Element], res: list[_Element]) -> 
 
 
 def _holds(source: str, names: dict[str, Any]) -> bool:
-    result = eval_expression(source, names)
+    result = eval_cel(source, names)
     if not isinstance(result, (bool, BoolType)):
         raise ExpressionError(f"'{source}' must be true or false, got {result!r}")
     return bool(result)
@@ -157,17 +160,20 @@ def check_policies(
     if not active:
         return []
     nodes, resources = _elements(wf, registry or default_registry())
-    workflow = _workflow_view(wf, nodes, resources)
-    env = environment or ""
+    # convert every view for CEL once: converting per evaluation costs policies x elements x workflow size
+    workflow = to_cel(_workflow_view(wf, nodes, resources))
+    env = to_cel(environment or "")
+    node_views = [to_cel(e.view) for e in nodes] if any(p.scope == "node" for p in active) else []
+    resource_views = [to_cel(e.view) for e in resources] if any(p.scope == "resource" for p in active) else []
     out: list[Diagnostic] = []
     for p in active:
         early = environment is None and bool(p.environments)  # shown in the editor, enforced at publish
         severity = "warning" if early else p.severity
         when = f" (enforced when publishing to {', '.join(p.environments)})" if early else ""
         if p.scope == "node":
-            targets = [(e.anchor, e.path, {"node": e.view}) for e in nodes]
+            targets = [(e.anchor, e.path, {"node": v}) for e, v in zip(nodes, node_views, strict=True)]
         elif p.scope == "resource":
-            targets = [(e.anchor, e.path, {"resource": e.view}) for e in resources]
+            targets = [(e.anchor, e.path, {"resource": v}) for e, v in zip(resources, resource_views, strict=True)]
         else:
             targets = [(None, wf.name, {})]
         for element_id, name, own in targets:

@@ -72,6 +72,27 @@ async def test_members_invite_change_and_keep_an_admin(api_client):
     assert (await api_client.delete(f"/v1/org/members/{carol['user_id']}")).status_code == 404
 
 
+async def test_an_invitation_nobody_claimed_does_not_keep_the_org_administered(api_client):
+    r = await api_client.put("/v1/org/members", json={"email": "typo@nowhere.test", "role": "admin"})
+    assert r.status_code == 200 and r.json()["invited"] is True
+    assert (await api_client.delete("/v1/org/members/usr_dev")).status_code == 409
+    demote = await api_client.put("/v1/org/members", json={"email": "dev@localhost", "role": "builder"})
+    assert demote.status_code == 409
+    members = {m["email"]: m["role"] for m in (await api_client.get("/v1/org/members")).json()}
+    assert members["dev@localhost"] == "admin"  # nothing was committed
+
+
+async def test_reviewers_resume_without_debug_aids(api_client, app, as_role):
+    wf = await make_greeter(api_client)
+    run = await api_client.post(
+        f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "thread_id": "th_rev"}
+    )
+    assert run.status_code == 200, run.text
+    as_role("reviewer")
+    r = await api_client.post("/v1/threads/th_rev/resume", json={"value": 1, "mocks": {"llm": ["x"]}})
+    assert r.status_code == 403 and "debug" in r.json()["detail"]
+
+
 class TestInvitationInOidcMode:
     @pytest.fixture
     def settings(self, oidc_settings):  # noqa: F811

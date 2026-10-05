@@ -175,7 +175,7 @@
                 "type": "null"
               }
             ],
-            "description": "your end user's id (context fields with source 'user')",
+            "description": "your end user's id; context fields with source 'user' get api:<deployment>:<user_id>",
             "title": "User Id"
           }
         },
