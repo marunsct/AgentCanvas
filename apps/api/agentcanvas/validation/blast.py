@@ -53,8 +53,9 @@ def tool_effects(r: Resource, registry: Registry) -> list[tuple[str, str]]:
     if isinstance(declared, list):
         effects += [(e, r.name) for e in declared if isinstance(e, str) and (e, r.name) not in effects]
     if r.type == "mcp.server":
+        wanted = r.config.get("tool_filter") or []  # only the tools the workflow can call
         for t in r.config.get("discovered") or []:
-            if isinstance(t, dict) and t.get("destructive"):
+            if isinstance(t, dict) and t.get("destructive") and (not wanted or t.get("name") in wanted):
                 effects.append(("external_write", str(t.get("name"))))
     return effects
 

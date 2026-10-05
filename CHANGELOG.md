@@ -74,10 +74,10 @@ The first usable release. You can build an agentic workflow on a canvas, run and
   | Suite | Count |
   |---|---|
   | API, on SQLite and Postgres | about 200 |
-  | Web unit tests | 44 |
+  | Web unit tests | 47 |
   | Playwright journeys | 27 |
 
-- **`make check`** runs every CI gate locally.
+- **`make check`** runs every CI gate locally except the Playwright journeys (`make e2e`) and the strict docs build.
 - **UI states.** Every screen has loading, error-with-retry and empty states. Error boundaries keep one broken panel from blanking the app.
 - **Bundle size.** The web entry bundle is 0.3 MB: pages and the layout engine load on demand.
 

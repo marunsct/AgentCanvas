@@ -15,8 +15,23 @@ export interface TutorStep {
 }
 
 const nodesOf = (wf: WF, type: string) => wf.nodes.filter((n) => n.type === type);
-const flowFrom = (wf: WF, id: string) => wf.edges.some((e) => e.kind === "flow" && e.source.node === id);
-const flowTo = (wf: WF, id: string) => wf.edges.some((e) => e.kind === "flow" && e.target.node === id);
+/** Steps reachable from `id` along flow edges (`id` included). */
+function reachable(wf: WF, id: string): Set<string> {
+  const seen = new Set([id]);
+  const queue = [id];
+  while (queue.length) {
+    const at = queue.shift()!;
+    for (const e of wf.edges) {
+      if (e.kind === "flow" && e.source.node === at && !seen.has(e.target.node)) {
+        seen.add(e.target.node);
+        queue.push(e.target.node);
+      }
+    }
+  }
+  return seen;
+}
+/** True when `id` lies on a connected flow path from START to END. */
+const onRunPath = (wf: WF, id: string) => reachable(wf, "START").has(id) && reachable(wf, id).has("END");
 
 export const STEPS: TutorStep[] = [
   {
@@ -38,9 +53,7 @@ export const STEPS: TutorStep[] = [
     title: "Connect the flow",
     concept: "Flow edges decide what runs next. A run starts at START and finishes when it reaches END.",
     todo: "Drag from START's handle to your LLM step, then from the LLM step to END.",
-    done: (wf) => nodesOf(wf, "core.llm").some((n) => flowTo(wf, n.id) && flowFrom(wf, n.id))
-      && wf.edges.some((e) => e.kind === "flow" && e.source.node === "START")
-      && wf.edges.some((e) => e.kind === "flow" && e.target.node === "END"),
+    done: (wf) => nodesOf(wf, "core.llm").some((n) => onRunPath(wf, n.id)),
   },
   {
     id: "model",
@@ -49,7 +62,8 @@ export const STEPS: TutorStep[] = [
     todo: "Drag “Chat model” onto the canvas and wire it into the LLM step's model port.",
     done: (wf) => {
       const models = new Set(wf.resources.filter((r) => r.type === "model.chat").map((r) => r.id));
-      return wf.edges.some((e) => e.kind === "wiring" && models.has(e.source.node));
+      const llms = new Set(nodesOf(wf, "core.llm").map((n) => n.id));
+      return wf.edges.some((e) => e.kind === "wiring" && models.has(e.source.node) && llms.has(e.target.node));
     },
   },
   {
@@ -64,7 +78,7 @@ export const STEPS: TutorStep[] = [
     title: "Put a human in the loop",
     concept: "An Approval step pauses the run (an interrupt) until someone decides in the Run tab or the Inbox; the run then resumes exactly where it stopped.",
     todo: "Add an “Approval” step between the LLM step and END showing answer, then run again and approve it.",
-    done: (wf, run) => nodesOf(wf, "core.approval").length > 0 && run.interrupted,
+    done: (wf, run) => nodesOf(wf, "core.approval").some((n) => onRunPath(wf, n.id)) && run.interrupted,
   },
 ];
 

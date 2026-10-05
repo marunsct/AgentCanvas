@@ -40,7 +40,7 @@ approve the tool call and watch the nodes light up.
 make test         # backend + frontend tests
 make lint         # ruff, pyright, tsc
 make e2e          # Playwright end-to-end (starts both servers)
-make check        # every CI gate except e2e
+make check        # every CI gate except e2e and the strict docs build
 make docs         # documentation site on http://localhost:8001
 ```
 

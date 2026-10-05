@@ -44,7 +44,7 @@ schema:     ## export IR JSON Schema + node manifests to packages/ir-schema
 migrate:    ## apply database migrations (DATABASE_URL)
 	cd apps/api && uv run alembic upgrade head
 
-check:      ## every CI gate except e2e (lint, formats, types, contracts, schema/type drift, tests, build)
+check:      ## every CI gate except e2e and the docs build (lint, formats, types, contracts, schema/type drift, tests, build)
 	$(MAKE) lint
 	$(MAKE) schema
 	cd apps/web && pnpm gen

@@ -23,13 +23,21 @@ export const GROUP_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc262
 const PAD = 24;
 const LABEL = 22;
 
+/** `metadata.groups` is free-form (imported or hand-edited), so every field is checked before use. */
+function isGroup(g: unknown): g is Group {
+  if (typeof g !== "object" || g === null) return false;
+  const { id, label, color, members } = g as Record<string, unknown>;
+  return typeof id === "string" && typeof label === "string" && typeof color === "string"
+    && Array.isArray(members) && members.every((m) => typeof m === "string");
+}
+
 export function groupsOf(wf: WF): Group[] {
   const raw = (wf.metadata as { groups?: unknown } | undefined)?.groups;
   if (!Array.isArray(raw)) return [];
   const known = new Set([...wf.nodes.map((n) => n.id), ...wf.resources.map((r) => r.id)]);
   return raw
-    .filter((g): g is Group => typeof g === "object" && g !== null && typeof (g as Group).id === "string")
-    .map((g) => ({ ...g, members: (g.members ?? []).filter((m) => known.has(m)) }))
+    .filter(isGroup)
+    .map((g) => ({ ...g, members: g.members.filter((m) => known.has(m)) }))
     .filter((g) => g.members.length > 0); // a frame whose steps were all deleted disappears
 }
 

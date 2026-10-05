@@ -91,3 +91,37 @@ async def test_dry_run_records_instead_of_calling(app, api_client):
         f"/v1/workflows/{wf['id']}/runs/stream", json={**body, "mode": "normal", "dry_run": True}
     )
     assert bad.status_code == 422
+
+
+def test_blast_radius_respects_the_mcp_tool_filter():
+    def mcp(tool_filter: list[str]) -> Workflow:
+        wf = agent_wf()
+        wf["resources"][1] = {
+            "id": "r_mcp", "type": "mcp.server", "name": "crm",
+            "config": {"url": "https://mcp.example.com/mcp", "tool_filter": tool_filter,
+                       "discovered": [{"name": "lookup", "read_only": True}, {"name": "wipe", "destructive": True}]},
+        }  # fmt: skip
+        wf["edges"][-1]["source"]["node"] = "r_mcp"
+        return Workflow.model_validate(wf)
+
+    assert dry_run_tools(mcp([])) == {"wipe"}
+    assert dry_run_tools(mcp(["lookup"])) == set()  # the destructive tool is filtered out, so it cannot be called
+    assert blast_radius(mcp(["lookup"])).ungated == []
+
+
+def test_dry_run_stubs_mcp_tools_that_announce_destructive_hint():
+    from langchain_core.tools import StructuredTool
+
+    from agentcanvas.adapters.langchain.nodes import Resources, _config_key
+
+    def make(name: str, destructive: bool) -> StructuredTool:
+        t = StructuredTool.from_function(func=lambda: "called", name=name, description=name)
+        t.metadata = {"mcp": {"tool": {"annotations": {"destructive_hint": destructive}}}}
+        return t
+
+    wipe, lookup = make("wipe", True), make("lookup", False)
+    config = {"url": "https://mcp.example.com/mcp"}  # nothing cached by "Browse tools"
+    resources = Resources()
+    resources._mcp[("crm", _config_key(config))] = [wipe, lookup]
+    stubbed = resources.with_dry_run(set()).tool("crm", config, "mcp.server")
+    assert stubbed[0] is not wipe and stubbed[0].name == "wipe" and stubbed[1] is lookup

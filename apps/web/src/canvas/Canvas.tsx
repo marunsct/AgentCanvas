@@ -16,6 +16,7 @@ import { allNames, defaultsFromSchema, innerWorkflow, uniqueName } from "../ir/m
 import { useEditor } from "../editor/store";
 import { useRun } from "../run/runStore";
 import { useUi } from "../editor/ui";
+import { QueryStatus } from "../ui/QueryStatus";
 import { type Clip, copySelection, pasteCommands } from "./clipboard";
 import { checkConnection, flowPort, nextOrder } from "./connect";
 import { tidyLayout } from "./layout";
@@ -292,6 +293,10 @@ export function Canvas() {
         <Controls />
       </ReactFlow>
       {hint && <div className="connect-hint" role="status">✋ {hint}</div>}
+      {showBlast && !readOnly && (blastQuery.isLoading || blastQuery.isError) && (
+        // a safety view: a failed request must not look like "no effects"
+        <div className="blast-status" data-testid="blast-status"><QueryStatus q={blastQuery} what="the blast radius" /></div>
+      )}
       {readOnly && <SubgraphCrumbs />}
       {wf && wf.nodes.length === 0 && (
         <div className="empty-hint">Drag a widget from the palette, or start from a template on the home page.</div>

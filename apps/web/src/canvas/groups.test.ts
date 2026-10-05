@@ -30,3 +30,11 @@ describe("visual groups", () => {
     expect(frameAround([])).toBeNull();
   });
 });
+
+describe("visual groups from untrusted metadata", () => {
+  it("ignores malformed groups instead of crashing", () => {
+    const w = wf({ groups: [{ id: "x", members: "a" }, { id: "y", label: "y", color: "#000", members: ["a", 3] }, "junk",
+      { id: "z", label: "z", color: "#000", members: ["b"] }] });
+    expect(groupsOf(w)).toEqual([{ id: "z", label: "z", color: "#000", members: ["b"] }]);
+  });
+});

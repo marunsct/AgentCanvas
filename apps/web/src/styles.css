@@ -116,6 +116,8 @@ label.row input { width: auto; margin: 0; }
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff;
   padding: 6px 12px; border-radius: 8px; font-size: 13px; z-index: 5;
 }
+.blast-status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 80%; }
+.blast-status > * { margin: 0; background: var(--panel); }
 .empty-hint { position: absolute; top: 40%; width: 100%; text-align: center; color: var(--muted); pointer-events: none; }
 
 .widget {

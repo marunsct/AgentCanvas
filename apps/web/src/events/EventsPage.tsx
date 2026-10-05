@@ -95,7 +95,9 @@ export function EventsPage() {
       <table className="memory-table" data-testid="event-log">
         <thead><tr><th>Type</th><th>Source</th><th>Status</th><th>When</th><th /></tr></thead>
         <tbody>
-          <QueryStatus q={log} what="the event log" />
+          {(log.isLoading || log.isError || log.data?.length === 0) && (
+            <tr><td colSpan={5}><QueryStatus q={log} what="the event log" empty="No events yet. Send a test event above." /></td></tr>
+          )}
           {log.data?.map((e) => (
             <tr key={e.id}>
               <td><code>{e.type}</code></td>

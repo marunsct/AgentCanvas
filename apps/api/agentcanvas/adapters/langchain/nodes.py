@@ -299,8 +299,8 @@ class Resources:
         found = self._tool(name, config, type_)
         if self.dry_run is None:
             return found
-        if isinstance(found, list):
-            return [dry_run_tool(t) if t.name in self.dry_run else t for t in found]
+        if isinstance(found, list):  # MCP: also the live `destructive_hint`, in case "Browse tools" is stale or unused
+            return [dry_run_tool(t) if t.name in self.dry_run or mcp_tool_info(t)["destructive"] else t for t in found]
         return dry_run_tool(found) if name in self.dry_run or getattr(found, "name", None) in self.dry_run else found
 
     def with_dry_run(self, tools: set[str]) -> Resources:

@@ -19,12 +19,13 @@ export function Tutor() {
   const wf = useEditor((s) => s.wf);
   const [active, setActive] = useState(() => tourFor());
   const finishedSeq = useRun((s) => s.runSeq);
+  const [startSeq] = useState(() => useRun.getState().runSeq); // runSeq is cumulative: count only runs after mount
   const interrupts = useRun((s) => s.interrupts.length);
   const error = useRun((s) => s.error);
   const [seen, setSeen] = useState({ finished: false, interrupted: false });
   useEffect(() => {
-    if (finishedSeq > 0 && !error) setSeen((s) => ({ ...s, finished: true }));
-  }, [finishedSeq, error]);
+    if (finishedSeq > startSeq && !error) setSeen((s) => ({ ...s, finished: true }));
+  }, [finishedSeq, startSeq, error]);
   useEffect(() => {
     if (interrupts > 0) setSeen((s) => ({ ...s, interrupted: true }));
   }, [interrupts]);
