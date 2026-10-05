@@ -1,7 +1,7 @@
 /** Holds the app back until sign-in is settled (M7-T1: at once in dev mode, after the OIDC redirect otherwise)
  * and the session's project is chosen (M7-T2). */
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchAuthConfig, initAuth } from "../api/auth";
+import { fetchAuthConfig, initAuth, signInEnabled, switchAccount } from "../api/auth";
 import { chooseProject } from "../api/queries";
 import { loadMe } from "../api/session";
 
@@ -35,7 +35,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     <div className="page" role="alert">
       <h2>Could not sign in</h2>
       <p className="error-text">{state.message}</p>
-      <button type="button" onClick={() => location.assign("/")}>Try again</button>
+      <div className="row gap">
+        <button type="button" onClick={() => location.assign("/")}>Try again</button>
+        {signInEnabled() && <button type="button" onClick={() => void switchAccount()}>Sign in with a different account</button>}
+      </div>
     </div>
   );
 }

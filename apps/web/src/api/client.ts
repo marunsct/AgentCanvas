@@ -1,5 +1,5 @@
 /** Thin fetch wrapper for the AgentCanvas API: JSON in/out, If-Match versions, problem+json errors. */
-import { accessToken, signIn } from "./auth";
+import { accessToken, renew, signInAgain } from "./auth";
 
 export interface Problem {
   type?: string;
@@ -26,17 +26,24 @@ export function withAuth(init?: HeadersInit): Headers {
   return headers;
 }
 
-/** A 401 means the session ended: sign in again (no-op in dev mode). */
+/** A 401 that renewing could not fix means the session ended: sign in again (see `signInAgain`; no-op in dev mode). */
 export async function failed(res: Response): Promise<ApiError> {
-  if (res.status === 401) void signIn();
+  if (res.status === 401) signInAgain();
   return new ApiError(res.status, (await res.json().catch(() => ({}))) as Problem);
 }
 
+/** `fetch` with the bearer token; on 401 renew the token once without leaving the page and retry. */
+export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(url, { ...init, headers: withAuth(init.headers) });
+  if (res.status !== 401 || !(await renew())) return res;
+  return fetch(url, { ...init, headers: withAuth(init.headers) });
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit & { version?: number; json?: unknown } = {}): Promise<T> {
-  const headers = withAuth(init.headers);
+  const headers = new Headers(init.headers);
   if (init.json !== undefined) headers.set("content-type", "application/json");
   if (init.version !== undefined) headers.set("If-Match", `"${init.version}"`);
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await authFetch(`${API_BASE}${path}`, {
     ...init,
     headers,
     body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
@@ -49,7 +56,7 @@ export async function apiFetch<T>(path: string, init: RequestInit & { version?: 
 
 /** Download a file the API serves (a plain link would not carry the bearer token). */
 export async function apiDownload(path: string, fallbackName: string): Promise<void> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: withAuth() });
+  const res = await authFetch(`${API_BASE}${path}`);
   if (!res.ok) throw await failed(res);
   const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
   const url = URL.createObjectURL(await res.blob());

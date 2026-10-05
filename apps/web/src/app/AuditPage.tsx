@@ -26,8 +26,8 @@ export function AuditPage() {
     initialPageParam: 0,
     queryFn: ({ pageParam }) => {
       const q = new URLSearchParams({ limit: String(PAGE) });
-      if (action) q.set("action", action);
-      if (target) q.set("target", target);
+      if (action.trim()) q.set("action", action.trim());
+      if (target.trim()) q.set("target", target.trim());
       if (pageParam) q.set("before", String(pageParam));
       return apiFetch<Entry[]>(`/org/audit?${q}`);
     },
@@ -38,8 +38,8 @@ export function AuditPage() {
     <div className="page">
       <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Audit log</span></header>
       <div className="row gap">
-        <input placeholder="action, e.g. publish" value={action} onChange={(e) => setAction(e.target.value.trim())} aria-label="action" />
-        <input placeholder="target contains, e.g. a workflow id" value={target} onChange={(e) => setTarget(e.target.value.trim())} aria-label="target" />
+        <input placeholder="action, e.g. publish" value={action} onChange={(e) => setAction(e.target.value)} aria-label="action" />
+        <input placeholder="target contains, e.g. a workflow id" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="target" />
       </div>
       <QueryStatus q={log} what="the audit log" />
       {log.isSuccess && rows.length === 0 && <p className="muted">Nothing recorded yet{action || target ? " for this filter" : ""}.</p>}

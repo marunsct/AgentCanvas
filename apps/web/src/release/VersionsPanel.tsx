@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiDownload, apiFetch } from "../api/client";
 import type { DiffOut, ElementDiff, VersionOut } from "../api/generated";
+import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import { ContractSection } from "./ContractSection";
@@ -51,10 +52,10 @@ export function VersionsPanel() {
   return (
     <div className="panel-body versions-panel">
       <h3>Versions</h3>
-      <form className="row gap" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      {can("builder") && <form className="row gap" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <input placeholder="What changed?" value={message} onChange={(e) => setMessage(e.target.value)} aria-label="version message" />
         <button type="submit" className="primary" disabled={save.isPending}>Save version</button>
-      </form>
+      </form>}
       {save.error && <p className="error-text small">{(save.error as Error).message}</p>}
       <p className="small">
         <button type="button" className="link" data-testid="export-draft"
@@ -82,7 +83,7 @@ export function VersionsPanel() {
               <b>v{v.semver}</b><span className="muted small">{new Date(v.created_at).toLocaleString()}</span>
               <span className="spacer" />
               <button type="button" className="small" onClick={() => void compare(v)}>Compare</button>
-              <button type="button" className="small" onClick={() => void restore(v)}>Restore</button>
+              {can("builder") && <button type="button" className="small" onClick={() => void restore(v)}>Restore</button>}
               <button type="button" className="link small"
                 onClick={() => download(`/workflows/${wf.id}/export.zip?version=${v.semver}`, `export-${v.semver}.zip`)}>
                 ⬇ zip</button>

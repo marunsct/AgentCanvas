@@ -1,10 +1,10 @@
 import type { RunEvent } from "./events";
-import { API_BASE, failed, withAuth } from "../api/client";
+import { API_BASE, authFetch, failed } from "../api/client";
 
 /** POST + read a Server-Sent-Events stream (EventSource only supports GET, so we use fetch). */
 export async function postStream(path: string, body: unknown, onEvent: (e: RunEvent) => void): Promise<void> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST", headers: withAuth({ "content-type": "application/json" }), body: JSON.stringify(body),
+  const res = await authFetch(`${API_BASE}${path}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) throw await failed(res);
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

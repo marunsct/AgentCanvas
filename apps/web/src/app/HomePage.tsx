@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
-import { signOut } from "../api/auth";
+import { signInEnabled, signOut } from "../api/auth";
 import { PROJECT_ID, useTemplates, useWorkflows } from "../api/queries";
 import { can, ME } from "../api/session";
 import { startTour } from "../tutor/Tutor";
@@ -45,7 +45,7 @@ export function HomePage() {
         {can("admin") && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
         <Link to="/policies" data-testid="policies-link">Policies</Link>
         <span className="muted small" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
-        {ME.email && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
+        {signInEnabled() && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
       </header>
       {!can("builder") && (
         <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({ME.role}) cannot create or edit them.</p>

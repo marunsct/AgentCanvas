@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
 import type { Check, DeploymentOut, PublishOut } from "../api/generated";
+import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 
 export function PublishSection({ wfId }: { wfId: string }) {
@@ -40,9 +41,9 @@ export function PublishSection({ wfId }: { wfId: string }) {
   return (
     <section className="publish" aria-label="publish">
       <h4>Publish</h4>
-      <button type="button" className="primary" disabled={publish.isPending} onClick={() => publish.mutate()}>
+      {can("builder") && <button type="button" className="primary" disabled={publish.isPending} onClick={() => publish.mutate()}>
         {publish.isPending ? "Checking…" : "Publish to prod"}
-      </button>
+      </button>}
       {publish.error && <p className="error-text small" role="alert">{(publish.error as Error).message}</p>}
       {checks && (
         <ul className="checklist small" data-testid="publish-checklist">
@@ -68,8 +69,8 @@ export function PublishSection({ wfId }: { wfId: string }) {
               <b>{d.environment}</b> v{d.semver} {!d.active && <span className="badge warn">unpublished</span>}
               <code className="small">{d.key_prefix}…</code>
               <span className="spacer" />
-              {d.active && <button type="button" className="small" onClick={() => void rotate(d)}>Rotate key</button>}
-              {d.active && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
+              {d.active && can("builder") && <button type="button" className="small" onClick={() => void rotate(d)}>Rotate key</button>}
+              {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
           </li>
         ))}

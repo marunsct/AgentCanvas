@@ -2,6 +2,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
+import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { DecisionCard } from "../inbox/DecisionCard";
 import type { WF } from "../ir/model";
@@ -13,6 +14,7 @@ import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./sessio
 /** Open the run's LangSmith trace in a new tab (asks the API for the URL: a plain link carries no sign-in). */
 async function openTrace(runId: string) {
   const tab = window.open("", "_blank");
+  if (tab) tab.opener = null; // the trace page must not reach back into this tab
   try {
     const { url } = await apiFetch<{ url: string }>(`/runs/${runId}/trace?format=json`);
     if (tab) tab.location.href = url;
@@ -58,7 +60,8 @@ export function RunPanel() {
   const run = useRun();
   const [chatOverride, setChatOverride] = useState<boolean | null>(null);
   if (!wf) return null;
-  const blocked = run.running || errors > 0;
+  const builder = can("builder"); // running needs builder (the API answers 403 otherwise)
+  const blocked = run.running || errors > 0 || !builder;
   const chat = chatOverride ?? isChat(wf);
 
   return (
@@ -81,9 +84,10 @@ export function RunPanel() {
       </label>
       {chat ? <ChatInput wf={wf} disabled={blocked} /> : <FormInput wf={wf} disabled={blocked || busyEditing} />}
       {errors > 0 && <p className="muted">{errors} error(s) block running — see Problems.</p>}
+      {!builder && <p className="muted small">Your role can look at runs but not start them.</p>}
       <div className="row gap">
-        {run.running && <button type="button" onClick={() => void cancelRun()}>■ Stop</button>}
-        {run.breakpoint && !run.running && (
+        {run.running && builder && <button type="button" onClick={() => void cancelRun()}>■ Stop</button>}
+        {run.breakpoint && !run.running && builder && (
           <button type="button" className="primary" onClick={() => void continueRun()}>⏵ Continue</button>
         )}
       </div>
@@ -105,7 +109,7 @@ export function RunPanel() {
       {run.warnings.map((w, i) => <p key={i} className="warn-text">⚠ {w}</p>)}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}
       {!run.running && run.interrupts.map((intr) => (
-        <DecisionCard key={intr.id} intr={intr} onDecide={(v) => void resumeRun(v, intr.id)} />
+        <DecisionCard key={intr.id} intr={intr} busy={!can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
       ))}
       {Object.keys(run.output).length > 0 && !chat && (
         <>
@@ -121,7 +125,7 @@ export function RunPanel() {
           <pre className="json" data-testid="run-output">{JSON.stringify(run.finalOutput, null, 2)}</pre>
         </>
       )}
-      <SaveAsTest />
+      {builder && <SaveAsTest />}
     </div>
   );
 }

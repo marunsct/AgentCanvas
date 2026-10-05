@@ -237,7 +237,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setFrame: (frame) => set({ frame }),
   refactor: async (kind, body) => {
     const { workflowId, flush } = get();
-    if (!workflowId) return null;
+    if (!workflowId || !can("builder")) return null;
     await flush(); // the server computes the refactoring from the saved workflow
     try {
       const out = await apiFetch<{ commands: Command[] }>(`/workflows/${workflowId}/refactor/${kind}`, { method: "POST", json: body });

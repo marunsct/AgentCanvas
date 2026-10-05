@@ -28,9 +28,53 @@ export async function signIn(): Promise<void> {
   await manager.signinRedirect({ state: location.pathname + location.search });
 }
 
+/** Whether this page signs in with an identity provider (false in the API's dev mode). */
+export function signInEnabled(): boolean {
+  return manager !== null;
+}
+
+/** Renew the token without leaving the page (hidden iframe or refresh token); true when it worked. */
+export async function renew(): Promise<boolean> {
+  if (!manager) return false;
+  try {
+    user = await manager.signinSilent();
+    return !!user && !user.expired;
+  } catch {
+    return false;
+  }
+}
+
+const LAST_REDIRECT = "agentcanvas.signin.redirected_at";
+
+/** The API refused our token and renewing did not help: sign in again, unless we did so moments ago. A token the
+ * identity provider just issued being refused means a configuration problem (audience, issuer, clock, keys), and
+ * redirecting again would loop forever; the caller shows the error instead. Returns whether it redirected. */
+export function signInAgain(): boolean {
+  if (!manager) return false;
+  let last = 0;
+  try { last = Number(sessionStorage.getItem(LAST_REDIRECT) ?? 0); } catch { /* storage blocked */ }
+  if (Date.now() - last < 60_000) return false;
+  try { sessionStorage.setItem(LAST_REDIRECT, String(Date.now())); } catch { /* storage blocked */ }
+  void signIn();
+  return true;
+}
+
+/** Sign out at the identity provider; providers without an end-session endpoint just forget the local session. */
 export async function signOut(): Promise<void> {
   if (!manager) return;
-  await manager.signoutRedirect();
+  try {
+    await manager.signoutRedirect();
+  } catch {
+    await manager.removeUser();
+    location.assign("/");
+  }
+}
+
+/** Forget this account and let the user pick another at the identity provider. */
+export async function switchAccount(): Promise<void> {
+  if (!manager) return;
+  await manager.removeUser();
+  await manager.signinRedirect({ state: "/", prompt: "select_account" });
 }
 
 export async function fetchAuthConfig(): Promise<AuthConfig> {
