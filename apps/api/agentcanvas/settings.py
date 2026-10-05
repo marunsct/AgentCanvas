@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
     # unless the organisation sets its own (M8-T4); 0 keeps them forever
     retention_days: int = 90
+    # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
     # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue

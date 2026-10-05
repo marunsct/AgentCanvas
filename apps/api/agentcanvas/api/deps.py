@@ -23,7 +23,15 @@ def get_settings_dep(request: Request) -> Settings:
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     db: Database = request.app.state.db
     async with db.sessionmaker() as s:
+        request.state.sessions = [*getattr(request.state, "sessions", []), s]
         yield s
+
+
+async def release_sessions(request: Request) -> None:
+    """Give the request's database connections back to the pool once the response starts: a stream can stay open
+    for minutes and must not hold a connection meanwhile (M8-T5). A session used again simply reconnects."""
+    for s in getattr(request.state, "sessions", []):
+        await s.close()
 
 
 @dataclass

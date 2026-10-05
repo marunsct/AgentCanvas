@@ -76,7 +76,21 @@ def test_commands_are_invertible(cmds):
 ## 8. Performance tests
 - Validator: 200-node IR validates < 150 ms (`pytest-benchmark`).
 - Canvas: 500 nodes pan/zoom at 60 fps (Playwright + `performance.now()` sampling) — M2 stretch goal.
-- Runner: k6 script with 200 concurrent SSE runs using the fake backend (M8-T5).
+- Runner: k6 script with 200 concurrent SSE runs using the fake backend (M8-T5): `infra/load/runs.js` against
+  compose prod with the `infra/load/compose.load.yml` overlay (demo models, dev sign-in):
+
+  ```bash
+  docker compose -f infra/compose.prod.yml -f infra/load/compose.load.yml --env-file infra/.env.prod up -d
+  k6 run infra/load/runs.js            # VUS=200 HOLD=2m by default; fails on p95 first event ≥ 250 ms
+  ```
+
+  **Result (2026-10-05, 4 vCPU, 2 API replicas, Postgres 16, `support_triage` template):** 5,875 runs, 0 failed;
+  time to first event p50 42 ms, **p95 89 ms**, p99 321 ms; whole run p50 5.2 s, p95 6.5 s at 200 runs in flight
+  (≈37 runs/s, CPU-bound: one run takes about 0.1 s alone). The first attempt failed (46 % of requests): each
+  stream held a control-database connection until it ended and exhausted the pool (5 + 10). Since then a request
+  gives its connections back once the response starts, the pool is configurable (`AGENTCANVAS_DB_POOL_SIZE`,
+  `AGENTCANVAS_DB_MAX_OVERFLOW`), and checkpoints use a connection pool (`AGENTCANVAS_PERSISTENCE_POOL_SIZE`)
+  instead of one shared connection.
 
 ## 9. Code review checklist
 - [ ] Does the change keep interpreter and generated code equivalent?

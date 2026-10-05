@@ -246,7 +246,9 @@ async def api_run_wait(
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """Run the published version and return its final state (or its pending interrupts)."""
-    return await _result(await _start(request, session, dep_id, body, authorization))
+    h = await _start(request, session, dep_id, body, authorization)
+    await session.close()  # no connection held while the run works
+    return await _result(h)
 
 
 @public_router.post("/deployments/{dep_id}/runs/stream")
@@ -282,4 +284,5 @@ async def api_resume(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
         deployment_id=dep.id, version_id=version_id,
     )  # fmt: skip
+    await session.close()
     return await _result(h)

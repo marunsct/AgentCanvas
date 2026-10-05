@@ -26,9 +26,12 @@ def langgraph_url(url: str) -> str:
 
 
 class Database:
-    def __init__(self, url: str):
+    def __init__(self, url: str, pool_size: int | None = None, max_overflow: int | None = None):
         self.url = async_url(url)
-        self.engine: AsyncEngine = create_async_engine(self.url, pool_pre_ping=True)
+        pool: dict[str, int] = {}
+        if self.url.startswith("postgresql") and pool_size is not None:  # connections per API process
+            pool = {"pool_size": pool_size, "max_overflow": max_overflow or 0}
+        self.engine: AsyncEngine = create_async_engine(self.url, pool_pre_ping=True, **pool)
         self.sessionmaker = async_sessionmaker(self.engine, expire_on_commit=False)
 
     @property

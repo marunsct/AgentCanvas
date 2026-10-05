@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -28,6 +29,9 @@ def _sqlite_path(url: str) -> str:
     return str(p.with_name(p.stem + ".checkpoints" + (p.suffix or ".db")))
 
 
+POOL_SIZE = int(os.getenv("AGENTCANVAS_PERSISTENCE_POOL_SIZE", "20"))  # checkpoint/store connections per process
+
+
 @asynccontextmanager
 async def open_persistence(database_url: str | None) -> AsyncIterator[Persistence]:
     if not database_url or database_url == "memory":
@@ -35,9 +39,15 @@ async def open_persistence(database_url: str | None) -> AsyncIterator[Persistenc
     elif database_url.startswith(("postgresql", "postgres")):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         from langgraph.store.postgres.aio import AsyncPostgresStore
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
         conn = "postgresql://" + database_url.split("://", 1)[1]
-        async with AsyncPostgresSaver.from_conn_string(conn) as saver, AsyncPostgresStore.from_conn_string(conn) as st:
+        # a pool, not one shared connection: concurrent runs would queue behind each other's checkpoint writes
+        # (M8-T5). The same settings `from_conn_string` uses, which also keep transaction pooling (PgBouncer) safe.
+        kwargs = {"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row}
+        async with AsyncConnectionPool(conn, min_size=1, max_size=POOL_SIZE, kwargs=kwargs, open=False) as pool:
+            saver, st = AsyncPostgresSaver(conn=pool), AsyncPostgresStore(conn=pool)  # type: ignore[arg-type]
             await saver.setup()
             await st.setup()
             yield Persistence(saver, st, "postgres")

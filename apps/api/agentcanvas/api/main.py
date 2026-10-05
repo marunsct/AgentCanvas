@@ -19,6 +19,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 from agentcanvas import observability
 from agentcanvas.adapters import get_adapter
 from agentcanvas.api.audit import record as audit_record
+from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
@@ -47,7 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db = Database(settings.database_url)
+        db = Database(settings.database_url, settings.db_pool_size, settings.db_max_overflow)
         if settings.auto_migrate:
             await db.migrate()
         if settings.seed_dev_data:
@@ -119,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         observability.tag_current_span(**{"request.id": request_id})
         start = time.perf_counter()
         response = await call_next(request)
+        await release_sessions(request)  # streams keep no database connection
         route = observability.route_label(request.scope)
         observability.observe_request(request.method, route, response.status_code, time.perf_counter() - start)
         await audit_record(request, response)
