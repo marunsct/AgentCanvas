@@ -10,7 +10,7 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) in review |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) merged, tag pending |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 
 ## Repository layout
@@ -75,5 +75,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | Sprint | State |
 |---|---|
 | S0–S9: foundations to MVP (v0.1.0) | ✅ merged |
-| S10: accounts & access (v0.2.0) | ✅ done, in review ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
+| S10: accounts & access (v0.2.0) | ✅ merged ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
 | S11: production readiness (v0.3.0) | 🚧 in progress: containers, compose prod and Helm, observability, backups and retention, safe redeploy, load test, security review ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s11--production-readiness--v030)) |

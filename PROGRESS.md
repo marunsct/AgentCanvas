@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/project-thread-sj4pqp` for S10, in [#3](https://github.com/marunsct/AgentCanvas/pull/3). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1) and S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2).
+- **Branch:** `claude/sprint-11-production-readiness` for S11, in [#4](https://github.com/marunsct/AgentCanvas/pull/4). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2) and S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** Sprint 10 done and reviewed (fixes in #3, waiting on the maintainer's merge); Sprint 11 started on `claude/sprint-11-production-readiness` (containers, compose prod, Helm, cron across replicas done).
+- **Last updated:** Sprint 10 merged (#3, 2026-10-05); Sprint 11 started on `claude/sprint-11-production-readiness` (containers, compose prod, Helm, cron across replicas done).
 
 ## At a glance
 
@@ -22,7 +22,7 @@ Live status of the project. Update it with every commit that finishes or changes
 | S7 Workspaces & events | ✅ done |
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
-| S10 Accounts & access → v0.2.0 | ✅ done (#3 in review; tag after merge) |
+| S10 Accounts & access → v0.2.0 | ✅ done (merged in #3; tag `v0.2.0` pending) |
 | **S11 Production readiness → v0.3.0** | 🚧 **in progress** (M8-T1, M8-T2 and the cron leader lock done) |
 | S12+ GA backlog | ⬜ pending |
 
@@ -134,7 +134,8 @@ Live status of the project. Update it with every commit that finishes or changes
 - [x] FR-X-19 policy-as-code lint profiles, in #3.
 - [x] Long-term memory separated per organisation, and policies checked inside subgraphs, in #3.
 - [x] End-of-sprint review and fixes, in #3.
-- [ ] Merge #3 (maintainer) and tag `v0.2.0`.
+- [x] Merged in #3 (2026-10-05).
+- [ ] Tag `v0.2.0` (maintainer's call).
 
 ### S11 — production readiness → v0.3.0 (in progress; detail in the sprint plan §3)
 - [x] M8-T1 containers: non-root images built in CI, SSE-safe nginx.
