@@ -70,6 +70,8 @@ export interface EditorState {
   setMock: (name: string, replies: unknown[] | null) => void;
   setDrill: (path: string[]) => void;
   setGroup: (fn: (() => Promise<void>) | null) => void;
+  frame: (() => void) | null; // "frame the selection" (visual group), registered by the canvas
+  setFrame: (fn: (() => void) | null) => void;
   refactor: (kind: "subgraph" | "inline", body: Record<string, unknown>) => Promise<Command[] | null>;
   reset: () => void;
 }
@@ -83,7 +85,7 @@ const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
   inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null, tidy: null,
   breakpoints: [] as string[], pins: {} as Record<string, Record<string, unknown>>, mocks: {} as Record<string, unknown[]>,
-  drill: [] as string[], group: null,
+  drill: [] as string[], group: null, frame: null as (() => void) | null,
 };
 
 const bpKey = (id: string) => `agentcanvas.breakpoints.${id}`;
@@ -227,6 +229,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setTidy: (tidy) => set({ tidy }),
   setDrill: (drill) => set({ drill, selected: null }),
   setGroup: (group) => set({ group }),
+  setFrame: (frame) => set({ frame }),
   refactor: async (kind, body) => {
     const { workflowId, flush } = get();
     if (!workflowId) return null;

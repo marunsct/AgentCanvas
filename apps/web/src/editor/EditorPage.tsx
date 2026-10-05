@@ -90,6 +90,8 @@ export function EditorPage() {
           title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
         <button type="button" onClick={() => void useEditor.getState().group?.()}
           title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
+        <button type="button" onClick={() => useEditor.getState().frame?.()}
+          title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
         <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
         <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>

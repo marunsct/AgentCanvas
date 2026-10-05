@@ -20,6 +20,7 @@ import { type Clip, copySelection, pasteCommands } from "./clipboard";
 import { checkConnection, flowPort, nextOrder } from "./connect";
 import { tidyLayout } from "./layout";
 import { type CanvasData, irToFlow } from "./irToFlow";
+import { Frames, frameSelection } from "./Frames";
 import { NODE_TYPES } from "./nodes";
 
 export const DND_MIME = "application/agentcanvas";
@@ -108,6 +109,23 @@ export function Canvas() {
       }
     });
     return () => useEditor.getState().setGroup(null);
+  }, [rf]);
+
+  // "Frame" (layout only): a labelled box around the selected steps and resources
+  useEffect(() => {
+    useEditor.getState().setFrame(() => {
+      const st = useEditor.getState();
+      if (st.drill.length) return;
+      const picked = rf.getNodes().filter((n) => n.selected && n.data.kind !== "terminal").map((n) => n.id);
+      const chosen = picked.length ? picked : st.selected ? [st.selected] : [];
+      if (!chosen.length) {
+        st.setNotice({ kind: "info", text: "Select the steps to frame first (Ctrl/⌘-click them or drag a selection box)." });
+        return;
+      }
+      const label = window.prompt("Frame label", "Group")?.trim();
+      if (label) frameSelection(chosen, label);
+    });
+    return () => useEditor.getState().setFrame(null);
   }, [rf]);
 
   // keep React Flow's measurements and its (multi-)selection when the IR changes; the editor's selected
@@ -268,6 +286,7 @@ export function Canvas() {
         zoomOnDoubleClick={false}
         deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]} minZoom={0.1} proOptions={{ hideAttribution: false }}
       >
+        <Frames />
         <Background gap={16} />
         <MiniMap pannable zoomable />
         <Controls />

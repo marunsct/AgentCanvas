@@ -110,3 +110,19 @@ test("blast radius overlay and dry-run toggle", async ({ page }) => {
   await page.getByLabel("dry run").check();
   await expect(page.getByTestId("debug-badge")).toContainText("dry run");
 });
+
+test("frame steps with a labelled visual group, then remove it", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Frames ${Date.now()}`, template: "ticket_triage" } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByTestId("node-classify").click();
+  page.once("dialog", (d) => void d.accept("Intake"));
+  await page.getByRole("button", { name: "▭ Frame" }).click();
+  await expect(page.getByTestId("frame-Intake")).toBeVisible();
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+  const saved = await (await api.get(`/api/v1/workflows/${wf.id}`)).json();
+  expect(saved.ir.metadata.groups[0]).toMatchObject({ label: "Intake", members: ["n_cls"] });
+  await page.getByTestId("node-classify").click(); // the frame never blocks its steps
+  await page.getByRole("button", { name: "remove frame Intake" }).click();
+  await expect(page.getByTestId("frame-Intake")).toHaveCount(0);
+});
