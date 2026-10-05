@@ -10,6 +10,8 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)** |
+| Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 
 ## Repository layout
 
@@ -31,16 +33,27 @@ make dev-fake     # API with scripted fake models on :8000
 make dev-web      # web app on http://localhost:5173 (in another terminal)
 ```
 
-Open the web app, press **▶ Run**, approve the tool call, and watch the nodes light up.
+Open the web app and click **Start the guided build** for a six-step tour, or pick a template, press **▶ Run**,
+approve the tool call and watch the nodes light up.
 
 ```bash
 make test         # backend + frontend tests
 make lint         # ruff, pyright, tsc
 make e2e          # Playwright end-to-end (starts both servers)
+make check        # every CI gate except e2e
+make docs         # documentation site on http://localhost:8001
 ```
 
 Use real models with `make dev-api` after exporting provider keys (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
 
+## What you can do in v0.1.0
+
+Build on the canvas (agents, Deep Agents, routers, map/join, subgraphs, MCP/HTTP tools, memory, workspace
+scripts and custom widgets) → run and debug (breakpoints, time travel, Explain mode, pins/mocks, cost per step,
+blast radius and dry runs) → test (saved test cases, record/replay) → ship (versions & diffs, export as a plain
+Python project, publish behind an API key, webhooks and cron). Details in the [changelog](CHANGELOG.md).
+
 ## Status
 
-The project is executed sprint by sprint; see the [execution log](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#5-execution-log).
+The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for what is done and pending, and the
+[execution log](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#5-execution-log) for per-sprint detail.

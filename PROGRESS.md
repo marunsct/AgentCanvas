@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/trusting-curie-n0i720`
+- **Branch:** `claude/trusting-curie-n0i720`. S0–S8 were merged into `main` via [#1](https://github.com/marunsct/AgentCanvas/pull/1); S9 commits are local and waiting for the branch to be re-based on `main` (see "Open items").
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** end of Sprint 8.
+- **Last updated:** end of Sprint 9 (v0.1.0 prepared).
 
 ## At a glance
 
@@ -21,18 +21,18 @@ Live status of the project. Update it with every commit that finishes or changes
 | S6 Node catalog II & debug | ✅ done |
 | S7 Workspaces & events | ✅ done |
 | S8 Export & publish | ✅ done |
-| **S9 MVP hardening → v0.1.0** | ⏳ **next** |
-| S10 Accounts & access → v0.2.0 | ⬜ pending |
+| S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
+| **S10 Accounts & access → v0.2.0** | ⏳ **next** |
 | S11 Production readiness → v0.3.0 | ⬜ pending |
 | S12+ GA backlog | ⬜ pending |
 
-**Test totals** at the end of S8:
+**Test totals** at the end of S9:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 196 passed, 1 skipped, 1 known upstream canary (xfail) |
-| Web unit tests (vitest) | 39 passed |
-| Browser journeys (Playwright) | 22 passed |
+| API (pytest) | 198 passed, 1 skipped, 1 known upstream canary (xfail) |
+| Web unit tests (vitest) | 44 passed |
+| Browser journeys (Playwright) | 27 passed |
 
 `make check` runs every CI gate except the browser journeys: lint, format, types, the import contract, schema/type drift, tests and the build.
 
@@ -100,17 +100,21 @@ Live status of the project. Update it with every commit that finishes or changes
   - SP-3: v3 streaming is not ready; keep v2.
   - SP-4: a `ServerRuntime` factory works on Agent Server.
 
+### S9: MVP hardening → v0.1.0
+- **Blast radius (FR-X-02):** per step, what it can do (write externally, send messages, execute code, spend, read personal data) and whether a human approves it first; a canvas overlay. **Dry runs** replace risky tools with recorders.
+- **Guided build (FR-X-24):** a six-step first-run tutor that advances when the real canvas shows each step done.
+- **UI states:** loading, error-with-retry and empty states on every screen; error boundaries per page and panel.
+- **Visual groups:** labelled frames around steps (layout only; deferred from S6).
+- **Performance:** pages and the layout engine load on demand; the entry bundle went from 2.8 MB to 0.3 MB.
+- **Release prep:** version 0.1.0, `CHANGELOG.md`, MkDocs documentation site (`make docs`, CI job).
+
 ## What is pending
 
-### S9 — MVP hardening → v0.1.0 (next)
-- [ ] M6-T8 hardening: error, empty and loading states on every screen; docs site from the build guide; release notes; tag `v0.1.0`.
-- [ ] FR-X-02 blast-radius overlay (basic, from the nodes' declared `side_effects`).
-- [ ] FR-X-24 guided build.
-- [ ] Visual-only groups (layout frames), deferred from S6.
-- [ ] Code-split the web bundle; it is currently 2.8 MB before compression, over the 500 kB warning.
-- [ ] Design-partner feedback buffer. Exit criterion: 10 partners complete journey J1 unaided, which needs real users.
+### Still open from S9
+- [ ] Tag `v0.1.0`. A tag is outward-facing, so it needs the maintainer's go-ahead.
+- [ ] Exit criterion: 10 design partners complete journey J1 unaided. This needs real users.
 
-### S10 — accounts & access → v0.2.0
+### S10 — accounts & access → v0.2.0 (next)
 - [ ] OIDC login, organisations and projects, roles, audit log (M7-T1…T4). Until then every request acts as a seeded dev admin.
 - [ ] FR-X-19 policy-as-code lint profiles.
 
@@ -125,6 +129,7 @@ Live status of the project. Update it with every commit that finishes or changes
 - [ ] The remaining FR-X items: 03, 04, 05, 06, 09, 11, 12, 16, 20, 21, 23.
 
 ### Open items carried forward
+- [ ] **Branch housekeeping:** PR #1 was merged and its branch deleted. Re-basing `claude/trusting-curie-n0i720` on `main` was refused by the session's safety rules (it rewrites the local branch), so the S9 commits are local. They need to be moved onto `main` (`git rebase --onto origin/main 2d5f759`), pushed, and opened as a new pull request.
 - [ ] **SP-2 follow-up:** one session with a real LangSmith key to measure sandbox latency. Open questions:
   - is an empty allow-list accepted as "no network"?
   - can one sandbox run several commands at once?
@@ -136,7 +141,13 @@ Live status of the project. Update it with every commit that finishes or changes
 
 | Commit | Content |
 |---|---|
-| S8 part 7 | Spike reports SP-3 and SP-4; export uses a `ServerRuntime` factory; S8 docs; this file |
+| S9 part 6 | v0.1.0: version, changelog, docs site; S9 docs |
+| `7882394` | Visual groups (frames) |
+| `5b5a01c` | Guided build |
+| `12cbd13` | Loading, error and empty states; error boundaries |
+| `7c35eb4` | Lazy-loaded pages and ELK |
+| `be62d92` | Blast radius and dry runs |
+| `2d5f759` | Spike reports SP-3 and SP-4; export uses a `ServerRuntime` factory; S8 docs; this file (merged in #1) |
 | `899ca6b` | Record/replay; contract view & API diff |
 | `17754c2` | LangSmith trace links; MVP template set |
 | `d275a93` | Webhook and cron triggers |

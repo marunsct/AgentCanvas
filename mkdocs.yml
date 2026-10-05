@@ -1,0 +1,57 @@
+# Documentation site (M6-T8): `uvx --with mkdocs-material mkdocs serve` (or `make docs`)
+site_name: AgentCanvas
+site_description: Visual agentic workflows compiled to LangGraph / LangChain / Deep Agents
+repo_url: https://github.com/marunsct/AgentCanvas
+docs_dir: docs
+theme:
+  name: material
+  features: [navigation.sections, navigation.top, search.highlight, content.code.copy]
+markdown_extensions: [tables, admonition, toc, attr_list, pymdownx.superfences]
+not_in_nav: |
+  /agent-canvas-spec/adapters/*
+  /agent-canvas-spec/build-guide/reference/**
+validation:
+  links:
+    not_found: info
+    anchors: info
+  omitted_files: info
+nav:
+  - Home: agent-canvas-spec/README.md
+  - Specification:
+      - Functional spec: agent-canvas-spec/01-functional-spec.md
+      - Technical architecture: agent-canvas-spec/02-technical-architecture.md
+      - Graph IR & compiler: agent-canvas-spec/03-graph-ir-and-compiler.md
+      - Node catalog: agent-canvas-spec/04-node-catalog.md
+      - Workspaces, scripting & events: agent-canvas-spec/05-workspaces-scripting-events.md
+      - Roadmap & risks: agent-canvas-spec/06-roadmap-risks.md
+      - Worked example: agent-canvas-spec/07-worked-example.md
+      - Persistence & memory: agent-canvas-spec/08-persistence-memory-data-modeling.md
+      - Self-improving agents: agent-canvas-spec/09-self-improving-agents.md
+      - Concept & new features: agent-canvas-spec/15-concept-evolution-and-new-features.md
+      - Deep review v0.6: agent-canvas-spec/14-deep-review-v0.6.md
+      - History:
+          - Improvement plan: agent-canvas-spec/10-improvement-plan.md
+          - Framework-agnostic plan: agent-canvas-spec/11-framework-agnostic-plan.md
+          - Multi-framework technical spec: agent-canvas-spec/12-multi-framework-technical-spec.md
+          - Deep review report (v0.5): agent-canvas-spec/13-deep-review-report.md
+  - Build guide:
+      - Overview: agent-canvas-spec/build-guide/README.md
+      - Concepts primer: agent-canvas-spec/build-guide/00-concepts-primer.md
+      - Environment setup: agent-canvas-spec/build-guide/01-environment-setup.md
+      - Repository & conventions: agent-canvas-spec/build-guide/02-repository-and-conventions.md
+      - Walking skeleton: agent-canvas-spec/build-guide/03-walking-skeleton-tutorial.md
+      - Implementation plan: agent-canvas-spec/build-guide/04-implementation-plan.md
+      - Backend guide: agent-canvas-spec/build-guide/05-backend-guide.md
+      - Frontend guide: agent-canvas-spec/build-guide/06-frontend-guide.md
+      - Compiler & node types: agent-canvas-spec/build-guide/07-compiler-and-node-types.md
+      - Testing & quality: agent-canvas-spec/build-guide/08-testing-and-quality.md
+      - Deployment & operations: agent-canvas-spec/build-guide/09-deployment-and-operations.md
+      - Security checklist: agent-canvas-spec/build-guide/10-security-checklist.md
+      - Troubleshooting FAQ: agent-canvas-spec/build-guide/11-troubleshooting-faq.md
+      - Traceability: agent-canvas-spec/build-guide/12-traceability.md
+      - Sprint plan & execution log: agent-canvas-spec/build-guide/13-sprint-plan.md
+      - Spikes:
+          - SP-2 LangSmith sandbox: agent-canvas-spec/build-guide/spikes/SP-2-langsmith-sandbox.md
+          - SP-3 v3 streaming: agent-canvas-spec/build-guide/spikes/SP-3-v3-streaming.md
+          - SP-4 ServerRuntime hosting: agent-canvas-spec/build-guide/spikes/SP-4-server-runtime-hosting.md
+  - Architecture decisions: adr/README.md
