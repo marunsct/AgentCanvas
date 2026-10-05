@@ -21,6 +21,7 @@ from agentcanvas.adapters import get_adapter
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
+from agentcanvas.api.v1 import runs as runs_module
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
@@ -30,6 +31,7 @@ from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
+from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.secrets import SecretService
 from agentcanvas.services.triggers import CronScheduler
@@ -73,9 +75,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.finish_hooks.append(observability.run_finished)
             app.state.cron = CronScheduler(db, runner, settings.secret_key)
             app.state.retention = RetentionJob(db, runner, settings.retention_days, settings.retention_interval_s)
+
+            async def handover_target(s, thread_id, version_id):
+                return await runs_module.handover_target(s, settings, thread_id, version_id)
+
+            app.state.handover = HandoverJob(db, runner, handover_target, settings.handover_interval_s)
             if settings.env != "test":  # tests drive the schedulers with explicit ticks
                 app.state.cron.start()
                 app.state.retention.start()
+                app.state.handover.start()
             log.info(
                 "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
                 database=db.engine.dialect.name,
@@ -83,8 +91,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                await app.state.handover.stop()
                 await app.state.cron.stop()
                 await app.state.retention.stop()
+                await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 await runner.shutdown()
                 await app.state.projects.aclose()
                 await db.dispose()
@@ -146,6 +156,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async def store() -> None:
             await request.app.state.runner.adapter.store.alist_namespaces(limit=1)
 
+        if request.app.state.runner.draining:  # shutting down: send no more traffic here (FR-X-10)
+            return JSONResponse({"status": "draining"}, status_code=503)
         failed = []
         for name, check in (("database", database), ("store", store)):
             try:

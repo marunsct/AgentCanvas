@@ -27,6 +27,7 @@ from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.projects import PROJECT_OF
+from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
@@ -197,14 +198,25 @@ async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, bod
 
 async def _start(request: Request, session: AsyncSession, dep_id: str, body: ApiRunIn, auth: str | None) -> RunHandle:
     dep, wf = await _caller(session, dep_id, auth)
+    version_id = dep.version_id
     if body.thread_id:
         t = await _thread(session, body.thread_id)
         if t.deployment_id != dep.id:
             raise InvalidInput(f"thread '{body.thread_id}' was not started by this deployment")
+        wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
     return await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
-        deployment_id=dep.id, version_id=dep.version_id,
+        deployment_id=dep.id, version_id=version_id,
     )  # fmt: skip
+
+
+async def _continue_on(session: AsyncSession, dep: Deployment, wf: Workflow, thread_id: str) -> tuple[Workflow, str]:
+    """A conversation continues on the deployment's version only if that version can resume it (FR-X-10)."""
+    current = await session.get(WorkflowVersion, dep.version_id)
+    ver = await thread_version(session, thread_id, current) if current else None
+    if ver is None or ver.id == dep.version_id:
+        return wf, dep.version_id
+    return Workflow.model_validate(ver.ir), ver.id
 
 
 async def _result(h: RunHandle) -> ApiResult:
@@ -218,7 +230,10 @@ async def _result(h: RunHandle) -> ApiResult:
             res.status, res.output = ev.get("status") or "success", ev.get("output")
             res.interrupts = ev.get("interrupts") or []
         elif ev["type"] == "RUN_ERROR":
-            res.status, res.error = "cancelled" if ev.get("code") == "cancelled" else "error", ev.get("message")
+            # "redeploy": the server restarted mid-run; another instance continues the conversation (FR-X-10)
+            code = ev.get("code")
+            res.status = {"cancelled": "cancelled", "redeploy": "interrupted"}.get(code, "error")  # type: ignore[assignment]
+            res.error = ev.get("message")
     return res
 
 
@@ -262,8 +277,9 @@ async def api_resume(
     if t.deployment_id != dep.id:
         raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
+    wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
-        deployment_id=dep.id, version_id=dep.version_id,
+        deployment_id=dep.id, version_id=version_id,
     )  # fmt: skip
     return await _result(h)

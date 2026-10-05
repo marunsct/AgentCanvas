@@ -58,6 +58,10 @@ helm install agentcanvas infra/helm/agentcanvas \
 
 **Several replicas are safe:** runs persist in Postgres, a reconnecting client reads state via `GET /v1/threads/{id}`, so sticky sessions are not required. Each cron minute starts one run however many replicas tick: a scheduler claims the minute by moving the trigger's `last_fired` forward in a conditional update, and only the replica whose update matched starts the run.
 
+**Safe redeploy (FR-X-10).** A rolling update never loses a run. On SIGTERM an API pod leaves the Service (`preStop`), uvicorn gives open streams 30 s, then the pod *drains*: `/readyz` answers 503 `{"status":"draining"}`, new runs get 503 with `Retry-After: 5`, and running runs get `AGENTCANVAS_DRAIN_GRACE_S` (20 s) to finish. Runs still going are stopped at their last checkpoint: they end `interrupted` with error code `redeploy` and `run.handover` set. Every replica looks for handed-over runs at startup and every `AGENTCANVAS_HANDOVER_INTERVAL_S` (10 s), claims each with a conditional update (one replica wins), and continues the conversation from its checkpoint on the version it was running. Keep 5 + 30 + drain grace below `terminationGracePeriodSeconds` (60) and compose's `stop_grace_period` (60 s). A step that was cut off runs again on the new pod, so steps with side effects should be idempotent (the same rule as retries).
+
+**Publishing over running conversations.** A deployment's conversations continue on its newest version only when that version can resume them: every state field keeps its type and reducer and every pause point (approval, human input, tool approval) keeps its step name and kind. Otherwise a conversation finishes on the version it started on (`run.workflow_version_id` shows which), and new conversations get the new version.
+
 **Client addresses.** The audit log records the caller's IP from `X-Forwarded-For` only when the direct peer is a trusted proxy: set `FORWARDED_ALLOW_IPS` (uvicorn) to the proxies' addresses. The chart and `compose.prod.yml` use `*` because only the web pods can reach the API: the chart adds a NetworkPolicy that admits only them (`networkPolicy.enabled`), and compose publishes no API port. If you turn the policy off or expose the API another way, list the proxies instead.
 
 ## 5. Configuration & secrets in production
@@ -106,7 +110,7 @@ helm install agentcanvas infra/helm/agentcanvas \
 ## 9. Runbooks (write these in M8)
 | Situation | First steps |
 |-----------|-------------|
-| Runs stuck "running" | check API pod restarts; runs whose task vanished → mark `error` by a sweeper job (runs `running` > 1 h with no events) |
+| Runs stuck "running" | graceful restarts hand runs over (FR-X-10, §4); a pod that was killed (OOM, node loss) leaves its runs `running`: check API pod restarts, then mark them `error` (a sweeper for runs `running` > 1 h with no events is on the backlog) |
 | SSE shows nothing until the end | a proxy is buffering: check ingress/nginx `proxy_buffering off`, header `X-Accel-Buffering: no` |
 | DB connection exhaustion | lower pool size per replica; check long transactions; add PgBouncer. LangGraph's `AsyncPostgresSaver.from_conn_string` already connects with `autocommit=True, prepare_threshold=0` (no prepared statements, verified in source), so **transaction pooling works for checkpoints**; if you build your own psycopg pool for the saver, use the same three settings (`autocommit=True, prepare_threshold=0, row_factory=dict_row`). For SQLAlchemy + asyncpg behind transaction pooling set `connect_args={"statement_cache_size": 0}`. |
 | Model provider outage | enable fallback models (ModelFallbackMiddleware) in affected workflows; show provider status banner |

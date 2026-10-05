@@ -180,6 +180,8 @@ class Run(Base):
     context: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # FR-X-13 cassette of a fresh run: its input, each model resource's replies, status, route and output
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
+    handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

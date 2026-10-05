@@ -55,7 +55,7 @@ services:
       replicas: ${API_REPLICAS:-2}
     depends_on:
       migrate: { condition: service_completed_successfully }
-    stop_grace_period: 45s                     # open streams get 30 s to finish (uvicorn --timeout-graceful-shutdown)
+    stop_grace_period: 60s                     # streams get 30 s to finish, then runs 20 s before hand-over
     restart: unless-stopped
 
   web:

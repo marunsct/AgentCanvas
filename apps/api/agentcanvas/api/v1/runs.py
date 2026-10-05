@@ -29,6 +29,7 @@ from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.explain import explain
+from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -183,11 +184,25 @@ async def _thread_target(
         ver = await session.get(WorkflowVersion, dep.version_id) if dep else None
         if ver is None:
             raise NotFound(f"the deployment of thread '{t.id}' no longer exists")
+        ver = await thread_version(session, t.id, ver)  # FR-X-10: the new version only if it can resume it
         await svc.get(t.workflow_id)  # registers the workflow's project (workspace code)
         return Workflow.model_validate(ver.ir), {"deployment_id": dep.id, "version_id": ver.id}  # type: ignore[union-attr]
     if runnable:
         return await _runnable_workflow(svc, t.workflow_id), {}
     return (await svc.get(t.workflow_id)).workflow, {}
+
+
+async def handover_target(
+    session: AsyncSession, settings: Settings, thread_id: str, version_id: str | None
+) -> tuple[Workflow, dict[str, Any]]:
+    """What a run handed over by a draining server continues on (FR-X-10): the version it was running, or the
+    draft for a conversation in the editor."""
+    t = await _thread(session, thread_id)
+    ver = await session.get(WorkflowVersion, version_id) if t.deployment_id and version_id else None
+    if ver is None:
+        return await _thread_target(session, settings, t)
+    await _svc(session, settings).get(t.workflow_id)  # registers the workflow's project (workspace code)
+    return Workflow.model_validate(ver.ir), {"deployment_id": t.deployment_id, "version_id": ver.id}
 
 
 async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:

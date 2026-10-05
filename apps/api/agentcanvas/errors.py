@@ -44,5 +44,9 @@ class Forbidden(DomainError):
     status, title, type_ = 403, "Forbidden", "https://agentcanvas.dev/errors/forbidden"
 
 
+class Unavailable(DomainError):
+    status, title, type_ = 503, "Unavailable", "https://agentcanvas.dev/errors/unavailable"
+
+
 class UpstreamError(DomainError):
     status, title, type_ = 502, "Upstream error", "https://agentcanvas.dev/errors/upstream"

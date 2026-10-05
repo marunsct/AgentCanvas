@@ -22,7 +22,7 @@ from agentcanvas.adapters.spi import FrameworkAdapter
 from agentcanvas.db.models import InterruptTask, Run, Thread
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
-from agentcanvas.errors import Conflict, NotFound
+from agentcanvas.errors import Conflict, NotFound, Unavailable
 from agentcanvas.ids import new_id
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Budget, Workflow
@@ -55,6 +55,7 @@ class RunHandle:
     emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
+    drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
@@ -120,6 +121,7 @@ class Runner:
         self.finish_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
         # called when a run starts (metrics)
         self.start_hooks: list[Callable[[RunHandle], None]] = []
+        self.draining = False  # shutting down: no new runs (FR-X-10)
 
     def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
@@ -149,6 +151,8 @@ class Runner:
         version_id: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
+        if self.draining:
+            raise Unavailable("this server is restarting; retry the request", retry_after=5)
         thread_id = thread_id or new_id("th")
         if thread_id in self.active_by_thread:  # double-texting policy "reject" (FR-RUN-11 later adds others)
             raise Conflict(f"thread '{thread_id}' already has an active run", run_id=self.active_by_thread[thread_id])
@@ -313,12 +317,16 @@ class Runner:
                 },
             )
         except asyncio.CancelledError:
-            status, error = "cancelled", "cancelled by user"
+            if h.drained:  # paused at the last checkpoint; another instance continues it (FR-X-10)
+                status, error = "interrupted", "paused for a server restart; it continues automatically"
+                code = "redeploy"
+            else:
+                status, error, code = "cancelled", "cancelled by user", "cancelled"
             await self._emit(
                 h,
                 {
                     "type": "RUN_ERROR",
-                    "code": "cancelled",
+                    "code": code,
                     "message": error,
                     "runId": h.run_id,
                     "threadId": h.thread_id,
@@ -362,6 +370,7 @@ class Runner:
                         tokens_out=h.usage["output_tokens"],
                         cost_usd=h.usage["cost_usd"],
                         recording=_recording(h, status),
+                        handover=h.drained,
                     )
                 )
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
@@ -434,6 +443,22 @@ class Runner:
             return False
         h.task.cancel()
         return True
+
+    async def drain(self, grace_s: float) -> list[str]:
+        """Stop taking runs, give running ones `grace_s` to finish, then stop the rest at their last checkpoint
+        and mark them for hand-over (`Run.handover`); returns the ids of the runs handed over (FR-X-10)."""
+        self.draining = True
+        running = [h for h in self.handles.values() if h.task and not h.done.is_set()]
+        if running and grace_s > 0:
+            await asyncio.wait([asyncio.ensure_future(h.done.wait()) for h in running], timeout=grace_s)
+        left = [h for h in running if not h.done.is_set()]
+        for h in left:
+            h.drained = True
+            h.task.cancel()  # type: ignore[union-attr]
+        await asyncio.gather(*(h.task for h in left if h.task), return_exceptions=True)
+        if left:
+            log.info("runner.drained", runs=[h.run_id for h in left])
+        return [h.run_id for h in left]
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):

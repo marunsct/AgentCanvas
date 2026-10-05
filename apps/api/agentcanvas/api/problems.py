@@ -22,7 +22,10 @@ def problem(status: int, title: str, detail: str, type_: str = "about:blank", **
 def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def _domain(_: Request, exc: DomainError) -> JSONResponse:
-        return problem(exc.status, exc.title, exc.detail, exc.type_, **exc.extra)
+        resp = problem(exc.status, exc.title, exc.detail, exc.type_, **exc.extra)
+        if (retry := exc.extra.get("retry_after")) is not None:
+            resp.headers["Retry-After"] = str(retry)
+        return resp
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
