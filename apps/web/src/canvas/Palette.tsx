@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useNodeTypes, useWorkspaceCatalog } from "../api/queries";
 import type { NodeManifest } from "../api/types";
 import { addElement, DND_MIME, manifestCache, type Preset } from "./Canvas";
+import { QueryStatus } from "../ui/QueryStatus";
 
 interface WorkspaceItem {
   key: string;
@@ -13,7 +14,8 @@ interface WorkspaceItem {
 }
 
 export function Palette() {
-  const { data, isLoading } = useNodeTypes();
+  const nodeTypes = useNodeTypes();
+  const { data } = nodeTypes;
   const catalog = useWorkspaceCatalog();
   const [q, setQ] = useState("");
   for (const m of data ?? []) manifestCache.set(m.type, m);
@@ -47,7 +49,7 @@ export function Palette() {
     <aside className="palette" aria-label="Node palette">
       <input className="search" placeholder="Search widgets…" value={q} onChange={(e) => setQ(e.target.value)}
         aria-label="Search widgets" />
-      {isLoading && <p className="muted">Loading…</p>}
+      <QueryStatus q={nodeTypes} what="widgets" />
       {workspaceItems.length > 0 && (
         <section>
           <h4>Workspace</h4>

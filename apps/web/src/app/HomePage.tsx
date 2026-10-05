@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, useTemplates, useWorkflows } from "../api/queries";
+import { QueryStatus } from "../ui/QueryStatus";
 
 export function HomePage() {
   const workflows = useWorkflows();
@@ -36,6 +37,7 @@ export function HomePage() {
           <button type="submit" className="primary">Create empty</button>
         </form>
         <h3>…or start from a template</h3>
+        <QueryStatus q={templates} what="templates" />
         <div className="cards">
           {(templates.data ?? []).map((t) => (
             <button type="button" key={t.id} className="card" data-testid={`template-${t.id}`}
@@ -50,8 +52,10 @@ export function HomePage() {
       </section>
       <section>
         <h2>Workflows</h2>
-        {workflows.isLoading && <p className="muted">Loading…</p>}
-        {workflows.data?.items.length === 0 && <p className="muted">No workflows yet.</p>}
+        <QueryStatus q={workflows} what="workflows" />
+        {workflows.data?.items.length === 0 && (
+          <div className="empty-state">No workflows yet. Name one above and click <b>Create empty</b>, or start from a template.</div>
+        )}
         <ul className="wf-list">
           {workflows.data?.items.map((w) => (
             <li key={w.id}>

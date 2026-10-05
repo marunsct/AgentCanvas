@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router";
+import { ErrorBoundary } from "../ui/QueryStatus";
 import { HomePage } from "./HomePage";
 
 // each page is its own chunk: the home page does not download the editor, CodeMirror or ELK
@@ -10,7 +11,8 @@ const InboxPage = lazy(() => import("../inbox/InboxPage").then((m) => ({ default
 const MemoryPage = lazy(() => import("../memory/MemoryPage").then((m) => ({ default: m.MemoryPage })));
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
+// one retry: an unreachable API shows its error (with a Retry button) in seconds, not after three back-offs
+const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } } });
 
 function NotFound() {
   return <div className="page"><h2>Page not found</h2><Link to="/">Go home</Link></div>;
@@ -20,6 +22,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <ErrorBoundary label="This page">
         <Suspense fallback={<div className="page muted" role="status">Loading…</div>}>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -31,6 +34,7 @@ export function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </QueryClientProvider>
   );

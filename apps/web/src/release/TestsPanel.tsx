@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiFetch } from "../api/client";
 import type { CaseResult, TestCaseOut, TestRunOut } from "../api/generated";
 import { useEditor } from "../editor/store";
+import { QueryStatus } from "../ui/QueryStatus";
 
 export function TestsPanel() {
   const wf = useEditor((s) => s.wf);
@@ -42,7 +43,8 @@ export function TestsPanel() {
         )}
       </div>
       {run.error && <p className="error-text">{(run.error as Error).message}</p>}
-      {list.length === 0 && <p className="muted">Run the workflow, then “Save as test case” in the Run tab.</p>}
+      <QueryStatus q={cases} what="test cases" />
+      {cases.isSuccess && list.length === 0 && <p className="muted">Run the workflow, then “Save as test case” in the Run tab.</p>}
       <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (runId.trim()) record.mutate(); }}>
         <input placeholder="run_… (e.g. a production run)" value={runId} onChange={(e) => setRunId(e.target.value)} aria-label="record run id" />
         <button type="submit" className="small">Record as test</button>

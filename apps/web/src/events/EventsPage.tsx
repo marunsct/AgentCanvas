@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, useWorkspaceCatalog } from "../api/queries";
+import { QueryStatus } from "../ui/QueryStatus";
 
 interface HandlerResult {
   handler: string;
@@ -94,6 +95,7 @@ export function EventsPage() {
       <table className="memory-table" data-testid="event-log">
         <thead><tr><th>Type</th><th>Source</th><th>Status</th><th>When</th><th /></tr></thead>
         <tbody>
+          <QueryStatus q={log} what="the event log" />
           {log.data?.map((e) => (
             <tr key={e.id}>
               <td><code>{e.type}</code></td>
