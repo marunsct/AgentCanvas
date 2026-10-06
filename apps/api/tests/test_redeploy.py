@@ -140,8 +140,11 @@ async def test_runs_of_an_instance_that_died_are_handed_over(app, api_client):
     assert h.status == "success" and h.origin == "handover" and h.thread_id == thread_id
 
     # an instance keeps its own runs alive, so a slow tick never sweeps them
-    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 0.5}, "stream": False})
-    await asyncio.sleep(0.1)
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 2}, "stream": False})
+    for _ in range(100):  # the run row turns running once its task starts (slow on a busy CI runner)
+        if (await run_row(app, r.json()["run_id"])).status == "running" and r.json()["run_id"] in job.runner.active():
+            break
+        await asyncio.sleep(0.05)
     await job.runner.heartbeat()
     assert (await run_row(app, r.json()["run_id"])).heartbeat_at is not None
     assert await job.sweep(datetime.now(UTC) + timedelta(minutes=5)) == ["run_alive"]  # but not the local run
