@@ -173,13 +173,23 @@ class ApiResult(BaseModel):
     error: str | None = None
 
 
-async def _caller(session: AsyncSession, dep_id: str, authorization: str | None) -> tuple[Deployment, Workflow]:
+async def _caller(
+    request: Request, session: AsyncSession, dep_id: str, authorization: str | None
+) -> tuple[Deployment, Workflow]:
+    """The key's deployment and workflow, after counting the request against the deployment's and the project's
+    rate limits (429 when over)."""
     dep, wf = await DeploymentService(session).authenticate(dep_id, authorization)
     from agentcanvas.db.models import WorkflowRow
 
     row = await session.get(WorkflowRow, dep.workflow_id)
     if row is not None:
         PROJECT_OF[wf.id] = row.project_id
+    settings = request.app.state.settings
+    per_key = settings.rate_limit_by_environment.get(dep.environment, settings.rate_limit_per_deployment)
+    await request.app.state.ratelimit.hit(
+        (f"deployment:{dep.id}", per_key),
+        (f"project:{row.project_id if row else dep.workflow_id}", settings.rate_limit_per_project),
+    )
     return dep, wf
 
 
@@ -197,7 +207,7 @@ async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, bod
 
 
 async def _start(request: Request, session: AsyncSession, dep_id: str, body: ApiRunIn, auth: str | None) -> RunHandle:
-    dep, wf = await _caller(session, dep_id, auth)
+    dep, wf = await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
     if body.thread_id:
         t = await _thread(session, body.thread_id)
@@ -274,7 +284,7 @@ async def api_resume(
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
-    dep, wf = await _caller(session, dep_id, authorization)
+    dep, wf = await _caller(request, session, dep_id, authorization)
     t = await _thread(session, thread_id)
     if t.deployment_id != dep.id:
         raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")

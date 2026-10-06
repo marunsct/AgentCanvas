@@ -246,6 +246,15 @@ class Connection(Base):
     config: Mapped[dict[str, Any]]
 
 
+class RateWindow(Base):
+    """Requests counted per limit key and fixed window (S12, S30): shared by every API instance."""
+
+    __tablename__ = "rate_window"
+    key: Mapped[str] = mapped_column(Text, primary_key=True)  # "deployment:<id>", "project:<id>", "hook:<id>"
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)  # unix time // window length
+    count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+
+
 class Trigger(Base):
     __tablename__ = "trigger"
     __table_args__ = (CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),)

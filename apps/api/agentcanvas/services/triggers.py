@@ -207,6 +207,12 @@ class TriggerService:
             raise refused
         return trig
 
+    async def project_of(self, trig: Trigger) -> str:
+        """The project a trigger's workflow belongs to (the workflow id when it no longer exists)."""
+        return await self.s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == trig.workflow_id)) or (
+            trig.workflow_id
+        )
+
     async def target(self, trig: Trigger) -> tuple[Workflow, dict[str, Any]]:
         """The workflow a trigger runs (its deployment's version, or the draft) and `Runner.start` kwargs."""
         from agentcanvas.services.projects import PROJECT_OF

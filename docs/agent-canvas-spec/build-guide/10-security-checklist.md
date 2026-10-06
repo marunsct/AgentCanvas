@@ -92,4 +92,4 @@ Items marked *Partial* keep a follow-up in the S12 backlog ([13-sprint-plan.md](
 | S27 | Pass | non-root images, OS updates applied at build, Trivy (HIGH/CRITICAL with a fix) in CI | pin base images by digest |
 | S28 | Pass | `test_audit.py` | |
 | S29 | Partial | conversation retention job (`services/retention.py`, `test_retention.py`) | audit-log and memory retention |
-| S30 | Partial | nginx limits deployment and webhook endpoints per client address (20 r/s, burst 40, 429) | per-key and per-project limits in the API |
+| S30 | Pass (S12) | nginx limits deployment and webhook endpoints per client address (20 r/s, burst 40, 429); the API limits each deployment key, webhook and project per minute across replicas (`services/ratelimit.py`). `test_ratelimit.py` | |

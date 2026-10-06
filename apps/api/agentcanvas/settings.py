@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # S12 (S30): requests per minute to the public API, counted across instances; 0 = no limit. Per deployment
+    # (its API key) and per webhook trigger, and per project over all its deployments and webhooks together.
+    # `rate_limit_by_environment` overrides the per-deployment limit for a deployment environment, e.g. {"dev": 30}.
+    rate_limit_per_deployment: int = 120
+    rate_limit_per_webhook: int = 120
+    rate_limit_per_project: int = 600
+    rate_limit_by_environment: dict[str, int] = {}
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
     # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue

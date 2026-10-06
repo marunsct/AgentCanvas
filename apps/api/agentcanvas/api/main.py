@@ -34,6 +34,7 @@ from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
+from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.secrets import SecretService
@@ -78,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
+            app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(db, runner, settings.retention_days, settings.retention_interval_s)
 
             async def handover_target(s, thread_id, version_id):
