@@ -2,16 +2,16 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/sprint-12-evaluation-studio` for S12, in [#5](https://github.com/marunsct/AgentCanvas/pull/5) . S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2) and S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3) and S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4).
+- **Branch:** S13 starts from `main`. S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-06. Sprint 11 finished, reviewed and merged (#4; tag `v0.3.0` is the maintainer's call); Sprint 12 Evaluation Studio started.
+- **Last updated:** 2026-10-06. Sprint 12 finished, reviewed and merged (#5; tag `v0.4.0` is the maintainer's call); Sprint 13 Evaluation in production planned.
 
 ## At a glance
 
 | Area | Status |
 |---|---|
 | Specification (functional, technical, IR/compiler, node catalog, workspaces/events, reviews v0.5/v0.6, new features) | ✅ done (docs 01–15, ADRs 0001–0017) |
-| Sprint plan S0–S12 | ✅ done (S12 backlog planned 2026-10-06) |
+| Sprint plan S0–S13 | ✅ done (S13 backlog planned 2026-10-06) |
 | S0 Foundations | ✅ done |
 | S1 IR v1.1 & API | ✅ done |
 | S2 Runner & persistence | ✅ done |
@@ -24,15 +24,17 @@ Live status of the project. Update it with every commit that finishes or changes
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
 | S10 Accounts & access → v0.2.0 | ✅ done (merged in #3; tag `v0.2.0` pending) |
 | S11 Production readiness → v0.3.0 | ✅ done (merged in #4; tag `v0.3.0` pending) |
-| **S12 Evaluation Studio → v0.4.0** | 🚧 **in progress** |
-| S13+ GA backlog | ⬜ pending |
+| S12 Evaluation Studio → v0.4.0 | ✅ done (merged in #5; tag `v0.4.0` pending) |
+| **S13 Evaluation in production → v0.5.0** | 📋 **planned** |
+| S14+ GA backlog | ⬜ pending |
 
-**Test totals** at the end of S11:
+**Test totals** at the end of S12:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 281 passed, 1 known upstream canary (xfail) |
-| Web unit tests (vitest) | 51 passed |
+| API (pytest) | 313 passed, 1 known upstream canary (xfail) |
+| Web unit tests (vitest) | 58 passed |
+| Playwright journeys | 33 passed (production build under the production CSP) |
 | Browser journeys (Playwright) | 31 passed |
 
 `make check` runs every CI gate except the browser journeys: lint, format, types, the import contract, schema/type drift, tests and the build.
@@ -163,7 +165,7 @@ Live status of the project. Update it with every commit that finishes or changes
 
 The follow-ups are in the S12 backlog.
 
-### S12 — Evaluation Studio → v0.4.0 (in progress; detail in the sprint plan §3)
+### S12 — Evaluation Studio → v0.4.0 (detail in the sprint plan §3)
 - [x] FR-EVAL-02 datasets API: examples from test cases, past runs and CSV/JSONL (LangSmith-style JSONL too), checked against the input contract; every change is an immutable version; splits; JSONL export. The page comes with the results UI.
 - [x] FR-EVAL-03 evaluators API: exact/regex/JSON Schema, LLM-as-judge rubric (catalog model, 0-1 score with reasoning), trajectory match (strict/unordered/subset), workspace code evaluators in the sandbox; thresholds, and a Try endpoint.
 - [x] FR-EVAL-04 experiments API: draft/versions × pinned dataset version × variants (config overrides on resources or steps), in the background with bounded concurrency; scores, tokens, cost and latency per example; aggregates per target; cancel; taken over by another instance after a redeploy.
@@ -175,8 +177,26 @@ The follow-ups are in the S12 backlog.
 - [x] Audit-log retention (400 days by default) and opt-in long-term memory retention in the daily job.
 - [x] CSP without `'unsafe-eval'`: interpreting form validator; CI runs the e2e suite on the production build under the production policy.
 - [x] Base images pinned by digest; workspace symlink escape test.
+- [x] End-of-sprint review fixes (gate hardening, regex time limit, masking gaps, web crashes); merged in #5 (2026-10-06).
+- [ ] Tag `v0.4.0` (maintainer's call).
 
-### S13+ — GA backlog
+**Review (2026-10-06).** Every S12 item met its acceptance. The review's fixes are listed in the sprint plan. Things
+to know before deploying:
+- Changing a dataset or evaluator that a release gate uses now needs an admin.
+- A publish that races with an edit of the draft or the workspace is refused with 409; publish again.
+- `trace_redact` does not yet cover the graph's root run or model runs (S13).
+
+### S13 — Evaluation in production → v0.5.0 (planned; detail in the sprint plan §3)
+- [ ] S12 follow-ups: `trace_redact` on root and model runs, lease owners, gates snapshot their dataset version and evaluators.
+- [ ] FR-EVAL-06 online evaluators on deployment traffic (sampling, filters, aggregates, drift alerts).
+- [ ] Annotation queues fed by rules or by hand; corrected answers go to a dataset.
+- [ ] Pairwise (win rate) and composite evaluators.
+- [ ] FR-EVAL-08 rubric self-grading widget with live grading events.
+- [ ] FR-EVAL-07 simulated users for multi-turn chat experiments.
+- [ ] LangSmith dataset push and pull.
+- [ ] Record/replay captures tool I/O.
+
+### S14+ — GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.
 - [ ] The remaining FR-X items: 03, 04, 05, 06, 09, 11, 12, 16, 20, 21, 23.
 

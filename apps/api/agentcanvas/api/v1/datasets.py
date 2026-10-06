@@ -5,15 +5,25 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Dataset, DatasetVersion
+from agentcanvas.services import gates
 from agentcanvas.services.datasets import DatasetService, Example, ExamplePatch, Mapping, to_jsonl
 
-router = APIRouter(tags=["datasets"])
+
+async def gated(
+    request: Request, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> None:
+    """Changing a dataset a release gate measures with needs an admin (the gate itself does)."""
+    if request.method != "GET" and (ds_id := request.path_params.get("ds_id")):
+        await gates.guard(session, user.role, dataset_id=ds_id)
+
+
+router = APIRouter(tags=["datasets"], dependencies=[Depends(gated)])
 
 
 def svc(session: AsyncSession = Depends(get_session)) -> DatasetService:

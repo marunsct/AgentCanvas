@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.evaluators import spec
+from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
@@ -165,6 +166,7 @@ async def start_experiment(
         evaluators=[spec(e) for e in evaluators],
         concurrency=body.concurrency,
         created_by=user.id,
+        workspace_commit=await workspace_commit(request, session, wf_id),
     )
     results = await ExperimentService(session).results(exp.id)
     out = _out(exp, results)

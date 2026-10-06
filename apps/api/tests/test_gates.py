@@ -92,5 +92,53 @@ async def test_gates_are_checked_and_admin_only(app, api_client):
         assert (await api_client.delete(url)).status_code == 403
         r = await api_client.post(f"/v1/workflows/{wf}/publish", json={"override_reason": "trust me"})
         assert r.status_code == 403 and "admin" in r.json()["detail"]
+        # nor can a builder lower the bar through what the gate measures with
+        [ev] = (await api_client.get(f"/v1/workflows/{wf}/evaluators")).json()
+        easy = {"examples": [{"input": {"who": "x"}}]}
+        for r in (
+            await api_client.delete(f"/v1/datasets/{ds['id']}"),
+            await api_client.post(f"/v1/datasets/{ds['id']}/examples", json=easy),
+            await api_client.patch(f"/v1/evaluators/{ev['id']}", json={"threshold": 0}),
+            await api_client.delete(f"/v1/evaluators/{ev['id']}"),
+        ):
+            assert r.status_code == 403 and "release gate" in r.json()["detail"], r.text
+        assert (await api_client.get(f"/v1/datasets/{ds['id']}")).status_code == 200  # reading stays open
+        assert (await api_client.post(f"/v1/evaluators/{ev['id']}/try", json={})).status_code == 200
     finally:
         app.dependency_overrides.pop(current_user)
+    assert (await api_client.patch(f"/v1/evaluators/{ev['id']}", json={"threshold": 0.5})).status_code == 200
+
+
+async def test_examples_that_cannot_run_fail_the_gate(app, api_client, monkeypatch):
+    wf, _ = await gated(api_client)
+    runner = app.state.runner
+    start = runner.start
+    calls = 0
+
+    async def flaky(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("no capacity")
+        return await start(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "start", flaky)
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert refused.status_code == 422, refused.text
+    assert check(refused.json())["items"][0] == "exact: mean 0.5 (needs 1)"  # the run that never started scores 0
+
+
+async def test_a_draft_changed_during_the_evaluation_is_not_published(api_client, monkeypatch):
+    from agentcanvas.services import gates
+
+    wf, _ = await gated(api_client)
+    evaluate = gates.evaluate
+
+    async def meanwhile(*args, **kwargs):
+        check = await evaluate(*args, **kwargs)
+        await set_greeting(api_client, wf, "Hey")  # an autosave lands while the gate runs
+        return check
+
+    monkeypatch.setattr(gates, "evaluate", meanwhile)
+    r = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert r.status_code == 409 and "changed while it was being evaluated" in r.json()["detail"], r.text

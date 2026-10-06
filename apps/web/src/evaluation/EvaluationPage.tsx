@@ -291,6 +291,7 @@ function Experiments({ wfId }: { wfId: string }) {
   const setTarget = (i: number, patch: Partial<TargetDraft>) => setTargets((ts) => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const builder = can("builder");
   const selected = list.data?.find((e) => e.id === open);
+  const before = selected && baseline !== selected.id ? list.data?.find((e) => e.id === baseline) : undefined;
   return (
     <section className="pad">
       {builder && (
@@ -341,17 +342,15 @@ function Experiments({ wfId }: { wfId: string }) {
       )}
       {selected && (
         <>
-          <Results wfId={wfId} exp={selected} />
+          <Results key={selected.id} wfId={wfId} exp={selected} />
           <div className="row gap small">
             Compare with
-            <select aria-label="baseline experiment" value={baseline} onChange={(e) => setBaseline(e.target.value)}>
+            <select aria-label="baseline experiment" value={before?.id ?? ""} onChange={(e) => setBaseline(e.target.value)}>
               <option value="">—</option>
               {list.data?.filter((e) => e.id !== selected.id).map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id.slice(-6)})</option>)}
             </select>
           </div>
-          {baseline && list.data?.find((e) => e.id === baseline) && (
-            <Comparison before={list.data.find((e) => e.id === baseline)!} after={selected} />
-          )}
+          {before && <Comparison before={before} after={selected} />}
         </>
       )}
     </section>
@@ -370,6 +369,7 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
   const [diffOf, setDiffOf] = useState<string | null>(null);
   if (!results.data) return <QueryStatus q={results} what="results" />;
   const rows = grid(results.data, exp.targets.length);
+  const diffRow = diffOf ? rows.find((r) => r.exampleId === diffOf) : undefined;
   return (
     <div className="results" data-testid="results">
       <h3>{exp.name}</h3>
@@ -409,7 +409,7 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
           ))}
         </tbody>
       </table>
-      {diffOf && <OutputDiff row={rows.find((r) => r.exampleId === diffOf)!} labels={exp.summary.map((s) => s.label)} />}
+      {diffRow && <OutputDiff row={diffRow} labels={exp.summary.map((s) => s.label)} />}
     </div>
   );
 }

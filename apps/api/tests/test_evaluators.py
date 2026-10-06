@@ -146,6 +146,46 @@ async def test_evaluators_never_raise():
     out = await score(spec, Observation(), complete=slow)
     assert out.score is None and not out.passed and "TimeoutError" in out.comment
 
+    async def nan(system: str, prompt: str, model: str) -> str:
+        return '{"score": NaN, "reasoning": "?"}'
+
+    out = await score(spec, Observation(), complete=nan)  # min/max would have made NaN a perfect 1.0
+    assert out.score is None and not out.passed and "finite" in out.comment
+
+    code = Spec(name="c", kind="code", config={"function": "scripts.evals:check"})
+    assert (await score(code, Observation(), script=lambda path: lambda obs: _number(float("inf")))).score is None
+
+
+async def _number(value: float) -> float:
+    return value
+
+
+async def test_a_catastrophic_regex_times_out_without_blocking(monkeypatch):
+    """`(a+)+$` takes minutes on 30 a's; it runs in a worker process with a time limit and the loop stays free."""
+    import asyncio
+    import time
+
+    from agentcanvas import safe_regex
+
+    monkeypatch.setattr(safe_regex, "TIMEOUT_S", 0.5)
+    spec = Spec(name="r", kind="regex", config={"channel": "out", "pattern": "(a+)+$"})
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.05)
+            ticks += 1
+
+    task = asyncio.create_task(ticker())
+    started = time.perf_counter()
+    out = await score(spec, Observation(output={"out": "a" * 40 + "b"}))
+    task.cancel()
+    assert out.score is None and "TimeoutError" in out.comment
+    assert time.perf_counter() - started < 10 and ticks >= 5  # the event loop kept running meanwhile
+    ok = Spec(name="r", kind="regex", config={"channel": "out", "pattern": r"\bHello\b"})
+    assert (await score(ok, Observation(output={"out": "Hello Ada"}))).score == 1.0  # a fresh pool after the timeout
+
 
 async def test_evaluators_stay_in_their_organisation(app, api_client, org_b):  # noqa: F811
     wf = await make_greeter(api_client)

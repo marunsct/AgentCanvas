@@ -172,6 +172,7 @@ class ExperimentService:
         evaluators: list[Spec],
         concurrency: int,
         created_by: str | None,
+        workspace_commit: str | None = None,
     ) -> Experiment:
         """`targets` are resolved: {label, version, version_id, overrides, ir}."""
         if split is not None:
@@ -190,6 +191,7 @@ class ExperimentService:
             targets=targets,
             evaluators=[e.model_dump() for e in evaluators],
             concurrency=concurrency,
+            workspace_commit=workspace_commit,
             status="running",
             heartbeat_at=datetime.now(UTC),
             created_by=created_by,
@@ -371,9 +373,13 @@ class ExperimentJob:
                 who = (created_by, org_id)
                 await self._example(result_id, workflows[target], targets[target], example, specs, who)
 
+        tasks = [asyncio.ensure_future(one(*j)) for j in jobs]
         try:
-            await asyncio.gather(*(one(*j) for j in jobs))
+            await asyncio.gather(*tasks)
         except Exception as exc:
+            for t in tasks:  # nothing may keep running for an experiment that has ended
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             log.exception("experiment.failed", experiment_id=exp_id)
             await self._finish(exp_id, "error", f"{type(exc).__name__}: {exc}"[:500])
             return
@@ -419,7 +425,13 @@ class ExperimentJob:
         except Unavailable:  # draining: another instance runs this example
             return
         except Exception as exc:  # noqa: BLE001 - reported on the result
-            await self._save(result_id, status="done", run_status="error", error=f"could not start: {exc}"[:500])
+            # a run that never started fails every evaluator: leaving it unscored would let averages (and release
+            # gates) skip exactly the examples the workflow cannot handle
+            failed = [Score(evaluator=x.name, score=0.0, passed=False, comment="the run did not start") for x in specs]
+            await self._save(
+                result_id, status="done", run_status="error", error=f"could not start: {exc}"[:500],
+                scores=[f.model_dump() for f in failed],
+            )  # fmt: skip
             return
         await self._save(result_id, status="running", run_id=handle.run_id, thread_id=handle.thread_id)
         try:

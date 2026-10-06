@@ -21,6 +21,25 @@ describe("interpreting validator", () => {
     expect(validator.isValid({ $ref: "#/definitions/X" }, "3", root)).toBe(false);
   });
 
+  it("treats our custom formats as always valid (Python regexes)", () => {
+    const pii = { type: "object", properties: { detector: { type: "string", format: "regex" }, url: { type: "string", format: "uri" } } };
+    for (const detector of ["(?P<ssn>\\d{3})", "(?i)secret"]) {
+      expect(validator.validateFormData({ detector }, pii as never).errors).toEqual([]);
+      expect(validator.isValid(pii as never, { detector }, pii as never)).toBe(true);
+    }
+    expect(validator.validateFormData({ url: "not a uri" }, pii as never).errors.map((e) => e.property)).toEqual([".url"]);
+  });
+
+  it("maps keys that are not plain names to bracket notation", () => {
+    const s = { type: "object", required: ["a.b"], properties: { "x[0]": { type: "string" }, m: { type: "object", additionalProperties: { type: "integer" } } } };
+    const { errors, errorSchema } = validator.validateFormData({ "x[0]": 1, m: { "k.1": "v", ok: "v" } }, s as never);
+    expect(errors.map((e) => e.property).sort()).toEqual(['.m.ok', '.m["k.1"]', '["a.b"]', '["x[0]"]']);
+    const es = errorSchema as Record<string, Record<string, { __errors?: string[] }> & { __errors?: string[] }>;
+    expect(es["a.b"].__errors).toHaveLength(1);
+    expect(es["x[0]"].__errors).toHaveLength(1);
+    expect(es.m["k.1"].__errors).toHaveLength(1);
+  });
+
   it("never compiles code", () => {
     const original = globalThis.Function;
     globalThis.Function = (() => { throw new Error("eval is blocked"); }) as never;

@@ -308,6 +308,8 @@ class Experiment(Base):
     targets: Mapped[list[Any]]
     evaluators: Mapped[list[Any]]  # [{name, kind, config, threshold}]
     concurrency: Mapped[int] = mapped_column(Integer, server_default=text("4"), default=4)
+    # the project's workspace head when it started: workspace code changes behaviour without changing the IR
+    workspace_commit: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
     error: Mapped[str | None] = mapped_column(Text)
     # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over

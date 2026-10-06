@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -29,6 +30,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from pydantic import BaseModel, Field, ValidationError
 
+from agentcanvas import safe_regex
 from agentcanvas.errors import InvalidInput
 from agentcanvas.registry import default_registry
 
@@ -164,6 +166,8 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
     threshold = spec.threshold if spec.threshold is not None else DEFAULT_THRESHOLD.get(spec.kind, 1.0)
 
     def done(value: float | None, comment: str = "") -> Score:
+        if value is not None and not math.isfinite(value):  # max/min would turn NaN into a perfect 1.0
+            value, comment = None, f"not a finite score: {value}"
         value = None if value is None else max(0.0, min(1.0, value))
         return Score(evaluator=spec.name, score=value, passed=value is not None and value >= threshold, comment=comment)
 
@@ -178,7 +182,7 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
         if isinstance(cfg, RegexConfig):
             if cfg.channel not in obs.output:
                 return done(0.0, f"the run did not produce '{cfg.channel}'")
-            found = re.search(cfg.pattern, _text(obs.output[cfg.channel])) is not None
+            found = await safe_regex.search(cfg.pattern, _text(obs.output[cfg.channel]))
             return done(float(found), "" if found else f"/{cfg.pattern}/ not found in '{cfg.channel}'")
         if isinstance(cfg, JsonSchemaConfig):
             if cfg.channel not in obs.output:
@@ -205,7 +209,7 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
         assert isinstance(cfg, CodeConfig)
         if script is None:
             return done(None, "workspace code is not available here")
-        out = await script(cfg.function)(obs.model_dump())
+        out = await asyncio.wait_for(script(cfg.function)(obs.model_dump()), JUDGE_TIMEOUT_S)
         if isinstance(out, bool | int | float):
             return done(float(out))
         return done(None if out.get("score") is None else float(out["score"]), str(out.get("comment") or ""))

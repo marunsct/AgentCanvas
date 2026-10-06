@@ -17,9 +17,20 @@ from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, Spec, check_config, score
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
+from agentcanvas.services import gates
 from agentcanvas.services.experiments import scorers
+from agentcanvas.services.projects import PROJECT_OF
 
-router = APIRouter(tags=["evaluators"])
+
+async def gated(
+    request: Request, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> None:
+    """Editing or deleting an evaluator of a gated workflow needs an admin: it can lower the gate's bar."""
+    if request.method in ("PATCH", "DELETE") and (evaluator_id := request.path_params.get("evaluator_id")):
+        await gates.guard(session, user.role, evaluator_id=evaluator_id)
+
+
+router = APIRouter(tags=["evaluators"], dependencies=[Depends(gated)])
 
 
 class EvaluatorIn(BaseModel):
@@ -122,5 +133,6 @@ async def try_evaluator(
     row = await session.get(WorkflowRow, e.workflow_id)
     assert row is not None
     wf = Workflow.model_validate(row.draft_ir)
+    PROJECT_OF[wf.id] = row.project_id  # the judge's keys and workspace code come from this workflow's project
     await session.close()  # no connection held while a judge model answers
     return await score(spec(e), body, **scorers(request.app.state.runner, wf))

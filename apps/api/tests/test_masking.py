@@ -17,8 +17,12 @@ def test_mask_hides_known_secret_values(monkeypatch):
     monkeypatch.setattr(masking, "provider", lambda: [SECRET, "short"])  # under 6 characters: too common to mask
     assert masking.mask({"a": [f"Bearer {SECRET}"], "b": "short"}) == {"a": ["Bearer ***"], "b": "short"}
     assert masking.mask(f"x{SECRET}") == "x***"
-    same = {"n": 1}
-    assert masking.mask(same) is same
+    assert masking.mask({"n": 1}) == {"n": 1}
+    # escaped in JSON text (quotes, backslashes, non-ASCII) or digits inside a longer number: still masked, never broken
+    odd = ['pa"ss\\wörd', "123456"]
+    monkeypatch.setattr(masking, "provider", lambda: odd)
+    masked = masking.mask({"k": f"x{odd[0]}y", "n": 91234567, "s": "91234567"})
+    assert masked == {"k": "x***y", "n": 91234567, "s": "9***7"}
 
 
 def test_langsmith_runs_are_masked(monkeypatch):
@@ -35,6 +39,7 @@ def test_langsmith_runs_are_masked(monkeypatch):
         client = get_client()
         assert client._hide_run_inputs({"messages": [f"key is {SECRET}"]}) == {"messages": ["key is ***"]}
         assert client._hide_run_outputs({"out": SECRET}) == {"out": "***"}
+        assert client._hide_run_error(f"HTTPError: Bearer {SECRET}") == "HTTPError: Bearer ***"
     finally:
         langsmith.configure(client=None)
 
@@ -67,3 +72,22 @@ async def test_a_redacting_workflow_runs(app, api_client):
     h = await app.state.runner.start(wf, input={"who": "Ada"})
     await asyncio.wait_for(h.done.wait(), 10)
     assert next(e for e in h.events if e["type"] == "RUN_FINISHED")["output"]["out"] == "Hello Ada"
+
+
+def test_span_status_descriptions_are_masked(monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    monkeypatch.setattr(masking, "provider", lambda: [SECRET])
+    inner = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(masking.MaskingExporter(inner)))
+    try:
+        with tracer_provider.get_tracer("t").start_as_current_span("call"):
+            raise RuntimeError(f"refused key {SECRET}")
+    except RuntimeError:
+        pass
+    [span] = inner.get_finished_spans()
+    assert span.status.description == "RuntimeError: refused key ***"
+    assert SECRET not in str([e.attributes for e in span.events])

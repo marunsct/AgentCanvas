@@ -26,7 +26,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
       if (out.api_key) setKey({ deployment: out.deployment.id, key: out.api_key });
       refresh();
     },
-    onError: (e) => { if (e instanceof ApiError) setChecks((e.problem.checklist as Check[] | undefined) ?? null); refresh(); },
+    onError: (e) => { setChecks(e instanceof ApiError ? (e.problem.checklist as Check[] | undefined) ?? null : null); refresh(); },
   });
   const rotate = async (d: DeploymentOut) => {
     if (!window.confirm("Issue a new key? The current key stops working immediately.")) return;

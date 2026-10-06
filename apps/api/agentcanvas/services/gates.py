@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import select
 
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult, ReleaseGate
+from agentcanvas.errors import Forbidden
 from agentcanvas.evaluation import DEFAULT_THRESHOLD, Spec
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
@@ -26,17 +27,39 @@ from agentcanvas.services.experiments import ExperimentService, TargetSummary, s
 GATE_TIMEOUT_S = 600.0
 
 
+async def guard(s: Any, role: str, *, dataset_id: str | None = None, evaluator_id: str | None = None) -> None:
+    """Gates are admin-only, so whatever they measure with is too: a builder must not lower the bar by deleting or
+    editing a gating dataset or an evaluator of a gated workflow (403)."""
+    if role == "admin":
+        return
+    q = select(ReleaseGate.environment).limit(1)
+    if dataset_id is not None:
+        q = q.where(ReleaseGate.dataset_id == dataset_id)
+        what = f"dataset '{dataset_id}'"
+    else:
+        q = q.join(Evaluator, Evaluator.workflow_id == ReleaseGate.workflow_id).where(Evaluator.id == evaluator_id)
+        what = f"evaluator '{evaluator_id}'"
+    if (environment := await s.scalar(q)) is not None:
+        raise Forbidden(f"{what} is used by the '{environment}' release gate; only an admin can change it")
+
+
 def _spec(e: Evaluator) -> dict[str, Any]:
     return Spec(name=e.name, kind=e.kind, config=e.config, threshold=e.threshold).model_dump()  # type: ignore[arg-type]
 
 
-async def _reuse(s: Any, gate: ReleaseGate, version: int, specs: list[dict], wanted: str) -> TargetSummary | None:
-    """The newest finished experiment target that evaluated exactly `wanted` (an IR hash) the same way."""
+async def _reuse(
+    s: Any, gate: ReleaseGate, version: int, specs: list[dict], wanted: str, commit: str | None
+) -> TargetSummary | None:
+    """The newest finished experiment target that evaluated exactly `wanted` (an IR hash) with the workspace at
+    `commit`, the same way."""
+    if commit is None:  # without a workspace head nothing proves the code was the same
+        return None
     q = (
         select(Experiment)
         .where(
             Experiment.workflow_id == gate.workflow_id, Experiment.dataset_id == gate.dataset_id,
             Experiment.dataset_version == version, Experiment.status == "done", Experiment.split.is_(None),
+            Experiment.workspace_commit == commit,
         )
         .order_by(Experiment.id.desc())
         .limit(20)
@@ -58,8 +81,10 @@ async def evaluate(
     candidate: Workflow,
     live: tuple[Workflow, str, str] | None,
     user_id: str | None,
+    commit: str | None = None,
 ) -> Check:
-    """The `evaluation` checklist item for publishing `candidate` (`live`: the served workflow, version id, semver)."""
+    """The `evaluation` checklist item for publishing `candidate` (`live`: the served workflow, version id, semver;
+    `commit`: the project's workspace head being published)."""
     async with db.sessionmaker() as s:
         evaluators = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == gate.workflow_id))).all()
         by_name = {e.name: e for e in evaluators}
@@ -79,8 +104,8 @@ async def evaluate(
         number, examples = version.number, version.examples
         environment, max_regression = gate.environment, gate.max_regression
         regression = gate.max_regression is not None and live is not None
-        found = await _reuse(s, gate, number, specs, ir_hash(candidate))
-        before = await _reuse(s, gate, number, specs, ir_hash(live[0])) if regression and live else None
+        found = await _reuse(s, gate, number, specs, ir_hash(candidate), commit)
+        before = await _reuse(s, gate, number, specs, ir_hash(live[0]), commit) if regression and live else None
         targets: list[dict[str, Any]] = []
         exp_id = ""
         if found is None:
@@ -93,7 +118,7 @@ async def evaluate(
             exp = await ExperimentService(s).create(
                 gate.workflow_id, name=f"release gate: {environment}", dataset_id=gate.dataset_id,
                 dataset_version=number, split=None, examples=examples, targets=targets,
-                evaluators=[Spec(**x) for x in specs], concurrency=4, created_by=user_id,
+                evaluators=[Spec(**x) for x in specs], concurrency=4, created_by=user_id, workspace_commit=commit,
             )  # fmt: skip
             exp_id = exp.id
     if targets:
@@ -113,6 +138,8 @@ async def evaluate(
             before = fresh[-1]
     assert found is not None
     failures, notes = [], []
+    if found.completed < found.examples:
+        failures.append(f"only {found.completed} of {found.examples} example(s) finished")
     for name in names:
         mean = next((e.mean for e in found.evaluators if e.evaluator == name), None)
         minimum = minimums[name]

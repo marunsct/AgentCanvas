@@ -1,13 +1,13 @@
 """Secrets never leave in traces (S12, S11 carry-over): LangSmith runs and OpenTelemetry spans are masked.
 
 Every secret value the server knows (6+ characters, all projects) is replaced with `***` in LangSmith run inputs,
-outputs and metadata, and in the attributes and event attributes of exported OTel spans. Fields named in a
-workflow's `settings.trace_redact` are redacted per step by the adapter (`node_options(redact=...)`).
+outputs, metadata and errors, and in the name, attributes, event attributes and status of exported OTel spans.
+Fields named in a workflow's `settings.trace_redact` are redacted per step by the adapter (`node_options(redact=...)`);
+the graph's root run and model runs are not covered yet (S13).
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
@@ -30,17 +30,20 @@ def mask_text(text: str, values: Sequence[str] | None = None) -> str:
     return text
 
 
+def _walk(value: Any, values: Sequence[str]) -> Any:
+    if isinstance(value, str):
+        return mask_text(value, values)
+    if isinstance(value, dict):
+        return {_walk(k, values) if isinstance(k, str) else k: _walk(v, values) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return type(value)(_walk(v, values) for v in value)
+    return value
+
+
 def mask(payload: Any) -> Any:
-    """`payload` (anything JSON-like) with every known secret value masked; unchanged when none occurs."""
+    """`payload` (anything JSON-like) with every known secret value masked in its strings and keys."""
     values = _values()
-    if not values:
-        return payload
-    if isinstance(payload, str):
-        return mask_text(payload, values)
-    text = json.dumps(payload, default=str)
-    if not any(v in text for v in values):
-        return payload
-    return json.loads(mask_text(text, values))
+    return _walk(payload, values) if values else payload
 
 
 def install_langsmith() -> bool:
@@ -51,7 +54,8 @@ def install_langsmith() -> bool:
         return False
     import langsmith
 
-    langsmith.configure(client=langsmith.Client(hide_inputs=mask, hide_outputs=mask, hide_metadata=mask))
+    # the anonymizer covers inputs, outputs, metadata and the run's error text (hide_* would miss the error)
+    langsmith.configure(client=langsmith.Client(anonymizer=mask))
     return True
 
 
@@ -81,12 +85,14 @@ class MaskingExporter(SpanExporter):
 
     def _mask(self, span: Any, values: list[str]) -> Any:
         from opentelemetry.sdk.trace import Event, ReadableSpan
+        from opentelemetry.trace import Status
 
         events = [Event(e.name, self._attrs(e.attributes, values), e.timestamp) for e in span.events]
         return ReadableSpan(
             name=mask_text(span.name, values), context=span.context, parent=span.parent, resource=span.resource,
             attributes=self._attrs(span.attributes, values), events=events, links=span.links, kind=span.kind,
-            status=span.status, start_time=span.start_time, end_time=span.end_time,
+            status=Status(span.status.status_code, mask_text(span.status.description, values))
+            if span.status.description else span.status, start_time=span.start_time, end_time=span.end_time,
             instrumentation_scope=span.instrumentation_scope,
         )  # fmt: skip
 

@@ -21,7 +21,7 @@ from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Deployment, Project, WorkflowVersion
-from agentcanvas.errors import Forbidden, InvalidInput
+from agentcanvas.errors import Conflict, Forbidden, InvalidInput
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle
@@ -104,11 +104,17 @@ async def publish(
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
     gate = await gate_for(session, wf_id, body.environment)
+    commit = await workspace_commit(request, session, wf_id)
     if gate is not None and all(c.ok for c in checks):  # an evaluation is costly: only when nothing else failed
+        live, evaluated = await _live(session, wf_id, body.environment), view.row.ir_hash
+        await session.commit()  # an evaluation can take minutes: hold no connection meanwhile
         evaluation = await gates.evaluate(
-            request.app.state.db, request.app.state.experiments, gate, wf,
-            await _live(session, wf_id, body.environment), user.id,
+            request.app.state.db, request.app.state.experiments, gate, wf, live, user.id, commit,
         )  # fmt: skip
+        # what gets pinned must be exactly what was evaluated: the draft or workspace may have moved meanwhile
+        await session.refresh(view.row)
+        if view.row.ir_hash != evaluated or await workspace_commit(request, session, wf_id) != commit:
+            raise Conflict("the workflow changed while it was being evaluated; publish again")
         if not evaluation.ok and body.override_reason:
             if user.role != "admin":
                 raise Forbidden("only an admin can publish over a failed release gate")
@@ -122,7 +128,6 @@ async def publish(
             "publish refused: " + "; ".join(f"{c.name}: {c.detail}" for c in failed),
             checklist=[c.model_dump() for c in checks],
         )
-    commit = await workspace_commit(request, session, wf_id)
     version, _ = await VersionService(session).create(
         wf_id, message=body.message or f"published to {body.environment}", workspace_commit=commit,
         created_by=user.id, reuse_unchanged=True,
