@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -29,6 +30,7 @@ def _sqlite_path(url: str) -> str:
     return str(p.with_name(p.stem + ".checkpoints" + (p.suffix or ".db")))
 
 
+SETUP_LOCK = 0x6163_7365_7475_70  # Postgres advisory lock id held while migrating the checkpoint/store tables
 POOL_SIZE = int(os.getenv("AGENTCANVAS_PERSISTENCE_POOL_SIZE", "20"))  # checkpoint/store connections per process
 
 
@@ -40,6 +42,11 @@ def checkpoint_serde() -> Any:
     from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
 
     return EncryptedSerializer.from_pycryptodome_aes()
+
+
+async def _try_lock(conn: Any) -> bool:
+    row = await (await conn.execute("SELECT pg_try_advisory_lock(%s) AS ok", (SETUP_LOCK,))).fetchone()
+    return bool(row["ok"])
 
 
 @asynccontextmanager
@@ -59,8 +66,18 @@ async def open_persistence(database_url: str | None) -> AsyncIterator[Persistenc
         async with AsyncConnectionPool(conn, min_size=1, max_size=POOL_SIZE, kwargs=kwargs, open=False) as pool:
             saver = AsyncPostgresSaver(conn=pool, serde=checkpoint_serde())  # type: ignore[arg-type]
             st = AsyncPostgresStore(conn=pool)  # type: ignore[arg-type]
-            await saver.setup()
-            await st.setup()
+            # replicas starting together would run the migrations at once and deadlock on CREATE INDEX
+            # CONCURRENTLY: one instance migrates at a time, the others then find nothing to do. The others poll
+            # with a try-lock: a session blocked in pg_advisory_lock is a running statement, which CREATE INDEX
+            # CONCURRENTLY would wait for.
+            async with pool.connection() as lock:
+                while not await _try_lock(lock):
+                    await asyncio.sleep(0.2)
+                try:
+                    await saver.setup()
+                    await st.setup()
+                finally:
+                    await lock.execute("SELECT pg_advisory_unlock(%s)", (SETUP_LOCK,))
             yield Persistence(saver, st, "postgres")
     elif database_url.startswith("sqlite"):
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
