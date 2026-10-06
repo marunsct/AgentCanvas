@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 10 (FR-X-19): an admin adds an organisation policy; the editor flags workflows that break it.
 

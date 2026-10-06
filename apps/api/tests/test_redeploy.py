@@ -109,3 +109,40 @@ def test_resume_compatibility_reasons():
     added = old.model_copy(deep=True)
     added.state.channels.append(added.state.channels[0].model_copy(update={"name": "extra"}))
     assert resume_compatible(old, added) == []  # new fields and steps are fine
+
+
+async def test_runs_of_an_instance_that_died_are_handed_over(app, api_client):
+    from datetime import UTC, datetime, timedelta
+
+    from agentcanvas.db.models import Thread
+
+    wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
+    first = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 0}, "stream": False})
+    thread_id = first.json()["thread_id"]
+    await app.state.runner.wait(first.json()["run_id"])
+    long_ago = datetime.now(UTC) - timedelta(minutes=5)
+    async with app.state.db.sessionmaker() as s:  # a run its instance never finished: killed, not drained
+        s.add(Run(id="run_lost", thread_id=thread_id, ir_hash="x", status="running", started_at=long_ago))
+        s.add(Run(id="run_alive", thread_id=thread_id, ir_hash="x", status="running", started_at=long_ago,
+                  heartbeat_at=datetime.now(UTC)))  # fmt: skip  # another instance still runs it
+        thread = await s.get(Thread, thread_id)
+        assert thread is not None
+        thread.status = "running"
+        await s.commit()
+
+    job = app.state.handover
+    [resumed] = await job.tick()
+    lost = await run_row(app, "run_lost")
+    assert lost.status == "interrupted" and "stopped unexpectedly" in (lost.error or "") and lost.handover is False
+    assert (await run_row(app, "run_alive")).status == "running"
+    assert await job.sweep() == []  # swept once
+    h = await app.state.runner.wait(resumed)
+    assert h.status == "success" and h.origin == "handover" and h.thread_id == thread_id
+
+    # an instance keeps its own runs alive, so a slow tick never sweeps them
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 0.5}, "stream": False})
+    await asyncio.sleep(0.1)
+    await job.runner.heartbeat()
+    assert (await run_row(app, r.json()["run_id"])).heartbeat_at is not None
+    assert await job.sweep(datetime.now(UTC) + timedelta(minutes=5)) == ["run_alive"]  # but not the local run
+    assert (await app.state.runner.wait(r.json()["run_id"])).status == "success"

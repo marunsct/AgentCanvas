@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "preview": "vite preview",
     "test": "vitest run",
     "e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.json",
@@ -14,6 +15,7 @@
     "gen": "pnpm gen:ir && pnpm gen:api"
   },
   "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lint": "^6.9.7",

@@ -221,6 +221,8 @@ class WorkflowSettings(_Base):
     output_channels: list[str] | None = None  # None = all non-private channels
     experimental: bool = False  # allow upstream experimental features (D16)
     budget: Budget | None = None  # FR-X-15
+    # S12: fields (keys at any depth of a step's input or output) whose values never reach a trace
+    trace_redact: list[str] = Field(default_factory=list)
 
 
 class Workflow(_Base):

@@ -1,0 +1,535 @@
+/** Evaluation Studio (S12): datasets, evaluators and experiments for one workflow, with a results grid and a
+ * comparison of two experiments. Everyone can read; builders change things. */
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link, useParams } from "react-router";
+import { apiDownload, apiFetch } from "../api/client";
+import type {
+  DatasetDetail, DatasetOut, GateOut, DatasetVersionOut, EvaluatorOut, ExperimentOut, ExperimentResultOut, Score, VersionOut,
+} from "../api/generated";
+import { can } from "../api/session";
+import { QueryStatus, errorText } from "../ui/QueryStatus";
+import { KIND_CONFIG, compare, fmt, grid, passed, pct } from "./compare";
+
+type Tab = "datasets" | "evaluators" | "experiments" | "gates";
+
+function parseJson(text: string, what: string): Record<string, unknown> {
+  if (!text.trim()) return {};
+  try {
+    const v = JSON.parse(text) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  } catch { /* reported below */ }
+  throw new Error(`${what} must be a JSON object`);
+}
+
+const short = (v: unknown) => {
+  const s = typeof v === "string" ? v : JSON.stringify(v);
+  return s.length > 80 ? `${s.slice(0, 77)}…` : s;
+};
+
+export function EvaluationPage() {
+  const { id = "" } = useParams();
+  const [tab, setTab] = useState<Tab>("datasets");
+  const wf = useQuery({ queryKey: ["workflow", id], queryFn: () => apiFetch<{ name: string }>(`/workflows/${id}`) });
+  return (
+    <div className="page evaluation">
+      <header className="topbar">
+        <Link to="/" className="brand">AgentCanvas</Link>
+        <span className="crumb">/ <Link to={`/workflows/${id}`}>{wf.data?.name ?? id}</Link> / Evaluation</span>
+      </header>
+      <nav className="tabs" role="tablist">
+        {(["datasets", "evaluators", "experiments", "gates"] as Tab[]).map((t) => (
+          <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
+            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates" }[t]}</button>
+        ))}
+      </nav>
+      {tab === "datasets" && <Datasets wfId={id} />}
+      {tab === "evaluators" && <Evaluators wfId={id} />}
+      {tab === "experiments" && <Experiments wfId={id} />}
+      {tab === "gates" && <Gates wfId={id} />}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------ datasets ----
+function Datasets({ wfId }: { wfId: string }) {
+  const qc = useQueryClient();
+  const key = ["datasets", wfId];
+  const list = useQuery({ queryKey: key, queryFn: () => apiFetch<DatasetOut[]>(`/workflows/${wfId}/datasets`) });
+  const [name, setName] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: () => apiFetch<DatasetDetail>(`/workflows/${wfId}/datasets`, { method: "POST", json: { name } }),
+    onSuccess: (d) => { setName(""); setOpen(d.id); void qc.invalidateQueries({ queryKey: key }); },
+  });
+  const builder = can("builder");
+  return (
+    <section className="pad">
+      {builder && (
+        <form className="row gap" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <input required placeholder="New dataset name" aria-label="dataset name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" disabled={create.isPending}>Create dataset</button>
+          {create.error && <span role="alert" className="error-text">{errorText(create.error)}</span>}
+        </form>
+      )}
+      <QueryStatus q={list} what="datasets" empty={<p className="muted">No datasets yet.</p>} />
+      {list.data && list.data.length > 0 && (
+        <table className="table" data-testid="datasets">
+          <thead><tr><th>Name</th><th>Version</th><th>Examples</th><th>Splits</th><th /></tr></thead>
+          <tbody>
+            {list.data.map((d) => (
+              <tr key={d.id} className={open === d.id ? "selected" : ""}>
+                <td><button type="button" className="link" onClick={() => setOpen(d.id)}>{d.name}</button></td>
+                <td>v{d.version}</td><td>{d.examples}</td>
+                <td className="small">{Object.entries(d.splits).map(([s, n]) => `${s || "(none)"}: ${n}`).join(", ")}</td>
+                <td><button type="button" className="link small" onClick={() => void apiDownload(`/datasets/${d.id}/export`, `${d.name}.jsonl`)}>Export</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {open && <DatasetView dsId={open} onGone={() => { setOpen(null); void qc.invalidateQueries({ queryKey: key }); }} />}
+    </section>
+  );
+}
+
+function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
+  const qc = useQueryClient();
+  const [version, setVersion] = useState<number | null>(null);
+  const key = ["dataset", dsId];
+  const ds = useQuery({
+    queryKey: [...key, version],
+    queryFn: () => apiFetch<DatasetDetail>(`/datasets/${dsId}${version ? `?version=${version}` : ""}`),
+  });
+  const versions = useQuery({ queryKey: [...key, "versions", ds.data?.version], queryFn: () => apiFetch<DatasetVersionOut[]>(`/datasets/${dsId}/versions`) });
+  const changed = () => { setVersion(null); void qc.invalidateQueries({ queryKey: key }); void qc.invalidateQueries({ queryKey: ["datasets"] }); };
+  const [input, setInput] = useState('{"who": "Ada"}');
+  const [reference, setReference] = useState("");
+  const [split, setSplit] = useState("");
+  const add = useMutation({
+    mutationFn: () => apiFetch(`/datasets/${dsId}/examples`, {
+      method: "POST",
+      json: { examples: [{ input: parseJson(input, "input"), reference: parseJson(reference, "reference"), split }] },
+    }),
+    onSuccess: () => { setReference(""); changed(); },
+  });
+  const fromTests = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}/examples/from-test-cases`, { method: "POST", json: {} }), onSuccess: changed });
+  const upload = useMutation({
+    mutationFn: async (file: File) => apiFetch(`/datasets/${dsId}/import`, {
+      method: "POST", json: { format: file.name.endsWith(".csv") ? "csv" : "jsonl", content: await file.text(), split: split || null },
+    }),
+    onSuccess: changed,
+  });
+  const remove = useMutation({ mutationFn: (exId: string) => apiFetch(`/datasets/${dsId}/examples/${exId}`, { method: "DELETE" }), onSuccess: changed });
+  const drop = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}`, { method: "DELETE" }), onSuccess: onGone });
+  const error = add.error ?? fromTests.error ?? upload.error ?? remove.error ?? drop.error;
+  if (!ds.data) return <QueryStatus q={ds} what="the dataset" />;
+  const d = ds.data;
+  const latest = version === null;
+  const builder = can("builder") && latest;
+  return (
+    <div className="dataset-view" data-testid="dataset-view">
+      <div className="row gap">
+        <h3>{d.name}</h3>
+        <select aria-label="dataset version" value={version ?? ""} onChange={(e) => setVersion(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">latest (v{versions.data?.[0]?.number ?? d.version})</option>
+          {versions.data?.slice(1).map((v) => <option key={v.id} value={v.number}>v{v.number} · {v.examples} examples</option>)}
+        </select>
+        {!latest && <span className="muted small">Older versions are read-only.</span>}
+        <span className="spacer" />
+        {can("builder") && (
+          <button type="button" className="link small" onClick={() => { if (confirm(`Delete dataset ${d.name}?`)) drop.mutate(); }}>Delete dataset</button>
+        )}
+      </div>
+      {error && <p role="alert" className="error-text">{errorText(error)}</p>}
+      <table className="table" data-testid="examples">
+        <thead><tr><th>#</th><th>Input</th><th>Reference</th><th>Split</th><th /></tr></thead>
+        <tbody>
+          {d.items.map((ex, i) => (
+            <tr key={ex.id}>
+              <td>{i + 1}</td><td><code>{short(ex.input)}</code></td><td><code>{short(ex.reference ?? {})}</code></td><td>{ex.split}</td>
+              <td>{builder && <button type="button" className="link small" onClick={() => remove.mutate(ex.id!)}>Remove</button>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {builder && (
+        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+          <div className="row gap">
+            <input aria-label="example input" placeholder='input, e.g. {"question": "…"}' value={input} onChange={(e) => setInput(e.target.value)} />
+            <input aria-label="example reference" placeholder='reference output, e.g. {"answer": "…"}' value={reference} onChange={(e) => setReference(e.target.value)} />
+            <input aria-label="example split" placeholder="split" value={split} onChange={(e) => setSplit(e.target.value)} style={{ width: 90 }} />
+            <button type="submit" disabled={add.isPending}>Add example</button>
+          </div>
+          <div className="row gap small">
+            <button type="button" className="link small" onClick={() => fromTests.mutate()}>Add the saved test cases</button>
+            <label className="small">Import CSV or JSONL <input type="file" accept=".csv,.jsonl,.json" aria-label="import file"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ""; }} /></label>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------- evaluators ----
+function Evaluators({ wfId }: { wfId: string }) {
+  const qc = useQueryClient();
+  const key = ["evaluators", wfId];
+  const list = useQuery({ queryKey: key, queryFn: () => apiFetch<EvaluatorOut[]>(`/workflows/${wfId}/evaluators`) });
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState("exact");
+  const [config, setConfig] = useState("{}");
+  const [threshold, setThreshold] = useState("");
+  const create = useMutation({
+    mutationFn: () => apiFetch<EvaluatorOut>(`/workflows/${wfId}/evaluators`, {
+      method: "POST",
+      json: { name, kind, config: parseJson(config, "config"), threshold: threshold ? Number(threshold) : null },
+    }),
+    onSuccess: () => { setName(""); void qc.invalidateQueries({ queryKey: key }); },
+  });
+  const remove = useMutation({ mutationFn: (eid: string) => apiFetch(`/evaluators/${eid}`, { method: "DELETE" }), onSuccess: () => void qc.invalidateQueries({ queryKey: key }) });
+  const [trying, setTrying] = useState<string | null>(null);
+  const builder = can("builder");
+  return (
+    <section className="pad">
+      {builder && (
+        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <div className="row gap">
+            <input required placeholder="Evaluator name" aria-label="evaluator name" value={name} onChange={(e) => setName(e.target.value)} />
+            <select aria-label="evaluator kind" value={kind} onChange={(e) => { setKind(e.target.value); setConfig(JSON.stringify(KIND_CONFIG[e.target.value])); }}>
+              <option value="exact">exact match</option><option value="regex">regex</option><option value="json_schema">JSON Schema</option>
+              <option value="llm_judge">LLM judge</option><option value="trajectory">tool trajectory</option><option value="code">workspace code</option>
+            </select>
+            <input aria-label="threshold" placeholder="pass at (default)" value={threshold} onChange={(e) => setThreshold(e.target.value)} style={{ width: 120 }} />
+            <button type="submit" disabled={create.isPending}>Add evaluator</button>
+          </div>
+          <textarea aria-label="evaluator config" rows={3} value={config} onChange={(e) => setConfig(e.target.value)} />
+          {create.error && <p role="alert" className="error-text">{errorText(create.error)}</p>}
+        </form>
+      )}
+      <QueryStatus q={list} what="evaluators" empty={<p className="muted">No evaluators yet.</p>} />
+      {list.data && list.data.length > 0 && (
+        <table className="table" data-testid="evaluators">
+          <thead><tr><th>Name</th><th>Kind</th><th>Config</th><th>Passes at</th><th /></tr></thead>
+          <tbody>
+            {list.data.map((e) => (
+              <tr key={e.id}>
+                <td>{e.name}</td><td>{e.kind}</td><td><code>{short(e.config ?? {})}</code></td><td>{e.effective_threshold}</td>
+                <td className="row gap">
+                  <button type="button" className="link small" onClick={() => setTrying(trying === e.id ? null : e.id)}>Try</button>
+                  {builder && <button type="button" className="link small" onClick={() => remove.mutate(e.id)}>Delete</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {trying && <TryEvaluator key={trying} evaluatorId={trying} />}
+    </section>
+  );
+}
+
+function TryEvaluator({ evaluatorId }: { evaluatorId: string }) {
+  const [sample, setSample] = useState('{\n  "input": {},\n  "output": {"out": ""},\n  "reference": {"out": ""}\n}');
+  const run = useMutation({
+    mutationFn: () => apiFetch<Score>(`/evaluators/${evaluatorId}/try`, { method: "POST", json: parseJson(sample, "the sample") }),
+  });
+  return (
+    <div className="policy-form" data-testid="try-evaluator">
+      <textarea aria-label="sample" rows={6} value={sample} onChange={(e) => setSample(e.target.value)} />
+      <div className="row gap">
+        <button type="button" onClick={() => run.mutate()} disabled={run.isPending}>Score this sample</button>
+        {run.data && <ScoreBadge s={run.data} />}
+        {run.data?.comment && <span className="small muted">{run.data.comment}</span>}
+        {run.error && <span role="alert" className="error-text">{errorText(run.error)}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ScoreBadge({ s }: { s: Score }) {
+  return (
+    <span className={`badge ${s.score == null ? "warn" : s.passed ? "status-ok" : "err"}`} title={`${s.evaluator}: ${s.comment}`}>
+      {s.evaluator} {fmt(s.score)}
+    </span>
+  );
+}
+
+// --------------------------------------------------------------------------------------------- experiments ----
+interface TargetDraft { version: string; overrides: string; label: string }
+
+function Experiments({ wfId }: { wfId: string }) {
+  const qc = useQueryClient();
+  const key = ["experiments", wfId];
+  const list = useQuery({
+    queryKey: key,
+    queryFn: () => apiFetch<ExperimentOut[]>(`/workflows/${wfId}/experiments`),
+    refetchInterval: (q) => (q.state.data?.some((e) => e.status === "running") ? 1000 : false),
+  });
+  const datasets = useQuery({ queryKey: ["datasets", wfId], queryFn: () => apiFetch<DatasetOut[]>(`/workflows/${wfId}/datasets`) });
+  const versions = useQuery({ queryKey: ["versions", wfId], queryFn: () => apiFetch<VersionOut[]>(`/workflows/${wfId}/versions`) });
+  const [dataset, setDataset] = useState("");
+  const [split, setSplit] = useState("");
+  const [targets, setTargets] = useState<TargetDraft[]>([{ version: "", overrides: "", label: "" }]);
+  const [open, setOpen] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState<string>("");
+  const start = useMutation({
+    mutationFn: () => apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
+      method: "POST",
+      json: {
+        dataset_id: dataset || datasets.data?.[0]?.id, split: split || null,
+        targets: targets.map((t) => ({
+          version: t.version || null, label: t.label || null,
+          overrides: t.overrides.trim() ? parseJson(t.overrides, "overrides") : {},
+        })),
+      },
+    }),
+    onSuccess: (e) => { setOpen(e.id); void qc.invalidateQueries({ queryKey: key }); },
+  });
+  const cancel = useMutation({ mutationFn: (eid: string) => apiFetch(`/experiments/${eid}/cancel`, { method: "POST" }), onSuccess: () => void qc.invalidateQueries({ queryKey: key }) });
+  const setTarget = (i: number, patch: Partial<TargetDraft>) => setTargets((ts) => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  const builder = can("builder");
+  const selected = list.data?.find((e) => e.id === open);
+  const before = selected && baseline !== selected.id ? list.data?.find((e) => e.id === baseline) : undefined;
+  return (
+    <section className="pad">
+      {builder && (
+        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); start.mutate(); }} data-testid="start-experiment">
+          <div className="row gap">
+            <select aria-label="experiment dataset" value={dataset} onChange={(e) => setDataset(e.target.value)}>
+              {datasets.data?.map((d) => <option key={d.id} value={d.id}>{d.name} (v{d.version}, {d.examples} examples)</option>)}
+            </select>
+            <input aria-label="experiment split" placeholder="split (all)" value={split} onChange={(e) => setSplit(e.target.value)} style={{ width: 110 }} />
+            <button type="submit" className="primary" disabled={start.isPending || !datasets.data?.length}>▶ Run experiment</button>
+          </div>
+          {targets.map((t, i) => (
+            <div className="row gap" key={i}>
+              <select aria-label={`target ${i + 1} version`} value={t.version} onChange={(e) => setTarget(i, { version: e.target.value })}>
+                <option value="">draft</option>
+                {versions.data?.map((v) => <option key={v.id} value={v.semver}>v{v.semver}</option>)}
+              </select>
+              <input aria-label={`target ${i + 1} label`} placeholder="label" value={t.label} onChange={(e) => setTarget(i, { label: e.target.value })} style={{ width: 110 }} />
+              <input aria-label={`target ${i + 1} overrides`} placeholder='overrides, e.g. {"llm": {"model": "openai:gpt-5-mini"}}' value={t.overrides}
+                onChange={(e) => setTarget(i, { overrides: e.target.value })} />
+              {targets.length > 1 && <button type="button" className="link small" onClick={() => setTargets((ts) => ts.filter((_, j) => j !== i))}>Remove</button>}
+            </div>
+          ))}
+          <button type="button" className="link small" onClick={() => setTargets((ts) => [...ts, { version: "", overrides: "", label: "" }])}>+ Add a version or variant</button>
+          {start.error && <p role="alert" className="error-text">{errorText(start.error)}</p>}
+        </form>
+      )}
+      <QueryStatus q={list} what="experiments" empty={<p className="muted">No experiments yet.</p>} />
+      {list.data && list.data.length > 0 && (
+        <table className="table" data-testid="experiments">
+          <thead><tr><th>Experiment</th><th>Status</th><th>Targets: pass rate</th><th>Progress</th><th /></tr></thead>
+          <tbody>
+            {list.data.map((e) => {
+              const done = e.summary.reduce((n, s) => n + s.completed, 0);
+              const all = e.summary.reduce((n, s) => n + s.examples, 0);
+              return (
+                <tr key={e.id} className={open === e.id ? "selected" : ""}>
+                  <td><button type="button" className="link" onClick={() => setOpen(e.id)}>{e.name}</button></td>
+                  <td><span className={`badge status-${e.status === "done" ? "ok" : e.status === "running" ? "running" : "error"}`}>{e.status}</span></td>
+                  <td className="small">{e.summary.map((s) => `${s.label}: ${pct(s.pass_rate)}`).join(" · ")}</td>
+                  <td>{done}/{all}</td>
+                  <td>{builder && e.status === "running" && <button type="button" className="link small" onClick={() => cancel.mutate(e.id)}>Cancel</button>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {selected && (
+        <>
+          <Results key={selected.id} wfId={wfId} exp={selected} />
+          <div className="row gap small">
+            Compare with
+            <select aria-label="baseline experiment" value={before?.id ?? ""} onChange={(e) => setBaseline(e.target.value)}>
+              <option value="">—</option>
+              {list.data?.filter((e) => e.id !== selected.id).map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id.slice(-6)})</option>)}
+            </select>
+          </div>
+          {before && <Comparison before={before} after={selected} />}
+        </>
+      )}
+    </section>
+  );
+}
+
+function useResults(exp: ExperimentOut) {
+  return useQuery({
+    queryKey: ["experiment-results", exp.id, exp.status, exp.summary.map((s) => s.completed).join()],
+    queryFn: () => apiFetch<ExperimentResultOut[]>(`/experiments/${exp.id}/results`),
+  });
+}
+
+function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
+  const results = useResults(exp);
+  const [diffOf, setDiffOf] = useState<string | null>(null);
+  if (!results.data) return <QueryStatus q={results} what="results" />;
+  const rows = grid(results.data, exp.targets.length);
+  const diffRow = diffOf ? rows.find((r) => r.exampleId === diffOf) : undefined;
+  return (
+    <div className="results" data-testid="results">
+      <h3>{exp.name}</h3>
+      {exp.error && <p className="error-text">{exp.error}</p>}
+      <table className="table small">
+        <thead>
+          <tr><th />{exp.summary.map((s) => <th key={s.target}>{s.label}</th>)}</tr>
+          <tr className="muted">
+            <td>pass rate · p50/p95 · cost</td>
+            {exp.summary.map((s) => (
+              <td key={s.target}>
+                <b>{pct(s.pass_rate)}</b> · {s.latency_p50_ms ?? "—"}/{s.latency_p95_ms ?? "—"} ms · ${s.cost_usd.toFixed(4)}
+                <div>{s.evaluators.map((e) => <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>{e.evaluator} {fmt(e.mean)}</span>)}</div>
+              </td>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.exampleId}>
+              <td><button type="button" className="link small" onClick={() => setDiffOf(diffOf === row.exampleId ? null : row.exampleId)}>#{row.position + 1}</button></td>
+              {row.cells.map((r, t) => (
+                <td key={t} className={passed(r) === false ? "failed" : ""}>
+                  {!r || r.status !== "done" ? <span className="muted">{r?.status ?? "—"}</span> : (
+                    <>
+                      <code>{short(r.output ?? r.error ?? "")}</code>
+                      <div className="row gap">
+                        {r.scores.map((s) => <ScoreBadge key={s.evaluator} s={s} />)}
+                        {r.run_status !== "success" && <span className="badge err">{r.run_status}</span>}
+                        {r.thread_id && <Link className="small" to={`/workflows/${wfId}?thread=${r.thread_id}`}>timeline</Link>}
+                      </div>
+                    </>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {diffRow && <OutputDiff row={diffRow} labels={exp.summary.map((s) => s.label)} />}
+    </div>
+  );
+}
+
+/** The outputs of one example side by side, channel by channel; differing channels are marked. */
+function OutputDiff({ row, labels }: { row: ReturnType<typeof grid>[number]; labels: string[] }) {
+  const channels = [...new Set(row.cells.flatMap((c) => Object.keys(c?.output ?? {})))];
+  return (
+    <table className="table small" data-testid="output-diff">
+      <thead><tr><th>Channel</th>{labels.map((l) => <th key={l}>{l}</th>)}</tr></thead>
+      <tbody>
+        {channels.map((ch) => {
+          const values = row.cells.map((c) => JSON.stringify(c?.output?.[ch] ?? null));
+          const differs = new Set(values).size > 1;
+          return (
+            <tr key={ch} className={differs ? "changed" : ""}>
+              <td>{ch}{differs && " ≠"}</td>
+              {values.map((v, i) => <td key={i}><code>{v}</code></td>)}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function Comparison({ before, after }: { before: ExperimentOut; after: ExperimentOut }) {
+  const a = useResults(before);
+  const b = useResults(after);
+  if (!a.data || !b.data) return <QueryStatus q={a.data ? b : a} what="results" />;
+  const c = compare(before, a.data, after, b.data);
+  const sign = (d: number | null) => (d == null ? "—" : `${d > 0 ? "+" : ""}${d.toFixed(2)}`);
+  return (
+    <div data-testid="comparison">
+      <table className="table small">
+        <thead><tr><th>Evaluator</th><th>{before.name}</th><th>{after.name}</th><th>Δ</th></tr></thead>
+        <tbody>
+          {c.evaluators.map((e) => (
+            <tr key={e.evaluator}><td>{e.evaluator}</td><td>{fmt(e.before)}</td><td>{fmt(e.after)}</td>
+              <td className={e.delta && e.delta < 0 ? "error-text" : ""}>{sign(e.delta)}</td></tr>
+          ))}
+          <tr><td><b>pass rate</b></td><td>{pct(c.passRate.before)}</td><td>{pct(c.passRate.after)}</td><td>{sign(c.passRate.delta)}</td></tr>
+        </tbody>
+      </table>
+      <p className="small">
+        Improved: {c.improved.length ? c.improved.map((x) => <code key={x}>{x.slice(-6)} </code>) : "none"} ·
+        Regressed: {c.regressed.length ? c.regressed.map((x) => <code key={x} className="error-text">{x.slice(-6)} </code>) : "none"}
+      </p>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------------- release gates ----
+function Gates({ wfId }: { wfId: string }) {
+  const qc = useQueryClient();
+  const key = ["gates", wfId];
+  const list = useQuery({ queryKey: key, queryFn: () => apiFetch<GateOut[]>(`/workflows/${wfId}/gates`) });
+  const datasets = useQuery({ queryKey: ["datasets", wfId], queryFn: () => apiFetch<DatasetOut[]>(`/workflows/${wfId}/datasets`) });
+  const evaluators = useQuery({ queryKey: ["evaluators", wfId], queryFn: () => apiFetch<EvaluatorOut[]>(`/workflows/${wfId}/evaluators`) });
+  const [environment, setEnvironment] = useState("prod");
+  const [dataset, setDataset] = useState("");
+  const [mins, setMins] = useState<Record<string, string>>({});
+  const [regression, setRegression] = useState("");
+  const save = useMutation({
+    mutationFn: () => apiFetch<GateOut>(`/workflows/${wfId}/gates/${environment}`, {
+      method: "PUT",
+      json: {
+        dataset_id: dataset || datasets.data?.[0]?.id,
+        min_scores: Object.fromEntries(Object.entries(mins).filter(([, v]) => v.trim()).map(([k, v]) => [k, Number(v)])),
+        max_regression: regression.trim() ? Number(regression) / 100 : null,
+      },
+    }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
+  });
+  const remove = useMutation({ mutationFn: (env: string) => apiFetch(`/workflows/${wfId}/gates/${env}`, { method: "DELETE" }), onSuccess: () => void qc.invalidateQueries({ queryKey: key }) });
+  const name = (id: string) => datasets.data?.find((d) => d.id === id)?.name ?? id;
+  return (
+    <section className="pad">
+      <p className="small muted">
+        Publishing to a gated environment first evaluates the exact workflow on the dataset (reusing an experiment that already
+        did) and is refused when a minimum mean score is missed or the pass rate drops more than allowed against the live version.
+        Admins set gates and can publish over a failed one with a reason, which the audit log keeps.
+      </p>
+      <QueryStatus q={list} what="release gates" empty={<p className="muted">No release gates: publishing needs no evaluation.</p>} />
+      {list.data && list.data.length > 0 && (
+        <table className="table" data-testid="gates">
+          <thead><tr><th>Environment</th><th>Dataset</th><th>Minimum mean</th><th>Max drop vs live</th><th /></tr></thead>
+          <tbody>
+            {list.data.map((g) => (
+              <tr key={g.id}>
+                <td>{g.environment}</td><td>{name(g.dataset_id)}</td>
+                <td className="small">{Object.entries(g.min_scores ?? {}).map(([k, v]) => `${k} ≥ ${v}`).join(", ") || "each evaluator's threshold"}</td>
+                <td>{g.max_regression == null ? "—" : pct(g.max_regression)}</td>
+                <td>{can("admin") && <button type="button" className="link small" onClick={() => remove.mutate(g.environment)}>Remove</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {can("admin") && (
+        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }} data-testid="gate-form">
+          <div className="row gap">
+            <input aria-label="gate environment" value={environment} onChange={(e) => setEnvironment(e.target.value)} style={{ width: 110 }} />
+            <select aria-label="gate dataset" value={dataset} onChange={(e) => setDataset(e.target.value)}>
+              {datasets.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <input aria-label="max regression" placeholder="max drop in pass rate, %" value={regression} onChange={(e) => setRegression(e.target.value)} style={{ width: 190 }} />
+            <button type="submit" disabled={save.isPending || !datasets.data?.length}>Save gate</button>
+          </div>
+          <div className="row gap small">
+            Minimum mean (empty: the evaluator's threshold):
+            {evaluators.data?.map((e) => (
+              <label key={e.id} className="row">{e.name}
+                <input aria-label={`minimum ${e.name}`} style={{ width: 60 }} value={mins[e.name] ?? ""} onChange={(x) => setMins((m) => ({ ...m, [e.name]: x.target.value }))} />
+              </label>
+            ))}
+          </div>
+          {save.error && <p role="alert" className="error-text">{errorText(save.error)}</p>}
+        </form>
+      )}
+    </section>
+  );
+}

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 8 (M6-T1, M6-T9): save a run as a test case, version the workflow, break it, see red + the diff.
 

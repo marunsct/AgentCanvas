@@ -28,12 +28,15 @@ from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
+from agentcanvas.runtime import masking
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
+from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.projects import ProjectRegistry
+from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.secrets import SecretService
@@ -68,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
             app.state.keyring = Keyring.from_settings(settings)
+            masking.provider = lambda: (v for values in app.state.projects.secrets.values() for v in values.values())
+            masking.install_langsmith()
             async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
                 for project, values in (await SecretService(s, app.state.keyring).values()).items():
                     app.state.projects.secrets.setdefault(project, {}).update(values)
@@ -78,13 +83,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
-            app.state.retention = RetentionJob(db, runner, settings.retention_days, settings.retention_interval_s)
+            app.state.ratelimit = RateLimiter(db)
+            app.state.retention = RetentionJob(
+                db, runner, settings.retention_days, settings.retention_interval_s,
+                audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days,
+            )  # fmt: skip
 
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
 
-            app.state.handover = HandoverJob(db, runner, handover_target, settings.handover_interval_s)
+            app.state.handover = HandoverJob(
+                db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
+            )
+            app.state.experiments = ExperimentJob(db, runner, settings.handover_interval_s, settings.orphan_after_s)
             if settings.env != "test":  # tests drive the schedulers with explicit ticks
+                app.state.experiments.start()
                 app.state.cron.start()
                 app.state.retention.start()
                 app.state.handover.start()
@@ -97,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.handover.stop()
                 await app.state.cron.stop()
                 await app.state.retention.stop()

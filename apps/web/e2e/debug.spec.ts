@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 4 acceptance: debug & run UX on the support-triage template (the demo model answers "low").
 

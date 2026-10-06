@@ -48,5 +48,9 @@ class Unavailable(DomainError):
     status, title, type_ = 503, "Unavailable", "https://agentcanvas.dev/errors/unavailable"
 
 
+class TooManyRequests(DomainError):
+    status, title, type_ = 429, "Too many requests", "https://agentcanvas.dev/errors/rate-limited"
+
+
 class UpstreamError(DomainError):
     status, title, type_ = 502, "Upstream error", "https://agentcanvas.dev/errors/upstream"

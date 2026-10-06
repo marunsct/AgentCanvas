@@ -649,6 +649,13 @@
             }
           ],
           "default": null
+        },
+        "trace_redact": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trace Redact",
+          "type": "array"
         }
       },
       "title": "WorkflowSettings",

@@ -5,6 +5,9 @@ longer than its organisation keeps conversations: `Organization.retention_days`,
 (default 90) when the organisation sets none; 0 keeps them forever. Conversations that are running or waiting
 for a person (interrupted) are kept whatever their age.
 
+The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS` (default 400) and, when
+`AGENTCANVAS_MEMORY_RETENTION_DAYS` is set (off by default), long-term memories not updated for that long (S12).
+
 Every API replica runs the job; deleting is idempotent, so replicas that overlap only repeat work.
 """
 
@@ -15,9 +18,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from prometheus_client import Counter
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from agentcanvas.db.models import Organization, Project, Thread, WorkflowRow
+from agentcanvas.db.models import AuditLog, Organization, Project, Thread, WorkflowRow
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 
@@ -28,8 +31,17 @@ BATCH = 500
 
 
 class RetentionJob:
-    def __init__(self, db: Any, runner: Any, default_days: int, interval_s: float = 3600.0):
+    def __init__(
+        self,
+        db: Any,
+        runner: Any,
+        default_days: int,
+        interval_s: float = 3600.0,
+        audit_days: int = 0,
+        memory_days: int = 0,
+    ):
         self.db, self.runner, self.default_days, self.interval_s = db, runner, default_days, interval_s
+        self.audit_days, self.memory_days = audit_days, memory_days
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -84,4 +96,27 @@ class RetentionJob:
             if gone:
                 log.info("retention.deleted", org_id=org_id, threads=gone, days=days)
         DELETED.inc(len(deleted))
+        await self.expire_audit(now)
+        await self.expire_memory(now, [org_id for org_id, _ in orgs])
         return deleted
+
+    async def expire_audit(self, now: datetime) -> int:
+        if self.audit_days <= 0:
+            return 0
+        async with self.db.sessionmaker() as s:
+            res = await s.execute(delete(AuditLog).where(AuditLog.created_at < now - timedelta(days=self.audit_days)))
+            await s.commit()
+        n = res.rowcount or 0  # type: ignore[attr-defined]
+        if n:
+            log.info("retention.audit_deleted", rows=n, days=self.audit_days)
+        return n
+
+    async def expire_memory(self, now: datetime, org_ids: list[str]) -> int:
+        if self.memory_days <= 0:
+            return 0
+        before, n = now - timedelta(days=self.memory_days), 0
+        for org_id in org_ids:
+            n += await self.runner.adapter.memory_expire((f"org:{org_id}",), before)
+        if n:
+            log.info("retention.memory_deleted", items=n, days=self.memory_days)
+        return n

@@ -2,12 +2,13 @@
 # API image (M8-T1). Build context: apps/api
 #   docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
 # Runs as uid 10001. Migrations: `alembic upgrade head` (the compose `migrate` service, the Helm hook Job).
-ARG PYTHON_IMAGE=python:3.12-slim
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.8
+# Base images are pinned by digest (Dependabot proposes updates weekly). To pull one from a mirror, replace the
+# exact reference: --build-context 'python:3.12-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/python@sha256:<digest>'
+FROM ghcr.io/astral-sh/uv:0.8@sha256:1d31be550ff927957472b2a491dc3de1ea9b5c2d319a9cea5b6a48021e2990a6 AS uv
 
-FROM ${UV_IMAGE} AS uv
+FROM python:3.12-slim@sha256:02108f5d322dd89f1c9e552442c25acb0543dfdbc455693a5599624f20d9155d AS python
 
-FROM ${PYTHON_IMAGE} AS build
+FROM python AS build
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -18,7 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-ins
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
-FROM ${PYTHON_IMAGE} AS runtime
+FROM python AS runtime
 # git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 10 (M7-T3): an admin invites someone by email and changes their role.
 

@@ -1,6 +1,6 @@
 /** Decision card for a pending interrupt (build-guide/06 §9): tool approval, approval, or input request. */
 import Form from "@rjsf/core";
-import validator from "@rjsf/validator-ajv8";
+import { validator } from "../ui/validator";
 import { useState } from "react";
 
 export interface PendingInterrupt {

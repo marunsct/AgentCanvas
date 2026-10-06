@@ -338,3 +338,13 @@ td.status-handled { color: var(--ok); }
 /* Policies (FR-X-19) */
 .policy-form { display: flex; flex-direction: column; gap: 6px; max-width: 760px; margin-bottom: 12px; }
 .policy-form > input { width: 100%; font-family: var(--mono, monospace); }
+
+/* Evaluation Studio (S12) */
+.table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.table th, .table td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.table tr.selected { background: var(--panel); }
+.table td.failed { background: #fef2f2; }
+.table tr.changed td:first-child { font-weight: 600; }
+.evaluation .tabs { position: static; margin: 0 -24px 0; }
+.evaluation .badge { margin-right: 4px; }
+.dataset-view, .results { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }

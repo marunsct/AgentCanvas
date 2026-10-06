@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 9 (M6-T8): screens explain failures and empty states instead of staying blank.
 

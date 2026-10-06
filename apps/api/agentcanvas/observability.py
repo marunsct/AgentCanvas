@@ -123,8 +123,12 @@ def setup_tracing(app: FastAPI, exporter: Any = None) -> bool:
     if not _tracing["ready"]:
         resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "agentcanvas-api")})
         provider = TracerProvider(resource=resource)
-        provider.add_span_processor(
-            SimpleSpanProcessor(exporter) if exporter else BatchSpanProcessor(OTLPSpanExporter())
+        from agentcanvas.runtime.masking import MaskingExporter
+
+        provider.add_span_processor(  # secret values never leave in a span (S12)
+            SimpleSpanProcessor(MaskingExporter(exporter))
+            if exporter
+            else BatchSpanProcessor(MaskingExporter(OTLPSpanExporter()))
         )
         trace.set_tracer_provider(provider)
         HTTPXClientInstrumentor().instrument()

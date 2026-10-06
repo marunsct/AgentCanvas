@@ -43,6 +43,26 @@ def test_workspace_scaffold_git_and_path_safety(tmp_path):
     assert "scripts/hello.py" not in {f.path for f in ws.list()}
 
 
+def test_symlinks_cannot_escape_the_workspace(tmp_path):
+    """S12 (S3 follow-up): a symlink inside the workspace that points outside it is never followed."""
+    ws = Workspace(tmp_path / "prj_a").ensure()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("top secret")
+    (ws.root / "scripts" / "leak.txt").symlink_to(outside / "secret.txt")  # a file link
+    (ws.root / "linked").symlink_to(outside, target_is_directory=True)  # a directory link
+    for rel in ["scripts/leak.txt", "linked/secret.txt", "linked/new.py"]:
+        with pytest.raises(WorkspaceError, match="outside the workspace"):
+            ws.read(rel)
+        with pytest.raises(WorkspaceError, match="outside the workspace"):
+            ws.write(rel, "x = 1")
+        with pytest.raises(WorkspaceError, match="outside the workspace"):
+            ws.delete(rel)
+    assert (outside / "secret.txt").read_text() == "top secret" and not (outside / "new.py").exists()
+    listed = {f.path for f in ws.list()}
+    assert "scripts/leak.txt" not in listed and not any(p.startswith("linked/") for p in listed)
+
+
 def test_two_workspaces_never_share_modules(tmp_path):
     a, b = Workspace(tmp_path / "a").ensure(), Workspace(tmp_path / "b").ensure()
     a.write("scripts/same.py", "def run(state):\n    return {'who': 'a'}\n")

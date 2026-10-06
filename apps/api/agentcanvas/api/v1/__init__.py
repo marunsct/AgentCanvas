@@ -11,8 +11,12 @@ from agentcanvas.api.deps import current_user, org_scope, role_policy
 from agentcanvas.api.v1 import (
     auth,
     catalog,
+    datasets,
     deployments,
+    evaluators,
     events,
+    experiments,
+    gates,
     memory,
     org,
     projects,
@@ -38,6 +42,10 @@ signed_in.include_router(workspace.router)
 signed_in.include_router(secrets.router)
 signed_in.include_router(events.router)
 signed_in.include_router(versions.router)
+signed_in.include_router(datasets.router)
+signed_in.include_router(evaluators.router)
+signed_in.include_router(experiments.router)
+signed_in.include_router(gates.router)
 signed_in.include_router(deployments.router)
 signed_in.include_router(triggers.router)
 

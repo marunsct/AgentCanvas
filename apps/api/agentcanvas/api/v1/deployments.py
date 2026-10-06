@@ -16,15 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Deployment, Project, WorkflowVersion
-from agentcanvas.errors import InvalidInput
+from agentcanvas.errors import Conflict, Forbidden, InvalidInput
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.services import gates
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
@@ -41,6 +43,9 @@ WAIT_TIMEOUT_S = 300.0
 class PublishIn(BaseModel):
     environment: str = Field("prod", pattern=r"^[a-z][a-z0-9-]{0,30}$")
     message: str = Field("", max_length=500)
+    override_reason: str | None = Field(
+        None, max_length=500, description="admins: publish although the release gate fails (audited)"
+    )
 
 
 class DeploymentOut(BaseModel):
@@ -98,19 +103,48 @@ async def publish(
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
+    gate = await gate_for(session, wf_id, body.environment)
+    commit = await workspace_commit(request, session, wf_id)
+    if gate is not None and all(c.ok for c in checks):  # an evaluation is costly: only when nothing else failed
+        live, evaluated = await _live(session, wf_id, body.environment), view.row.ir_hash
+        await session.commit()  # an evaluation can take minutes: hold no connection meanwhile
+        evaluation = await gates.evaluate(
+            request.app.state.db, request.app.state.experiments, gate, wf, live, user.id, commit,
+        )  # fmt: skip
+        # what gets pinned must be exactly what was evaluated: the draft or workspace may have moved meanwhile
+        await session.refresh(view.row)
+        if view.row.ir_hash != evaluated or await workspace_commit(request, session, wf_id) != commit:
+            raise Conflict("the workflow changed while it was being evaluated; publish again")
+        if not evaluation.ok and body.override_reason:
+            if user.role != "admin":
+                raise Forbidden("only an admin can publish over a failed release gate")
+            evaluation.ok = True
+            evaluation.detail = f"overridden by {user.id}: {body.override_reason} ({evaluation.detail})"
+            note(request, gate_override=body.override_reason, gate_failures=evaluation.items)
+        checks.append(evaluation)
     failed = [c for c in checks if not c.ok]
     if failed:
         raise InvalidInput(
             "publish refused: " + "; ".join(f"{c.name}: {c.detail}" for c in failed),
             checklist=[c.model_dump() for c in checks],
         )
-    commit = await workspace_commit(request, session, wf_id)
     version, _ = await VersionService(session).create(
         wf_id, message=body.message or f"published to {body.environment}", workspace_commit=commit,
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version)
     return PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+
+
+async def _live(session: AsyncSession, wf_id: str, environment: str) -> tuple[Workflow, str, str] | None:
+    """The workflow, version id and semver `environment` serves now (None before its first publish)."""
+    from sqlalchemy import select
+
+    dep = await session.scalar(
+        select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.environment == environment)
+    )
+    live = await session.get(WorkflowVersion, dep.version_id) if dep and dep.active else None
+    return (Workflow.model_validate(live.ir), live.id, live.semver) if live else None
 
 
 async def _contract_check(session: AsyncSession, wf_id: str, environment: str, wf: Workflow) -> Check:
@@ -173,13 +207,23 @@ class ApiResult(BaseModel):
     error: str | None = None
 
 
-async def _caller(session: AsyncSession, dep_id: str, authorization: str | None) -> tuple[Deployment, Workflow]:
+async def _caller(
+    request: Request, session: AsyncSession, dep_id: str, authorization: str | None
+) -> tuple[Deployment, Workflow]:
+    """The key's deployment and workflow, after counting the request against the deployment's and the project's
+    rate limits (429 when over)."""
     dep, wf = await DeploymentService(session).authenticate(dep_id, authorization)
     from agentcanvas.db.models import WorkflowRow
 
     row = await session.get(WorkflowRow, dep.workflow_id)
     if row is not None:
         PROJECT_OF[wf.id] = row.project_id
+    settings = request.app.state.settings
+    per_key = settings.rate_limit_by_environment.get(dep.environment, settings.rate_limit_per_deployment)
+    await request.app.state.ratelimit.hit(
+        (f"deployment:{dep.id}", per_key),
+        (f"project:{row.project_id if row else dep.workflow_id}", settings.rate_limit_per_project),
+    )
     return dep, wf
 
 
@@ -197,7 +241,7 @@ async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, bod
 
 
 async def _start(request: Request, session: AsyncSession, dep_id: str, body: ApiRunIn, auth: str | None) -> RunHandle:
-    dep, wf = await _caller(session, dep_id, auth)
+    dep, wf = await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
     if body.thread_id:
         t = await _thread(session, body.thread_id)
@@ -274,7 +318,7 @@ async def api_resume(
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
-    dep, wf = await _caller(session, dep_id, authorization)
+    dep, wf = await _caller(request, session, dep_id, authorization)
     t = await _thread(session, thread_id)
     if t.deployment_id != dep.id:
         raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")

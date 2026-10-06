@@ -460,6 +460,20 @@ class Runner:
             log.info("runner.drained", runs=[h.run_id for h in left])
         return [h.run_id for h in left]
 
+    def active(self) -> list[str]:
+        return [h.run_id for h in self.handles.values() if h.task and not h.done.is_set()]
+
+    async def heartbeat(self) -> None:
+        """Mark this instance's running runs as alive (the orphan sweep skips them)."""
+        ids = self.active()
+        if not ids:
+            return
+        async with self.db.sessionmaker() as s:
+            await s.execute(
+                update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
+            )
+            await s.commit()
+
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):
             if h.task and not h.done.is_set():

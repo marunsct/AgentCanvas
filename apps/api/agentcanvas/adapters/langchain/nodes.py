@@ -218,8 +218,25 @@ def error_router(target: str, write_channel: str | None = None) -> Callable:
     return handle
 
 
+def _redactor(keys: set[str]) -> Callable[[Any], Any]:
+    """Replace the values of `keys` (at any depth) with "[redacted]" (workflow `settings.trace_redact`, S12)."""
+
+    def walk(v: Any) -> Any:
+        if isinstance(v, dict):
+            return {k: "[redacted]" if k in keys else walk(x) for k, x in v.items()}
+        if isinstance(v, list | tuple):
+            return [walk(x) for x in v]
+        return v
+
+    return walk
+
+
 def node_options(
-    policies: dict[str, Any] | None, *, error_target: str | None = None, error_channel: str | None = None
+    policies: dict[str, Any] | None = None,
+    *,
+    error_target: str | None = None,
+    error_channel: str | None = None,
+    redact: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Translate IR node policies into `StateGraph.add_node(...)` keyword arguments."""
     p = policies or {}  # keys present = policy configured (defaults may be omitted inside)
@@ -236,8 +253,14 @@ def node_options(
     if error_target:
         out["error_handler"] = error_router(error_target, error_channel)
         out["destinations"] = (error_target,)
-    if p.get("trace", "full") != "full":
-        out["trace_policy"] = TracePolicy(**_TRACE[p["trace"]])
+    trace = p.get("trace", "full")
+    if trace != "full" or redact:
+        fns: dict[str, Any] = dict(_TRACE.get(trace, {}))
+        if redact:
+            hide = _redactor(set(redact))
+            for k in ("process_inputs", "process_outputs"):
+                fns[k] = (lambda f: lambda payload: hide(f(payload)))(fns.get(k, lambda payload: payload))
+        out["trace_policy"] = TracePolicy(**fns)
     return out
 
 

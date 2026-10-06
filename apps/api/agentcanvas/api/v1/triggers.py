@@ -84,6 +84,11 @@ async def webhook(
     happens)."""
     raw = await request.body()
     trig = await s.verify(trigger_id, raw, signature, timestamp)
+    settings = request.app.state.settings
+    await request.app.state.ratelimit.hit(
+        (f"hook:{trig.id}", settings.rate_limit_per_webhook),
+        (f"project:{await s.project_of(trig)}", settings.rate_limit_per_project),
+    )
     try:
         body = json.loads(raw or b"{}")
         payload = map_input(trig.config.get("input_mapping"), body)

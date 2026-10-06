@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -196,6 +197,8 @@ class Run(Base):
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -242,6 +245,129 @@ class Connection(Base):
     kind: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
     config: Mapped[dict[str, Any]]
+
+
+class Dataset(Base):
+    """Examples to evaluate a workflow on (FR-EVAL-02). Every change makes a new immutable `DatasetVersion`;
+    experiments pin the version they ran on."""
+
+    __tablename__ = "dataset"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class DatasetVersion(Base):
+    __tablename__ = "dataset_version"
+    __table_args__ = (UniqueConstraint("dataset_id", "number", name="dataset_version_number"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # [{id, input, context, reference, trajectory, split, metadata}] — the whole set, so a version never changes
+    examples: Mapped[list[Any]]
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class Evaluator(Base):
+    """How runs of a workflow are scored (FR-EVAL-03); kinds and configs in `agentcanvas.evaluation`."""
+
+    __tablename__ = "evaluator"
+    __table_args__ = (UniqueConstraint("workflow_id", "name", name="evaluator_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    config: Mapped[dict[str, Any]]
+    threshold: Mapped[float | None] = mapped_column(Float)  # passes at score >= threshold; None = kind default
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class Experiment(Base):
+    """A workflow run over a pinned dataset version, once per target (the draft, a version, or either with model
+    or prompt overrides), and scored by evaluators (FR-EVAL-04). Targets and evaluators are snapshots taken at
+    creation, so later edits never change what an experiment measured."""
+
+    __tablename__ = "experiment"
+    __table_args__ = (
+        CheckConstraint("status IN ('running','done','cancelled','error')", name="experiment_status"),
+        Index("experiment_status_idx", "status", "heartbeat_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
+    dataset_version: Mapped[int] = mapped_column(Integer)
+    split: Mapped[str | None] = mapped_column(Text)
+    # [{label, version, version_id, overrides, ir}] — `ir` is the exact workflow each target runs
+    targets: Mapped[list[Any]]
+    evaluators: Mapped[list[Any]]  # [{name, kind, config, threshold}]
+    concurrency: Mapped[int] = mapped_column(Integer, server_default=text("4"), default=4)
+    # the project's workspace head when it started: workspace code changes behaviour without changing the IR
+    workspace_commit: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
+    error: Mapped[str | None] = mapped_column(Text)
+    # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExperimentResult(Base):
+    """One example run for one target of an experiment, with its scores."""
+
+    __tablename__ = "experiment_result"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','running','done')", name="experiment_result_status"),
+        UniqueConstraint("experiment_id", "target", "example_id", name="experiment_result_example"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    experiment_id: Mapped[str] = mapped_column(ForeignKey("experiment.id", ondelete="CASCADE"), index=True)
+    target: Mapped[int] = mapped_column(Integer)  # index into Experiment.targets
+    example_id: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer)  # the example's place in the dataset version
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    run_id: Mapped[str | None] = mapped_column(Text)
+    thread_id: Mapped[str | None] = mapped_column(Text)
+    run_status: Mapped[str | None] = mapped_column(Text)  # success / interrupted / error / cancelled / timeout
+    error: Mapped[str | None] = mapped_column(Text)
+    output: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    trajectory: Mapped[list[Any] | None] = mapped_column(Json)
+    scores: Mapped[list[Any] | None] = mapped_column(Json)  # [{evaluator, score, passed, comment}]
+    tokens_in: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, server_default=text("0"), default=0.0)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+
+
+class ReleaseGate(Base):
+    """FR-EVAL-05: publishing this workflow to `environment` must pass an evaluation on `dataset_id` first."""
+
+    __tablename__ = "release_gate"
+    __table_args__ = (UniqueConstraint("workflow_id", "environment", name="release_gate_environment"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    environment: Mapped[str] = mapped_column(Text)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
+    min_scores: Mapped[dict[str, Any]]  # evaluator name -> minimum mean score; empty: every evaluator, its threshold
+    max_regression: Mapped[float | None] = mapped_column(Float)  # largest allowed drop in pass rate vs. live
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    updated_at: Mapped[datetime] = _now()
+
+
+class RateWindow(Base):
+    """Requests counted per limit key and fixed window (S12, S30): shared by every API instance."""
+
+    __tablename__ = "rate_window"
+    key: Mapped[str] = mapped_column(Text, primary_key=True)  # "deployment:<id>", "project:<id>", "hook:<id>"
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)  # unix time // window length
+    count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
 
 
 class Trigger(Base):

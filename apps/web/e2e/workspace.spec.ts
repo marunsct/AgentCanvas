@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 7 acceptance (J3 part 1): a Script node backed by a workspace file, edited in the browser, runs.
 

@@ -1,7 +1,7 @@
 /** The workflow editor: palette | canvas | inspector/run/code, with the problems dock below. */
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { useNodeTypes } from "../api/queries";
 import { Canvas } from "../canvas/Canvas";
 import { Palette } from "../canvas/Palette";
@@ -26,6 +26,7 @@ type Tab = "inspect" | "run" | "tests" | "versions" | "code";
 
 export function EditorPage() {
   const { id } = useParams();
+  const [params] = useSearchParams();
   const wf = useEditor((s) => s.wf);
   const notice = useEditor((s) => s.notice);
   const saving = useEditor((s) => s.pending.length > 0 || s.inflight);
@@ -43,6 +44,11 @@ export function EditorPage() {
     useEditor.getState().reset();
     useRun.getState().reset();
     useEditor.getState().load(id).catch((e: Error) => setError(e.message));
+    const thread = params.get("thread");  // "open this run's timeline", e.g. from an experiment's results
+    if (thread) {
+      useRun.getState().setThread(thread);
+      useUi.getState().setDock("timeline");
+    }
   }, [id]);
 
   useEffect(() => {
@@ -82,6 +88,7 @@ export function EditorPage() {
           ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
           : <span className="save-state" data-testid="view-only" title={`your role is ${ME.role}`}>View only</span>}
         <span className="spacer" />
+        <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link">Evaluate</Link>
         <Link to="/workspace" className="inbox-link" data-testid="workspace-link">Workspace</Link>
         <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">

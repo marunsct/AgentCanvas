@@ -57,14 +57,25 @@ class Settings(BaseSettings):
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
     # unless the organisation sets its own (M8-T4); 0 keeps them forever
     retention_days: int = 90
+    audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever (S12)
+    memory_retention_days: int = 0  # long-term memories not updated for this long are deleted; 0 (default): kept
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # S12 (S30): requests per minute to the public API, counted across instances; 0 = no limit. Per deployment
+    # (its API key) and per webhook trigger, and per project over all its deployments and webhooks together.
+    # `rate_limit_by_environment` overrides the per-deployment limit for a deployment environment, e.g. {"dev": 30}.
+    rate_limit_per_deployment: int = 120
+    rate_limit_per_webhook: int = 120
+    rate_limit_per_project: int = 600
+    rate_limit_by_environment: dict[str, int] = {}
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
     # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
     drain_grace_s: float = 20.0
     handover_interval_s: float = 10.0
+    # a running run whose instance has not refreshed it for this long lost its instance and is handed over
+    orphan_after_s: float = 60.0
 
 
 @cache

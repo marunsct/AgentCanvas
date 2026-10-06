@@ -109,6 +109,9 @@ SCOPED_PARAMS = {
     "dep_id": "deployment",
     "trigger_id": "trigger",
     "interrupt_id": "interrupt",
+    "ds_id": "dataset",
+    "evaluator_id": "evaluator",
+    "exp_id": "experiment",
 }
 
 
@@ -140,6 +143,8 @@ ROLE_EXCEPTIONS = {
     ("POST", "/threads/{thread_id}/resume"): "reviewer",
     ("POST", "/me/invitations/{org_id}/accept"): "viewer",  # anyone answers their own invitations
     ("DELETE", "/me/invitations/{org_id}"): "viewer",
+    ("PUT", "/workflows/{wf_id}/gates/{environment}"): "admin",  # a builder must not lower the bar they publish over
+    ("DELETE", "/workflows/{wf_id}/gates/{environment}"): "admin",
 }
 
 
