@@ -171,7 +171,8 @@ The follow-ups are in the S12 backlog.
 - [x] FR-EVAL-05 release gate: per workflow and environment (dataset, minimum mean per evaluator, max pass-rate drop vs live); publish runs or reuses an evaluation of the exact workflow and refuses on a miss; admins override with an audited reason.
 - [x] Orphaned-run sweeper: runs of an instance killed without draining are handed over after `AGENTCANVAS_ORPHAN_AFTER_S` (60 s) without a heartbeat.
 - [x] API rate limits per deployment key, webhook and project, counted in the database across replicas (429 with `Retry-After`).
-- [ ] S11 follow-ups: trace masking, audit and memory retention, drop `'unsafe-eval'`, base images by digest, workspace symlink test.
+- [x] Trace masking: secrets masked in LangSmith runs and OTel spans; `settings.trace_redact` fields redacted in every step's trace.
+- [ ] S11 follow-ups: audit and memory retention, drop `'unsafe-eval'`, base images by digest, workspace symlink test.
 
 ### S13+ — GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.

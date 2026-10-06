@@ -140,6 +140,8 @@ def lower(wf: Workflow, registry: Registry | None = None) -> Plan:
             policies |= {k: v for k, v in dumped.items() if k not in ("retry", "timeout", "cache")}
         route = n.policies.error_route if n.policies else None
         options: dict[str, Any] = {"policies": policies}
+        if wf.settings.trace_redact:
+            options["redact"] = list(wf.settings.trace_redact)
         if route:
             options["error_target"] = names[route]
             options["error_channel"] = error_channel

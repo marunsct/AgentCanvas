@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 from fastapi import FastAPI
 from prometheus_client.parser import text_string_to_metric_families
 from test_publish import make_greeter
 
 from agentcanvas import observability
+from agentcanvas.runtime import masking
 
 
 def sample(text: str, name: str, **labels: str) -> float:
@@ -69,8 +72,14 @@ async def test_requests_are_traced_with_their_request_id_and_logs_carry_the_trac
         return {}
 
     assert observability.setup_tracing(app, exporter=exporter)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
-        assert (await c.get("/hello")).status_code == 200
+    masking.provider = lambda: ["s3cret-token-value"]
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            assert (await c.get("/hello?token=s3cret-token-value")).status_code == 200
+    finally:
+        masking.provider = lambda: ()
+    exported = json.dumps([dict(s.attributes or {}) for s in exporter.get_finished_spans()])
+    assert "s3cret-token-value" not in exported and "token=***" in exported  # S12: secrets never leave in a span
     [server] = [s for s in exporter.get_finished_spans() if s.kind.name == "SERVER"]
     assert server.attributes["request.id"] == "req_t"
     assert server.attributes["http.route"] == "/hello"

@@ -28,6 +28,7 @@ from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
+from agentcanvas.runtime import masking
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
@@ -70,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
             app.state.keyring = Keyring.from_settings(settings)
+            masking.provider = lambda: (v for values in app.state.projects.secrets.values() for v in values.values())
+            masking.install_langsmith()
             async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
                 for project, values in (await SecretService(s, app.state.keyring).values()).items():
                     app.state.projects.secrets.setdefault(project, {}).update(values)

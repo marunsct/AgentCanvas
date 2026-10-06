@@ -13,6 +13,7 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **Rate limits per caller.** The public API limits each deployment key (120/min), webhook (120/min) and project (600/min) across all API instances, and answers 429 with `Retry-After` beyond that. See `AGENTCANVAS_RATE_LIMIT_*`.
 
 ### Fixed
+- Secret values no longer reach LangSmith traces or OpenTelemetry spans; they are masked as `***`. A workflow can also name fields (`settings.trace_redact`) whose values are never traced.
 - Runs of an API instance that stopped without a clean shutdown (out of memory, a lost node) no longer stay "running": another instance picks them up after 60 s (`AGENTCANVAS_ORPHAN_AFTER_S`).
 
 ## v0.3.0 — Production readiness (merged 2026-10-06, not tagged yet)

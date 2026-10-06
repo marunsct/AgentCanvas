@@ -57,6 +57,7 @@ export type MaxCostUsd = number | null;
 export type MaxSeconds = number | null;
 export type ThreadMaxTokens = number | null;
 export type ThreadMaxCostUsd = number | null;
+export type TraceRedact = string[];
 
 export interface Workflow {
   ir_version?: IrVersion;
@@ -188,6 +189,7 @@ export interface WorkflowSettings {
   output_channels?: OutputChannels;
   experimental?: Experimental;
   budget?: Budget | null;
+  trace_redact?: TraceRedact;
 }
 /**
  * Spending limits (FR-X-15), enforced by the runner from the models' reported usage.
