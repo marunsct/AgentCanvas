@@ -59,13 +59,18 @@ scripts and custom widgets) → run and debug (breakpoints, time travel, Explain
 blast radius and dry runs) → test (saved test cases, record/replay) → ship (versions & diffs, export as a plain
 Python project, publish behind an API key, webhooks and cron). Details in the [changelog](CHANGELOG.md).
 
-## Coming in v0.2.0 (accounts & access)
+## Added since v0.1.0
 
-Sign in with your identity provider (OIDC, `AGENTCANVAS_AUTH_MODE=oidc`), organisations that cannot see each
-other's work, roles (viewer, reviewer, builder, admin) with email invitations, an audit log of every change, and
-organisation **policies** written as CEL ("every external write needs approval", "only approved models in prod")
-that the editor reports and publishing enforces. Long-term memory is kept per organisation. See the
-[Unreleased section of the changelog](CHANGELOG.md#unreleased-v020).
+- **v0.2.0, accounts & access:** sign-in with your identity provider (OIDC), organisations that cannot see each
+  other's work, roles with email invitations, an audit log, and organisation policies written as CEL.
+- **v0.3.0, production readiness:** container images, compose prod and Helm, metrics and traces, retention and
+  backups, safe redeploys and encrypted secrets.
+- **v0.4.0, Evaluation Studio:** datasets, evaluators, experiments with a results grid, and release gates.
+- **v0.5.0, evaluation in production:** online evaluators on deployment traffic with drift alerts, annotation
+  queues, pairwise and composite evaluators, rubric self-grading on agents, simulated users, LangSmith dataset
+  sync, and record/replay of tool calls.
+
+See the [changelog](CHANGELOG.md) for details.
 
 ## Status
 
@@ -78,4 +83,4 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S10: accounts & access (v0.2.0) | ✅ merged ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
 | S11: production readiness (v0.3.0) | ✅ done (merged in #4; tag pending): containers, compose prod and Helm, observability, retention and backups, safe redeploy, load test, security review, KMS |
 | S12: Evaluation Studio (v0.4.0) | ✅ done: datasets, evaluators, experiments, results grid, release gate (merged in #5) |
-| S13: Evaluation in production (v0.5.0) | 📋 planned: online evaluators and drift alerts, annotation queues, pairwise and rubric evaluation ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s13--evaluation-in-production--v050)) |
+| S13: Evaluation in production (v0.5.0) | ✅ done (in review): online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users, LangSmith sync, tool record/replay |

@@ -20,6 +20,7 @@ from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
 from agentcanvas.ir.contract import Contract, ContractChange, breaking_changes, contract
 from agentcanvas.ir.diff import WorkflowDiff
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.types import REPLAYABLE
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.testcases import CaseResult, Expect, TestCaseService
 from agentcanvas.services.versions import Bump, VersionService
@@ -261,7 +262,7 @@ async def test_case_from_run(
     if run is None:
         raise NotFound(f"run '{run_id}' not found")
     rec = run.recording
-    if not rec:
+    if not rec or rec.get("status") not in REPLAYABLE:
         raise InvalidInput("this run has no recording (only fresh runs that succeeded or paused are recorded)")
     thread = await session.get(Thread, run.thread_id)
     assert thread is not None

@@ -1835,6 +1835,94 @@
     "docs": null
   },
   {
+    "type": "mw.rubric",
+    "version": "1.0.0",
+    "kind": "resource",
+    "label": "Rubric",
+    "category": "Middleware",
+    "icon": "list-checks",
+    "color": "#9333EA",
+    "description": "Self-grading: before the agent answers, a grader model checks the work against a rubric and sends it back with what is missing, up to a number of times (deepagents RubricMiddleware). Grading streams as ac.rubric events.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "Grader model"
+      },
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": true,
+        "ordered": false,
+        "description": "Tools the grader may use to check the work (run tests, read files)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "middleware",
+        "type": "Middleware",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": null
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rubric"
+      ],
+      "properties": {
+        "rubric": {
+          "type": "string",
+          "title": "Rubric",
+          "format": "prompt",
+          "minLength": 1,
+          "description": "What done looks like, one criterion per line"
+        },
+        "max_iterations": {
+          "type": "integer",
+          "title": "Max grading rounds",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3
+        },
+        "grader_instructions": {
+          "type": "string",
+          "title": "Grader instructions",
+          "format": "prompt",
+          "description": "Replaces the grader's default system prompt"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "mw.summarization",
     "version": "1.0.0",
     "kind": "resource",

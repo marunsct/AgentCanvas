@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Dataset, DatasetVersion
-from agentcanvas.services import gates
+from agentcanvas.errors import InvalidInput
+from agentcanvas.services import gates, langsmith_sync
 from agentcanvas.services.datasets import DatasetService, Example, ExamplePatch, Mapping, to_jsonl
 
 
@@ -20,7 +22,9 @@ async def gated(
 ) -> None:
     """Changing a dataset a release gate measures with needs an admin (the gate itself does)."""
     if request.method != "GET" and (ds_id := request.path_params.get("ds_id")):
-        await gates.guard(session, user.role, dataset_id=ds_id)
+        await gates.guard(
+            session, user.role, dataset_id=ds_id, delete=request.method == "DELETE" and request.url.path.endswith(ds_id)
+        )
 
 
 router = APIRouter(tags=["datasets"], dependencies=[Depends(gated)])
@@ -40,6 +44,15 @@ class DatasetPatch(BaseModel):
     description: str | None = None
 
 
+class LangSmithLink(BaseModel):
+    dataset_id: str
+    name: str
+    url: str | None
+    pushed_version: int | None = Field(default=None, description="the version last pushed")
+    pulled_version: int | None = Field(default=None, description="the version the last pull made here")
+    synced_at: datetime
+
+
 class DatasetOut(BaseModel):
     id: str
     workflow_id: str
@@ -48,8 +61,13 @@ class DatasetOut(BaseModel):
     version: int
     examples: int
     splits: dict[str, int] = Field(description="examples per split ('' = none)")
+    langsmith: LangSmithLink | None = Field(default=None, description="the LangSmith dataset it is synced with")
     created_at: datetime
     updated_at: datetime
+
+
+class PushIn(BaseModel):
+    version: int | None = Field(default=None, description="default: the latest version")
 
 
 class DatasetDetail(DatasetOut):
@@ -93,6 +111,7 @@ def _out(ds: Dataset, v: DatasetVersion) -> DatasetOut:
     return DatasetOut(
         id=ds.id, workflow_id=ds.workflow_id, name=ds.name, description=ds.description, version=v.number,
         examples=len(v.examples), splits=splits, created_at=ds.created_at, updated_at=v.created_at,
+        langsmith=LangSmithLink.model_validate(ds.langsmith) if ds.langsmith else None,
     )  # fmt: skip
 
 
@@ -209,4 +228,48 @@ async def delete_example(
     ds_id: str, ex_id: str, s: DatasetService = Depends(svc), user: CurrentUser = Depends(current_user)
 ) -> DatasetDetail:
     v = await s.delete_example(ds_id, ex_id, user.id)
+    return await _detail(s, ds_id, v.number)
+
+
+# ----------------------------------------------------------------------------------- LangSmith sync (S13) ----
+async def _langsmith(request: Request, s: DatasetService, ds_id: str) -> tuple[Dataset, Any, str]:
+    from agentcanvas.db.models import WorkflowRow
+
+    ds = await s.get(ds_id)
+    row = await s.s.get(WorkflowRow, ds.workflow_id)
+    project_id = row.project_id if row else ""
+    secrets = request.app.state.projects.secrets.get(project_id, {})
+    return ds, langsmith_sync.client_for(secrets), row.name if row else ds.workflow_id
+
+
+@router.post("/datasets/{ds_id}/langsmith/push", response_model=DatasetOut)
+async def push_to_langsmith(ds_id: str, body: PushIn, request: Request, s: DatasetService = Depends(svc)) -> DatasetOut:
+    """Make the linked LangSmith dataset (created on the first push) hold this version's examples."""
+    ds, client, workflow = await _langsmith(request, s, ds_id)
+    v = await s.version(ds_id, body.version)
+    examples = [Example.model_validate(e) for e in v.examples]
+    link = await langsmith_sync.push(
+        client, ds.langsmith, f"{workflow} / {ds.name}", ds.description, v.number, examples
+    )
+    ds.langsmith = link
+    await s.s.commit()
+    note(request, langsmith_dataset=link["dataset_id"], version=v.number)
+    return _out(ds, await s.version(ds_id))
+
+
+@router.post("/datasets/{ds_id}/langsmith/pull", response_model=DatasetDetail)
+async def pull_from_langsmith(
+    ds_id: str, request: Request, s: DatasetService = Depends(svc), user: CurrentUser = Depends(current_user)
+) -> DatasetDetail:
+    """A new version holding the linked LangSmith dataset's current examples."""
+    ds, client, _ = await _langsmith(request, s, ds_id)
+    if not ds.langsmith:
+        raise InvalidInput("push the dataset to LangSmith first: that links it to a LangSmith dataset")
+    link = dict(ds.langsmith)
+    examples = await langsmith_sync.pull(client, link)
+    v = await s.replace(ds_id, examples, f"pulled {len(examples)} example(s) from LangSmith", user.id)
+    ds = await s.get(ds_id)
+    ds.langsmith = {**link, "pulled_version": v.number, "synced_at": datetime.now(UTC).isoformat()}
+    await s.s.commit()
+    note(request, langsmith_dataset=link["dataset_id"], version=v.number)
     return await _detail(s, ds_id, v.number)

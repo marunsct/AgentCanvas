@@ -112,6 +112,9 @@ SCOPED_PARAMS = {
     "ds_id": "dataset",
     "evaluator_id": "evaluator",
     "exp_id": "experiment",
+    "oev_id": "online_evaluator",
+    "aq_id": "annotation_queue",
+    "item_id": "annotation_item",
 }
 
 
@@ -141,6 +144,8 @@ ROLE_EXCEPTIONS = {
     ("POST", "/expressions/check"): "viewer",
     ("POST", "/inbox/{interrupt_id}/decision"): "reviewer",
     ("POST", "/threads/{thread_id}/resume"): "reviewer",
+    ("POST", "/annotation-queues/{aq_id}/items"): "reviewer",  # reviewers add runs by hand and review them (S13)
+    ("POST", "/annotation-items/{item_id}/annotations"): "reviewer",
     ("POST", "/me/invitations/{org_id}/accept"): "viewer",  # anyone answers their own invitations
     ("DELETE", "/me/invitations/{org_id}"): "viewer",
     ("PUT", "/workflows/{wf_id}/gates/{environment}"): "admin",  # a builder must not lower the bar they publish over

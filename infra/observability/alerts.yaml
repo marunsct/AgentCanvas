@@ -32,3 +32,11 @@ groups:
         labels: { severity: page }
         annotations:
           summary: Prometheus cannot scrape any AgentCanvas API pod
+      - alert: AgentCanvasEvaluationDrift
+        # every API pod reports the open drift alerts from the database once a minute (S13 FR-EVAL-06)
+        expr: max by (deployment, evaluator, kind) (agentcanvas_eval_alert_open) > 0
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Online evaluator {{ $labels.evaluator }} drifted ({{ $labels.kind }}) on deployment {{ $labels.deployment }}"
+          runbook: docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md#9-runbooks

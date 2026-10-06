@@ -199,6 +199,8 @@ class Run(Base):
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
+    labels: Mapped[dict[str, Any] | None] = mapped_column(Json)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -256,6 +258,8 @@ class Dataset(Base):
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # S13: the LangSmith dataset it is synced with {dataset_id, name, url, pushed_version, pulled_version, synced_at}
+    langsmith: Mapped[dict[str, Any] | None] = mapped_column(Json)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 
@@ -310,8 +314,11 @@ class Experiment(Base):
     concurrency: Mapped[int] = mapped_column(Integer, server_default=text("4"), default=4)
     # the project's workspace head when it started: workspace code changes behaviour without changing the IR
     workspace_commit: Mapped[str | None] = mapped_column(Text)
+    # S13 FR-EVAL-07: a simulated user drives each example as a conversation (services/simulation.py)
+    simulation: Mapped[dict[str, Any] | None] = mapped_column(Json)
     status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
     error: Mapped[str | None] = mapped_column(Text)
+    owner: Mapped[str | None] = mapped_column(Text)  # the instance working on it (S13); taking over changes it
     # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
@@ -357,8 +364,132 @@ class ReleaseGate(Base):
     dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
     min_scores: Mapped[dict[str, Any]]  # evaluator name -> minimum mean score; empty: every evaluator, its threshold
     max_regression: Mapped[float | None] = mapped_column(Float)  # largest allowed drop in pass rate vs. live
+    # S13: what the gate measures with, fixed when an admin saves it (null on gates saved before: the latest
+    # dataset version and the evaluators' current settings)
+    dataset_version: Mapped[int | None] = mapped_column(Integer)
+    evaluators: Mapped[list[Any] | None] = mapped_column(Json)  # [{name, kind, config, threshold}]
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     updated_at: Mapped[datetime] = _now()
+
+
+class OnlineEvaluator(Base):
+    """FR-EVAL-06: an evaluator scoring a sample of a deployment's finished runs in the background (S13)."""
+
+    __tablename__ = "online_evaluator"
+    __table_args__ = (UniqueConstraint("deployment_id", "evaluator_id", name="online_evaluator_once"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"), index=True)
+    evaluator_id: Mapped[str] = mapped_column(ForeignKey("evaluator.id", ondelete="CASCADE"))
+    sampling: Mapped[float] = mapped_column(Float)  # share of matching runs scored, 0-1
+    filter: Mapped[dict[str, Any]]  # {"status": [..], "metadata": {key: value}}; empty: every run
+    # drift rules: the mean over the last `window_minutes` below `alert_below`, or more than `alert_drop` below
+    # the trailing 7-day mean, opens an alert (once `min_samples` runs were scored in the window)
+    alert_below: Mapped[float | None] = mapped_column(Float)
+    alert_drop: Mapped[float | None] = mapped_column(Float)
+    window_minutes: Mapped[int] = mapped_column(Integer, server_default=text("60"), default=60)
+    min_samples: Mapped[int] = mapped_column(Integer, server_default=text("5"), default=5)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class RunScore(Base):
+    """A score given to a run after it finished: by an online evaluator, or by a person (S13)."""
+
+    __tablename__ = "run_score"
+    __table_args__ = (Index("run_score_deployment_idx", "deployment_id", "evaluator", "created_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    thread_id: Mapped[str] = mapped_column(Text)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    evaluator: Mapped[str] = mapped_column(Text)  # the evaluator's name, or "feedback" / a rubric criterion
+    source: Mapped[str] = mapped_column(Text)  # "online" | "feedback" | "annotation"
+    score: Mapped[float | None] = mapped_column(Float)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    # what scoring itself cost (an LLM judge's tokens); never added to the run's own cost
+    judge_tokens: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    judge_cost_usd: Mapped[float] = mapped_column(Float, server_default=text("0"), default=0.0)
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
+class EvalAlert(Base):
+    """A drift alert of an online evaluator: open while its rule holds, resolved when it no longer does."""
+
+    __tablename__ = "eval_alert"
+    __table_args__ = (
+        Index("eval_alert_open_idx", "deployment_id", "evaluator", "kind", "resolved_at"),
+        # one open alert per rule, however many scoring tasks and pods see it break at once
+        Index(
+            "eval_alert_one_open",
+            "deployment_id",
+            "evaluator",
+            "kind",
+            unique=True,
+            sqlite_where=text("resolved_at IS NULL"),
+            postgresql_where=text("resolved_at IS NULL"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    evaluator: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)  # "below" | "drop"
+    message: Mapped[str] = mapped_column(Text)
+    value: Mapped[float] = mapped_column(Float)  # the window mean that broke the rule
+    baseline: Mapped[float | None] = mapped_column(Float)  # the trailing mean ("drop")
+    created_at: Mapped[datetime] = _now()
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AnnotationQueue(Base):
+    """A queue of runs for people to review (S13): fed by rules on production runs or by hand."""
+
+    __tablename__ = "annotation_queue"
+    __table_args__ = (UniqueConstraint("workflow_id", "name", name="annotation_queue_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    # [{"name", "description", "scale": points (2 = yes/no), "pass_at": normalised score that passes}]
+    rubric: Mapped[list[Any]] = mapped_column(Json)
+    # {"failed": bool, "thumbs_down": bool, "scores_below": {evaluator: threshold}}: production runs routed here
+    rules: Mapped[dict[str, Any]]
+    reviewers_per_item: Mapped[int] = mapped_column(Integer, server_default=text("1"), default=1)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class AnnotationItem(Base):
+    """One run waiting in (or done with) a queue."""
+
+    __tablename__ = "annotation_item"
+    __table_args__ = (
+        UniqueConstraint("queue_id", "run_id", name="annotation_item_once"),
+        Index("annotation_item_queue_idx", "queue_id", "status", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    queue_id: Mapped[str] = mapped_column(ForeignKey("annotation_queue.id", ondelete="CASCADE"))
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"))
+    thread_id: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)  # "manual" | "failed" | "thumbs_down" | "score:<evaluator>"
+    status: Mapped[str] = mapped_column(Text, default="pending")  # "pending" | "done"
+    added_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
+class Annotation(Base):
+    """A reviewer's scores (per rubric criterion) and comment on a queue item; one per reviewer and item."""
+
+    __tablename__ = "annotation"
+    __table_args__ = (UniqueConstraint("item_id", "reviewer", name="annotation_once"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("annotation_item.id", ondelete="CASCADE"), index=True)
+    reviewer: Mapped[str] = mapped_column(Text)
+    scores: Mapped[dict[str, Any]]  # criterion -> points (1..scale)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = _now()
 
 
 class RateWindow(Base):

@@ -61,6 +61,160 @@
         "title": "AddResource",
         "type": "object"
       },
+      "AddToDataset": {
+        "properties": {
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "reference": {
+            "additionalProperties": true,
+            "description": "the corrected output: channel -> expected value",
+            "title": "Reference",
+            "type": "object"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "reference"
+        ],
+        "title": "AddToDataset",
+        "type": "object"
+      },
+      "AlertOut": {
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "deployment_id",
+          "evaluator",
+          "kind",
+          "message",
+          "value",
+          "baseline",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
+      "AnnotateIn": {
+        "properties": {
+          "add_to_dataset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AddToDataset"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comment": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "criterion -> points (1..scale)",
+            "title": "Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scores"
+        ],
+        "title": "AnnotateIn",
+        "type": "object"
+      },
+      "AnnotationOut": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "reviewer": {
+            "title": "Reviewer",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "reviewer",
+          "scores",
+          "comment",
+          "created_at"
+        ],
+        "title": "AnnotationOut",
+        "type": "object"
+      },
       "ApiResult": {
         "properties": {
           "error": {
@@ -152,6 +306,16 @@
           "input": {
             "additionalProperties": true,
             "title": "Input",
+            "type": "object"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "maxLength": 200,
+              "type": "string"
+            },
+            "description": "labels for this run; online evaluators can filter on them",
+            "maxProperties": 20,
+            "title": "Metadata",
             "type": "object"
           },
           "thread_id": {
@@ -359,6 +523,57 @@
           }
         },
         "title": "Breakpoints",
+        "type": "object"
+      },
+      "BucketOut": {
+        "properties": {
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "judge_cost_usd": {
+            "title": "Judge Cost Usd",
+            "type": "number"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "pass_rate": {
+            "title": "Pass Rate",
+            "type": "number"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "evaluator",
+          "runs",
+          "scored",
+          "mean",
+          "pass_rate",
+          "judge_cost_usd"
+        ],
+        "title": "BucketOut",
         "type": "object"
       },
       "CachePolicySpec": {
@@ -1054,6 +1269,42 @@
         "title": "CreateWorkflow",
         "type": "object"
       },
+      "Criterion": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pass_at": {
+            "default": 0.5,
+            "description": "normalised score (0-1) that passes",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Pass At",
+            "type": "number"
+          },
+          "scale": {
+            "default": 5,
+            "description": "points; 2 is a yes/no",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Scale",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Criterion",
+        "type": "object"
+      },
       "DatasetDetail": {
         "properties": {
           "created_at": {
@@ -1079,6 +1330,17 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "langsmith": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LangSmithLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the LangSmith dataset it is synced with"
           },
           "name": {
             "title": "Name",
@@ -1164,6 +1426,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "langsmith": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LangSmithLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the LangSmith dataset it is synced with"
           },
           "name": {
             "title": "Name",
@@ -1689,7 +1962,9 @@
               "json_schema",
               "llm_judge",
               "trajectory",
-              "code"
+              "code",
+              "composite",
+              "pairwise"
             ],
             "title": "Kind",
             "type": "string"
@@ -1749,7 +2024,9 @@
               "json_schema",
               "llm_judge",
               "trajectory",
-              "code"
+              "code",
+              "composite",
+              "pairwise"
             ],
             "title": "Kind",
             "type": "string"
@@ -1836,6 +2113,21 @@
       },
       "EvaluatorSummary": {
         "properties": {
+          "ci": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "pairwise: 95% confidence interval of the win rate (the mean; ties count half)",
+            "title": "Ci"
+          },
           "evaluator": {
             "title": "Evaluator",
             "type": "string"
@@ -2196,6 +2488,17 @@
             ],
             "title": "Name"
           },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Simulation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "chat workflows: a simulated user holds a conversation per example"
+          },
           "split": {
             "anyOf": [
               {
@@ -2280,6 +2583,24 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "pairwise": {
+            "description": "pairwise judges: each target's mean is its win rate against the first target",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pairwise",
+            "type": "array"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Simulation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "split": {
             "anyOf": [
@@ -2524,6 +2845,29 @@
         "title": "ExpressionResult",
         "type": "object"
       },
+      "FeedbackIn": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "FeedbackIn",
+        "type": "object"
+      },
       "FieldChange": {
         "properties": {
           "after": {
@@ -2602,6 +2946,41 @@
           "content"
         ],
         "title": "FileSave",
+        "type": "object"
+      },
+      "FilterIn": {
+        "properties": {
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "only runs the caller labelled so",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "success",
+                    "interrupted",
+                    "error",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only runs that ended so (default: any)",
+            "title": "Status"
+          }
+        },
+        "title": "FilterIn",
         "type": "object"
       },
       "ForkRequest": {
@@ -2714,6 +3093,18 @@
             "title": "Dataset Id",
             "type": "string"
           },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the dataset version to gate on (default: latest)",
+            "title": "Dataset Version"
+          },
           "max_regression": {
             "anyOf": [
               {
@@ -2749,9 +3140,36 @@
             "title": "Dataset Id",
             "type": "string"
           },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the dataset version to gate on (default: latest)",
+            "title": "Dataset Version"
+          },
           "environment": {
             "title": "Environment",
             "type": "string"
+          },
+          "evaluators": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the evaluators the gate measures with, as saved (null: a gate saved before they were kept)",
+            "title": "Evaluators"
           },
           "id": {
             "title": "Id",
@@ -2794,6 +3212,7 @@
           "id",
           "workflow_id",
           "environment",
+          "evaluators",
           "updated_at"
         ],
         "title": "GateOut",
@@ -2992,6 +3411,192 @@
         "title": "InvitationOut",
         "type": "object"
       },
+      "ItemDetail": {
+        "properties": {
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/AnnotationOut"
+            },
+            "title": "Annotations",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "queue_id": {
+            "title": "Queue Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewed_by_me": {
+            "title": "Reviewed By Me",
+            "type": "boolean"
+          },
+          "reviews": {
+            "title": "Reviews",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_status": {
+            "title": "Run Status",
+            "type": "string"
+          },
+          "scores": {
+            "description": "every score the run has: online evaluators, feedback, reviewers",
+            "items": {
+              "$ref": "#/components/schemas/ScoreOut"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "queue_id",
+          "run_id",
+          "thread_id",
+          "reason",
+          "status",
+          "reviewed_by_me",
+          "reviews",
+          "created_at",
+          "run_status",
+          "error",
+          "input",
+          "output",
+          "annotations",
+          "scores"
+        ],
+        "title": "ItemDetail",
+        "type": "object"
+      },
+      "ItemOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "queue_id": {
+            "title": "Queue Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewed_by_me": {
+            "title": "Reviewed By Me",
+            "type": "boolean"
+          },
+          "reviews": {
+            "title": "Reviews",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "queue_id",
+          "run_id",
+          "thread_id",
+          "reason",
+          "status",
+          "reviewed_by_me",
+          "reviews",
+          "created_at"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
+      "ItemsIn": {
+        "properties": {
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Run Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_ids"
+        ],
+        "title": "ItemsIn",
+        "type": "object"
+      },
       "KeyOut": {
         "properties": {
           "api_key": {
@@ -3003,6 +3608,66 @@
           "api_key"
         ],
         "title": "KeyOut",
+        "type": "object"
+      },
+      "LangSmithLink": {
+        "properties": {
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pulled_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the version the last pull made here",
+            "title": "Pulled Version"
+          },
+          "pushed_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the version last pushed",
+            "title": "Pushed Version"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "title": "Synced At",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "name",
+          "url",
+          "synced_at"
+        ],
+        "title": "LangSmithLink",
         "type": "object"
       },
       "LayoutUpdate": {
@@ -3880,6 +4545,242 @@
         "title": "Observation",
         "type": "object"
       },
+      "OnlineIn": {
+        "properties": {
+          "alert_below": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is below",
+            "title": "Alert Below"
+          },
+          "alert_drop": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is this far below the trailing 7-day mean",
+            "title": "Alert Drop"
+          },
+          "evaluator_id": {
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FilterIn"
+          },
+          "min_samples": {
+            "default": 5,
+            "description": "scored runs a window needs before rules apply",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Min Samples",
+            "type": "integer"
+          },
+          "sampling": {
+            "default": 1.0,
+            "description": "share of matching runs scored",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Sampling",
+            "type": "number"
+          },
+          "window_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Window Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluator_id"
+        ],
+        "title": "OnlineIn",
+        "type": "object"
+      },
+      "OnlineOut": {
+        "properties": {
+          "alert_below": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is below",
+            "title": "Alert Below"
+          },
+          "alert_drop": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is this far below the trailing 7-day mean",
+            "title": "Alert Drop"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "evaluator_id": {
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FilterIn"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "min_samples": {
+            "default": 5,
+            "description": "scored runs a window needs before rules apply",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Min Samples",
+            "type": "integer"
+          },
+          "sampling": {
+            "default": 1.0,
+            "description": "share of matching runs scored",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Sampling",
+            "type": "number"
+          },
+          "window_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Window Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "id",
+          "deployment_id",
+          "evaluator",
+          "created_at"
+        ],
+        "title": "OnlineOut",
+        "type": "object"
+      },
+      "OnlinePatch": {
+        "properties": {
+          "alert_below": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Below"
+          },
+          "alert_drop": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Drop"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_samples": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Samples"
+          },
+          "sampling": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampling"
+          },
+          "window_minutes": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Minutes"
+          }
+        },
+        "title": "OnlinePatch",
+        "type": "object"
+      },
       "OrgSettings": {
         "properties": {
           "retention_days": {
@@ -4124,6 +5025,29 @@
         "title": "PortSpec",
         "type": "object"
       },
+      "Progress": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "pending",
+          "done"
+        ],
+        "title": "Progress",
+        "type": "object"
+      },
       "ProjectIn": {
         "properties": {
           "name": {
@@ -4224,6 +5148,192 @@
           "checklist"
         ],
         "title": "PublishOut",
+        "type": "object"
+      },
+      "PushIn": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "default: the latest version",
+            "title": "Version"
+          }
+        },
+        "title": "PushIn",
+        "type": "object"
+      },
+      "QueueIn": {
+        "properties": {
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reviewers_per_item": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Reviewers Per Item",
+            "type": "integer"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/Criterion"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rubric",
+            "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/Rules"
+          }
+        },
+        "required": [
+          "name",
+          "rubric"
+        ],
+        "title": "QueueIn",
+        "type": "object"
+      },
+      "QueueOut": {
+        "properties": {
+          "agreement": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "per criterion, 0-1, over items two or more people reviewed",
+            "title": "Agreement",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          },
+          "reviewers_per_item": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Reviewers Per Item",
+            "type": "integer"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/Criterion"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rubric",
+            "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/Rules"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "rubric",
+          "id",
+          "workflow_id",
+          "created_at",
+          "progress"
+        ],
+        "title": "QueueOut",
+        "type": "object"
+      },
+      "QueuePatch": {
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reviewers_per_item": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewers Per Item"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "QueuePatch",
         "type": "object"
       },
       "RefactorOut": {
@@ -4528,6 +5638,32 @@
         "title": "RetryPolicySpec",
         "type": "object"
       },
+      "Rules": {
+        "properties": {
+          "failed": {
+            "default": false,
+            "description": "production runs that failed",
+            "title": "Failed",
+            "type": "boolean"
+          },
+          "scores_below": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "online evaluator name -> runs scoring below this",
+            "title": "Scores Below",
+            "type": "object"
+          },
+          "thumbs_down": {
+            "default": false,
+            "description": "runs an end user rated down through the deployment API",
+            "title": "Thumbs Down",
+            "type": "boolean"
+          }
+        },
+        "title": "Rules",
+        "type": "object"
+      },
       "RunOut": {
         "properties": {
           "cost_usd": {
@@ -4779,6 +5915,126 @@
         "title": "Score",
         "type": "object"
       },
+      "ScoreOut": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "judge_cost_usd": {
+            "title": "Judge Cost Usd",
+            "type": "number"
+          },
+          "judge_tokens": {
+            "title": "Judge Tokens",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "thread_id",
+          "evaluator",
+          "source",
+          "score",
+          "passed",
+          "comment",
+          "judge_tokens",
+          "judge_cost_usd",
+          "created_by",
+          "created_at"
+        ],
+        "title": "ScoreOut",
+        "type": "object"
+      },
+      "ScoredRunOut": {
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreOut"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "status",
+          "started_at",
+          "scores"
+        ],
+        "title": "ScoredRunOut",
+        "type": "object"
+      },
       "SecretIn": {
         "properties": {
           "value": {
@@ -4855,6 +6111,50 @@
           "fields"
         ],
         "title": "SetContext",
+        "type": "object"
+      },
+      "Simulation": {
+        "properties": {
+          "goal": {
+            "default": "",
+            "description": "what they want; an example's metadata.goal wins",
+            "maxLength": 4000,
+            "title": "Goal",
+            "type": "string"
+          },
+          "max_turns": {
+            "default": 5,
+            "description": "user messages at most",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Turns",
+            "type": "integer"
+          },
+          "model": {
+            "description": "catalog model that plays the user",
+            "title": "Model",
+            "type": "string"
+          },
+          "persona": {
+            "description": "who the user is and how they write",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Persona",
+            "type": "string"
+          },
+          "stop_phrase": {
+            "default": "DONE",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Stop Phrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "persona"
+        ],
+        "title": "Simulation",
         "type": "object"
       },
       "StateEdit": {
@@ -6035,7 +7335,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.3.0"
+    "version": "0.5.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -6085,6 +7385,574 @@
         "summary": "Readyz",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/v1/annotation-items/{item_id}": {
+      "delete": {
+        "operationId": "remove_item_v1_annotation_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Item",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "get": {
+        "description": "The run's input, output and scores, and the reviews so far.",
+        "operationId": "get_item_v1_annotation_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Item",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
+    "/v1/annotation-items/{item_id}/annotations": {
+      "post": {
+        "description": "Score the run on every rubric criterion, with a comment; optionally add it, with a corrected reference, to\none of the workflow's datasets (a new dataset version) in the same step.",
+        "operationId": "annotate_v1_annotation_items__item_id__annotations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Annotate",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
+    "/v1/annotation-queues/{aq_id}": {
+      "delete": {
+        "operationId": "delete_queue_v1_annotation_queues__aq_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Queue",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "get": {
+        "operationId": "get_queue_v1_annotation_queues__aq_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Queue",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "patch": {
+        "description": "The rubric stays as it was created: reviews already given are scored against it.",
+        "operationId": "update_queue_v1_annotation_queues__aq_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueuePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Queue",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
+    "/v1/annotation-queues/{aq_id}/items": {
+      "get": {
+        "description": "Oldest first, so reviewers work through the queue in order.",
+        "operationId": "list_items_v1_annotation_queues__aq_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "done",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemOut"
+                  },
+                  "title": "Response List Items V1 Annotation Queues  Aq Id  Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Items",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "post": {
+        "description": "Add runs of the queue's workflow by hand (runs already in the queue are skipped).",
+        "operationId": "add_items_v1_annotation_queues__aq_id__items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemOut"
+                  },
+                  "title": "Response Add Items V1 Annotation Queues  Aq Id  Items Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Items",
+        "tags": [
+          "annotation queues"
         ]
       }
     },
@@ -6857,6 +8725,148 @@
         ]
       }
     },
+    "/v1/datasets/{ds_id}/langsmith/pull": {
+      "post": {
+        "description": "A new version holding the linked LangSmith dataset's current examples.",
+        "operationId": "pull_from_langsmith_v1_datasets__ds_id__langsmith_pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ds_id",
+            "required": true,
+            "schema": {
+              "title": "Ds Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pull From Langsmith",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/v1/datasets/{ds_id}/langsmith/push": {
+      "post": {
+        "description": "Make the linked LangSmith dataset (created on the first push) hold this version's examples.",
+        "operationId": "push_to_langsmith_v1_datasets__ds_id__langsmith_push_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ds_id",
+            "required": true,
+            "schema": {
+              "title": "Ds Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Push To Langsmith",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
     "/v1/datasets/{ds_id}/versions": {
       "get": {
         "operationId": "list_dataset_versions_v1_datasets__ds_id__versions_get",
@@ -6981,6 +8991,149 @@
         "summary": "Unpublish",
         "tags": [
           "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/online-evaluators": {
+      "get": {
+        "operationId": "list_online_v1_deployments__dep_id__online_evaluators_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OnlineOut"
+                  },
+                  "title": "Response List Online V1 Deployments  Dep Id  Online Evaluators Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Online",
+        "tags": [
+          "online evaluation"
+        ]
+      },
+      "post": {
+        "description": "Score a sample of this deployment's finished runs with one of the workflow's evaluators.",
+        "operationId": "add_online_v1_deployments__dep_id__online_evaluators_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnlineIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnlineOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Online",
+        "tags": [
+          "online evaluation"
         ]
       }
     },
@@ -7183,6 +9336,255 @@
         "summary": "Api Run Wait",
         "tags": [
           "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/runs/{run_id}/feedback": {
+      "post": {
+        "description": "Your end user's thumbs up or down on a run's answer (a later rating replaces the earlier one). A thumbs-down\nputs the run in the annotation queues that ask for them.",
+        "operationId": "api_feedback_v1_deployments__dep_id__runs__run_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Feedback",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/scored-runs": {
+      "get": {
+        "description": "The deployment's latest scored runs, newest first, with their scores.",
+        "operationId": "scored_runs_v1_deployments__dep_id__scored_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScoredRunOut"
+                  },
+                  "title": "Response Scored Runs V1 Deployments  Dep Id  Scored Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scored Runs",
+        "tags": [
+          "online evaluation"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/scores": {
+      "get": {
+        "description": "Online scores per evaluator, by hour or day, over the last `days` days.",
+        "operationId": "score_summary_v1_deployments__dep_id__scores_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "hour",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BucketOut"
+                  },
+                  "title": "Response Score Summary V1 Deployments  Dep Id  Scores Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Score Summary",
+        "tags": [
+          "online evaluation"
         ]
       }
     },
@@ -8864,6 +11266,137 @@
         "summary": "Node Types",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/v1/online-evaluators/{oev_id}": {
+      "delete": {
+        "operationId": "delete_online_v1_online_evaluators__oev_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oev_id",
+            "required": true,
+            "schema": {
+              "title": "Oev Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Online",
+        "tags": [
+          "online evaluation"
+        ]
+      },
+      "patch": {
+        "operationId": "update_online_v1_online_evaluators__oev_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oev_id",
+            "required": true,
+            "schema": {
+              "title": "Oev Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnlinePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnlineOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Online",
+        "tags": [
+          "online evaluation"
         ]
       }
     },
@@ -11884,6 +14417,76 @@
         ]
       }
     },
+    "/v1/threads/{thread_id}/scores": {
+      "get": {
+        "description": "Every score given to the thread's runs (online evaluators, feedback, reviewers), oldest first.",
+        "operationId": "thread_scores_v1_threads__thread_id__scores_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScoreOut"
+                  },
+                  "title": "Response Thread Scores V1 Threads  Thread Id  Scores Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Thread Scores",
+        "tags": [
+          "online evaluation"
+        ]
+      }
+    },
     "/v1/threads/{thread_id}/state": {
       "post": {
         "operationId": "edit_state_v1_threads__thread_id__state_post",
@@ -12299,6 +14902,231 @@
         "summary": "Replace Workflow",
         "tags": [
           "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/alerts": {
+      "get": {
+        "operationId": "list_alerts_v1_workflows__wf_id__alerts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "enum": [
+                "open",
+                "all"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlertOut"
+                  },
+                  "title": "Response List Alerts V1 Workflows  Wf Id  Alerts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Alerts",
+        "tags": [
+          "online evaluation"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/annotation-queues": {
+      "get": {
+        "operationId": "list_queues_v1_workflows__wf_id__annotation_queues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QueueOut"
+                  },
+                  "title": "Response List Queues V1 Workflows  Wf Id  Annotation Queues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Queues",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "post": {
+        "operationId": "create_queue_v1_workflows__wf_id__annotation_queues_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Queue",
+        "tags": [
+          "annotation queues"
         ]
       }
     },
@@ -13313,7 +16141,7 @@
         ]
       },
       "put": {
-        "description": "Require an evaluation before publishing to `environment` (admins only).",
+        "description": "Require an evaluation before publishing to `environment` (admins only). The gate keeps the dataset version\nand a copy of the evaluators as they are now: save it again to pick up later changes.",
         "operationId": "set_gate_v1_workflows__wf_id__gates__environment__put",
         "parameters": [
           {

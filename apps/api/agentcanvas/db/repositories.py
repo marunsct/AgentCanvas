@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
 from agentcanvas.db.models import (
+    AnnotationItem,
+    AnnotationQueue,
     AppUser,
     AuditLog,
     Dataset,
@@ -19,6 +21,7 @@ from agentcanvas.db.models import (
     Experiment,
     InterruptTask,
     Membership,
+    OnlineEvaluator,
     Organization,
     OrgPolicy,
     Project,
@@ -306,6 +309,15 @@ class ScopeRepo:
             "experiment": via_workflow.join(Experiment, Experiment.workflow_id == WorkflowRow.id).where(
                 Experiment.id == rid
             ),
+            "online_evaluator": via_workflow.join(Deployment, Deployment.workflow_id == WorkflowRow.id)
+            .join(OnlineEvaluator, OnlineEvaluator.deployment_id == Deployment.id)
+            .where(OnlineEvaluator.id == rid),
+            "annotation_queue": via_workflow.join(AnnotationQueue, AnnotationQueue.workflow_id == WorkflowRow.id).where(
+                AnnotationQueue.id == rid
+            ),
+            "annotation_item": via_workflow.join(AnnotationQueue, AnnotationQueue.workflow_id == WorkflowRow.id)
+            .join(AnnotationItem, AnnotationItem.queue_id == AnnotationQueue.id)
+            .where(AnnotationItem.id == rid),
             "interrupt": via_thread.join(InterruptTask, InterruptTask.thread_id == Thread.id).where(
                 InterruptTask.id == rid
             ),

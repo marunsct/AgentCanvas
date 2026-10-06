@@ -19,7 +19,7 @@ from typing import Any, Literal
 from sqlalchemy import func, select, update
 
 from agentcanvas.adapters.spi import FrameworkAdapter
-from agentcanvas.db.models import InterruptTask, Run, Thread
+from agentcanvas.db.models import InterruptTask, Run, RunScore, Thread
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -29,7 +29,7 @@ from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime.tracing import trace_ref
-from agentcanvas.runtime.types import ResumeSpec, RunMode, RunSpec
+from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -56,18 +56,30 @@ class RunHandle:
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
+    superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
+    deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
+    version_id: str | None = None
+    labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
-    """The run as a cassette (FR-X-13): replaying its model replies should reproduce status, route and output."""
-    if h.input is None or status not in ("success", "interrupted"):
+    """The run as a cassette (FR-X-13): replaying its model replies and tool outputs should reproduce status, route
+    and output. A fresh run that failed keeps only its input, so a reviewer can see it and correct it (S13)."""
+    if h.input is None:
         return None
+    if status not in REPLAYABLE:
+        return {"input": h.input, "status": status} if status == "error" else None
     mocks: dict[str, list[Any]] = {}
     route: list[str] = []
     output: dict[str, Any] = {}
     for ev in h.events:
         if ev["type"] == "CUSTOM" and ev.get("name") == "ac.model_reply":
             mocks.setdefault(ev["value"]["resource"], []).append(ev["value"]["reply"])
+        elif ev["type"] == "CUSTOM" and ev.get("name") == "ac.tool_io":  # tool resources replay these (S13)
+            io = ev["value"]
+            mocks.setdefault(io["resource"], []).append(
+                {k: io[k] for k in ("tool", "args", "output", "error") if k in io}
+            )
         elif ev["type"] == "STEP_STARTED" and ev.get("canvas_node_id") not in route:
             route.append(ev["canvas_node_id"])
         elif ev["type"] == "RUN_FINISHED":
@@ -77,6 +89,37 @@ def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
 
 class BudgetExceeded(Exception):
     """A run went over its workflow budget (FR-X-15)."""
+
+
+def rubric_scores(h: Any) -> list[RunScore]:
+    """The run's rubric grading rounds (FR-EVAL-08 `ac.rubric` end events) as run scores, so the thread's timeline
+    keeps them after the live events are gone: 1 when the grader was satisfied, 0 when it asked for a revision or
+    gave up, none when grading itself failed."""
+    out = []
+    for ev in h.events:
+        if ev.get("type") != "CUSTOM" or ev.get("name") != "ac.rubric" or ev["value"].get("phase") != "end":
+            continue
+        v = ev["value"]
+        result = str(v.get("result") or "")
+        value = None if result in ("grader_error", "failed") else float(result == "satisfied")
+        gaps = "; ".join(f"{c.get('name')}: {c.get('gap')}" for c in v.get("criteria") or [] if not c.get("passed"))
+        out.append(
+            RunScore(
+                id=new_id("rsc"),
+                run_id=h.run_id,
+                thread_id=h.thread_id,
+                workflow_id=h.workflow_id,
+                deployment_id=h.deployment_id,
+                evaluator="rubric",
+                source="rubric",
+                score=value,
+                passed=value == 1.0,
+                comment=f"{ev.get('canvas_node_id') or 'agent'}, round {int(v.get('iteration') or 0) + 1}: {result}. "
+                f"{v.get('explanation') or ''} {gaps}".strip()[:2000],
+                created_at=datetime.now(UTC),
+            )
+        )
+    return out
 
 
 def price(model_id: str | None, tokens_in: int, tokens_out: int) -> float | None:
@@ -149,6 +192,7 @@ class Runner:
         origin: str = "user",
         deployment_id: str | None = None,
         version_id: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         if self.draining:
@@ -192,6 +236,7 @@ class Runner:
                     status="running",
                     context=context,
                     trace_url=trace_ref(run_id),
+                    labels=labels or None,
                 )
             )
             if resume is not None:
@@ -220,7 +265,10 @@ class Runner:
                 if v
             },
         )
-        handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin)
+        handle = RunHandle(
+            run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin,
+            deployment_id=deployment_id, version_id=version_id, labels=dict(labels or {}),
+        )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = input
@@ -317,7 +365,9 @@ class Runner:
                 },
             )
         except asyncio.CancelledError:
-            if h.drained:  # paused at the last checkpoint; another instance continues it (FR-X-10)
+            if h.superseded:
+                status, error, code = "interrupted", "another server took this run over", "superseded"
+            elif h.drained:  # paused at the last checkpoint; another instance continues it (FR-X-10)
                 status, error = "interrupted", "paused for a server restart; it continues automatically"
                 code = "redeploy"
             else:
@@ -359,9 +409,9 @@ class Runner:
         thread_status = {"success": "idle", "interrupted": "interrupted", "cancelled": "idle"}.get(status, "error")
         try:
             async with self.db.sessionmaker() as s:
-                await s.execute(
+                res = await s.execute(
                     update(Run)
-                    .where(Run.id == h.run_id)
+                    .where(Run.id == h.run_id, Run.status == "running")  # a swept run belongs to its new instance
                     .values(
                         status=status,
                         error=error,
@@ -373,6 +423,9 @@ class Runner:
                         handover=h.drained,
                     )
                 )
+                if res.rowcount == 0:  # type: ignore[attr-defined]
+                    await s.commit()
+                    return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
                 for intr in interrupts:
                     if await s.get(InterruptTask, intr["id"]) is None:
@@ -386,6 +439,7 @@ class Runner:
                                 payload=_as_object(intr["payload"]),
                             )
                         )
+                s.add_all(rubric_scores(h))
                 await s.commit()
         except Exception:
             log.exception("run.finish_failed", run_id=h.run_id)
@@ -463,16 +517,26 @@ class Runner:
     def active(self) -> list[str]:
         return [h.run_id for h in self.handles.values() if h.task and not h.done.is_set()]
 
-    async def heartbeat(self) -> None:
-        """Mark this instance's running runs as alive (the orphan sweep skips them)."""
+    async def heartbeat(self) -> list[str]:
+        """Mark this instance's running runs as alive (the orphan sweep skips them). A run that is no longer
+        `running` was swept while this instance stalled and another instance continues it: it stops here.
+        Returns the ids of the runs stopped."""
         ids = self.active()
         if not ids:
-            return
+            return []
         async with self.db.sessionmaker() as s:
             await s.execute(
                 update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
             )
+            gone = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.status != "running"))).all())
             await s.commit()
+        for run_id in gone:
+            h = self.handles.get(run_id)
+            if h is not None and h.task is not None and not h.done.is_set():
+                log.warning("run.superseded", run_id=run_id)
+                h.superseded = True
+                h.task.cancel()
+        return gone
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):

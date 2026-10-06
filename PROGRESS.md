@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** S13 starts from `main`. S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
+- **Branch:** S13 is on `claude/sprint-13-evaluation-in-production` ([#8](https://github.com/marunsct/AgentCanvas/pull/8)), from `main`. S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-06. Sprint 12 finished, reviewed and merged (#5; tag `v0.4.0` is the maintainer's call); Sprint 13 Evaluation in production planned.
+- **Last updated:** 2026-10-06. Sprint 13 Evaluation in production is built and reviewed in #8, waiting for the owner's merge (tag `v0.5.0` is the maintainer's call).
 
 ## At a glance
 
@@ -25,15 +25,15 @@ Live status of the project. Update it with every commit that finishes or changes
 | S10 Accounts & access → v0.2.0 | ✅ done (merged in #3; tag `v0.2.0` pending) |
 | S11 Production readiness → v0.3.0 | ✅ done (merged in #4; tag `v0.3.0` pending) |
 | S12 Evaluation Studio → v0.4.0 | ✅ done (merged in #5; tag `v0.4.0` pending) |
-| **S13 Evaluation in production → v0.5.0** | 📋 **planned** |
+| **S13 Evaluation in production → v0.5.0** | ✅ **done** (in review in #8; tag `v0.5.0` pending) |
 | S14+ GA backlog | ⬜ pending |
 
-**Test totals** at the end of S12:
+**Test totals** at the end of S13:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 313 passed, 1 known upstream canary (xfail) |
-| Web unit tests (vitest) | 58 passed |
+| API (pytest) | 343 passed, 1 known upstream canary (xfail) |
+| Web unit tests (vitest) | 59 passed |
 | Playwright journeys | 33 passed (production build under the production CSP) |
 | Browser journeys (Playwright) | 31 passed |
 
@@ -186,15 +186,23 @@ to know before deploying:
 - A publish that races with an edit of the draft or the workspace is refused with 409; publish again.
 - `trace_redact` does not yet cover the graph's root run or model runs (S13).
 
-### S13 — Evaluation in production → v0.5.0 (planned; detail in the sprint plan §3)
-- [ ] S12 follow-ups: `trace_redact` on root and model runs, lease owners, gates snapshot their dataset version and evaluators.
-- [ ] FR-EVAL-06 online evaluators on deployment traffic (sampling, filters, aggregates, drift alerts).
-- [ ] Annotation queues fed by rules or by hand; corrected answers go to a dataset.
-- [ ] Pairwise (win rate) and composite evaluators.
-- [ ] FR-EVAL-08 rubric self-grading widget with live grading events.
-- [ ] FR-EVAL-07 simulated users for multi-turn chat experiments.
-- [ ] LangSmith dataset push and pull.
-- [ ] Record/replay captures tool I/O.
+### S13 — Evaluation in production → v0.5.0 (detail in the sprint plan §3)
+- [x] S12 follow-ups: `trace_redact` on root and model runs, lease owners, gates snapshot their dataset version and evaluators.
+- [x] FR-EVAL-06 online evaluators on deployment traffic (sampling, filters, aggregates, drift alerts with a Prometheus rule).
+- [x] Annotation queues fed by rules or by hand; corrected answers go to a dataset.
+- [x] Pairwise (win rate) and composite evaluators, in experiments and gates.
+- [x] FR-EVAL-08 rubric self-grading widget with live grading events.
+- [x] FR-EVAL-07 simulated users for multi-turn chat experiments.
+- [x] LangSmith dataset push and pull.
+- [x] Record/replay captures tool I/O (HTTP, MCP, workspace tools).
+- [x] End-of-sprint review fixes (drift alerts, annotation races, online scoring of handed-over runs, pairwise pass rate).
+- [x] Demo on compose prod and the deployment latency check (scoring every run: p95 42 → 52 ms at 30 requests/s; details in the sprint plan).
+- [ ] Merge #8 (owner's call) and tag `v0.5.0` (maintainer's call).
+
+**Review (2026-10-06).** Every S13 item met its acceptance in the tests. Things to know before deploying:
+- Migrations add the online-evaluator, alert, annotation, simulation and LangSmith tables and columns; run them first.
+- Online scoring runs inside the API pods after the response. An LLM judge uses the project's model keys.
+- LangSmith sync needs `LANGSMITH_API_KEY` as a project secret or server variable.
 
 ### S14+ — GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.
@@ -206,7 +214,7 @@ to know before deploying:
   - is an empty allow-list accepted as "no network"?
   - can one sandbox run several commands at once?
   - which snapshot to use (see `build-guide/spikes/SP-2-langsmith-sandbox.md`)?
-- [ ] **Record/replay:** tool I/O is not captured yet; tool calls re-run during replay.
+- [x] **Record/replay:** tool I/O is captured and replayed since S13.
 - [ ] **Agent-sandbox backend widget** (`backend.sandbox`, where W074 applies), P1.
 
 ## Commit log by sprint (latest first)

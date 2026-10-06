@@ -28,6 +28,7 @@ from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.types import REPLAYABLE
 
 MAX_EXAMPLES = 10_000
 
@@ -238,6 +239,17 @@ class DatasetService:
             raise Conflict("the dataset changed meanwhile; reload it and try again") from None
         return v
 
+    async def replace(self, ds_id: str, examples: list[Example], message: str, user_id: str | None) -> DatasetVersion:
+        """A new version holding exactly `examples` (checked); those without an id get one."""
+        ds = await self.get(ds_id)
+        check(await self._workflow(ds.workflow_id), examples)
+        seen: set[str] = set()
+        for ex in examples:
+            if not ex.id or ex.id in seen:
+                ex.id = new_id("ex")
+            seen.add(ex.id)
+        return await self.change(ds_id, lambda _: examples, message, user_id)
+
     async def add(self, ds_id: str, examples: list[Example], message: str, user_id: str | None) -> DatasetVersion:
         if not examples:
             raise InvalidInput("no examples to add")
@@ -294,7 +306,7 @@ class DatasetService:
             run = runs.get(rid)
             if run is None:
                 raise NotFound(f"run '{rid}' not found in this workflow")
-            if not run.recording:
+            if not run.recording or run.recording.get("status") not in REPLAYABLE:
                 raise InvalidInput(f"run '{rid}' has no recorded input (only new runs that finished or paused do)")
             examples.append(
                 Example(

@@ -45,3 +45,115 @@ async def test_production_run_becomes_a_regression_test(app, api_client):
 
     resumed = await api_client.post(f"/v1/runs/{red['results'][0]['run_id']}/test-case", json={"name": "x"})
     assert resumed.status_code == 422  # test runs are not recorded
+
+
+# --------------------------------------------------------------------------- tool I/O (S13 item 8) ----
+async def test_recorded_tool_outputs_replay_without_calling_the_tools(app, api_client, monkeypatch):
+    """HTTP, MCP and workspace tools: a run records what each tool resource was asked and answered; its test case
+    replays those answers and none of the tools is called again (FR-X-13, S13)."""
+    import httpx
+    from test_catalog import MESSAGES, workflow
+    from test_tools import api_transport, support_server
+    from test_workspace import events, make_wf
+
+    import examples.tools
+    from agentcanvas.adapters.langchain.nodes import Resources
+    from agentcanvas.testing import scripted, tool_call
+
+    calls: list[str] = []
+
+    def send_reply(text: str) -> str:
+        """Send the drafted reply to the customer."""
+        calls.append("send_reply")
+        return f"sent: {text}"
+
+    monkeypatch.setattr(examples.tools, "send_reply", send_reply)
+    ir = workflow(
+        channels=[MESSAGES],
+        resources=[
+            ("model", "model.chat", {"model": "fake:scripted"}),
+            ("get_order", "tool.http", {
+                "description": "Fetch an order", "url": "https://api.example.com/orders/{{ args.order_id }}",
+                "allowed_domains": ["example.com"],
+                "args_schema": {"type": "object", "properties": {"order_id": {"type": "string"}}},
+            }),
+            ("support", "mcp.server", {"url": "https://mcp.example.com/mcp"}),
+            ("reply", "tool.python", {"import_path": "examples.tools:send_reply"}),
+        ],
+        nodes=[("agent", "core.agent", {})],
+        flow=[("START", "agent"), ("agent", "END")],
+        wiring=[("model", "agent", "model"), ("get_order", "agent", "tools"), ("support", "agent", "tools"),
+                ("reply", "agent", "tools")],
+    ).model_dump(mode="json", by_alias=True, exclude_none=True)  # fmt: skip
+    wf = await make_wf(api_client, ir)
+
+    def live(thread_id, wf):
+        model = scripted(
+            tool_call("get_order", {"order_id": "A1"}), tool_call("lookup_order", {"order_id": "A1"}),
+            tool_call("send_reply", {"text": "It shipped."}), "Done.",
+        )  # fmt: skip
+        return Resources(overrides={"model": model, "support": support_server()}, http_transport=api_transport())
+
+    app.state.resources_factory = live
+    body = {"input": {"messages": [{"role": "user", "content": "where is A1?"}]}}
+    resp = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)
+    assert resp.status_code == 200, resp.text
+    evs = events(resp.text)
+    assert evs[-1]["type"] == "RUN_FINISHED" and calls == ["send_reply"], evs[-1]
+    tool_io = [e["value"] for e in evs if e.get("name") == "ac.tool_io"]
+    assert [io["resource"] for io in tool_io] == ["get_order", "support", "reply"]
+
+    tc = (await api_client.post(f"/v1/runs/{evs[0]['runId']}/test-case", json={"name": "order A1"})).json()
+    mocks = tc["mocks"]
+    assert mocks["get_order"] == [
+        {"tool": "get_order", "args": {"order_id": "A1"}, "output": '{"id":"A1","status":"shipped","auth":null}'}
+    ]
+    [mcp] = mocks["support"]  # MCP results are content blocks
+    assert mcp["tool"] == "lookup_order" and mcp["output"][0]["text"] == "order A1: shipped"
+    assert mocks["reply"] == [{"tool": "send_reply", "args": {"text": "It shipped."}, "output": "sent: It shipped."}]
+
+    def offline(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"the HTTP tool was called: {request.url}")
+
+    # replay: the MCP server is not reachable (no override), HTTP must not be called, the function is not run
+    app.state.resources_factory = lambda thread_id, wf: Resources(http_transport=httpx.MockTransport(offline))
+    calls.clear()
+    result = (await api_client.post(f"/v1/workflows/{wf}/test-cases/run", json={})).json()
+    assert result["failed"] == 0 and calls == [], result
+    run = result["results"][0]["run_id"]
+    replayed = events((await api_client.get(f"/v1/runs/{run}/events")).text)
+    messages = replayed[-1]["output"]["messages"]
+    tool_texts = [str(m.get("content")) for m in messages if m.get("type") == "tool"]
+    assert len(tool_texts) == 3 and "shipped" in tool_texts[0] and "order A1: shipped" in tool_texts[1]
+    assert tool_texts[2] == "sent: It shipped."
+
+
+def test_replay_queue_prefers_matching_arguments():
+    import pytest
+    from langchain_core.tools import ToolException
+
+    from agentcanvas.adapters.langchain.nodes import ReplayQueue
+
+    q = ReplayQueue([
+        {"tool": "get", "args": {"id": "1"}, "output": "one"},
+        {"tool": "get", "args": {"id": "2"}, "output": "two"},
+        {"tool": "get", "args": {"id": "3"}, "error": "HTTP 500"},
+    ])  # fmt: skip
+    assert q.take("get", {"id": "2"}) == "two" and q.take("get", {"id": "9"}) == "one"
+    with pytest.raises(ToolException, match="HTTP 500"):
+        q.take("get", {"id": "3"})
+    assert q.take("get", {"id": "2"}) == "two"  # reused: a resumed run replays from the start
+    with pytest.raises(ToolException, match="no recorded output"):
+        q.take("get", {"id": "7"})
+
+
+def test_a_failed_run_keeps_only_its_input():
+    """A fresh run that failed is not a cassette, but a reviewer can still see what it was asked (S13 review)."""
+    from types import SimpleNamespace
+
+    from agentcanvas.runtime.runner import _recording
+
+    h = SimpleNamespace(input={"who": "Ada"}, events=[])
+    assert _recording(h, "error") == {"input": {"who": "Ada"}, "status": "error"}  # type: ignore[arg-type]
+    assert _recording(h, "cancelled") is None  # type: ignore[arg-type]
+    assert _recording(SimpleNamespace(input=None, events=[]), "error") is None  # type: ignore[arg-type]

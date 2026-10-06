@@ -2,6 +2,8 @@
 # Never use it for real users: every request is an admin of the default organisation.
 #   docker compose -f infra/compose.prod.yml -f infra/load/compose.load.yml --env-file infra/.env.prod up -d
 #   k6 run infra/load/runs.js
+# deployment.js calls the public deployment API, which nginx limits to 20 requests/s per client address: run it
+# against the API on the compose network instead (see its header). The API's own per-key limits are off here.
 services:
   api:
     command: ["uvicorn", "agentcanvas.dev.fake_server:app", "--host", "0.0.0.0", "--port", "8000",
@@ -9,6 +11,8 @@ services:
     environment:
       AGENTCANVAS_ENV: dev
       AGENTCANVAS_AUTH_MODE: dev
+      AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT: "0"
+      AGENTCANVAS_RATE_LIMIT_PER_PROJECT: "0"
   migrate:
     environment:
       AGENTCANVAS_ENV: dev

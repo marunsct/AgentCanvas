@@ -62,7 +62,7 @@ def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: di
     if r.type.startswith("tool.") or r.type == "mcp.server":
         return resources.tool(r.name, cfg, r.type)
     if r.type.startswith("mw."):
-        return resources.middleware(r.name, r.type, cfg, models=wired("models") + wired("model"))
+        return resources.middleware(r.name, r.type, cfg, models=wired("models") + wired("model"), tools=wired("tools"))
     if r.type == "agent.subagent":
         models = wired("model")
         return ac.subagent(

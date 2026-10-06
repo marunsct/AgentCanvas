@@ -88,8 +88,11 @@ class FrameworkAdapter(Protocol):
         ...
 
     # ---- evaluation (FR-EVAL-03)
-    async def complete(self, resources: Any, model: str, system: str, prompt: str) -> str:
-        """One chat completion with a catalog model (the LLM-as-judge evaluator). Resource name: "judge"."""
+    async def complete(
+        self, resources: Any, model: str, system: str, prompt: str, usage: dict[str, int] | None = None
+    ) -> str:
+        """One chat completion with a catalog model (the LLM-as-judge evaluator). Resource name: "judge".
+        `usage`, when given, gets the call's `input_tokens` and `output_tokens` added."""
         ...
 
     def script(self, resources: Any, import_path: str) -> Any:

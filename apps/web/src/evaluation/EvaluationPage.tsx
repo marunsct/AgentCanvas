@@ -10,8 +10,11 @@ import type {
 import { can } from "../api/session";
 import { QueryStatus, errorText } from "../ui/QueryStatus";
 import { KIND_CONFIG, compare, fmt, grid, passed, pct } from "./compare";
+import { Production } from "./Production";
+import { Queues } from "./Queues";
+import { ScoreBadge } from "./ScoreBadge";
 
-type Tab = "datasets" | "evaluators" | "experiments" | "gates";
+type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
 
 function parseJson(text: string, what: string): Record<string, unknown> {
   if (!text.trim()) return {};
@@ -38,15 +41,17 @@ export function EvaluationPage() {
         <span className="crumb">/ <Link to={`/workflows/${id}`}>{wf.data?.name ?? id}</Link> / Evaluation</span>
       </header>
       <nav className="tabs" role="tablist">
-        {(["datasets", "evaluators", "experiments", "gates"] as Tab[]).map((t) => (
+        {(["datasets", "evaluators", "experiments", "gates", "production", "queues"] as Tab[]).map((t) => (
           <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
-            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates" }[t]}</button>
+            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates", production: "Production", queues: "Annotation queues" }[t]}</button>
         ))}
       </nav>
       {tab === "datasets" && <Datasets wfId={id} />}
       {tab === "evaluators" && <Evaluators wfId={id} />}
       {tab === "experiments" && <Experiments wfId={id} />}
       {tab === "gates" && <Gates wfId={id} />}
+      {tab === "production" && <Production wfId={id} />}
+      {tab === "queues" && <Queues wfId={id} />}
     </div>
   );
 }
@@ -122,7 +127,9 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
   });
   const remove = useMutation({ mutationFn: (exId: string) => apiFetch(`/datasets/${dsId}/examples/${exId}`, { method: "DELETE" }), onSuccess: changed });
   const drop = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}`, { method: "DELETE" }), onSuccess: onGone });
-  const error = add.error ?? fromTests.error ?? upload.error ?? remove.error ?? drop.error;
+  const push = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}/langsmith/push`, { method: "POST", json: { version } }), onSuccess: changed });
+  const pull = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}/langsmith/pull`, { method: "POST" }), onSuccess: changed });
+  const error = add.error ?? fromTests.error ?? upload.error ?? remove.error ?? drop.error ?? push.error ?? pull.error;
   if (!ds.data) return <QueryStatus q={ds} what="the dataset" />;
   const d = ds.data;
   const latest = version === null;
@@ -141,6 +148,21 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
           <button type="button" className="link small" onClick={() => { if (confirm(`Delete dataset ${d.name}?`)) drop.mutate(); }}>Delete dataset</button>
         )}
       </div>
+      <p className="small" data-testid="langsmith-link">
+        {d.langsmith
+          ? <>LangSmith: {d.langsmith.url ? <a href={d.langsmith.url} target="_blank" rel="noreferrer">{d.langsmith.name} ↗</a> : d.langsmith.name}
+              {d.langsmith.pushed_version != null && ` · v${d.langsmith.pushed_version} pushed`}
+              {d.langsmith.pulled_version != null && ` · v${d.langsmith.pulled_version} pulled`}
+              {" "}<span className="muted">{new Date(d.langsmith.synced_at).toLocaleString()}</span></>
+          : <span className="muted">Not synced with LangSmith.</span>}
+        {can("builder") && (
+          <>
+            {" "}<button type="button" className="link small" disabled={push.isPending} onClick={() => push.mutate()}>Push {version ? `v${version}` : "latest"} to LangSmith</button>
+            {d.langsmith && latest && <> · <button type="button" className="link small" disabled={pull.isPending}
+              onClick={() => { if (confirm("Replace the examples with LangSmith's (as a new version)?")) pull.mutate(); }}>Pull from LangSmith</button></>}
+          </>
+        )}
+      </p>
       {error && <p role="alert" className="error-text">{errorText(error)}</p>}
       <table className="table" data-testid="examples">
         <thead><tr><th>#</th><th>Input</th><th>Reference</th><th>Split</th><th /></tr></thead>
@@ -200,6 +222,7 @@ function Evaluators({ wfId }: { wfId: string }) {
             <select aria-label="evaluator kind" value={kind} onChange={(e) => { setKind(e.target.value); setConfig(JSON.stringify(KIND_CONFIG[e.target.value])); }}>
               <option value="exact">exact match</option><option value="regex">regex</option><option value="json_schema">JSON Schema</option>
               <option value="llm_judge">LLM judge</option><option value="trajectory">tool trajectory</option><option value="code">workspace code</option>
+              <option value="composite">composite</option><option value="pairwise">pairwise judge</option>
             </select>
             <input aria-label="threshold" placeholder="pass at (default)" value={threshold} onChange={(e) => setThreshold(e.target.value)} style={{ width: 120 }} />
             <button type="submit" disabled={create.isPending}>Add evaluator</button>
@@ -248,14 +271,6 @@ function TryEvaluator({ evaluatorId }: { evaluatorId: string }) {
   );
 }
 
-function ScoreBadge({ s }: { s: Score }) {
-  return (
-    <span className={`badge ${s.score == null ? "warn" : s.passed ? "status-ok" : "err"}`} title={`${s.evaluator}: ${s.comment}`}>
-      {s.evaluator} {fmt(s.score)}
-    </span>
-  );
-}
-
 // --------------------------------------------------------------------------------------------- experiments ----
 interface TargetDraft { version: string; overrides: string; label: string }
 
@@ -274,6 +289,7 @@ function Experiments({ wfId }: { wfId: string }) {
   const [targets, setTargets] = useState<TargetDraft[]>([{ version: "", overrides: "", label: "" }]);
   const [open, setOpen] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<string>("");
+  const [sim, setSim] = useState({ on: false, model: "anthropic:claude-haiku-4-5", persona: "", goal: "", max_turns: "5" });
   const start = useMutation({
     mutationFn: () => apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
       method: "POST",
@@ -283,6 +299,7 @@ function Experiments({ wfId }: { wfId: string }) {
           version: t.version || null, label: t.label || null,
           overrides: t.overrides.trim() ? parseJson(t.overrides, "overrides") : {},
         })),
+        simulation: sim.on ? { model: sim.model, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
       },
     }),
     onSuccess: (e) => { setOpen(e.id); void qc.invalidateQueries({ queryKey: key }); },
@@ -316,6 +333,17 @@ function Experiments({ wfId }: { wfId: string }) {
             </div>
           ))}
           <button type="button" className="link small" onClick={() => setTargets((ts) => [...ts, { version: "", overrides: "", label: "" }])}>+ Add a version or variant</button>
+          <label className="row small" title="chat workflows: a model plays the user and holds a conversation per example">
+            <input type="checkbox" checked={sim.on} onChange={(e) => setSim((x) => ({ ...x, on: e.target.checked }))} />simulated user
+          </label>
+          {sim.on && (
+            <div className="row gap small" data-testid="simulation">
+              <input aria-label="simulated user model" value={sim.model} onChange={(e) => setSim((x) => ({ ...x, model: e.target.value }))} style={{ width: 200 }} />
+              <input aria-label="persona" placeholder="persona: who the user is, how they write" value={sim.persona} onChange={(e) => setSim((x) => ({ ...x, persona: e.target.value }))} style={{ width: 260 }} />
+              <input aria-label="goal" placeholder="goal (an example's metadata.goal wins)" value={sim.goal} onChange={(e) => setSim((x) => ({ ...x, goal: e.target.value }))} style={{ width: 240 }} />
+              <label className="row">max turns<input aria-label="max turns" value={sim.max_turns} onChange={(e) => setSim((x) => ({ ...x, max_turns: e.target.value }))} style={{ width: 40 }} /></label>
+            </div>
+          )}
           {start.error && <p role="alert" className="error-text">{errorText(start.error)}</p>}
         </form>
       )}
@@ -369,6 +397,7 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
   const [diffOf, setDiffOf] = useState<string | null>(null);
   if (!results.data) return <QueryStatus q={results} what="results" />;
   const rows = grid(results.data, exp.targets.length);
+  const pairwise = new Set(exp.pairwise ?? []);
   const diffRow = diffOf ? rows.find((r) => r.exampleId === diffOf) : undefined;
   return (
     <div className="results" data-testid="results">
@@ -382,7 +411,11 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
             {exp.summary.map((s) => (
               <td key={s.target}>
                 <b>{pct(s.pass_rate)}</b> · {s.latency_p50_ms ?? "—"}/{s.latency_p95_ms ?? "—"} ms · ${s.cost_usd.toFixed(4)}
-                <div>{s.evaluators.map((e) => <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>{e.evaluator} {fmt(e.mean)}</span>)}</div>
+                <div>{s.evaluators.map((e) => pairwise.has(e.evaluator)
+                  ? <span key={e.evaluator} className="badge" title={`win rate vs ${exp.summary[0]?.label} (ties count half), 95% interval`} data-testid="win-rate">
+                      {e.evaluator} {s.target === 0 ? "baseline" : `wins ${pct(e.mean)}`}{e.ci && ` (${pct(e.ci[0])}–${pct(e.ci[1])})`}
+                    </span>
+                  : <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>{e.evaluator} {fmt(e.mean)}</span>)}</div>
               </td>
             ))}
           </tr>
@@ -427,7 +460,19 @@ function OutputDiff({ row, labels }: { row: ReturnType<typeof grid>[number]; lab
           return (
             <tr key={ch} className={differs ? "changed" : ""}>
               <td>{ch}{differs && " ≠"}</td>
-              {values.map((v, i) => <td key={i}><code>{v}</code></td>)}
+              {row.cells.map((c, i) => {
+                const v = c?.output?.[ch];
+                if (ch === "transcript" && Array.isArray(v)) { // a simulated-user conversation (S13)
+                  return (
+                    <td key={i} data-testid="transcript">
+                      {(v as { role: string; content: string }[]).map((t, j) => (
+                        <p key={j} className={t.role === "user" ? "muted" : ""}><b>{t.role === "user" ? "User" : "Assistant"}:</b> {t.content}</p>
+                      ))}
+                    </td>
+                  );
+                }
+                return <td key={i}><code>{values[i]}</code></td>;
+              })}
             </tr>
           );
         })}
@@ -491,7 +536,8 @@ function Gates({ wfId }: { wfId: string }) {
       <p className="small muted">
         Publishing to a gated environment first evaluates the exact workflow on the dataset (reusing an experiment that already
         did) and is refused when a minimum mean score is missed or the pass rate drops more than allowed against the live version.
-        Admins set gates and can publish over a failed one with a reason, which the audit log keeps.
+        Admins set gates and can publish over a failed one with a reason, which the audit log keeps. A gate keeps the dataset
+        version and the evaluators as they were when it was saved: save it again to pick up later changes.
       </p>
       <QueryStatus q={list} what="release gates" empty={<p className="muted">No release gates: publishing needs no evaluation.</p>} />
       {list.data && list.data.length > 0 && (
@@ -500,7 +546,8 @@ function Gates({ wfId }: { wfId: string }) {
           <tbody>
             {list.data.map((g) => (
               <tr key={g.id}>
-                <td>{g.environment}</td><td>{name(g.dataset_id)}</td>
+                <td>{g.environment}</td>
+                <td>{name(g.dataset_id)}{g.dataset_version != null && ` v${g.dataset_version}`}{g.evaluators && <span className="muted small"> · {g.evaluators.join(", ")}</span>}</td>
                 <td className="small">{Object.entries(g.min_scores ?? {}).map(([k, v]) => `${k} ≥ ${v}`).join(", ") || "each evaluator's threshold"}</td>
                 <td>{g.max_regression == null ? "—" : pct(g.max_regression)}</td>
                 <td>{can("admin") && <button type="button" className="link small" onClick={() => remove.mutate(g.environment)}>Remove</button>}</td>

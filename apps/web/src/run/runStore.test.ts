@@ -46,3 +46,19 @@ describe("usage and latency (M4-T11)", () => {
     expect(formatMetrics({ tokens: 12, cost: 0, priced: false, ms: 0 })).toBe("12 tok");
   });
 });
+
+describe("rubric rounds", () => {
+  it("shows each grading round live and keeps its verdict", () => {
+    const s = useRun.getState();
+    s.reset();
+    const step = (ev: Parameters<typeof s.apply>[0]) => useRun.getState().apply(ev);
+    step({ type: "CUSTOM", name: "ac.rubric", canvas_node_id: "agent", value: { phase: "start", iteration: 0 } });
+    expect(useRun.getState().rubric).toEqual([{ node: "agent", iteration: 0, result: null, explanation: "", gaps: [] }]);
+    step({
+      type: "CUSTOM", name: "ac.rubric", canvas_node_id: "agent",
+      value: { phase: "end", iteration: 0, result: "needs_revision", explanation: "no city", criteria: [{ name: "city", passed: false, gap: "name it" }] },
+    });
+    step({ type: "CUSTOM", name: "ac.rubric", canvas_node_id: "agent", value: { phase: "end", iteration: 1, result: "satisfied", criteria: [] } });
+    expect(useRun.getState().rubric.map((r) => [r.iteration, r.result, r.gaps])).toEqual([[0, "needs_revision", ["city: name it"]], [1, "satisfied", []]]);
+  });
+});

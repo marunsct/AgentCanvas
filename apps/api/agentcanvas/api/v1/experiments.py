@@ -11,13 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
-from agentcanvas.api.v1.evaluators import spec
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
-from agentcanvas.evaluation import Score
+from agentcanvas.evaluation import Score, spec_of
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import default_registry
 from agentcanvas.services.datasets import DatasetService
 from agentcanvas.services.experiments import (
     MAX_CONCURRENCY,
@@ -28,6 +28,7 @@ from agentcanvas.services.experiments import (
     summary,
 )
 from agentcanvas.services.projects import PROJECT_OF
+from agentcanvas.services.simulation import Simulation, is_chat
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -43,6 +44,9 @@ class ExperimentIn(BaseModel):
     targets: list[TargetIn] = Field(default_factory=lambda: [TargetIn()], min_length=1, max_length=10)
     evaluator_ids: list[str] | None = Field(default=None, description="default: every evaluator of the workflow")
     concurrency: int = Field(default=4, ge=1, le=MAX_CONCURRENCY)
+    simulation: Simulation | None = Field(
+        default=None, description="chat workflows: a simulated user holds a conversation per example"
+    )
 
 
 class TargetOut(BaseModel):
@@ -60,7 +64,11 @@ class ExperimentOut(BaseModel):
     split: str | None
     targets: list[TargetOut]
     evaluators: list[str]
+    pairwise: list[str] = Field(
+        default_factory=list, description="pairwise judges: each target's mean is its win rate against the first target"
+    )
     concurrency: int
+    simulation: Simulation | None = None
     status: str
     error: str | None
     created_at: datetime
@@ -92,7 +100,9 @@ def _out(exp: Experiment, results: list[ExperimentResult]) -> ExperimentOut:
         id=exp.id, workflow_id=exp.workflow_id, name=exp.name, dataset_id=exp.dataset_id,
         dataset_version=exp.dataset_version, split=exp.split,
         targets=[TargetOut(label=t["label"], version=t["version"], overrides=t["overrides"]) for t in exp.targets],
-        evaluators=[e["name"] for e in exp.evaluators], concurrency=exp.concurrency, status=exp.status,
+        evaluators=[e["name"] for e in exp.evaluators],
+        pairwise=[e["name"] for e in exp.evaluators if e["kind"] == "pairwise"], concurrency=exp.concurrency,
+        simulation=Simulation.model_validate(exp.simulation) if exp.simulation else None, status=exp.status,
         error=exp.error, created_at=exp.created_at, ended_at=exp.ended_at, summary=summary(exp, results),
     )  # fmt: skip
 
@@ -148,13 +158,18 @@ async def start_experiment(
         raise NotFound(f"dataset '{body.dataset_id}' not found")
     version = await datasets.version(ds.id, body.dataset_version)
     q = select(Evaluator).where(Evaluator.workflow_id == wf_id).order_by(Evaluator.created_at, Evaluator.id)
-    evaluators = list((await session.scalars(q)).all())
+    evaluators = everything = list((await session.scalars(q)).all())
     if body.evaluator_ids is not None:
         known = {e.id: e for e in evaluators}
         if missing := [i for i in body.evaluator_ids if i not in known]:
             raise InvalidInput(f"evaluator '{missing[0]}' is not an evaluator of this workflow")
         evaluators = [known[i] for i in body.evaluator_ids]
     targets = [await _target(session, svc, wf_id, view.row.project_id, t, i) for i, t in enumerate(body.targets)]
+    if body.simulation is not None:
+        if default_registry().model(body.simulation.model) is None:
+            raise InvalidInput(f"simulated user: '{body.simulation.model}' is not a model in the catalog")
+        if not all(is_chat(Workflow.model_validate(t["ir"])) for t in targets):
+            raise InvalidInput("a simulated user needs a chat workflow: a 'messages' channel with add_messages")
     exp = await ExperimentService(session).create(
         wf_id,
         name=body.name or f"{ds.name} v{version.number}",
@@ -163,10 +178,11 @@ async def start_experiment(
         split=body.split,
         examples=version.examples,
         targets=targets,
-        evaluators=[spec(e) for e in evaluators],
+        evaluators=[spec_of(e, everything) for e in evaluators],
         concurrency=body.concurrency,
         created_by=user.id,
         workspace_commit=await workspace_commit(request, session, wf_id),
+        simulation=body.simulation.model_dump() if body.simulation else None,
     )
     results = await ExperimentService(session).results(exp.id)
     out = _out(exp, results)
