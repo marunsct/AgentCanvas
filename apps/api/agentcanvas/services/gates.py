@@ -27,17 +27,26 @@ from agentcanvas.services.experiments import ExperimentService, TargetSummary, s
 GATE_TIMEOUT_S = 600.0
 
 
-async def guard(s: Any, role: str, *, dataset_id: str | None = None, evaluator_id: str | None = None) -> None:
-    """Gates are admin-only, so whatever they measure with is too: a builder must not lower the bar by deleting or
-    editing a gating dataset or an evaluator of a gated workflow (403)."""
+async def guard(
+    s: Any, role: str, *, dataset_id: str | None = None, evaluator_id: str | None = None, delete: bool = False
+) -> None:
+    """Gates are admin-only, so a builder must not lower the bar through what they measure with (403).
+
+    A gate keeps its own copy of its evaluators and pins its dataset version when an admin saves it (S13), so
+    later edits cannot touch it; deleting its dataset would delete the gate, so that needs an admin. Gates saved
+    before S13 have no copy and follow the live dataset and evaluators, which then need an admin to change."""
     if role == "admin":
         return
     q = select(ReleaseGate.environment).limit(1)
     if dataset_id is not None:
         q = q.where(ReleaseGate.dataset_id == dataset_id)
+        if not delete:
+            q = q.where(ReleaseGate.dataset_version.is_(None))
         what = f"dataset '{dataset_id}'"
     else:
-        q = q.join(Evaluator, Evaluator.workflow_id == ReleaseGate.workflow_id).where(Evaluator.id == evaluator_id)
+        q = q.join(Evaluator, Evaluator.workflow_id == ReleaseGate.workflow_id).where(
+            Evaluator.id == evaluator_id, ReleaseGate.evaluators.is_(None)
+        )
         what = f"evaluator '{evaluator_id}'"
     if (environment := await s.scalar(q)) is not None:
         raise Forbidden(f"{what} is used by the '{environment}' release gate; only an admin can change it")
@@ -45,6 +54,12 @@ async def guard(s: Any, role: str, *, dataset_id: str | None = None, evaluator_i
 
 def _spec(e: Evaluator) -> dict[str, Any]:
     return Spec(name=e.name, kind=e.kind, config=e.config, threshold=e.threshold).model_dump()  # type: ignore[arg-type]
+
+
+def snapshot(evaluators: list[Evaluator], min_scores: dict[str, float]) -> list[dict[str, Any]]:
+    """The evaluator specs a gate keeps: those it names, or every evaluator of the workflow."""
+    by_name = {e.name: e for e in evaluators}
+    return [_spec(by_name[n]) for n in (list(min_scores) or list(by_name)) if n in by_name]
 
 
 async def _reuse(
@@ -86,21 +101,27 @@ async def evaluate(
     """The `evaluation` checklist item for publishing `candidate` (`live`: the served workflow, version id, semver;
     `commit`: the project's workspace head being published)."""
     async with db.sessionmaker() as s:
-        evaluators = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == gate.workflow_id))).all()
-        by_name = {e.name: e for e in evaluators}
-        names = list(gate.min_scores) or list(by_name)
+        if gate.evaluators is not None:  # the copy taken when the gate was saved
+            specs = list(gate.evaluators)
+            names = [x["name"] for x in specs]
+        else:  # a gate saved before S13: the workflow's evaluators as they are now
+            evaluators = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == gate.workflow_id))).all()
+            by_name = {e.name: e for e in evaluators}
+            names = list(gate.min_scores) or list(by_name)
+            if gone := [n for n in names if n not in by_name]:
+                return Check(
+                    name="evaluation", ok=False, detail=f"the gate names evaluators that no longer exist: {gone}"
+                )
+            specs = [_spec(by_name[n]) for n in names]
         if not names:
             return Check(name="evaluation", ok=False, detail="the release gate needs at least one evaluator")
-        if gone := [n for n in names if n not in by_name]:
-            return Check(name="evaluation", ok=False, detail=f"the gate names evaluators that no longer exist: {gone}")
-        specs = [_spec(by_name[n]) for n in names]
         minimums = {
             n: gate.min_scores.get(
                 n, x["threshold"] if x["threshold"] is not None else DEFAULT_THRESHOLD.get(x["kind"], 1.0)
             )
             for n, x in zip(names, specs, strict=True)
         }
-        version = await DatasetService(s).version(gate.dataset_id)
+        version = await DatasetService(s).version(gate.dataset_id, gate.dataset_version)
         number, examples = version.number, version.examples
         environment, max_regression = gate.environment, gate.max_regression
         regression = gate.max_regression is not None and live is not None

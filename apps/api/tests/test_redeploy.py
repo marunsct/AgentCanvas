@@ -146,3 +146,24 @@ async def test_runs_of_an_instance_that_died_are_handed_over(app, api_client):
     assert (await run_row(app, r.json()["run_id"])).heartbeat_at is not None
     assert await job.sweep(datetime.now(UTC) + timedelta(minutes=5)) == ["run_alive"]  # but not the local run
     assert (await app.state.runner.wait(r.json()["run_id"])).status == "success"
+
+
+async def test_a_stalled_instance_stops_a_run_another_instance_took_over(app, api_client):
+    """The sweep is a lease: once another instance swept a run, its old instance stops it at the next heartbeat
+    and leaves the run row to the new owner (S13)."""
+    from sqlalchemy import update
+
+    wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 2}, "stream": False})
+    run_id = r.json()["run_id"]
+    await asyncio.sleep(0.1)
+    async with app.state.db.sessionmaker() as s:  # what another instance's sweep writes while this one stalls
+        await s.execute(update(Run).where(Run.id == run_id).values(status="interrupted", error="swept", handover=True))
+        await s.commit()
+    runner = app.state.runner
+    assert await runner.heartbeat() == [run_id]
+    h = await runner.wait(run_id)
+    assert h.status == "interrupted" and h.events[-1]["code"] == "superseded"
+    row = await run_row(app, run_id)
+    assert row.status == "interrupted" and row.error == "swept" and row.handover is True  # untouched
+    assert await runner.heartbeat() == []

@@ -471,11 +471,23 @@ export type RunIds = [string, ...string[]];
 export type Ids = string[] | null;
 export type DatasetId2 = string;
 /**
+ * the dataset version to gate on (default: latest)
+ */
+export type DatasetVersion2 = number | null;
+/**
  * largest allowed drop in pass rate against the live version
  */
 export type MaxRegression = number | null;
 export type DatasetId3 = string;
+/**
+ * the dataset version to gate on (default: latest)
+ */
+export type DatasetVersion3 = number | null;
 export type Environment1 = string;
+/**
+ * the evaluators the gate measures with, as saved (null: a gate saved before they were kept)
+ */
+export type Evaluators2 = string[] | null;
 export type Id22 = string;
 /**
  * largest allowed drop in pass rate against the live version
@@ -1984,6 +1996,7 @@ export interface FromTestCasesIn {
  */
 export interface GateIn {
   dataset_id: DatasetId2;
+  dataset_version?: DatasetVersion2;
   max_regression?: MaxRegression;
   min_scores?: MinScores;
 }
@@ -1999,7 +2012,9 @@ export interface MinScores {
  */
 export interface GateOut {
   dataset_id: DatasetId3;
+  dataset_version?: DatasetVersion3;
   environment: Environment1;
+  evaluators: Evaluators2;
   id: Id22;
   max_regression?: MaxRegression1;
   min_scores?: MinScores1;

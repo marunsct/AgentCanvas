@@ -92,21 +92,38 @@ async def test_gates_are_checked_and_admin_only(app, api_client):
         assert (await api_client.delete(url)).status_code == 403
         r = await api_client.post(f"/v1/workflows/{wf}/publish", json={"override_reason": "trust me"})
         assert r.status_code == 403 and "admin" in r.json()["detail"]
-        # nor can a builder lower the bar through what the gate measures with
+        # nor can a builder lower the bar through what the gate measures with: the gate keeps its own copy
         [ev] = (await api_client.get(f"/v1/workflows/{wf}/evaluators")).json()
+        r = await api_client.delete(f"/v1/datasets/{ds['id']}")  # would delete the gate with it
+        assert r.status_code == 403 and "release gate" in r.json()["detail"], r.text
         easy = {"examples": [{"input": {"who": "x"}}]}
-        for r in (
-            await api_client.delete(f"/v1/datasets/{ds['id']}"),
-            await api_client.post(f"/v1/datasets/{ds['id']}/examples", json=easy),
-            await api_client.patch(f"/v1/evaluators/{ev['id']}", json={"threshold": 0}),
-            await api_client.delete(f"/v1/evaluators/{ev['id']}"),
-        ):
-            assert r.status_code == 403 and "release gate" in r.json()["detail"], r.text
-        assert (await api_client.get(f"/v1/datasets/{ds['id']}")).status_code == 200  # reading stays open
-        assert (await api_client.post(f"/v1/evaluators/{ev['id']}/try", json={})).status_code == 200
+        assert (await api_client.post(f"/v1/datasets/{ds['id']}/examples", json=easy)).status_code == 200
+        assert (await api_client.patch(f"/v1/evaluators/{ev['id']}", json={"threshold": 0})).status_code == 200
+        refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+        assert refused.status_code == 422, refused.text  # still the saved dataset version and threshold
+        assert check(refused.json())["items"] == ["exact: mean 0.0 (needs 1)"]
+        assert "2 example(s) on dataset v2" in check(refused.json())["detail"]
     finally:
         app.dependency_overrides.pop(current_user)
-    assert (await api_client.patch(f"/v1/evaluators/{ev['id']}", json={"threshold": 0.5})).status_code == 200
+    [gate] = (await api_client.get(f"/v1/workflows/{wf}/gates")).json()
+    assert gate["dataset_version"] == 2 and gate["evaluators"] == ["exact"]
+    resaved = await api_client.put(url, json={"dataset_id": ds["id"]})  # an admin picks up the changes
+    assert resaved.json()["dataset_version"] == 3
+
+    # a gate saved before it kept copies follows the live dataset and evaluators: those stay admin-only
+    from sqlalchemy import null, update
+
+    from agentcanvas.db.models import ReleaseGate
+
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(ReleaseGate).values(dataset_version=None, evaluators=null()))  # as migrated
+        await s.commit()
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_dev", org_id="org_default", role="builder")
+    try:
+        assert (await api_client.patch(f"/v1/evaluators/{ev['id']}", json={"threshold": 0})).status_code == 403
+        assert (await api_client.post(f"/v1/datasets/{ds['id']}/examples", json=easy)).status_code == 403
+    finally:
+        app.dependency_overrides.pop(current_user)
 
 
 async def test_examples_that_cannot_run_fail_the_gate(app, api_client, monkeypatch):

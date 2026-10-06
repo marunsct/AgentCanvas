@@ -491,7 +491,8 @@ function Gates({ wfId }: { wfId: string }) {
       <p className="small muted">
         Publishing to a gated environment first evaluates the exact workflow on the dataset (reusing an experiment that already
         did) and is refused when a minimum mean score is missed or the pass rate drops more than allowed against the live version.
-        Admins set gates and can publish over a failed one with a reason, which the audit log keeps.
+        Admins set gates and can publish over a failed one with a reason, which the audit log keeps. A gate keeps the dataset
+        version and the evaluators as they were when it was saved: save it again to pick up later changes.
       </p>
       <QueryStatus q={list} what="release gates" empty={<p className="muted">No release gates: publishing needs no evaluation.</p>} />
       {list.data && list.data.length > 0 && (
@@ -500,7 +501,8 @@ function Gates({ wfId }: { wfId: string }) {
           <tbody>
             {list.data.map((g) => (
               <tr key={g.id}>
-                <td>{g.environment}</td><td>{name(g.dataset_id)}</td>
+                <td>{g.environment}</td>
+                <td>{name(g.dataset_id)}{g.dataset_version != null && ` v${g.dataset_version}`}{g.evaluators && <span className="muted small"> · {g.evaluators.join(", ")}</span>}</td>
                 <td className="small">{Object.entries(g.min_scores ?? {}).map(([k, v]) => `${k} ≥ ${v}`).join(", ") || "each evaluator's threshold"}</td>
                 <td>{g.max_regression == null ? "—" : pct(g.max_regression)}</td>
                 <td>{can("admin") && <button type="button" className="link small" onClick={() => remove.mutate(g.environment)}>Remove</button>}</td>

@@ -312,6 +312,7 @@ class Experiment(Base):
     workspace_commit: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
     error: Mapped[str | None] = mapped_column(Text)
+    owner: Mapped[str | None] = mapped_column(Text)  # the instance working on it (S13); taking over changes it
     # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
@@ -357,6 +358,10 @@ class ReleaseGate(Base):
     dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
     min_scores: Mapped[dict[str, Any]]  # evaluator name -> minimum mean score; empty: every evaluator, its threshold
     max_regression: Mapped[float | None] = mapped_column(Float)  # largest allowed drop in pass rate vs. live
+    # S13: what the gate measures with, fixed when an admin saves it (null on gates saved before: the latest
+    # dataset version and the evaluators' current settings)
+    dataset_version: Mapped[int | None] = mapped_column(Integer)
+    evaluators: Mapped[list[Any] | None] = mapped_column(Json)  # [{name, kind, config, threshold}]
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     updated_at: Mapped[datetime] = _now()
 

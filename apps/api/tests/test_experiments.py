@@ -135,6 +135,32 @@ async def test_another_instance_takes_over_an_experiment(app, api_client):
     app.state.experiments.launch = lost
 
 
+async def test_an_instance_stops_an_experiment_another_one_took_over(app, api_client):
+    """Experiments have one owner: an instance that stalled past the takeover stops its copy at the next tick."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Experiment
+
+    wf, ds = await setup(api_client)
+    job = app.state.experiments
+    lost = job.launch
+    job.launch = lambda exp_id: None
+    exp = (await api_client.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"]})).json()
+    job.launch = lost
+    stalled = ExperimentJob(app.state.db, app.state.runner)
+    stalled.tasks[exp["id"]] = work = asyncio.create_task(asyncio.sleep(60))  # still busy with it
+    async with app.state.db.sessionmaker() as s:  # meanwhile another instance took it over
+        await s.execute(update(Experiment).where(Experiment.id == exp["id"]).values(owner="ins_other"))
+        await s.commit()
+    await stalled.tick()
+    await asyncio.gather(work, return_exceptions=True)
+    assert work.cancelled()
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(Experiment, exp["id"])
+        assert row is not None and row.owner == "ins_other" and row.status == "running"
+    await job.cancel(exp["id"])
+
+
 async def test_experiments_stay_in_their_organisation(app, api_client, org_b):  # noqa: F811
     wf, ds = await setup(api_client)
     exp = (await api_client.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"]})).json()

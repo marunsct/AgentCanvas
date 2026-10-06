@@ -56,6 +56,7 @@ class RunHandle:
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
+    superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
@@ -317,7 +318,9 @@ class Runner:
                 },
             )
         except asyncio.CancelledError:
-            if h.drained:  # paused at the last checkpoint; another instance continues it (FR-X-10)
+            if h.superseded:
+                status, error, code = "interrupted", "another server took this run over", "superseded"
+            elif h.drained:  # paused at the last checkpoint; another instance continues it (FR-X-10)
                 status, error = "interrupted", "paused for a server restart; it continues automatically"
                 code = "redeploy"
             else:
@@ -359,9 +362,9 @@ class Runner:
         thread_status = {"success": "idle", "interrupted": "interrupted", "cancelled": "idle"}.get(status, "error")
         try:
             async with self.db.sessionmaker() as s:
-                await s.execute(
+                res = await s.execute(
                     update(Run)
-                    .where(Run.id == h.run_id)
+                    .where(Run.id == h.run_id, Run.status == "running")  # a swept run belongs to its new instance
                     .values(
                         status=status,
                         error=error,
@@ -373,6 +376,9 @@ class Runner:
                         handover=h.drained,
                     )
                 )
+                if res.rowcount == 0:  # type: ignore[attr-defined]
+                    await s.commit()
+                    return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
                 for intr in interrupts:
                     if await s.get(InterruptTask, intr["id"]) is None:
@@ -463,16 +469,26 @@ class Runner:
     def active(self) -> list[str]:
         return [h.run_id for h in self.handles.values() if h.task and not h.done.is_set()]
 
-    async def heartbeat(self) -> None:
-        """Mark this instance's running runs as alive (the orphan sweep skips them)."""
+    async def heartbeat(self) -> list[str]:
+        """Mark this instance's running runs as alive (the orphan sweep skips them). A run that is no longer
+        `running` was swept while this instance stalled and another instance continues it: it stops here.
+        Returns the ids of the runs stopped."""
         ids = self.active()
         if not ids:
-            return
+            return []
         async with self.db.sessionmaker() as s:
             await s.execute(
                 update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
             )
+            gone = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.status != "running"))).all())
             await s.commit()
+        for run_id in gone:
+            h = self.handles.get(run_id)
+            if h is not None and h.task is not None and not h.done.is_set():
+                log.warning("run.superseded", run_id=run_id)
+                h.superseded = True
+                h.task.cancel()
+        return gone
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):

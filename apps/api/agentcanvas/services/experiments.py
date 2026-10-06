@@ -19,11 +19,12 @@ import asyncio
 import copy
 import math
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Experiment, ExperimentResult, WorkflowRow
@@ -239,6 +240,7 @@ class ExperimentJob:
 
     def __init__(self, db: Any, runner: Any, interval_s: float = 10.0, orphan_after_s: float = 60.0):
         self.db, self.runner, self.interval_s, self.orphan_after_s = db, runner, interval_s, orphan_after_s
+        self.owner = f"ins_{uuid.uuid4().hex[:16]}"  # this instance's name on the experiments it works on (S13)
         self.tasks: dict[str, asyncio.Task] = {}
         self._loop_task: asyncio.Task | None = None
 
@@ -259,7 +261,7 @@ class ExperimentJob:
             async with self.db.sessionmaker() as s:  # stale at once: the next instance takes them over
                 await s.execute(
                     update(Experiment)
-                    .where(Experiment.id.in_(ids), Experiment.status == "running")
+                    .where(Experiment.id.in_(ids), Experiment.status == "running", Experiment.owner == self.owner)
                     .values(heartbeat_at=datetime(2000, 1, 1, tzinfo=UTC))
                 )
                 await s.commit()
@@ -273,16 +275,26 @@ class ExperimentJob:
             await asyncio.sleep(self.interval_s)
 
     async def tick(self, now: datetime | None = None) -> list[str]:
-        """Refresh the heartbeat of the experiments running here and take over stale ones; returns those taken."""
+        """Refresh the heartbeat of the experiments running here and take over stale ones; returns those taken.
+
+        Each experiment has one owner. One that is no longer this instance's (taken over while this instance
+        stalled) or no longer running (cancelled from another instance) stops here."""
         now = now or datetime.now(UTC)
         mine = [i for i, t in self.tasks.items() if not t.done()]
         cutoff = now - timedelta(seconds=self.orphan_after_s)
         taken = []
         async with self.db.sessionmaker() as s:
             if mine:
-                await s.execute(update(Experiment).where(Experiment.id.in_(mine)).values(heartbeat_at=now))
-                q = select(Experiment.id).where(Experiment.id.in_(mine), Experiment.status != "running")
-                for (gone,) in (await s.execute(q)).all():  # cancelled from another instance
+                await s.execute(
+                    update(Experiment)
+                    .where(Experiment.id.in_(mine), Experiment.owner == self.owner)
+                    .values(heartbeat_at=now)
+                )
+                q = select(Experiment.id).where(
+                    Experiment.id.in_(mine), or_(Experiment.status != "running", Experiment.owner != self.owner)
+                )
+                for (gone,) in (await s.execute(q)).all():
+                    log.info("experiment.stopped_here", experiment_id=gone)
                     self.tasks[gone].cancel()
             stale = (
                 Experiment.status == "running",
@@ -292,7 +304,7 @@ class ExperimentJob:
                 if exp_id in self.tasks:
                     continue
                 claimed = await s.execute(  # exactly one instance wins the conditional update
-                    update(Experiment).where(Experiment.id == exp_id, *stale).values(heartbeat_at=now)
+                    update(Experiment).where(Experiment.id == exp_id, *stale).values(heartbeat_at=now, owner=self.owner)
                 )
                 if claimed.rowcount == 1:  # type: ignore[attr-defined]
                     taken.append(exp_id)
@@ -333,8 +345,19 @@ class ExperimentJob:
         from agentcanvas.services.projects import PROJECT_OF
 
         async with self.db.sessionmaker() as s:
+            mine = await s.execute(  # a new experiment becomes this instance's; a taken-over one already is
+                update(Experiment)
+                .where(
+                    Experiment.id == exp_id, Experiment.status == "running",
+                    or_(Experiment.owner.is_(None), Experiment.owner == self.owner),
+                )
+                .values(owner=self.owner, heartbeat_at=datetime.now(UTC))
+            )  # fmt: skip
+            await s.commit()
+            if mine.rowcount != 1:  # type: ignore[attr-defined]
+                return
             exp = await s.get(Experiment, exp_id)
-            if exp is None or exp.status != "running":
+            if exp is None:
                 return
             row = await s.get(WorkflowRow, exp.workflow_id)
             # rows left running by a stopped instance start over

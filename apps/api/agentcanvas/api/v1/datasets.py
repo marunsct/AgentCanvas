@@ -20,7 +20,9 @@ async def gated(
 ) -> None:
     """Changing a dataset a release gate measures with needs an admin (the gate itself does)."""
     if request.method != "GET" and (ds_id := request.path_params.get("ds_id")):
-        await gates.guard(session, user.role, dataset_id=ds_id)
+        await gates.guard(
+            session, user.role, dataset_id=ds_id, delete=request.method == "DELETE" and request.url.path.endswith(ds_id)
+        )
 
 
 router = APIRouter(tags=["datasets"], dependencies=[Depends(gated)])

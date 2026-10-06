@@ -2714,6 +2714,18 @@
             "title": "Dataset Id",
             "type": "string"
           },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the dataset version to gate on (default: latest)",
+            "title": "Dataset Version"
+          },
           "max_regression": {
             "anyOf": [
               {
@@ -2749,9 +2761,36 @@
             "title": "Dataset Id",
             "type": "string"
           },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the dataset version to gate on (default: latest)",
+            "title": "Dataset Version"
+          },
           "environment": {
             "title": "Environment",
             "type": "string"
+          },
+          "evaluators": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the evaluators the gate measures with, as saved (null: a gate saved before they were kept)",
+            "title": "Evaluators"
           },
           "id": {
             "title": "Id",
@@ -2794,6 +2833,7 @@
           "id",
           "workflow_id",
           "environment",
+          "evaluators",
           "updated_at"
         ],
         "title": "GateOut",
@@ -13313,7 +13353,7 @@
         ]
       },
       "put": {
-        "description": "Require an evaluation before publishing to `environment` (admins only).",
+        "description": "Require an evaluation before publishing to `environment` (admins only). The gate keeps the dataset version\nand a copy of the evaluators as they are now: save it again to pick up later changes.",
         "operationId": "set_gate_v1_workflows__wf_id__gates__environment__put",
         "parameters": [
           {

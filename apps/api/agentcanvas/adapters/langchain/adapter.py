@@ -25,6 +25,7 @@ from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread,
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime import masking
 from agentcanvas.runtime.tracing import trace_id
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
 from agentcanvas.sdk import _SECRETS
@@ -281,6 +282,8 @@ class LangChainAdapter:
         cfg["callbacks"] = [usage]
         secrets = getattr(resources, "_secrets", None) or {}
         token = _SECRETS.set(secrets)  # sdk.secret() in in-process scripts and custom nodes
+        redaction = masking.redacting(wf.settings.trace_redact)  # the root run and model runs in LangSmith (S13)
+        redaction.__enter__()
         hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
         started: dict[str, float] = {}
         try:
@@ -309,6 +312,7 @@ class LangChainAdapter:
         finally:
             with contextlib.suppress(ValueError):  # closed from another context (e.g. cancelled run)
                 _SECRETS.reset(token)
+            redaction.__exit__(None, None, None)
 
         for record in usage.drain():
             yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
