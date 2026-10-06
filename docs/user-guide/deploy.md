@@ -1,7 +1,7 @@
 # Deploy and operate
 
-This page is for whoever runs AgentCanvas for a team. To try it on one computer, see
-[Run AgentCanvas on your computer](run-locally.md). The developer-level runbook is the
+This page is for whoever runs AgentCanvas for a team. To try it on one computer, use the one-command Docker setup
+in [Run AgentCanvas on your computer](run-locally.md#run-everything-in-docker). The developer-level runbook is the
 [deployment & operations guide](../agent-canvas-spec/build-guide/09-deployment-and-operations.md).
 
 ## What runs
@@ -47,7 +47,8 @@ Migrations run as a Helm hook Job before the API starts.
 | `AGENTCANVAS_ENV` | `prod` (default in compose prod and Helm), `staging` or `dev` |
 | `LANGGRAPH_AES_KEY` | 32 characters: encrypts conversation checkpoints at rest |
 | `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>` |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, … | Model provider keys for the whole server (projects can also use their own secrets) |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `AZURE_OPENAI_API_KEY` | Model provider keys for the whole server; a project secret of the same name takes precedence ([Models and API keys](models.md)) |
+| `AGENTCANVAS_LOCAL_MODELS_HOST` | Host that local model servers (Ollama, LM Studio, vLLM, llama.cpp) are reached on when their address isn't set, e.g. `host.docker.internal` or a GPU machine's name |
 | `AGENTCANVAS_SCRIPT_EXECUTION` | Where workspace code runs: `subprocess` (default in production), `docker`, `langsmith`, `inprocess` |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them) |

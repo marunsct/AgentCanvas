@@ -52,11 +52,17 @@ class LangChainAdapter:
     # ------------------------------------------------------------ plumbing ----
     # ----------------------------------------------------------- evaluation ----
     async def complete(
-        self, resources: Any, model: str, system: str, prompt: str, usage: dict[str, int] | None = None
+        self,
+        resources: Any,
+        model: str,
+        system: str,
+        prompt: str,
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        reply = await resources.model("judge", {"model": model}).ainvoke(
+        reply = await resources.model("judge", {**(config or {}), "model": model}).ainvoke(
             [SystemMessage(content=system), HumanMessage(content=prompt)]
         )
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):

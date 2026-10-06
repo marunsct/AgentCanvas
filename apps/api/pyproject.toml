@@ -37,6 +37,13 @@ dependencies = [
   "opentelemetry-instrumentation-sqlalchemy>=0.51b0",
   "opentelemetry-instrumentation-httpx>=0.51b0",
   "pycryptodome>=3.23",
+  "langchain-openai>=1.0",
+  "langchain-google-genai>=4.0",
+  "langchain-mistralai>=1.0",
+  "langchain-groq>=1.0",
+  "langchain-ollama>=1.0",
+  "langchain-deepseek>=1.0",
+  "langchain-xai>=1.0",
 ]
 
 [dependency-groups]

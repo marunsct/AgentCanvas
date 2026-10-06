@@ -8,7 +8,10 @@ Built-in manifests live in `registry/nodes/*.json`; workspace custom nodes are a
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Sequence
 from functools import cache
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Literal
 
@@ -84,10 +87,28 @@ class ModelInfo(BaseModel):
     price_out_per_mtok: float | None = None
 
 
+class ProviderInfo(BaseModel):
+    """A model provider: the `provider:` prefix of a model id, its integration and where its API key comes from."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str  # the model id prefix, e.g. "openai" in "openai:gpt-5.5"
+    label: str
+    package: str  # the integration distribution, e.g. langchain-openai
+    module: str  # its import name, used to tell whether it is installed
+    key_env: str | None = None  # server env variable / project secret holding the API key; None = no key needed
+    local: bool = False  # runs on your own machine (Ollama, LM Studio, vLLM, llama.cpp)
+    base_url: str | None = None  # default server address
+    base_url_required: bool = False
+    example: str = ""
+    notes: str = ""
+    installed: bool = True  # filled in by `installed_providers()`
+
+
 class Registry:
-    def __init__(self, manifests: list[NodeManifest], models: list[ModelInfo]):
+    def __init__(self, manifests: list[NodeManifest], models: list[ModelInfo], providers: Sequence[ProviderInfo] = ()):
         self._by_type = {m.type: m for m in manifests}
         self._models = {m.id: m for m in models}
+        self._providers = {p.id: p for p in providers}
 
     def get(self, type_: str) -> NodeManifest | None:
         return self._by_type.get(type_)
@@ -101,9 +122,24 @@ class Registry:
     def models(self) -> list[ModelInfo]:
         return list(self._models.values())
 
+    def usable_model(self, model_id: str) -> bool:
+        """A model id that can be created from its id alone: in the catalog, or of a known provider that needs no
+        base URL in the config (judges and simulated users take only a model id)."""
+        if model_id in self._models:
+            return True
+        provider, sep, name = model_id.partition(":")
+        p = self._providers.get(provider)
+        return bool(sep and name and p and not p.base_url_required)
+
+    def provider(self, provider_id: str) -> ProviderInfo | None:
+        return self._providers.get(provider_id)
+
+    def providers(self) -> list[ProviderInfo]:
+        return list(self._providers.values())
+
     def with_manifests(self, extra: list[NodeManifest]) -> Registry:
         """A registry that also contains workspace/custom manifests (Sprint 7)."""
-        return Registry([*self._by_type.values(), *extra], list(self._models.values()))
+        return Registry([*self._by_type.values(), *extra], list(self._models.values()), list(self._providers.values()))
 
 
 def load_manifests(directory: Path = HERE / "nodes") -> list[NodeManifest]:
@@ -113,4 +149,22 @@ def load_manifests(directory: Path = HERE / "nodes") -> list[NodeManifest]:
 @cache
 def default_registry() -> Registry:
     models = [ModelInfo.model_validate(m) for m in json.loads((HERE / "models.json").read_text())]
-    return Registry(load_manifests(), models)
+    providers = [ProviderInfo.model_validate(p) for p in json.loads((HERE / "providers.json").read_text())]
+    return Registry(load_manifests(), models, providers)
+
+
+def provider_installed(provider: ProviderInfo) -> bool:
+    """Whether this server can create the provider's models (its integration package is importable)."""
+    return find_spec(provider.module) is not None
+
+
+def installed_providers() -> list[ProviderInfo]:
+    """The providers with `installed` filled in, and local servers' default address as this server reaches them
+    (AGENTCANVAS_LOCAL_MODELS_HOST, e.g. host.docker.internal when the API runs in a container)."""
+    host = os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST")
+
+    def effective(p: ProviderInfo) -> ProviderInfo:
+        base_url = p.base_url.replace("localhost", host, 1) if host and p.local and p.base_url else p.base_url
+        return p.model_copy(update={"installed": provider_installed(p), "base_url": base_url})
+
+    return [effective(p) for p in default_registry().providers()]

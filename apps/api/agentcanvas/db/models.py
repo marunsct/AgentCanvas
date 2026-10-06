@@ -89,6 +89,8 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)
+    # first-run setup: {"default_model": {"model", "base_url"?, "api_key"?}, "setup_done": bool}
+    settings: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     created_at: Mapped[datetime] = _now()
 
 

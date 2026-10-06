@@ -24,7 +24,17 @@ infra/           Dockerfiles, nginx, compose.prod.yml, Helm chart (helm/agentcan
 docs/            specification, build guide, ADRs
 ```
 
-## Quick start (no API keys needed)
+## Quick start with Docker
+
+```bash
+make docker-up    # Postgres + API + web app on http://localhost:8080
+```
+
+Open http://localhost:8080 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
+DeepSeek, Grok, any OpenAI-compatible API, or a local model with Ollama, LM Studio, vLLM or llama.cpp. See
+[Models and API keys](docs/user-guide/models.md).
+
+## Quick start from source (no API keys needed)
 
 Prerequisites: Python tooling [`uv`](https://docs.astral.sh/uv/), Node 22 + pnpm 10.
 
@@ -48,7 +58,8 @@ make check        # every CI gate except e2e and the strict docs build
 make docs         # documentation site on http://localhost:8001
 ```
 
-Use real models with `make dev-api` after exporting provider keys (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
+Use real models with `make dev-api`, then choose the model and enter its key under **Model** in the web app (or export
+provider keys such as `OPENAI_API_KEY` before starting it).
 
 ## Deploy
 

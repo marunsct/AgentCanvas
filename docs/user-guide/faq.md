@@ -1,13 +1,20 @@
 # FAQ
 
 **Do I need an API key to try AgentCanvas?**
-No. `make dev-fake` uses built-in demo models, so every feature works offline and free; answers are canned. Use
-`make dev-api` with a provider key for real answers. See [Run AgentCanvas on your computer](run-locally.md).
+No. Use a local model (Ollama, LM Studio…), or run from source with `make dev-fake`, which answers with built-in
+demo models so every feature works offline and free. See [Run AgentCanvas on your computer](run-locally.md).
+
+**What is the quickest way to run it?**
+`make docker-up` with Docker installed, then open <http://localhost:8080> and choose your model.
 
 **Which models are supported?**
-Any chat model LangChain's `init_chat_model` can create, written as `provider:model`. The catalog lists Claude
-Opus 5.5, Claude Sonnet 5.5, Claude Haiku 4.5, GPT-5.5 and GPT-5 mini. Anthropic support is installed; for other
-providers install their LangChain package (e.g. `langchain-openai`) on the server.
+Anthropic, OpenAI, Azure OpenAI, Google Gemini, Mistral, Groq, DeepSeek, xAI, any OpenAI-compatible API, and models
+on your own computer through Ollama, LM Studio, vLLM or llama.cpp. All are installed with AgentCanvas. Choose one
+on the **Model** screen and enter its key there. See [Models and API keys](models.md).
+
+**Can I use AgentCanvas without sending data to a cloud provider?**
+Yes: pick a local model (Ollama, LM Studio, vLLM, llama.cpp) on the **Model** screen. Runs, memory and traces stay
+on your machine unless you turn on LangSmith tracing.
 
 **Is the generated code mine? Can I run it without AgentCanvas?**
 Yes. **Export** gives you a plain Python project (LangGraph graph, node library, your workspace code, pinned

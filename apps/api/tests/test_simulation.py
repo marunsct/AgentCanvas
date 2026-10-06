@@ -114,4 +114,4 @@ async def test_simulated_users_need_a_chat_workflow(api_client):
     r = await api_client.post(url, json={"dataset_id": ds["id"], "simulation": SIM})
     assert r.status_code == 422 and "chat workflow" in r.json()["detail"]
     r = await api_client.post(url, json={"dataset_id": ds["id"], "simulation": {**SIM, "model": "nobody:nothing"}})
-    assert r.status_code == 422 and "not a model in the catalog" in r.json()["detail"]
+    assert r.status_code == 422 and "not a catalog model" in r.json()["detail"]

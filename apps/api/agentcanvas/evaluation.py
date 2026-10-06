@@ -115,8 +115,8 @@ def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
             Draft202012Validator.check_schema(parsed.schema_)
         except SchemaError as exc:
             raise InvalidInput(f"json_schema evaluator: invalid schema: {exc.message}") from None
-    elif isinstance(parsed, JudgeConfig | PairwiseConfig) and default_registry().model(parsed.model) is None:
-        raise InvalidInput(f"{kind} evaluator: '{parsed.model}' is not a model in the catalog")
+    elif isinstance(parsed, JudgeConfig | PairwiseConfig) and not default_registry().usable_model(parsed.model):
+        raise InvalidInput(f"{kind} evaluator: '{parsed.model}' is not a catalog model or a known provider's model")
     elif isinstance(parsed, CompositeConfig):
         parsed.parts = None
         if len(set(parsed.evaluators)) != len(parsed.evaluators):

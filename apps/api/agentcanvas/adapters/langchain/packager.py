@@ -43,15 +43,22 @@ RUNTIME_FILES = [
 ]
 WORKSPACE_DIRS = ("scripts", "tools", "nodes", "events")
 PINNED = ["langgraph", "langchain", "langchain-core", "deepagents", "jsonschema", "cel-python", "jinja2", "httpx"]
-PROVIDERS = {  # init_chat_model prefix -> (integration package, API key variable)
+PROVIDERS = {  # model id prefix -> (integration package, API key variable)
     "openai": ("langchain-openai", "OPENAI_API_KEY"),
+    "azure_openai": ("langchain-openai", "AZURE_OPENAI_API_KEY"),
     "anthropic": ("langchain-anthropic", "ANTHROPIC_API_KEY"),
     "google_genai": ("langchain-google-genai", "GOOGLE_API_KEY"),
     "google_vertexai": ("langchain-google-vertexai", None),
     "bedrock_converse": ("langchain-aws", None),
     "mistralai": ("langchain-mistralai", "MISTRAL_API_KEY"),
     "groq": ("langchain-groq", "GROQ_API_KEY"),
+    "deepseek": ("langchain-deepseek", "DEEPSEEK_API_KEY"),
+    "xai": ("langchain-xai", "XAI_API_KEY"),
     "ollama": ("langchain-ollama", None),
+    "lmstudio": ("langchain-openai", None),
+    "vllm": ("langchain-openai", None),
+    "llamacpp": ("langchain-openai", None),
+    "openai_compatible": ("langchain-openai", None),
 }
 
 

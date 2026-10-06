@@ -4,6 +4,12 @@ This walk-through builds and runs a small workflow in about ten minutes. It assu
 ([Run AgentCanvas on your computer](run-locally.md)). With the demo models (`make dev-fake`) every step works
 without API keys; answers are canned.
 
+## Choose your model
+
+On first start, Home shows **Set up your model**. Click **Choose a model**, pick a provider (hosted, or a local
+server such as Ollama), enter the key if it needs one, **Test connection** and **Save**. Templates then use that
+model. See [Models and API keys](models.md). You can skip this when running with the demo models.
+
 ## Option A: the guided build
 
 On **Home**, click **Start the guided build**. A six-step tutorial walks you through state, steps, flow, a model, a

@@ -1,13 +1,59 @@
 # Run AgentCanvas on your computer
 
 This guide takes you from a fresh machine to a working AgentCanvas in your browser, then checks that it works.
-It needs no API keys: the first run uses built-in demo models. Adding real models is step 7.
+There are two ways to run it:
+
+- **Docker (quickest):** one command runs the whole app; a first-run screen asks which model to use. Only Docker
+  is needed. See [Run everything in Docker](#run-everything-in-docker).
+- **From source (for development):** the API and the web app run as dev servers with live reload. It needs no
+  API keys at first: it uses built-in demo models. Steps 1 to 10 below.
+
+## Run everything in Docker
+
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows, macOS) or Docker Engine with
+the Compose plugin (Linux), and Git.
+
+```bash
+git clone https://github.com/marunsct/AgentCanvas.git
+cd AgentCanvas
+make docker-up        # or: docker compose -f infra/compose.local.yml up -d --build --wait
+```
+
+The first build takes a few minutes. Then open <http://localhost:8080>: Home shows **Set up your model**.
+
+1. Click **Choose a model**.
+2. Pick a **provider**: hosted (Anthropic, OpenAI, Azure OpenAI, Google Gemini, Mistral, Groq, DeepSeek, xAI, or
+   any OpenAI-compatible API such as OpenRouter or Together) or **on your machine** (Ollama, LM Studio, vLLM,
+   llama.cpp).
+3. Pick or type the **model** (suggestions are listed for each provider).
+4. Hosted providers: paste your **API key**. It is stored encrypted as a project secret and never shown again.
+   Local servers: leave **Server address** empty to use the default port on your computer.
+5. Click **Test connection**: AgentCanvas sends one short message and shows the reply, or the error.
+6. Click **Save**. Templates you open from now on use this model. You can change it any time from **Model** in the
+   top bar, and pick a different model on any Chat model box on the canvas.
+
+Models on your own computer are reached from inside Docker through `host.docker.internal`, so start Ollama
+(`ollama serve`, then `ollama pull llama3.3`) or LM Studio's local server before testing.
+
+| Command | Does |
+|---|---|
+| `make docker-up` | build and start (again) |
+| `make docker-logs` | follow the logs |
+| `make docker-down` | stop; your workflows and keys stay in Docker volumes |
+| `docker compose -f infra/compose.local.yml down -v` | stop and delete all data |
+
+Optional settings (another port, server-wide provider keys) go in `infra/.env.local`: copy
+`infra/.env.local.example` and fill it in; `make docker-up` picks it up. The Docker setup has no sign-in (you are
+the local admin): don't expose it to other people. For a shared server follow [Deploy and operate](deploy.md).
+
+## From source
 
 !!! tip "Verified"
-    These steps were run on a clean checkout of `main` (v0.5.0) on 2026-10-06: `make setup`, `make dev-fake`,
-    `make dev-web`, then the smoke test in step 6 (run, approve, finished output) and a publish + API call.
+    The from-source steps were run on a clean checkout on 2026-10-06: `make setup`, `make dev-fake`, `make dev-web`,
+    the smoke test in step 6, a publish + API call, and the first-run model screen. The Docker stack is started and
+    checked (first-run setup included) by CI on every change.
 
-## At a glance
+### At a glance
 
 | What | Where |
 |---|---|
@@ -16,7 +62,7 @@ It needs no API keys: the first run uses built-in demo models. Adding real model
 | Data | `apps/api/agentcanvas.db` (SQLite) and `apps/api/workspaces/` (one git repo per project) |
 | Sign-in | none: in local mode every request is the built-in admin `dev@localhost` |
 
-## 1. Install the prerequisites
+### 1. Install the prerequisites
 
 | Tool | Version | Why | Check |
 |---|---|---|---|
@@ -25,7 +71,7 @@ It needs no API keys: the first run uses built-in demo models. Adding real model
 | Node.js | 22 | the web app | `node -v` |
 | pnpm | 10 | web packages | `pnpm -v` |
 | make | any | the shortcuts below (optional: every target is a plain command you can type) | `make -v` |
-| Docker Desktop | recent | **optional**: only for Postgres (step 8) or the container setup (step 9) | `docker version` |
+| Docker Desktop | recent | **optional**: only for Postgres (step 8) | `docker version` |
 
 Install commands:
 
@@ -55,14 +101,14 @@ Install commands:
 
 Open a new terminal after installing so the tools are on your `PATH`.
 
-## 2. Get the code
+### 2. Get the code
 
 ```bash
 git clone https://github.com/marunsct/AgentCanvas.git
 cd AgentCanvas
 ```
 
-## 3. Install dependencies
+### 3. Install dependencies
 
 ```bash
 make setup
@@ -71,7 +117,7 @@ make setup
 This runs `cd apps/api && uv sync` (Python packages into `apps/api/.venv`) and `cd apps/web && pnpm install`.
 The first run downloads a few hundred MB and can take a few minutes.
 
-## 4. Start the API (terminal 1)
+### 4. Start the API (terminal 1)
 
 ```bash
 make dev-fake
@@ -94,7 +140,7 @@ Check it from another terminal: `curl http://localhost:8000/healthz` answers `{"
     `dev-fake` answers every model call with a scripted demo model, so nothing leaves your machine and nothing
     costs money. Tools, scripts, approvals, memory and the database are all real.
 
-## 5. Start the web app (terminal 2)
+### 5. Start the web app (terminal 2)
 
 ```bash
 make dev-web
@@ -108,7 +154,7 @@ workflow list. The top bar shows `you · admin`.
 
 ![Home page](img/home.png)
 
-## 6. Smoke test (two minutes)
+### 6. Smoke test (two minutes)
 
 1. On Home, click the **Support triage (demo tools)** card. The editor opens with five steps on the canvas.
 2. In the right-hand panel, open the **Run** tab.
@@ -127,34 +173,26 @@ If you got this far, the API, the web app, the database and durable runs all wor
 - **Publish and call it over HTTP:** see [Publish and integrate](publish.md#call-a-deployment).
 - **Tests:** `make test` runs the backend and web test suites (several minutes).
 
-## 7. Use real models
+### 7. Use real models
 
-Stop the API (Ctrl+C in terminal 1) and start it with your provider key:
+Stop the API (Ctrl+C in terminal 1) and start it with real models:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...      # the templates use Claude models
-make dev-api                             # same as dev-fake, but with real models
+make dev-api      # same as dev-fake, but calls the models you choose
 ```
 
-`make dev-api` runs `cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000`. Provider keys are
-read from the environment of that shell (an `apps/api/.env` file only sets `AGENTCANVAS_*` and `DATABASE_URL`, not
-provider keys). Alternatively store the key as a project secret on the **Workspace** page and reference it from the
-model's config as `"api_key": {"$secret": "ANTHROPIC_API_KEY"}`.
+`make dev-api` runs `cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000`. Then, in the web
+app, click **Model** in the top bar (or **Choose a model** on Home) and pick any provider, hosted or local, with its
+API key: the same first-run screen as in [Docker](#run-everything-in-docker). Every supported provider's integration
+is installed by `make setup`.
 
-Pick models in a workflow on its **Chat model** resources (the `fast_model` / `smart_model` boxes on the canvas).
-The catalog offers Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 4.5, GPT-5.5 and GPT-5 mini.
-
-!!! warning "OpenAI models need one extra package"
-    The OpenAI integration is not installed by `make setup`. To use `openai:` models, run
-    `cd apps/api && uv pip install langchain-openai` and set `OPENAI_API_KEY`. (`uv sync` removes it again, so
-    re-run the install after the next `make setup`.) Without it a run fails with
-    *"Initializing ChatOpenAI requires the langchain-openai package"*. The *Support triage (demo tools)* example
-    uses `openai:gpt-5-mini` for classification: switch that model to a Claude model if you only have an
-    Anthropic key.
+You can also give keys to the whole server instead: export `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY` or `XAI_API_KEY` in the shell that starts
+`make dev-api`. See [Models and API keys](models.md) for every provider and how keys are chosen.
 
 Optional: `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY=...` add an **Open trace** link to each run.
 
-## 8. Optional: Postgres instead of SQLite
+### 8. Optional: Postgres instead of SQLite
 
 SQLite is enough for trying the product. To run against Postgres (what production uses, with pgvector for semantic
 memory search):
@@ -166,33 +204,13 @@ DATABASE_URL=postgresql://agentcanvas:agentcanvas@localhost:5432/agentcanvas mak
 
 Migrations run automatically at startup. `make infra` also starts Redis, which the API does not need today.
 
-## 9. Optional: the production-style container setup
+### 9. Optional: the production-style container setup
 
-`infra/compose.prod.yml` runs Postgres, a one-shot migration, two API replicas and nginx serving the built web app.
-It signs in through an identity provider by default; for a desktop trial, switch it to local mode.
+To run what production runs (two API replicas behind nginx, sign-in through an identity provider), follow
+[Deploy and operate](deploy.md#option-1-docker-compose-on-one-host). For trying AgentCanvas on one computer,
+[Run everything in Docker](#run-everything-in-docker) is simpler.
 
-```bash
-docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
-docker build -f infra/Dockerfile.web -t agentcanvas-web .
-cat > infra/.env.prod <<'EOF'
-POSTGRES_PASSWORD=change-me-local
-AGENTCANVAS_SECRET_KEY=replace-with-64-or-more-random-characters-replace-with-64-or-more-random
-AGENTCANVAS_ENV=dev
-AGENTCANVAS_AUTH_MODE=dev
-ANTHROPIC_API_KEY=
-EOF
-docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
-```
-
-Open <http://localhost:8080> (`infra/.env.prod` is git-ignored, so your keys stay out of commits). Stop with `docker compose -f infra/compose.prod.yml down` (add `-v` to delete the
-data). Local mode (`AGENTCANVAS_AUTH_MODE=dev`) is refused when `AGENTCANVAS_ENV` is `staging` or `prod`; for a
-real deployment follow [Deploy and operate](deploy.md).
-
-!!! note
-    This path follows `infra/compose.prod.yml` and the startup checks in the code, but was not run end to end
-    for this guide (the image build needs Docker Hub access).
-
-## 10. Optional: try sign-in, roles and invitations
+### 10. Optional: try sign-in, roles and invitations
 
 Local mode makes you an admin with no sign-in. To try real sign-in with
 [Keycloak](https://www.keycloak.org) on your machine:
@@ -233,8 +251,10 @@ from **Members**. (Keycloak and the container setup both use port 8080: run one 
 | `pnpm: command not found` | `corepack enable && corepack prepare pnpm@10 --activate`, or `npm i -g pnpm@10`. |
 | `address already in use` on 8000 or 5173 | Another process holds the port: stop it (`lsof -i :8000` on macOS/Linux) or stop an old server. |
 | The web app shows an error on every page | The API is not running or not on port 8000. Check `curl localhost:8000/healthz`. |
-| A run fails with *requires the langchain-openai package* | See the warning in step 7. |
-| A run fails with an authentication error from the provider | The key is missing or wrong: export it in the shell that starts `make dev-api`, or use a project secret (step 7). |
+| A run fails with an authentication error from the provider | The key is missing or wrong: enter it again under **Model**, or check the project secret named after the provider on the **Workspace** page. |
+| **Test connection** to Ollama / LM Studio fails with a connection error | The local server is not running, or listens on another port: start it, or enter its address under *Server address*. In Docker, the address must use `host.docker.internal`, not `localhost`. |
+| A model shows *integration is not installed on this server* | Run `make setup` again (it installs every provider), or `docker compose … up --build`. |
+| `make docker-up` fails with *port is already allocated* | Something else uses 8080: set `WEB_PORT=8090` in `infra/.env.local`. |
 | `git` errors when the API starts or saves a workspace file | Install Git and make sure it is on `PATH`. |
 | Startup says *AGENTCANVAS_AUTH_MODE=dev gives every request admin rights* | You set `AGENTCANVAS_ENV` to `staging`/`prod`; use `dev` locally or configure OIDC. |
 | Startup says *oidc needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE* | Set both, or leave `AGENTCANVAS_AUTH_MODE` unset for local mode. |

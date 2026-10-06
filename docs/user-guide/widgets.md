@@ -58,7 +58,7 @@ See [Memory](memory.md) for spaces and sharing.
 
 | Widget | What it does |
 |---|---|
-| **Chat model** *(resource)* | A model as `provider:model`, e.g. `anthropic:claude-sonnet-5-5`. Optional temperature, max output tokens, timeout, base URL, and an API key given as a secret reference `{"$secret": "NAME"}`. One model can serve several steps. |
+| **Chat model** *(resource)* | A model as `provider:model` from any provider, hosted or local: `anthropic:claude-sonnet-5-5`, `openai:gpt-5.5`, `google_genai:gemini-2.5-flash`, `ollama:llama3.3`, `lmstudio:<model>`… A hint under the field says where its key comes from. Optional temperature, max output tokens, timeout, Base URL, and **API key**: pick a project secret by name, or leave it empty to use the secret named after the provider. One model can serve several steps. See [Models and API keys](models.md). |
 
 ## Tools
 

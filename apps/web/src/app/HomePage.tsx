@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { signInEnabled, signOut } from "../api/auth";
-import { PROJECT_ID, useTemplates, useWorkflows } from "../api/queries";
+import { PROJECT_ID, useSetup, useTemplates, useWorkflows } from "../api/queries";
 import { can, ME } from "../api/session";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -37,6 +37,7 @@ export function HomePage() {
     <div className="page home">
       <header className="topbar">
         <span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span><span className="spacer" />
+        {can("builder") && <Link to="/setup" data-testid="setup-link">Model</Link>}
         <Link to="/inbox">Inbox</Link>
         <Link to="/memory" data-testid="memory-link">Memory</Link>
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
@@ -52,6 +53,7 @@ export function HomePage() {
         <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({ME.role}) cannot create or edit them.</p>
       )}
       {can("builder") && <>
+      <SetupBanner />
       <section className="guided">
         <h2>New here?</h2>
         <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
@@ -95,6 +97,23 @@ export function HomePage() {
         </ul>
       </section>
     </div>
+  );
+}
+
+/** Until the project has a default model: a prompt to choose one (any provider, or a local model). */
+function SetupBanner() {
+  const setup = useSetup();
+  if (!setup.data) return null;
+  const dm = setup.data.default_model;
+  if (setup.data.done) {
+    return dm ? <p className="muted small" data-testid="default-model">New workflows use <code>{dm.model}</code>. <Link to="/setup">Change</Link></p> : null;
+  }
+  return (
+    <section className="guided" data-testid="setup-banner">
+      <h2>Set up your model</h2>
+      <p className="muted">Choose the AI model your workflows use: Claude, GPT, Gemini, Mistral, Groq, DeepSeek, Grok, or a local model with Ollama, LM Studio, vLLM or llama.cpp.</p>
+      <Link to="/setup" className="button primary">Choose a model</Link>
+    </section>
   );
 }
 

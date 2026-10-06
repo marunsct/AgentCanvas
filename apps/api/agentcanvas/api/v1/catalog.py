@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from agentcanvas.api.deps import get_settings_dep
 from agentcanvas.expr import ExpressionError, check_condition
 from agentcanvas.ir.models import Workflow
-from agentcanvas.registry import ModelInfo, NodeManifest, default_registry
+from agentcanvas.registry import ModelInfo, NodeManifest, ProviderInfo, default_registry, installed_providers
 from agentcanvas.services.workflows import list_templates
 from agentcanvas.settings import Settings
 
@@ -31,6 +31,13 @@ def node_types(request: Request, project_id: str | None = None) -> list[NodeMani
 @router.get("/models", response_model=list[ModelInfo])
 def models() -> list[ModelInfo]:
     return default_registry().models()
+
+
+@router.get("/model-providers", response_model=list[ProviderInfo])
+def model_providers() -> list[ProviderInfo]:
+    """Model providers: the `provider:` prefixes a chat model can use, where each one's key comes from, and whether
+    this server has its integration installed."""
+    return installed_providers()
 
 
 class TemplateInfo(BaseModel):

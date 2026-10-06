@@ -6,11 +6,12 @@ import type { NodeManifest } from "../api/types";
 import { useEditor } from "../editor/store";
 import type { IRNode, IRResource } from "../ir/model";
 import { JsonSchemaField } from "./JsonSchemaField";
+import { SecretRefField } from "./SecretRefField";
 import { SubgraphField } from "./SubgraphField";
 import { diffToMergePatch, uiSchemaFromFormats } from "./schema";
 import { WIDGETS } from "./widgets";
 
-const FIELDS = { json_schema: JsonSchemaField, subgraph: SubgraphField };
+const FIELDS = { json_schema: JsonSchemaField, subgraph: SubgraphField, secret_ref: SecretRefField };
 
 export function ConfigForm({ element, manifest, isResource }: {
   element: IRNode | IRResource; manifest: NodeManifest; isResource: boolean;

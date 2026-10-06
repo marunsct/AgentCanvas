@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { apiFetch } from "./client";
 import { can } from "./session";
-import type { ModelInfo, NodeManifest, TemplateInfo, WorkflowPage } from "./types";
+import type { ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
@@ -58,6 +58,21 @@ export function useManifests(): Map<string, NodeManifest> {
 
 export function useModels() {
   return useQuery({ queryKey: ["models"], queryFn: () => apiFetch<ModelInfo[]>("/models"), staleTime: Infinity });
+}
+
+/** Model providers (`provider:` prefixes), where each one's key comes from and whether the server has it installed. */
+export function useModelProviders() {
+  return useQuery({ queryKey: ["model-providers"], queryFn: () => apiFetch<ProviderInfo[]>("/model-providers"), staleTime: Infinity });
+}
+
+/** First-run setup of the current project: its default model. */
+export function useSetup() {
+  return useQuery({ queryKey: ["setup", PROJECT_ID], queryFn: () => apiFetch<SetupOut>(`/projects/${PROJECT_ID}/setup`) });
+}
+
+/** Names of the current project's secrets (values never leave the server). */
+export function useSecretNames() {
+  return useQuery({ queryKey: ["secrets"], queryFn: () => apiFetch<{ name: string }[]>(`/projects/${PROJECT_ID}/secrets`) });
 }
 
 export function useTemplates() {

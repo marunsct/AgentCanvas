@@ -56,7 +56,9 @@ Store API keys and passwords on the Workspace page under **Secrets** (**Save sec
 `UPPER_SNAKE_CASE`. Secrets are encrypted at rest, can't be read back through the API, and are masked as `***` in
 run events and traces.
 
-- In widget settings: `{"$secret": "NAME"}`, e.g. a Chat model's API key or an HTTP tool's header.
+- In widget settings: `{"$secret": "NAME"}`, e.g. an HTTP tool's header. A Chat model's **API key** field lets you
+  pick a secret by name; a secret named after the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`…) is used by that
+  provider's models automatically. See [Models and API keys](models.md).
 - In scripts and custom widgets: `from agentcanvas.sdk import secret` then `secret("NAME")`.
 
 ## Sandbox

@@ -348,3 +348,12 @@ td.status-handled { color: var(--ok); }
 .evaluation .tabs { position: static; margin: 0 -24px 0; }
 .evaluation .badge { margin-right: 4px; }
 .dataset-view, .results { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
+
+/* first-run setup (model, key, local server) */
+a.button { display: inline-block; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); text-decoration: none; }
+a.button.primary { background: var(--accent); color: var(--accent-fg); }
+.setup-form { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+.setup-form label { font-weight: 600; margin-top: 8px; }
+.setup-form .row { margin-top: 12px; }
+.setup-form .row button.link { width: auto; color: var(--muted); }
+.secret-ref label { display: block; }

@@ -23,6 +23,7 @@ nav:
       - Run on your computer: user-guide/run-locally.md
       - Getting started: user-guide/getting-started.md
       - Core concepts: user-guide/concepts.md
+      - Models and API keys: user-guide/models.md
       - Building on the canvas: user-guide/canvas.md
       - Widget reference: user-guide/widgets.md
       - Running and debugging: user-guide/run-and-debug.md

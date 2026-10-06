@@ -11,6 +11,7 @@ debug, test, evaluate, export and publish behind an API.
 
 | | |
 |---|---|
+| **Use any model** | Claude, GPT, Gemini, Mistral, Groq, DeepSeek, Grok, any OpenAI-compatible API, or models on your own computer (Ollama, LM Studio, vLLM, llama.cpp). Choose one on the first-run screen, with its API key. |
 | **Build** | Drag widgets onto a canvas, wire them up, and configure them in the Inspector. Start from one of seven templates or a guided six-step tutorial. Add your own Python scripts, tools and custom widgets in the project workspace. |
 | **Run and debug** | Run a workflow and watch each step light up. Pause for human approvals, set breakpoints, step back through the timeline, edit state and fork, and read a plain-language explanation of what happened. See tokens, cost and latency per step. |
 | **Test and evaluate** | Save runs as test cases, build datasets, score runs with evaluators (exact match, regex, schema, LLM judge, tool trajectory, your own code), compare versions in experiments, and block releases that score worse. |
@@ -19,12 +20,14 @@ debug, test, evaluate, export and publish behind an API.
 
 ## Where to start
 
-1. [Run AgentCanvas on your computer](run-locally.md): install, start, and a two-minute smoke test.
+1. [Run AgentCanvas on your computer](run-locally.md): one Docker command, or from source with a two-minute smoke
+   test.
 2. [Getting started](getting-started.md): build and run your first workflow.
 3. [Core concepts](concepts.md): the handful of ideas everything else builds on.
 
 Then dive into the area you need:
 
+- [Models and API keys](models.md)
 - [Building on the canvas](canvas.md) and the [widget reference](widgets.md)
 - [Running and debugging](run-and-debug.md)
 - [Workspace: code, secrets and events](workspace.md)
