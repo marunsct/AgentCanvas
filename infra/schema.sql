@@ -24,6 +24,7 @@ CREATE TABLE project (
   id            text PRIMARY KEY,                 -- prj_<ulid>
   org_id        text NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
   name          text NOT NULL,
+  settings      jsonb NOT NULL DEFAULT '{}',      -- first-run setup: default model
   created_at    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (org_id, name)
 );

@@ -333,7 +333,13 @@ class ProjectRepo:
         self.s = s
 
     async def list(self, org_id: str) -> list[Project]:
-        return list((await self.s.scalars(select(Project).where(Project.org_id == org_id).order_by(Project.id))).all())
+        return list(
+            (
+                await self.s.scalars(
+                    select(Project).where(Project.org_id == org_id).order_by(Project.created_at, Project.id)
+                )
+            ).all()
+        )
 
     async def create(self, org_id: str, name: str) -> Project:
         p = Project(id=new_id("prj"), org_id=org_id, name=name)

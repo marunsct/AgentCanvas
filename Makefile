@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup infra dev-api dev-fake dev-web test test-api test-web e2e lint fmt schema check docs
+.PHONY: help setup infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -19,6 +19,16 @@ dev-fake:   ## API with scripted fake models (no keys)
 
 dev-web:    ## web app on http://localhost:5173
 	cd apps/web && pnpm dev
+
+docker-up:  ## the whole app in Docker on http://localhost:8080 (builds the images)
+	docker compose -f infra/compose.local.yml $(if $(wildcard infra/.env.local),--env-file infra/.env.local) up -d --build --wait
+	@echo "AgentCanvas is running on http://localhost:$${WEB_PORT:-8080}"
+
+docker-down: ## stop the Docker app (your data stays; add -v to the compose command to delete it)
+	docker compose -f infra/compose.local.yml down
+
+docker-logs: ## follow the Docker app's logs
+	docker compose -f infra/compose.local.yml logs -f
 
 test: test-api test-web  ## all unit/integration tests
 

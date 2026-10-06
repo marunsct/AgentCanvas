@@ -81,7 +81,7 @@ async def test_configs_are_validated(api_client):
         ("regex", {"channel": "out", "pattern": "("}, "invalid pattern"),
         ("regex", {"pattern": "x"}, "channel"),
         ("json_schema", {"channel": "out", "schema": {"type": "nope"}}, "invalid schema"),
-        ("llm_judge", {"model": "nobody:nothing", "rubric": "polite?"}, "not a model in the catalog"),
+        ("llm_judge", {"model": "nobody:nothing", "rubric": "polite?"}, "not a catalog model"),
         ("llm_judge", {"model": HAIKU, "rubric": ""}, "rubric"),
         ("code", {"function": "os:system"}, "scripts.<module>:<function>"),
         ("trajectory", {"mode": "fuzzy"}, "mode"),

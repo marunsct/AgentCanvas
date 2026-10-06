@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** S13 is on `claude/sprint-13-evaluation-in-production` ([#8](https://github.com/marunsct/AgentCanvas/pull/8)), from `main`. S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
+- **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-06. Sprint 13 Evaluation in production is built and reviewed in #8, waiting for the owner's merge (tag `v0.5.0` is the maintainer's call).
+- **Last updated:** 2026-10-06. Sprint 13 is merged (#8; tag `v0.5.0` is the maintainer's call). #9 adds the user guide, models from any provider (local ones included) with per-provider keys, a first-run model setup screen, and `make docker-up`.
 
 ## At a glance
 
@@ -25,7 +25,8 @@ Live status of the project. Update it with every commit that finishes or changes
 | S10 Accounts & access → v0.2.0 | ✅ done (merged in #3; tag `v0.2.0` pending) |
 | S11 Production readiness → v0.3.0 | ✅ done (merged in #4; tag `v0.3.0` pending) |
 | S12 Evaluation Studio → v0.4.0 | ✅ done (merged in #5; tag `v0.4.0` pending) |
-| **S13 Evaluation in production → v0.5.0** | ✅ **done** (in review in #8; tag `v0.5.0` pending) |
+| S13 Evaluation in production → v0.5.0 | ✅ done (merged in #8; tag `v0.5.0` pending) |
+| **User guide, any-provider and local models, first-run setup, Docker app** | ✅ **done** (#9) |
 | S14+ GA backlog | ⬜ pending |
 
 **Test totals** at the end of S13:

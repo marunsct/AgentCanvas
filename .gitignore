@@ -14,5 +14,6 @@ playwright-report/
 *.tsbuildinfo
 apps/api/workspaces/
 
-# filled-in production settings
+# filled-in production / local settings
 infra/.env.prod
+infra/.env.local

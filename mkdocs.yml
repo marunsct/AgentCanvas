@@ -6,7 +6,8 @@ docs_dir: docs
 theme:
   name: material
   features: [navigation.sections, navigation.top, search.highlight, content.code.copy]
-markdown_extensions: [tables, admonition, toc, attr_list, pymdownx.superfences]
+markdown_extensions:
+  [tables, admonition, toc, attr_list, pymdownx.superfences, pymdownx.details, {pymdownx.tabbed: {alternate_style: true}}]
 not_in_nav: |
   /agent-canvas-spec/adapters/*
   /agent-canvas-spec/build-guide/reference/**
@@ -17,6 +18,22 @@ validation:
   omitted_files: info
 nav:
   - Home: agent-canvas-spec/README.md
+  - User guide:
+      - Overview: user-guide/index.md
+      - Run on your computer: user-guide/run-locally.md
+      - Getting started: user-guide/getting-started.md
+      - Core concepts: user-guide/concepts.md
+      - Models and API keys: user-guide/models.md
+      - Building on the canvas: user-guide/canvas.md
+      - Widget reference: user-guide/widgets.md
+      - Running and debugging: user-guide/run-and-debug.md
+      - Workspace, secrets and events: user-guide/workspace.md
+      - Memory: user-guide/memory.md
+      - Evaluation Studio: user-guide/evaluation.md
+      - Publish and integrate: user-guide/publish.md
+      - Organisations, roles and policies: user-guide/accounts.md
+      - Deploy and operate: user-guide/deploy.md
+      - FAQ: user-guide/faq.md
   - Specification:
       - Functional spec: agent-canvas-spec/01-functional-spec.md
       - Technical architecture: agent-canvas-spec/02-technical-architecture.md

@@ -166,8 +166,10 @@ async def start_experiment(
         evaluators = [known[i] for i in body.evaluator_ids]
     targets = [await _target(session, svc, wf_id, view.row.project_id, t, i) for i, t in enumerate(body.targets)]
     if body.simulation is not None:
-        if default_registry().model(body.simulation.model) is None:
-            raise InvalidInput(f"simulated user: '{body.simulation.model}' is not a model in the catalog")
+        if not default_registry().usable_model(body.simulation.model):
+            raise InvalidInput(
+                f"simulated user: '{body.simulation.model}' is not a catalog model or a known provider's model"
+            )
         if not all(is_chat(Workflow.model_validate(t["ir"])) for t in targets):
             raise InvalidInput("a simulated user needs a chat workflow: a 'messages' channel with add_messages")
     exp = await ExperimentService(session).create(

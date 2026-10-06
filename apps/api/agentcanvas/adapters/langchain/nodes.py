@@ -17,6 +17,7 @@ import functools
 import inspect
 import json
 import operator
+import os
 import re
 import warnings
 from collections.abc import Callable, Sequence
@@ -283,6 +284,56 @@ def tag_model(model: Any, model_id: str | None, resource: str | None = None) -> 
     return model
 
 
+# Model providers (the `provider:` prefix of a model id). Kept in step with registry/providers.json (tested).
+# PROVIDER_KEYS: the env variable that holds a provider's API key; a project secret of the same name is used when the
+# model's config sets no `api_key`. OPENAI_COMPATIBLE: local or hosted servers that speak the OpenAI API, created
+# with the `openai` integration and this default base URL (None = the config must give one).
+PROVIDER_KEYS: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "azure_openai": "AZURE_OPENAI_API_KEY",
+    "google_genai": "GOOGLE_API_KEY",
+    "mistralai": "MISTRAL_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "xai": "XAI_API_KEY",
+}
+OPENAI_COMPATIBLE: dict[str, str | None] = {
+    "lmstudio": "http://localhost:1234/v1",
+    "vllm": "http://localhost:8000/v1",
+    "llamacpp": "http://localhost:8080/v1",
+    "openai_compatible": None,
+}
+OLLAMA_URL = "http://localhost:11434"
+
+
+def _local(url: str) -> str:
+    """A default local-server address, on AGENTCANVAS_LOCAL_MODELS_HOST when set (e.g. host.docker.internal when
+    AgentCanvas runs in a container and the model server on the host)."""
+    host = os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST")
+    return url.replace("localhost", host, 1) if host else url
+
+
+def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str]) -> tuple[str, dict[str, Any]]:
+    """The `init_chat_model` id and keyword arguments for a model id and its resolved config."""
+    provider, _, name = model.partition(":")
+    params = dict(params)
+    if provider == "ollama" and not params.get("base_url") and os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST"):
+        params["base_url"] = _local(OLLAMA_URL)
+    if provider in OPENAI_COMPATIBLE:
+        default = OPENAI_COMPATIBLE[provider]
+        base_url = params.get("base_url") or (_local(default) if default else None)
+        if not base_url:
+            raise ValueError(f"model '{model}' needs a base URL: the server's OpenAI-compatible address, e.g. …/v1")
+        params["base_url"] = base_url
+        params.setdefault("api_key", "not-needed")  # local servers ignore it; the OpenAI client insists on one
+        return f"openai:{name}", params
+    key = PROVIDER_KEYS.get(provider)
+    if key and "api_key" not in params and key in secrets:
+        params["api_key"] = secrets[key]
+    return model, params
+
+
 class Resources:
     """Resolves resource configs into live objects. Tests and the fake server inject models here.
 
@@ -315,7 +366,8 @@ class Resources:
             return tag_model(self._overrides[name], config.get("model"), name)
         if name not in self._cache:
             params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
-            self._cache[name] = tag_model(init_chat_model(config["model"], **params), config["model"], name)
+            model_id, params = chat_model_args(config["model"], params, self._secrets)
+            self._cache[name] = tag_model(init_chat_model(model_id, **params), config["model"], name)
         return self._cache[name]
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:

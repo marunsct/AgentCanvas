@@ -24,7 +24,7 @@
         "title": "Model",
         "format": "model",
         "pattern": "^[a-z0-9_\\-]+:.+$",
-        "description": "provider:model, e.g. anthropic:claude-sonnet-5-5"
+        "description": "provider:model, e.g. anthropic:claude-sonnet-5-5, openai:gpt-5.5, ollama:llama3.3, lmstudio:<model>"
       },
       "temperature": {
         "type": "number",
@@ -45,7 +45,8 @@
       "base_url": {
         "type": "string",
         "title": "Base URL",
-        "format": "uri"
+        "format": "uri",
+        "description": "The provider's server address; for local servers (Ollama, LM Studio, vLLM, llama.cpp) only when not on the default port"
       },
       "api_key": {
         "title": "API key (secret reference)",
@@ -58,7 +59,9 @@
           "$secret": {
             "type": "string"
           }
-        }
+        },
+        "format": "secret_ref",
+        "description": "A project secret holding the key. Empty: the project secret or server variable named after the provider (e.g. OPENAI_API_KEY)"
       }
     }
   }

@@ -89,10 +89,17 @@ class FrameworkAdapter(Protocol):
 
     # ---- evaluation (FR-EVAL-03)
     async def complete(
-        self, resources: Any, model: str, system: str, prompt: str, usage: dict[str, int] | None = None
+        self,
+        resources: Any,
+        model: str,
+        system: str,
+        prompt: str,
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> str:
         """One chat completion with a catalog model (the LLM-as-judge evaluator). Resource name: "judge".
-        `usage`, when given, gets the call's `input_tokens` and `output_tokens` added."""
+        `usage`, when given, gets the call's `input_tokens` and `output_tokens` added; `config` adds chat-model
+        settings such as `base_url` and `api_key` (first-run setup's connection test)."""
         ...
 
     def script(self, resources: Any, import_path: str) -> Any:

@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Iterator
 
 from agentcanvas.ir.models import Node, Resource
+from agentcanvas.registry import provider_installed
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
 
 
@@ -13,10 +14,21 @@ from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, 
 def model_catalog(ctx: ValidationContext) -> Iterator[Diagnostic]:
     for r in ctx.wf.resources:
         if r.type == "model.chat" and isinstance(r.config.get("model"), str):
-            if ctx.registry.model(r.config["model"]) is None:
+            model = r.config["model"]
+            if ctx.registry.model(model) is None:
                 yield warning(
-                    "W010",
-                    f"model '{r.config['model']}' is not in the model catalog; capabilities are not checked",
+                    "W010", f"model '{model}' is not in the model catalog; capabilities are not checked", node_id=r.id
+                )
+            provider = ctx.registry.provider(model.partition(":")[0])
+            if provider is None:
+                continue
+            if provider.base_url_required and not r.config.get("base_url"):
+                yield error("E017", f"'{r.name}': {provider.label} models need a Base URL", node_id=r.id)
+            if not provider_installed(provider):
+                yield warning(
+                    "W011",
+                    f"'{r.name}': the {provider.label} integration is not installed on this server "
+                    f"(install {provider.package})",
                     node_id=r.id,
                 )
 

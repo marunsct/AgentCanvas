@@ -35,6 +35,20 @@ class WorkflowView:
     diagnostics: list[Diagnostic]
 
 
+def with_default_model(doc: Any, default: dict[str, Any]) -> Any:
+    """A template whose chat models (subgraphs included) are the project's default model from first-run setup;
+    their other settings (temperature, max tokens…) stay."""
+    if isinstance(doc, list):
+        return [with_default_model(x, default) for x in doc]
+    if not isinstance(doc, dict):
+        return doc
+    out = {k: with_default_model(v, default) for k, v in doc.items()}
+    if out.get("type") == "model.chat" and isinstance(out.get("config"), dict):
+        kept = {k: v for k, v in out["config"].items() if k not in ("model", "base_url", "api_key")}
+        out["config"] = {**kept, **default}
+    return out
+
+
 def list_templates(settings: Settings) -> dict[str, dict[str, Any]]:
     dirs = [TEMPLATES] + ([DEV_TEMPLATES] if settings.env in ("dev", "test") else [])
     out: dict[str, dict[str, Any]] = {}
@@ -83,12 +97,15 @@ class WorkflowService:
         return WorkflowView(row, wf, await self._validate(wf, row.project_id))
 
     async def create(self, project_id: str, name: str, template: str | None, created_by: str | None) -> WorkflowView:
-        await self.projects.require(project_id)
+        project = await self.projects.require(project_id)
         wf_id = new_id("wf")
         if template:
             doc = list_templates(self.settings).get(template)
             if doc is None:
                 raise NotFound(f"template '{template}' not found")
+            default = (project.settings or {}).get("default_model")
+            if default:
+                doc = with_default_model(doc, default)
             wf = Workflow.model_validate({**doc, "id": wf_id, "name": name or doc["name"]})
         else:
             wf = Workflow(id=wf_id, name=name)

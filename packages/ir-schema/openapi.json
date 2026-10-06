@@ -1608,6 +1608,44 @@
         "title": "Decision",
         "type": "object"
       },
+      "DefaultModel": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "DefaultModel",
+        "type": "object"
+      },
       "DeploymentOut": {
         "properties": {
           "active": {
@@ -5087,6 +5125,83 @@
         "title": "ProjectOut",
         "type": "object"
       },
+      "ProviderInfo": {
+        "additionalProperties": false,
+        "description": "A model provider: the `provider:` prefix of a model id, its integration and where its API key comes from.",
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "base_url_required": {
+            "default": false,
+            "title": "Base Url Required",
+            "type": "boolean"
+          },
+          "example": {
+            "default": "",
+            "title": "Example",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "installed": {
+            "default": true,
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Env"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "local": {
+            "default": false,
+            "title": "Local",
+            "type": "boolean"
+          },
+          "module": {
+            "title": "Module",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "package": {
+            "title": "Package",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "package",
+          "module"
+        ],
+        "title": "ProviderInfo",
+        "type": "object"
+      },
       "PublishIn": {
         "properties": {
           "environment": {
@@ -6113,6 +6228,87 @@
         "title": "SetContext",
         "type": "object"
       },
+      "SetupIn": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "stored as a project secret; omit to keep",
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "model": {
+            "description": "provider:model, e.g. ollama:llama3.3",
+            "pattern": "^[a-z0-9_\\-]+:.+$",
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "SetupIn",
+        "type": "object"
+      },
+      "SetupOut": {
+        "properties": {
+          "default_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DefaultModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "done": {
+            "title": "Done",
+            "type": "boolean"
+          },
+          "key_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the project secret the default model's key is read from",
+            "title": "Key Secret"
+          },
+          "key_set": {
+            "default": false,
+            "description": "that secret exists, or the server has the variable",
+            "title": "Key Set",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "done"
+        ],
+        "title": "SetupOut",
+        "type": "object"
+      },
       "Simulation": {
         "properties": {
           "goal": {
@@ -6554,6 +6750,41 @@
           "created_at"
         ],
         "title": "TestCaseOut",
+        "type": "object"
+      },
+      "TestOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "TestOut",
         "type": "object"
       },
       "TestRunIn": {
@@ -11132,6 +11363,67 @@
         ]
       }
     },
+    "/v1/model-providers": {
+      "get": {
+        "description": "Model providers: the `provider:` prefixes a chat model can use, where each one's key comes from, and whether\nthis server has its integration installed.",
+        "operationId": "model_providers_v1_model_providers_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderInfo"
+                  },
+                  "title": "Response Model Providers V1 Model Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Model Providers",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/v1/models": {
       "get": {
         "operationId": "models_v1_models_get",
@@ -13039,6 +13331,287 @@
         "summary": "Put Secret",
         "tags": [
           "secrets"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/setup": {
+      "get": {
+        "operationId": "get_setup_v1_projects__project_id__setup_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Setup",
+        "tags": [
+          "setup"
+        ]
+      },
+      "put": {
+        "description": "Save the default model (and its key as a project secret) and mark setup as done.",
+        "operationId": "put_setup_v1_projects__project_id__setup_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Setup",
+        "tags": [
+          "setup"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/setup/skip": {
+      "post": {
+        "description": "Hide the setup prompt without choosing a model (templates keep their own models).",
+        "operationId": "skip_setup_v1_projects__project_id__setup_skip_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Skip Setup",
+        "tags": [
+          "setup"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/setup/test": {
+      "post": {
+        "description": "Send one short message to the model with these settings (nothing is saved).",
+        "operationId": "test_model_v1_projects__project_id__setup_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Model",
+        "tags": [
+          "setup"
         ]
       }
     },
