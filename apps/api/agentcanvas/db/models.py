@@ -427,6 +427,55 @@ class EvalAlert(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AnnotationQueue(Base):
+    """A queue of runs for people to review (S13): fed by rules on production runs or by hand."""
+
+    __tablename__ = "annotation_queue"
+    __table_args__ = (UniqueConstraint("workflow_id", "name", name="annotation_queue_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    # [{"name", "description", "scale": points (2 = yes/no), "pass_at": normalised score that passes}]
+    rubric: Mapped[list[Any]] = mapped_column(Json)
+    # {"failed": bool, "thumbs_down": bool, "scores_below": {evaluator: threshold}}: production runs routed here
+    rules: Mapped[dict[str, Any]]
+    reviewers_per_item: Mapped[int] = mapped_column(Integer, server_default=text("1"), default=1)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class AnnotationItem(Base):
+    """One run waiting in (or done with) a queue."""
+
+    __tablename__ = "annotation_item"
+    __table_args__ = (
+        UniqueConstraint("queue_id", "run_id", name="annotation_item_once"),
+        Index("annotation_item_queue_idx", "queue_id", "status", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    queue_id: Mapped[str] = mapped_column(ForeignKey("annotation_queue.id", ondelete="CASCADE"))
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"))
+    thread_id: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)  # "manual" | "failed" | "thumbs_down" | "score:<evaluator>"
+    status: Mapped[str] = mapped_column(Text, default="pending")  # "pending" | "done"
+    added_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
+class Annotation(Base):
+    """A reviewer's scores (per rubric criterion) and comment on a queue item; one per reviewer and item."""
+
+    __tablename__ = "annotation"
+    __table_args__ = (UniqueConstraint("item_id", "reviewer", name="annotation_once"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("annotation_item.id", ondelete="CASCADE"), index=True)
+    reviewer: Mapped[str] = mapped_column(Text)
+    scores: Mapped[dict[str, Any]]  # criterion -> points (1..scale)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = _now()
+
+
 class RateWindow(Base):
     """Requests counted per limit key and fixed window (S12, S30): shared by every API instance."""
 

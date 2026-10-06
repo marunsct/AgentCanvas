@@ -36,6 +36,7 @@ PREFIXES = {
     "alr",  # evaluation alert
     "aq",  # annotation queue
     "aqi",  # annotation queue item
+    "ann",  # a reviewer's annotation of a queue item
 }
 
 

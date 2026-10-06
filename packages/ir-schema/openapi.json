@@ -61,6 +61,26 @@
         "title": "AddResource",
         "type": "object"
       },
+      "AddToDataset": {
+        "properties": {
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "reference": {
+            "additionalProperties": true,
+            "description": "the corrected output: channel -> expected value",
+            "title": "Reference",
+            "type": "object"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "reference"
+        ],
+        "title": "AddToDataset",
+        "type": "object"
+      },
       "AlertOut": {
         "properties": {
           "baseline": {
@@ -128,6 +148,71 @@
           "resolved_at"
         ],
         "title": "AlertOut",
+        "type": "object"
+      },
+      "AnnotateIn": {
+        "properties": {
+          "add_to_dataset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AddToDataset"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comment": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "criterion -> points (1..scale)",
+            "title": "Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scores"
+        ],
+        "title": "AnnotateIn",
+        "type": "object"
+      },
+      "AnnotationOut": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "reviewer": {
+            "title": "Reviewer",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "reviewer",
+          "scores",
+          "comment",
+          "created_at"
+        ],
+        "title": "AnnotationOut",
         "type": "object"
       },
       "ApiResult": {
@@ -1182,6 +1267,42 @@
           }
         },
         "title": "CreateWorkflow",
+        "type": "object"
+      },
+      "Criterion": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pass_at": {
+            "default": 0.5,
+            "description": "normalised score (0-1) that passes",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Pass At",
+            "type": "number"
+          },
+          "scale": {
+            "default": 5,
+            "description": "points; 2 is a yes/no",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Scale",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Criterion",
         "type": "object"
       },
       "DatasetDetail": {
@@ -2654,6 +2775,29 @@
         "title": "ExpressionResult",
         "type": "object"
       },
+      "FeedbackIn": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "FeedbackIn",
+        "type": "object"
+      },
       "FieldChange": {
         "properties": {
           "after": {
@@ -3195,6 +3339,192 @@
           "role"
         ],
         "title": "InvitationOut",
+        "type": "object"
+      },
+      "ItemDetail": {
+        "properties": {
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/AnnotationOut"
+            },
+            "title": "Annotations",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "queue_id": {
+            "title": "Queue Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewed_by_me": {
+            "title": "Reviewed By Me",
+            "type": "boolean"
+          },
+          "reviews": {
+            "title": "Reviews",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_status": {
+            "title": "Run Status",
+            "type": "string"
+          },
+          "scores": {
+            "description": "every score the run has: online evaluators, feedback, reviewers",
+            "items": {
+              "$ref": "#/components/schemas/ScoreOut"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "queue_id",
+          "run_id",
+          "thread_id",
+          "reason",
+          "status",
+          "reviewed_by_me",
+          "reviews",
+          "created_at",
+          "run_status",
+          "error",
+          "input",
+          "output",
+          "annotations",
+          "scores"
+        ],
+        "title": "ItemDetail",
+        "type": "object"
+      },
+      "ItemOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "queue_id": {
+            "title": "Queue Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewed_by_me": {
+            "title": "Reviewed By Me",
+            "type": "boolean"
+          },
+          "reviews": {
+            "title": "Reviews",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "queue_id",
+          "run_id",
+          "thread_id",
+          "reason",
+          "status",
+          "reviewed_by_me",
+          "reviews",
+          "created_at"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
+      "ItemsIn": {
+        "properties": {
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Run Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_ids"
+        ],
+        "title": "ItemsIn",
         "type": "object"
       },
       "KeyOut": {
@@ -4565,6 +4895,29 @@
         "title": "PortSpec",
         "type": "object"
       },
+      "Progress": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "pending",
+          "done"
+        ],
+        "title": "Progress",
+        "type": "object"
+      },
       "ProjectIn": {
         "properties": {
           "name": {
@@ -4665,6 +5018,174 @@
           "checklist"
         ],
         "title": "PublishOut",
+        "type": "object"
+      },
+      "QueueIn": {
+        "properties": {
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reviewers_per_item": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Reviewers Per Item",
+            "type": "integer"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/Criterion"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rubric",
+            "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/Rules"
+          }
+        },
+        "required": [
+          "name",
+          "rubric"
+        ],
+        "title": "QueueIn",
+        "type": "object"
+      },
+      "QueueOut": {
+        "properties": {
+          "agreement": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "per criterion, 0-1, over items two or more people reviewed",
+            "title": "Agreement",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          },
+          "reviewers_per_item": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Reviewers Per Item",
+            "type": "integer"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/Criterion"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rubric",
+            "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/Rules"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "rubric",
+          "id",
+          "workflow_id",
+          "created_at",
+          "progress"
+        ],
+        "title": "QueueOut",
+        "type": "object"
+      },
+      "QueuePatch": {
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reviewers_per_item": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewers Per Item"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "QueuePatch",
         "type": "object"
       },
       "RefactorOut": {
@@ -4967,6 +5488,32 @@
           }
         },
         "title": "RetryPolicySpec",
+        "type": "object"
+      },
+      "Rules": {
+        "properties": {
+          "failed": {
+            "default": false,
+            "description": "production runs that failed",
+            "title": "Failed",
+            "type": "boolean"
+          },
+          "scores_below": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "online evaluator name -> runs scoring below this",
+            "title": "Scores Below",
+            "type": "object"
+          },
+          "thumbs_down": {
+            "default": false,
+            "description": "runs an end user rated down through the deployment API",
+            "title": "Thumbs Down",
+            "type": "boolean"
+          }
+        },
+        "title": "Rules",
         "type": "object"
       },
       "RunOut": {
@@ -6649,6 +7196,574 @@
         ]
       }
     },
+    "/v1/annotation-items/{item_id}": {
+      "delete": {
+        "operationId": "remove_item_v1_annotation_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Item",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "get": {
+        "description": "The run's input, output and scores, and the reviews so far.",
+        "operationId": "get_item_v1_annotation_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Item",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
+    "/v1/annotation-items/{item_id}/annotations": {
+      "post": {
+        "description": "Score the run on every rubric criterion, with a comment; optionally add it, with a corrected reference, to\none of the workflow's datasets (a new dataset version) in the same step.",
+        "operationId": "annotate_v1_annotation_items__item_id__annotations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Annotate",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
+    "/v1/annotation-queues/{aq_id}": {
+      "delete": {
+        "operationId": "delete_queue_v1_annotation_queues__aq_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Queue",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "get": {
+        "operationId": "get_queue_v1_annotation_queues__aq_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Queue",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "patch": {
+        "description": "The rubric stays as it was created: reviews already given are scored against it.",
+        "operationId": "update_queue_v1_annotation_queues__aq_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueuePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Queue",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
+    "/v1/annotation-queues/{aq_id}/items": {
+      "get": {
+        "description": "Oldest first, so reviewers work through the queue in order.",
+        "operationId": "list_items_v1_annotation_queues__aq_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "done",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemOut"
+                  },
+                  "title": "Response List Items V1 Annotation Queues  Aq Id  Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Items",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "post": {
+        "description": "Add runs of the queue's workflow by hand (runs already in the queue are skipped).",
+        "operationId": "add_items_v1_annotation_queues__aq_id__items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "aq_id",
+            "required": true,
+            "schema": {
+              "title": "Aq Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemOut"
+                  },
+                  "title": "Response Add Items V1 Annotation Queues  Aq Id  Items Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Items",
+        "tags": [
+          "annotation queues"
+        ]
+      }
+    },
     "/v1/auth/config": {
       "get": {
         "description": "How the web app signs in: `dev` (no sign-in) or `oidc` with the public client details.",
@@ -7885,6 +9000,77 @@
           }
         },
         "summary": "Api Run Wait",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/runs/{run_id}/feedback": {
+      "post": {
+        "description": "Your end user's thumbs up or down on a run's answer (a later rating replaces the earlier one). A thumbs-down\nputs the run in the annotation queues that ask for them.",
+        "operationId": "api_feedback_v1_deployments__dep_id__runs__run_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Feedback",
         "tags": [
           "deployments"
         ]
@@ -13465,6 +14651,148 @@
         "summary": "List Alerts",
         "tags": [
           "online evaluation"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/annotation-queues": {
+      "get": {
+        "operationId": "list_queues_v1_workflows__wf_id__annotation_queues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QueueOut"
+                  },
+                  "title": "Response List Queues V1 Workflows  Wf Id  Annotation Queues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Queues",
+        "tags": [
+          "annotation queues"
+        ]
+      },
+      "post": {
+        "operationId": "create_queue_v1_workflows__wf_id__annotation_queues_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Queue",
+        "tags": [
+          "annotation queues"
         ]
       }
     },

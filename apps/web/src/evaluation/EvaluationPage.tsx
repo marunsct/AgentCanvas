@@ -11,9 +11,10 @@ import { can } from "../api/session";
 import { QueryStatus, errorText } from "../ui/QueryStatus";
 import { KIND_CONFIG, compare, fmt, grid, passed, pct } from "./compare";
 import { Production } from "./Production";
+import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
 
-type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production";
+type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
 
 function parseJson(text: string, what: string): Record<string, unknown> {
   if (!text.trim()) return {};
@@ -40,9 +41,9 @@ export function EvaluationPage() {
         <span className="crumb">/ <Link to={`/workflows/${id}`}>{wf.data?.name ?? id}</Link> / Evaluation</span>
       </header>
       <nav className="tabs" role="tablist">
-        {(["datasets", "evaluators", "experiments", "gates", "production"] as Tab[]).map((t) => (
+        {(["datasets", "evaluators", "experiments", "gates", "production", "queues"] as Tab[]).map((t) => (
           <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
-            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates", production: "Production" }[t]}</button>
+            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates", production: "Production", queues: "Annotation queues" }[t]}</button>
         ))}
       </nav>
       {tab === "datasets" && <Datasets wfId={id} />}
@@ -50,6 +51,7 @@ export function EvaluationPage() {
       {tab === "experiments" && <Experiments wfId={id} />}
       {tab === "gates" && <Gates wfId={id} />}
       {tab === "production" && <Production wfId={id} />}
+      {tab === "queues" && <Queues wfId={id} />}
     </div>
   );
 }

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 
 from agentcanvas.api.deps import current_user, org_scope, role_policy
 from agentcanvas.api.v1 import (
+    annotation,
     auth,
     catalog,
     datasets,
@@ -48,6 +49,7 @@ signed_in.include_router(evaluators.router)
 signed_in.include_router(experiments.router)
 signed_in.include_router(gates.router)
 signed_in.include_router(online.router)
+signed_in.include_router(annotation.router)
 signed_in.include_router(deployments.router)
 signed_in.include_router(triggers.router)
 

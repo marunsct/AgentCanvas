@@ -28,7 +28,8 @@ SKIPPED = {
 }  # fmt: skip
 # path parameters, most specific first: the first one present is the row's target
 TARGETS = ("interrupt_id", "run_id", "thread_id", "trigger_id", "dep_id", "ex_id", "ds_id", "evaluator_id", "exp_id",
-           "oev_id", "case_id", "policy_id", "name", "environment", "user_id", "wf_id", "project_id")  # fmt: skip
+           "oev_id", "item_id", "aq_id", "case_id", "policy_id", "name", "environment", "user_id", "wf_id",
+           "project_id")  # fmt: skip
 
 
 def payload_hash(value: Any) -> str:

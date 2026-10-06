@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field, StringConstraints
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
@@ -20,13 +21,14 @@ from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
-from agentcanvas.db.models import Deployment, Project, WorkflowVersion
-from agentcanvas.errors import Conflict, Forbidden, InvalidInput
+from agentcanvas.db.models import Deployment, Project, Run, RunScore, Thread, WorkflowVersion
+from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
+from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import gates
+from agentcanvas.services import annotation, gates
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
@@ -309,6 +311,58 @@ async def api_run_stream(
     """Run the published version, streaming canonical events (SSE)."""
     h = await _start(request, session, dep_id, body, authorization)
     return _respond(request.app.state.runner, h, True)
+
+
+class FeedbackIn(BaseModel):
+    rating: Literal["up", "down"]
+    comment: str = Field(default="", max_length=2000)
+
+
+async def _key_holder(
+    dep_id: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    session: AsyncSession = Depends(get_session),
+) -> Deployment:
+    """The deployment whose key the caller holds; a dependency, so a request without a key is refused (401) before
+    its body is read."""
+    return (await _caller(request, session, dep_id, authorization))[0]
+
+
+@public_router.post("/deployments/{dep_id}/runs/{run_id}/feedback", status_code=204)
+async def api_feedback(
+    run_id: str,
+    body: FeedbackIn,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Your end user's thumbs up or down on a run's answer (a later rating replaces the earlier one). A thumbs-down
+    puts the run in the annotation queues that ask for them."""
+    q = select(Run.thread_id).join(Thread, Thread.id == Run.thread_id)
+    thread_id = await session.scalar(q.where(Run.id == run_id, Thread.deployment_id == dep.id))
+    if thread_id is None:
+        raise NotFound(f"run '{run_id}' not found")
+    await session.execute(delete(RunScore).where(RunScore.run_id == run_id, RunScore.source == "feedback"))
+    down = body.rating == "down"
+    session.add(
+        RunScore(
+            id=new_id("rsc"),
+            run_id=run_id,
+            thread_id=thread_id,
+            workflow_id=dep.workflow_id,
+            deployment_id=dep.id,
+            evaluator="user feedback",
+            source="feedback",
+            score=0.0 if down else 1.0,
+            passed=not down,
+            comment=body.comment,
+            created_by="api",
+        )
+    )
+    await session.commit()
+    if down:
+        await annotation.route(session, dep.workflow_id, run_id, thread_id, thumbs_down=True)
+    return Response(status_code=204)
 
 
 @public_router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)

@@ -138,6 +138,17 @@ class OnlineScorer:
             return []
 
     async def score_run(self, h: Any, status: str, error: str | None) -> list[RunScore]:
+        """Score the run with the online evaluators that sample it, then route it to the annotation queues whose
+        rules it meets (a failed run, a low score)."""
+        out = await self._evaluate(h, status, error)
+        from agentcanvas.services import annotation
+
+        async with self.db.sessionmaker() as s:
+            scores = {r.evaluator: r.score for r in out}
+            await annotation.route(s, h.workflow_id, h.run_id, h.thread_id, status=status, scores=scores)
+        return out
+
+    async def _evaluate(self, h: Any, status: str, error: str | None) -> list[RunScore]:
         from agentcanvas.services.experiments import scorers
         from agentcanvas.services.projects import PROJECT_OF
 
