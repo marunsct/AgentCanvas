@@ -418,7 +418,19 @@ class EvalAlert(Base):
     """A drift alert of an online evaluator: open while its rule holds, resolved when it no longer does."""
 
     __tablename__ = "eval_alert"
-    __table_args__ = (Index("eval_alert_open_idx", "deployment_id", "evaluator", "kind", "resolved_at"),)
+    __table_args__ = (
+        Index("eval_alert_open_idx", "deployment_id", "evaluator", "kind", "resolved_at"),
+        # one open alert per rule, however many scoring tasks and pods see it break at once
+        Index(
+            "eval_alert_one_open",
+            "deployment_id",
+            "evaluator",
+            "kind",
+            unique=True,
+            sqlite_where=text("resolved_at IS NULL"),
+            postgresql_where=text("resolved_at IS NULL"),
+        ),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
     deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))

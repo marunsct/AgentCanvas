@@ -102,6 +102,8 @@ async def test_pairwise_in_experiments(app, api_client, judge):
     assert (v1["better"]["mean"], draft["better"]["mean"]) == (1.0, 0.0)
     assert draft["better"]["ci"] == [0.0, 0.0] and v1["both"]["ci"] is None
     assert draft["both"]["mean"] == 0.5 and v1["both"]["mean"] == 0.8333  # Cy expects "Hi Cy"
+    for target, by_name in zip(exp["summary"], (v1, draft), strict=True):  # a pairwise loss is not a failed answer
+        assert target["pass_rate"] == by_name["both"]["pass_rate"]
     results = (await api_client.get(f"/v1/experiments/{exp['id']}/results")).json()
     verdicts = [s for res in results for s in res["scores"] if s["evaluator"] == "better"]
     assert len(verdicts) == 2 * len(EXAMPLES) and all("house greeting" in s["comment"] for s in verdicts)

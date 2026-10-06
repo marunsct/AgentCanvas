@@ -28,6 +28,7 @@ from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.types import REPLAYABLE
 
 MAX_EXAMPLES = 10_000
 
@@ -305,7 +306,7 @@ class DatasetService:
             run = runs.get(rid)
             if run is None:
                 raise NotFound(f"run '{rid}' not found in this workflow")
-            if not run.recording:
+            if not run.recording or run.recording.get("status") not in REPLAYABLE:
                 raise InvalidInput(f"run '{rid}' has no recorded input (only new runs that finished or paused do)")
             examples.append(
                 Example(

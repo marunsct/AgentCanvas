@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Annotation, AnnotationItem, AnnotationQueue, RunScore
-from agentcanvas.errors import InvalidInput
+from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
 
@@ -118,6 +118,8 @@ async def submit(
     """Record (or replace) a reviewer's annotation, mirror it as run scores and mark the item done when enough
     people reviewed it. Commits."""
     check_scores(queue.rubric, scores)
+    # reviews of one item are counted one at a time, so two at once cannot both see themselves alone
+    await s.execute(select(AnnotationItem.id).where(AnnotationItem.id == item.id).with_for_update())
     a = await s.scalar(select(Annotation).where(Annotation.item_id == item.id, Annotation.reviewer == reviewer))
     if a is None:
         a = Annotation(id=new_id("ann"), item_id=item.id, reviewer=reviewer, scores=scores, comment=comment)
@@ -149,7 +151,11 @@ async def submit(
                 created_by=reviewer,
             )
         )
-    await s.flush()
+    try:
+        await s.flush()
+    except IntegrityError:  # the same reviewer, twice at once
+        await s.rollback()
+        raise Conflict("this review is being saved already; reload the item") from None
     reviewed = await s.scalar(select(func.count()).select_from(Annotation).where(Annotation.item_id == item.id))
     item.status = "done" if (reviewed or 0) >= queue.reviewers_per_item else "pending"
     await s.commit()

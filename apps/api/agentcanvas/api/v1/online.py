@@ -16,6 +16,7 @@ from agentcanvas.db.models import Deployment, EvalAlert, Evaluator, OnlineEvalua
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.evaluation import ONLY_IN_EXPERIMENTS
 from agentcanvas.ids import new_id
+from agentcanvas.services import online as online_svc
 from agentcanvas.services.online import buckets
 
 router = APIRouter(tags=["online evaluation"])
@@ -185,6 +186,9 @@ async def update_online(oev_id: str, body: OnlinePatch, session: AsyncSession = 
         elif field in ("sampling", "window_minutes", "min_samples") and value is None:
             continue
         setattr(o, field, value)
+    off = tuple(k for k, f in (("below", "alert_below"), ("drop", "alert_drop")) if getattr(o, f) is None)
+    if off:  # a rule turned off has nothing left to alert on
+        await online_svc.resolve(session, o.deployment_id, name, off)
     await session.commit()
     await session.refresh(o)
     return _out(o, name)
@@ -192,7 +196,8 @@ async def update_online(oev_id: str, body: OnlinePatch, session: AsyncSession = 
 
 @router.delete("/online-evaluators/{oev_id}", status_code=204)
 async def delete_online(oev_id: str, session: AsyncSession = Depends(get_session)) -> Response:
-    o, _ = await _online(session, oev_id)
+    o, name = await _online(session, oev_id)
+    await online_svc.resolve(session, o.deployment_id, name)  # nothing watches them any more
     await session.delete(o)
     await session.commit()
     return Response(status_code=204)

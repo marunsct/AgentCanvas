@@ -93,7 +93,44 @@ async def test_drift_opens_and_resolves_an_alert(app, api_client):
     assert resolved["resolved_at"] is not None
     await app.state.online.report()
     assert gauge._value.get() == 0
-    _ = oev
+
+    await set_greeting(api_client, wf, "Hey")  # it regresses again, then nobody watches it any more
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    for who in ("Ha", "Io", "Ju", "Ka", "Lu", "Mo"):
+        await call(app, api_client, dep, key, who)
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+    assert (await api_client.delete(f"/v1/online-evaluators/{oev['id']}")).status_code == 204
+    assert (await api_client.get(f"/v1/workflows/{wf}/alerts")).json() == []  # resolved with its evaluator
+    assert await app.state.online.report() == set()
+
+
+async def test_one_open_alert_per_rule(app, api_client):
+    """Several scoring tasks (or pods) seeing the same rule break at once open one alert between them."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from agentcanvas.db.models import OnlineEvaluator
+
+    wf, dep, key, ev = await deployed(api_client)
+    url = f"/v1/deployments/{dep}/online-evaluators"
+    oev = (await api_client.post(url, json={"evaluator_id": ev["id"], "min_samples": 1})).json()
+    await set_greeting(api_client, wf, "Hey")
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    await call(app, api_client, dep, key)  # scores 0, no rule yet
+    await api_client.patch(f"/v1/online-evaluators/{oev['id']}", json={"alert_below": 0.5})
+    db, scorer = app.state.db, app.state.online
+    async with db.sessionmaker() as s:
+        online = await s.scalar(select(OnlineEvaluator).where(OnlineEvaluator.deployment_id == dep))
+    assert online is not None
+
+    async def check() -> None:
+        async with db.sessionmaker() as s:
+            await scorer.check_drift(s, online, "greets", wf)
+            await s.commit()
+
+    await asyncio.gather(*(check() for _ in range(4)))
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
 
 
 async def test_online_evaluators_are_org_scoped(app, api_client, org_b):  # noqa: F811

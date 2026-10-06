@@ -156,7 +156,9 @@ def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSumm
                     ci=confidence(values) if spec["kind"] == "pairwise" else None,
                 )
             )
-        passed = [all(s["passed"] for s in r.scores or []) for r in done]
+        # a pairwise verdict compares two targets: it says nothing about whether this target's answer passes
+        graded = {e["name"] for e in exp.evaluators if e["kind"] not in ONLY_IN_EXPERIMENTS}
+        passed = [all(s["passed"] for s in r.scores or [] if s["evaluator"] in graded) for r in done]
         latencies = [r.latency_ms for r in done if r.latency_ms is not None]
         out.append(
             TargetSummary(
@@ -165,7 +167,7 @@ def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSumm
                 examples=len(mine),
                 completed=len(done),
                 errors=sum(r.run_status != "success" for r in done),
-                pass_rate=round(sum(passed) / len(passed), 4) if passed and exp.evaluators else None,
+                pass_rate=round(sum(passed) / len(passed), 4) if passed and graded else None,
                 evaluators=evaluators,
                 latency_p50_ms=_percentile(latencies, 0.5),
                 latency_p95_ms=_percentile(latencies, 0.95),

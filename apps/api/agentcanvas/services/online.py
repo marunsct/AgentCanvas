@@ -20,9 +20,10 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
-from agentcanvas.db.models import EvalAlert, Evaluator, OnlineEvaluator, RunScore, WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import EvalAlert, Evaluator, OnlineEvaluator, Run, RunScore, WorkflowRow, WorkflowVersion
 from agentcanvas.evaluation import Observation, score, spec_of, trajectory_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -50,13 +51,17 @@ def matches(flt: dict[str, Any], status: str, labels: dict[str, str]) -> bool:
     return all(labels.get(k) == v for k, v in (flt.get("metadata") or {}).items())
 
 
-def observation(h: Any, status: str, error: str | None) -> Observation:
+def observation(h: Any, status: str, error: str | None, input: dict[str, Any] | None = None) -> Observation:
     output: dict[str, Any] = {}
     for ev in h.events:
         if ev["type"] == "RUN_FINISHED":
             output = ev.get("output") or {}
     return Observation(
-        input=h.input or {}, output=output, trajectory=trajectory_of(h.events), status=status, error=error
+        input=input if input is not None else h.input or {},
+        output=output,
+        trajectory=trajectory_of(h.events),
+        status=status,
+        error=error,
     )
 
 
@@ -67,6 +72,18 @@ def judge_cost(usage: dict[str, dict[str, int]]) -> tuple[int, float]:
         tokens += t_in + t_out
         cost += price(model, t_in, t_out) or 0.0
     return tokens, round(cost, 6)
+
+
+async def resolve(s: Any, deployment_id: str, evaluator: str, kinds: tuple[str, ...] = ("below", "drop")) -> None:
+    """Resolve the open alerts of these rules (their online evaluator was removed, or the rule turned off)."""
+    await s.execute(
+        update(EvalAlert)
+        .where(
+            EvalAlert.deployment_id == deployment_id, EvalAlert.evaluator == evaluator, EvalAlert.kind.in_(kinds),
+            EvalAlert.resolved_at.is_(None),
+        )
+        .values(resolved_at=datetime.now(UTC))
+    )  # fmt: skip
 
 
 def _utc(t: datetime) -> datetime:
@@ -105,6 +122,7 @@ class OnlineScorer:
         from agentcanvas import observability
 
         async with self.db.sessionmaker() as s:
+            await self._resolve_orphans(s)
             q = select(EvalAlert.deployment_id, EvalAlert.evaluator, EvalAlert.kind).where(
                 EvalAlert.resolved_at.is_(None)
             )
@@ -116,10 +134,23 @@ class OnlineScorer:
         self._reported |= open_now
         return open_now
 
+    async def _resolve_orphans(self, s: Any) -> None:
+        """Resolve open alerts no online evaluator watches any more (its evaluator was renamed or deleted)."""
+        watched = select(OnlineEvaluator.deployment_id, Evaluator.name).join(
+            Evaluator, Evaluator.id == OnlineEvaluator.evaluator_id
+        )
+        pairs = {(d, n) for d, n in (await s.execute(watched)).all()}
+        q = select(EvalAlert).where(EvalAlert.resolved_at.is_(None))
+        orphans = [a for a in (await s.scalars(q)).all() if (a.deployment_id, a.evaluator) not in pairs]
+        for a in orphans:
+            a.resolved_at = datetime.now(UTC)
+        if orphans:
+            await s.commit()
+
     async def on_run_finished(self, h: Any, status: str, error: str | None, _interrupts: list[dict[str, Any]]) -> None:
         """Runner finish hook: schedule the scoring and return at once."""
-        if h.deployment_id is None or h.origin == "test":
-            return
+        if h.deployment_id is None or h.origin == "test" or h.drained or h.superseded:
+            return  # a run stopped for a hand-over is scored once, when its continuation finishes
         task = asyncio.create_task(self._score(h, status, error), name=f"online-score:{h.run_id}")
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
@@ -153,6 +184,17 @@ class OnlineScorer:
         from agentcanvas.services.projects import PROJECT_OF
 
         async with self.db.sessionmaker() as s:
+            input, labels = h.input, h.labels
+            if input is None:  # a resume or hand-over continues the thread's last fresh run: score with its input
+                q0 = (
+                    select(Run.recording, Run.labels)
+                    .where(Run.thread_id == h.thread_id, Run.id != h.run_id, Run.recording.is_not(None))
+                    .order_by(Run.started_at.desc())
+                    .limit(1)
+                )
+                first = (await s.execute(q0)).first()
+                input = ((first[0] or {}).get("input") if first else None) or {}
+                labels = labels or (first[1] if first else None) or {}
             q = (
                 select(OnlineEvaluator, Evaluator)
                 .join(Evaluator, Evaluator.id == OnlineEvaluator.evaluator_id)
@@ -162,7 +204,7 @@ class OnlineScorer:
             chosen = [
                 (o, e)
                 for o, e in (await s.execute(q)).all()
-                if matches(o.filter or {}, status, h.labels) and sampled(h.run_id, o.id, o.sampling)
+                if matches(o.filter or {}, status, labels) and sampled(h.run_id, o.id, o.sampling)
             ]
             if not chosen:
                 return []
@@ -173,7 +215,7 @@ class OnlineScorer:
             wf = Workflow.model_validate(version.ir)
             PROJECT_OF[wf.id] = row.project_id
             siblings = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == h.workflow_id))).all()
-        obs = observation(h, status, error)
+        obs = observation(h, status, error, input)
         out: list[RunScore] = []
         for _, e in chosen:
             usage: dict[str, dict[str, int]] = {}
@@ -255,19 +297,22 @@ class OnlineScorer:
             )  # fmt: skip
             current = await s.scalar(q.limit(1))
             if broken and current is None:
-                s.add(
-                    EvalAlert(
-                        id=new_id("alr"),
-                        workflow_id=workflow_id,
-                        deployment_id=online.deployment_id,
-                        evaluator=evaluator,
-                        kind=kind,
-                        message=message,
-                        value=round(mean, 4),
-                        baseline=None if baseline is None else round(baseline, 4),
-                        created_at=now,
-                    )
+                alert = EvalAlert(
+                    id=new_id("alr"),
+                    workflow_id=workflow_id,
+                    deployment_id=online.deployment_id,
+                    evaluator=evaluator,
+                    kind=kind,
+                    message=message,
+                    value=round(mean, 4),
+                    baseline=None if baseline is None else round(baseline, 4),
+                    created_at=now,
                 )
+                try:
+                    async with s.begin_nested():  # another task or pod may open the same alert at once
+                        s.add(alert)
+                except IntegrityError:
+                    continue
                 observability.EVAL_ALERTS.labels(kind=kind).inc()
                 log.warning("online.alert", deployment_id=online.deployment_id, evaluator=evaluator, kind=kind)
             elif not broken and current is not None:

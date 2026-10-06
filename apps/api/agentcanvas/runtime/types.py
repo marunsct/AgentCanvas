@@ -77,6 +77,9 @@ def interrupt_kind(payload: Any) -> InterruptKind:
     return "input"
 
 
+REPLAYABLE = ("success", "interrupted")  # run statuses whose recording is a full cassette (FR-X-13)
+
+
 def is_tool_recording(r: Any) -> bool:
     """A recorded tool call in a cassette's `mocks` ({"tool", "args", "output" | "error"}), as opposed to a model
     reply (FR-X-13; the adapter's `Resources.with_mocks` tells them apart the same way)."""

@@ -145,3 +145,15 @@ def test_replay_queue_prefers_matching_arguments():
     assert q.take("get", {"id": "2"}) == "two"  # reused: a resumed run replays from the start
     with pytest.raises(ToolException, match="no recorded output"):
         q.take("get", {"id": "7"})
+
+
+def test_a_failed_run_keeps_only_its_input():
+    """A fresh run that failed is not a cassette, but a reviewer can still see what it was asked (S13 review)."""
+    from types import SimpleNamespace
+
+    from agentcanvas.runtime.runner import _recording
+
+    h = SimpleNamespace(input={"who": "Ada"}, events=[])
+    assert _recording(h, "error") == {"input": {"who": "Ada"}, "status": "error"}  # type: ignore[arg-type]
+    assert _recording(h, "cancelled") is None  # type: ignore[arg-type]
+    assert _recording(SimpleNamespace(input=None, events=[]), "error") is None  # type: ignore[arg-type]

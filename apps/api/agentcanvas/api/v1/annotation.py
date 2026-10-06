@@ -332,6 +332,7 @@ async def annotate(
     item = await _item(s, item_id)
     queue = await _queue(s, item.queue_id)
     annotation.check_scores(queue.rubric, body.scores)
+    example: tuple[str, Example, str] | None = None
     if body.add_to_dataset is not None:
         ds = await s.get(Dataset, body.add_to_dataset.dataset_id)
         if ds is None or ds.workflow_id != queue.workflow_id:
@@ -341,12 +342,14 @@ async def annotate(
         if run is None or not run.recording or "input" not in run.recording:
             raise InvalidInput("this run has no recorded input to turn into an example")
         meta = {"run_id": item.run_id, "annotation_queue": queue.name, "reviewer": user.id}
-        example = Example(input=run.recording["input"], reference=body.add_to_dataset.reference, metadata=meta)
-        await DatasetService(s).add(ds.id, [example], f"corrected run {item.run_id} ({queue.name})", user.id)
+        corrected = Example(input=run.recording["input"], reference=body.add_to_dataset.reference, metadata=meta)
+        example = (ds.id, corrected, f"corrected run {item.run_id} ({queue.name})")
     thread = await s.get(Thread, item.thread_id)
     await annotation.submit(
         s, queue, item, thread.deployment_id if thread else None, user.id, body.scores, body.comment
     )
+    if example is not None:  # after the review is saved: a refused review never leaves an example behind
+        await DatasetService(s).add(example[0], [example[1]], example[2], user.id)
     return await _detail(s, item, user.id)
 
 

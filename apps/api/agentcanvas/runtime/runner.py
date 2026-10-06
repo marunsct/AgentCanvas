@@ -29,7 +29,7 @@ from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime.tracing import trace_ref
-from agentcanvas.runtime.types import ResumeSpec, RunMode, RunSpec
+from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -64,9 +64,11 @@ class RunHandle:
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
     """The run as a cassette (FR-X-13): replaying its model replies and tool outputs should reproduce status, route
-    and output."""
-    if h.input is None or status not in ("success", "interrupted"):
+    and output. A fresh run that failed keeps only its input, so a reviewer can see it and correct it (S13)."""
+    if h.input is None:
         return None
+    if status not in REPLAYABLE:
+        return {"input": h.input, "status": status} if status == "error" else None
     mocks: dict[str, list[Any]] = {}
     route: list[str] = []
     output: dict[str, Any] = {}
