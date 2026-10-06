@@ -1940,7 +1940,9 @@
               "json_schema",
               "llm_judge",
               "trajectory",
-              "code"
+              "code",
+              "composite",
+              "pairwise"
             ],
             "title": "Kind",
             "type": "string"
@@ -2000,7 +2002,9 @@
               "json_schema",
               "llm_judge",
               "trajectory",
-              "code"
+              "code",
+              "composite",
+              "pairwise"
             ],
             "title": "Kind",
             "type": "string"
@@ -2087,6 +2091,21 @@
       },
       "EvaluatorSummary": {
         "properties": {
+          "ci": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "pairwise: 95% confidence interval of the win rate (the mean; ties count half)",
+            "title": "Ci"
+          },
           "evaluator": {
             "title": "Evaluator",
             "type": "string"
@@ -2531,6 +2550,14 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "pairwise": {
+            "description": "pairwise judges: each target's mean is its win rate against the first target",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pairwise",
+            "type": "array"
           },
           "split": {
             "anyOf": [

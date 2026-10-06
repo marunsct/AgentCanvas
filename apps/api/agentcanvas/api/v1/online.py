@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Deployment, EvalAlert, Evaluator, OnlineEvaluator, Run, RunScore
-from agentcanvas.errors import Conflict, NotFound
+from agentcanvas.errors import Conflict, InvalidInput, NotFound
+from agentcanvas.evaluation import ONLY_IN_EXPERIMENTS
 from agentcanvas.ids import new_id
 from agentcanvas.services.online import buckets
 
@@ -156,6 +157,8 @@ async def add_online(
     e = await session.get(Evaluator, body.evaluator_id)
     if e is None or e.workflow_id != dep.workflow_id:  # also keeps other organisations' evaluators out
         raise NotFound(f"evaluator '{body.evaluator_id}' not found")
+    if e.kind in ONLY_IN_EXPERIMENTS:
+        raise InvalidInput(f"a {e.kind} evaluator compares experiment targets; it cannot score single runs")
     o = OnlineEvaluator(
         id=new_id("oev"), deployment_id=dep.id, evaluator_id=e.id, sampling=body.sampling,
         filter=body.filter.model_dump(), alert_below=body.alert_below, alert_drop=body.alert_drop,

@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.db.models import Experiment, ExperimentResult, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unavailable
-from agentcanvas.evaluation import Observation, Score, Spec, score, trajectory_of
+from agentcanvas.evaluation import ONLY_IN_EXPERIMENTS, Observation, Score, Spec, pairwise, score, trajectory_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
@@ -106,6 +106,20 @@ class EvaluatorSummary(BaseModel):
     mean: float | None
     pass_rate: float | None
     scored: int
+    ci: list[float] | None = Field(
+        default=None, description="pairwise: 95% confidence interval of the win rate (the mean; ties count half)"
+    )
+
+
+def confidence(values: list[float]) -> list[float] | None:
+    """95% interval of a mean (normal approximation), clipped to 0-1."""
+    n = len(values)
+    if n < 2:
+        return None
+    mean = sum(values) / n
+    sd = math.sqrt(sum((v - mean) ** 2 for v in values) / (n - 1))
+    half = 1.96 * sd / math.sqrt(n)
+    return [round(max(0.0, mean - half), 4), round(min(1.0, mean + half), 4)]
 
 
 class TargetSummary(BaseModel):
@@ -137,6 +151,7 @@ def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSumm
                     mean=round(sum(values) / len(values), 4) if values else None,
                     pass_rate=round(sum(s["passed"] for s in scores) / len(scores), 4) if scores else None,
                     scored=len(values),
+                    ci=confidence(values) if spec["kind"] == "pairwise" else None,
                 )
             )
         passed = [all(s["passed"] for s in r.scores or []) for r in done]
@@ -411,7 +426,67 @@ class ExperimentJob:
             return
         if self.runner.draining:  # examples were refused while shutting down: leave them to the next instance
             return
+        if len(targets) > 1 and any(x.kind == "pairwise" for x in specs):
+            try:
+                await self._pairwise(exp_id, workflows[0], [x for x in specs if x.kind == "pairwise"], examples, gate)
+            except Exception as exc:
+                log.exception("experiment.pairwise_failed", experiment_id=exp_id)
+                await self._finish(exp_id, "error", f"pairwise judging: {type(exc).__name__}: {exc}"[:500])
+                return
         await self._finish(exp_id, "done")
+
+    async def _pairwise(
+        self,
+        exp_id: str,
+        wf: Workflow,
+        specs: list[Spec],
+        examples: dict[str, dict[str, Any]],
+        gate: asyncio.Semaphore,
+    ) -> None:
+        """Every target against the first, per example and pairwise judge: the target's result gets its score
+        against the first target, and the first target's result the opposite score (one per comparison)."""
+        async with self.db.sessionmaker() as s:
+            rows = (await s.scalars(select(ExperimentResult).where(ExperimentResult.experiment_id == exp_id))).all()
+        by_example: dict[str, dict[int, ExperimentResult]] = {}
+        for r in rows:
+            by_example.setdefault(r.example_id, {})[r.target] = r
+        added: dict[str, list[dict[str, Any]]] = {r.id: [] for r in rows}
+        complete = scorers(self.runner, wf)["complete"]
+
+        def observed(r: ExperimentResult) -> Observation:
+            status = r.run_status if r.status == "done" else "error"
+            return Observation(output=r.output or {}, status=status or "error", error=r.error)
+
+        async def judge(spec: Spec, ex_id: str, base: ExperimentResult, other: ExperimentResult) -> None:
+            async with gate:
+                example = examples.get(ex_id) or {}
+                sc = await pairwise(spec, example.get("input") or {}, observed(base), observed(other), complete)
+            added[other.id].append(sc.model_dump())
+            mirrored = None if sc.score is None else 1 - sc.score
+            added[base.id].append(
+                Score(evaluator=spec.name, score=mirrored, passed=mirrored is not None and mirrored >= 0.5,
+                      comment=sc.comment).model_dump()
+            )  # fmt: skip
+
+        await asyncio.gather(
+            *(
+                judge(spec, ex_id, by_target[0], r)
+                for spec in specs
+                for ex_id, by_target in by_example.items()
+                if 0 in by_target
+                for t, r in sorted(by_target.items())
+                if t > 0
+            )
+        )
+        names = {x.name for x in specs}
+        async with self.db.sessionmaker() as s:
+            for r in rows:
+                if added[r.id]:  # judged again after a takeover: the new verdicts replace any earlier ones
+                    kept = [x for x in r.scores or [] if x["evaluator"] not in names]
+                    await s.execute(
+                        update(ExperimentResult).where(ExperimentResult.id == r.id).values(scores=kept + added[r.id])
+                    )
+            await s.commit()
 
     async def _finish(self, exp_id: str, status: str, error: str | None = None) -> None:
         async with self.db.sessionmaker() as s:
@@ -453,7 +528,11 @@ class ExperimentJob:
         except Exception as exc:  # noqa: BLE001 - reported on the result
             # a run that never started fails every evaluator: leaving it unscored would let averages (and release
             # gates) skip exactly the examples the workflow cannot handle
-            failed = [Score(evaluator=x.name, score=0.0, passed=False, comment="the run did not start") for x in specs]
+            failed = [
+                Score(evaluator=x.name, score=0.0, passed=False, comment="the run did not start")
+                for x in specs
+                if x.kind not in ONLY_IN_EXPERIMENTS
+            ]
             await self._save(
                 result_id, status="done", run_status="error", error=f"could not start: {exc}"[:500],
                 scores=[f.model_dump() for f in failed],
@@ -486,7 +565,9 @@ class ExperimentJob:
             error=error,
         )
         tools = scorers(self.runner, wf)
-        scores: list[Score] = [await score(spec, obs, **tools) for spec in specs]
+        scores: list[Score] = [
+            await score(spec, obs, **tools) for spec in specs if spec.kind not in ONLY_IN_EXPERIMENTS
+        ]
         await self._save(
             result_id,
             status="done",

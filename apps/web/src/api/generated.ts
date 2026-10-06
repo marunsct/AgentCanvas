@@ -318,7 +318,7 @@ export type Removed = string[];
 export type Summary1 = string;
 export type Workflow = FieldChange[];
 export type Enabled = boolean;
-export type Kind3 = "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code";
+export type Kind3 = "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code" | "composite" | "pairwise";
 export type Name17 = string;
 /**
  * passes at score >= threshold
@@ -327,7 +327,7 @@ export type Threshold = number | null;
 export type CreatedAt8 = string;
 export type EffectiveThreshold = number;
 export type Id19 = string;
-export type Kind4 = "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code";
+export type Kind4 = "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code" | "composite" | "pairwise";
 export type Name18 = string;
 /**
  * passes at score >= threshold
@@ -339,6 +339,10 @@ export type Config4 = {
 } | null;
 export type Name19 = string | null;
 export type Threshold2 = number | null;
+/**
+ * pairwise: 95% confidence interval of the win rate (the mean; ties count half)
+ */
+export type Ci = number[] | null;
 export type Evaluator2 = string;
 export type Mean1 = number | null;
 export type PassRate1 = number | null;
@@ -420,6 +424,10 @@ export type Error1 = string | null;
 export type Evaluators = string[];
 export type Id21 = string;
 export type Name21 = string;
+/**
+ * pairwise judges: each target's mean is its win rate against the first target
+ */
+export type Pairwise = string[];
 export type Split3 = string | null;
 export type Status4 = string;
 export type Completed = number;
@@ -2371,6 +2379,7 @@ export interface EvaluatorPatch {
  * via the `definition` "EvaluatorSummary".
  */
 export interface EvaluatorSummary {
+  ci?: Ci;
   evaluator: Evaluator2;
   mean: Mean1;
   pass_rate: PassRate1;
@@ -2482,6 +2491,7 @@ export interface ExperimentOut {
   evaluators: Evaluators;
   id: Id21;
   name: Name21;
+  pairwise?: Pairwise;
   split: Split3;
   status: Status4;
   summary: Summary2;

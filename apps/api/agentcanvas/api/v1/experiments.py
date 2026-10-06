@@ -11,12 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
-from agentcanvas.api.v1.evaluators import spec
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
-from agentcanvas.evaluation import Score
+from agentcanvas.evaluation import Score, spec_of
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.datasets import DatasetService
 from agentcanvas.services.experiments import (
@@ -60,6 +59,9 @@ class ExperimentOut(BaseModel):
     split: str | None
     targets: list[TargetOut]
     evaluators: list[str]
+    pairwise: list[str] = Field(
+        default_factory=list, description="pairwise judges: each target's mean is its win rate against the first target"
+    )
     concurrency: int
     status: str
     error: str | None
@@ -92,7 +94,9 @@ def _out(exp: Experiment, results: list[ExperimentResult]) -> ExperimentOut:
         id=exp.id, workflow_id=exp.workflow_id, name=exp.name, dataset_id=exp.dataset_id,
         dataset_version=exp.dataset_version, split=exp.split,
         targets=[TargetOut(label=t["label"], version=t["version"], overrides=t["overrides"]) for t in exp.targets],
-        evaluators=[e["name"] for e in exp.evaluators], concurrency=exp.concurrency, status=exp.status,
+        evaluators=[e["name"] for e in exp.evaluators],
+        pairwise=[e["name"] for e in exp.evaluators if e["kind"] == "pairwise"], concurrency=exp.concurrency,
+        status=exp.status,
         error=exp.error, created_at=exp.created_at, ended_at=exp.ended_at, summary=summary(exp, results),
     )  # fmt: skip
 
@@ -148,7 +152,7 @@ async def start_experiment(
         raise NotFound(f"dataset '{body.dataset_id}' not found")
     version = await datasets.version(ds.id, body.dataset_version)
     q = select(Evaluator).where(Evaluator.workflow_id == wf_id).order_by(Evaluator.created_at, Evaluator.id)
-    evaluators = list((await session.scalars(q)).all())
+    evaluators = everything = list((await session.scalars(q)).all())
     if body.evaluator_ids is not None:
         known = {e.id: e for e in evaluators}
         if missing := [i for i in body.evaluator_ids if i not in known]:
@@ -163,7 +167,7 @@ async def start_experiment(
         split=body.split,
         examples=version.examples,
         targets=targets,
-        evaluators=[spec(e) for e in evaluators],
+        evaluators=[spec_of(e, everything) for e in evaluators],
         concurrency=body.concurrency,
         created_by=user.id,
         workspace_commit=await workspace_commit(request, session, wf_id),

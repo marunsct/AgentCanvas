@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult, ReleaseGate
 from agentcanvas.errors import Forbidden
-from agentcanvas.evaluation import DEFAULT_THRESHOLD, Spec
+from agentcanvas.evaluation import DEFAULT_THRESHOLD, ONLY_IN_EXPERIMENTS, Spec, spec_of
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.datasets import DatasetService
@@ -52,14 +52,14 @@ async def guard(
         raise Forbidden(f"{what} is used by the '{environment}' release gate; only an admin can change it")
 
 
-def _spec(e: Evaluator) -> dict[str, Any]:
-    return Spec(name=e.name, kind=e.kind, config=e.config, threshold=e.threshold).model_dump()  # type: ignore[arg-type]
+def _spec(e: Evaluator, siblings: list[Evaluator]) -> dict[str, Any]:
+    return spec_of(e, siblings).model_dump()
 
 
 def snapshot(evaluators: list[Evaluator], min_scores: dict[str, float]) -> list[dict[str, Any]]:
     """The evaluator specs a gate keeps: those it names, or every evaluator of the workflow."""
     by_name = {e.name: e for e in evaluators}
-    return [_spec(by_name[n]) for n in (list(min_scores) or list(by_name)) if n in by_name]
+    return [_spec(by_name[n], evaluators) for n in (list(min_scores) or list(by_name)) if n in by_name]
 
 
 async def _reuse(
@@ -112,7 +112,7 @@ async def evaluate(
                 return Check(
                     name="evaluation", ok=False, detail=f"the gate names evaluators that no longer exist: {gone}"
                 )
-            specs = [_spec(by_name[n]) for n in names]
+            specs = [_spec(by_name[n], list(evaluators)) for n in names]
         if not names:
             return Check(name="evaluation", ok=False, detail="the release gate needs at least one evaluator")
         minimums = {
@@ -125,14 +125,21 @@ async def evaluate(
         number, examples = version.number, version.examples
         environment, max_regression = gate.environment, gate.max_regression
         regression = gate.max_regression is not None and live is not None
-        found = await _reuse(s, gate, number, specs, ir_hash(candidate), commit)
-        before = await _reuse(s, gate, number, specs, ir_hash(live[0]), commit) if regression and live else None
+        # a pairwise judge compares the candidate with the live version in one experiment: nothing is reused
+        pairwise = [x["name"] for x in specs if x["kind"] in ONLY_IN_EXPERIMENTS]
+        paired = bool(pairwise) and live is not None
+        found = None if paired else await _reuse(s, gate, number, specs, ir_hash(candidate), commit)
+        before = (
+            await _reuse(s, gate, number, specs, ir_hash(live[0]), commit)
+            if regression and live and not paired
+            else None
+        )
         targets: list[dict[str, Any]] = []
         exp_id = ""
         if found is None:
             targets.append({"label": "candidate", "version": None, "version_id": None, "overrides": {},
                             "ir": candidate.model_dump(mode="json")})  # fmt: skip
-        if regression and live and before is None:
+        if (regression or paired) and live and before is None:
             targets.append({"label": f"v{live[2]} (live)", "version": live[2], "version_id": live[1], "overrides": {},
                             "ir": live[0].model_dump(mode="json")})  # fmt: skip
         if targets:
@@ -162,9 +169,13 @@ async def evaluate(
     if found.completed < found.examples:
         failures.append(f"only {found.completed} of {found.examples} example(s) finished")
     for name in names:
+        if name in pairwise and not paired:
+            notes.append(f"{name}: no live version to compare with")
+            continue
         mean = next((e.mean for e in found.evaluators if e.evaluator == name), None)
         minimum = minimums[name]
-        line = f"{name}: mean {mean if mean is not None else '—'} (needs {minimum:g})"
+        what = "win rate vs live" if name in pairwise else "mean"
+        line = f"{name}: {what} {mean if mean is not None else '—'} (needs {minimum:g})"
         (failures if mean is None or mean < minimum else notes).append(line)
     if regression and before is not None and live is not None:
         now, was = found.pass_rate or 0.0, before.pass_rate or 0.0

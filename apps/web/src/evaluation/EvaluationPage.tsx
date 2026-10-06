@@ -205,6 +205,7 @@ function Evaluators({ wfId }: { wfId: string }) {
             <select aria-label="evaluator kind" value={kind} onChange={(e) => { setKind(e.target.value); setConfig(JSON.stringify(KIND_CONFIG[e.target.value])); }}>
               <option value="exact">exact match</option><option value="regex">regex</option><option value="json_schema">JSON Schema</option>
               <option value="llm_judge">LLM judge</option><option value="trajectory">tool trajectory</option><option value="code">workspace code</option>
+              <option value="composite">composite</option><option value="pairwise">pairwise judge</option>
             </select>
             <input aria-label="threshold" placeholder="pass at (default)" value={threshold} onChange={(e) => setThreshold(e.target.value)} style={{ width: 120 }} />
             <button type="submit" disabled={create.isPending}>Add evaluator</button>
@@ -366,6 +367,7 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
   const [diffOf, setDiffOf] = useState<string | null>(null);
   if (!results.data) return <QueryStatus q={results} what="results" />;
   const rows = grid(results.data, exp.targets.length);
+  const pairwise = new Set(exp.pairwise ?? []);
   const diffRow = diffOf ? rows.find((r) => r.exampleId === diffOf) : undefined;
   return (
     <div className="results" data-testid="results">
@@ -379,7 +381,11 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
             {exp.summary.map((s) => (
               <td key={s.target}>
                 <b>{pct(s.pass_rate)}</b> · {s.latency_p50_ms ?? "—"}/{s.latency_p95_ms ?? "—"} ms · ${s.cost_usd.toFixed(4)}
-                <div>{s.evaluators.map((e) => <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>{e.evaluator} {fmt(e.mean)}</span>)}</div>
+                <div>{s.evaluators.map((e) => pairwise.has(e.evaluator)
+                  ? <span key={e.evaluator} className="badge" title={`win rate vs ${exp.summary[0]?.label} (ties count half), 95% interval`} data-testid="win-rate">
+                      {e.evaluator} {s.target === 0 ? "baseline" : `wins ${pct(e.mean)}`}{e.ci && ` (${pct(e.ci[0])}–${pct(e.ci[1])})`}
+                    </span>
+                  : <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>{e.evaluator} {fmt(e.mean)}</span>)}</div>
               </td>
             ))}
           </tr>

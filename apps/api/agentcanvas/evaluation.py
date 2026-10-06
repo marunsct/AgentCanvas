@@ -11,6 +11,11 @@ Each evaluator turns an `Observation` (the example's input and reference, and wh
 | `llm_judge` | `model`, `rubric`, `channels` | the judge model's 0-1 grade, with its reasoning |
 | `trajectory` | `mode`: strict / unordered / subset | 1 when the run's tool calls match the example's |
 | `code` | `function`: `scripts.<module>:<fn>` | what the workspace function returns |
+| `composite` | `evaluators`, `mode`: weighted / all / any, `weights` | their weighted mean, or 1 when all / any pass |
+| `pairwise` | `model`, `rubric`, `channels` | experiments only: each target against the first, see `pairwise` |
+
+A composite scores its parts itself (their specs are resolved into its config by `spec_of`), so it needs no
+other evaluator to run first; parts that cannot score are left out of a weighted mean.
 
 Evaluators never raise: a broken evaluator scores None with the reason in its comment, so one bad evaluator
 cannot fail a whole experiment. The model call and the workspace function come from the framework adapter.
@@ -34,8 +39,9 @@ from agentcanvas import safe_regex
 from agentcanvas.errors import InvalidInput
 from agentcanvas.registry import default_registry
 
-Kind = Literal["exact", "regex", "json_schema", "llm_judge", "trajectory", "code"]
-DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7}
+Kind = Literal["exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise"]
+DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7, "composite": 0.7, "pairwise": 0.5}
+ONLY_IN_EXPERIMENTS = ("pairwise",)
 JUDGE_TIMEOUT_S = 60.0
 
 
@@ -68,6 +74,19 @@ class CodeConfig(BaseModel):
     function: str = Field(description="scripts.<module>:<function>, (sample) -> {score, comment}")
 
 
+class CompositeConfig(BaseModel):
+    evaluators: list[str] = Field(min_length=1, max_length=20, description="the workflow's evaluators it combines")
+    mode: Literal["weighted", "all", "any"] = "weighted"
+    weights: dict[str, float] = Field(default_factory=dict, description="weighted: name -> weight (default 1)")
+    parts: list[dict[str, Any]] | None = Field(default=None, description="resolved specs (set by the server)")
+
+
+class PairwiseConfig(BaseModel):
+    model: str
+    rubric: str = Field(min_length=1, description="what makes one output better than the other")
+    channels: list[str] | None = Field(default=None, description="output channels the judge sees (default: all)")
+
+
 CONFIGS: dict[str, type[BaseModel]] = {
     "exact": ExactConfig,
     "regex": RegexConfig,
@@ -75,6 +94,8 @@ CONFIGS: dict[str, type[BaseModel]] = {
     "llm_judge": JudgeConfig,
     "trajectory": TrajectoryConfig,
     "code": CodeConfig,
+    "composite": CompositeConfig,
+    "pairwise": PairwiseConfig,
 }
 
 
@@ -94,8 +115,18 @@ def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
             Draft202012Validator.check_schema(parsed.schema_)
         except SchemaError as exc:
             raise InvalidInput(f"json_schema evaluator: invalid schema: {exc.message}") from None
-    elif isinstance(parsed, JudgeConfig) and default_registry().model(parsed.model) is None:
-        raise InvalidInput(f"llm_judge evaluator: '{parsed.model}' is not a model in the catalog")
+    elif isinstance(parsed, JudgeConfig | PairwiseConfig) and default_registry().model(parsed.model) is None:
+        raise InvalidInput(f"{kind} evaluator: '{parsed.model}' is not a model in the catalog")
+    elif isinstance(parsed, CompositeConfig):
+        parsed.parts = None
+        if len(set(parsed.evaluators)) != len(parsed.evaluators):
+            raise InvalidInput("composite evaluator: each evaluator once")
+        if extra := sorted(set(parsed.weights) - set(parsed.evaluators)):
+            raise InvalidInput(f"composite evaluator: weights for evaluators it does not combine: {extra}")
+        if any(w < 0 for w in parsed.weights.values()) or not any(
+            parsed.weights.get(n, 1.0) > 0 for n in parsed.evaluators
+        ):
+            raise InvalidInput("composite evaluator: weights are positive (or 0 to leave one out)")
     elif isinstance(parsed, CodeConfig) and not re.fullmatch(r"scripts(\.\w+)+:\w+", parsed.function):
         raise InvalidInput("code evaluator: the function must be 'scripts.<module>:<function>' in the workspace")
     return parsed.model_dump(by_alias=True, exclude_none=True)
@@ -123,6 +154,16 @@ class Spec(BaseModel):
     kind: Kind
     config: dict[str, Any] = Field(default_factory=dict)
     threshold: float | None = None
+
+
+def spec_of(e: Any, siblings: Any = ()) -> Spec:
+    """The spec of evaluator `e` (anything with name, kind, config, threshold); a composite gets its parts' specs,
+    looked up by name among `siblings` (the workflow's evaluators), so it scores on its own."""
+    config = dict(e.config or {})
+    if e.kind == "composite":
+        by_name = {x.name: x for x in siblings}
+        config["parts"] = [spec_of(by_name[n]).model_dump() for n in config.get("evaluators", []) if n in by_name]
+    return Spec(name=e.name, kind=e.kind, config=config, threshold=e.threshold)
 
 
 # (system, prompt, model) -> reply text;  (import path) -> async (sample) -> dict
@@ -206,6 +247,10 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
             reply = await asyncio.wait_for(complete(JUDGE_SYSTEM, prompt, cfg.model), JUDGE_TIMEOUT_S)
             value, reasoning = _grade(reply)
             return done(value, reasoning)
+        if isinstance(cfg, CompositeConfig):
+            return await _composite(cfg, obs, complete, script, done)
+        if isinstance(cfg, PairwiseConfig):
+            return done(None, "a pairwise judge compares two experiment targets: it scores in experiments only")
         assert isinstance(cfg, CodeConfig)
         if script is None:
             return done(None, "workspace code is not available here")
@@ -215,6 +260,73 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
         return done(None if out.get("score") is None else float(out["score"]), str(out.get("comment") or ""))
     except Exception as exc:  # noqa: BLE001 - an evaluator that breaks scores None, it never stops an experiment
         return done(None, f"{type(exc).__name__}: {exc}"[:500])
+
+
+async def _composite(
+    cfg: CompositeConfig, obs: Observation, complete: Complete | None, script: Script | None, done: Any
+) -> Score:
+    parts = {p["name"]: Spec(**p) for p in cfg.parts or []}
+    if missing := [n for n in cfg.evaluators if n not in parts]:
+        return done(None, f"no longer an evaluator of the workflow: {', '.join(missing)}")
+    if any(p.kind in ("composite", *ONLY_IN_EXPERIMENTS) for p in parts.values()):
+        return done(None, "a composite combines plain evaluators only")
+    scores = {n: await score(parts[n], obs, complete, script) for n in cfg.evaluators}
+    summary = ", ".join(f"{n} {'—' if s.score is None else f'{s.score:.2f}'}" for n, s in scores.items())
+    if cfg.mode == "all":
+        return done(float(all(s.passed for s in scores.values())), summary)
+    if cfg.mode == "any":
+        return done(float(any(s.passed for s in scores.values())), summary)
+    weighted = [(cfg.weights.get(n, 1.0), s.score) for n, s in scores.items() if s.score is not None]
+    total = sum(w for w, _ in weighted)
+    if not total:
+        return done(None, f"none of its evaluators scored ({summary})")
+    return done(sum(w * v for w, v in weighted) / total, summary)
+
+
+PAIRWISE_SYSTEM = (
+    "You compare two outputs of an AI workflow for the same input against a rubric. Reply with JSON only: "
+    '{"winner": "A" | "B" | "tie", "reasoning": "<one or two sentences>"}.'
+)
+
+
+async def pairwise(spec: Spec, input: dict[str, Any], a: Observation, b: Observation, complete: Complete) -> Score:
+    """How `b` fares against `a` (1 better, 0.5 as good, 0 worse), judged twice with the outputs in swapped places so
+    a judge's preference for a position cancels out: the two verdicts are averaged. A run that failed loses to one
+    that succeeded without asking the judge."""
+
+    def verdict(value: float | None, comment: str) -> Score:
+        return Score(evaluator=spec.name, score=value, passed=value is not None and value >= 0.5, comment=comment)
+
+    ok_a, ok_b = a.status == "success", b.status == "success"
+    if not (ok_a and ok_b):
+        value = 0.5 if ok_a == ok_b else float(ok_b)
+        return verdict(value, "both runs failed" if not (ok_a or ok_b) else "only one run succeeded")
+    try:
+        cfg = PairwiseConfig.model_validate(spec.config)
+
+        def shown(o: Observation) -> str:
+            return _text({k: v for k, v in o.output.items() if cfg.channels is None or k in cfg.channels})
+
+        async def ask(first: Observation, second: Observation) -> tuple[str, str]:
+            prompt = (
+                f"Rubric:\n{cfg.rubric}\n\nInput:\n{_text(input)}\n\n"
+                f"Output A:\n{shown(first)}\n\nOutput B:\n{shown(second)}"
+            )
+            reply = await asyncio.wait_for(complete(PAIRWISE_SYSTEM, prompt, cfg.model), JUDGE_TIMEOUT_S)
+            match = re.search(r"\{.*\}", reply, re.S)
+            data = json.loads(match.group(0)) if match else {}
+            winner = str(data.get("winner", "")).strip().upper()
+            if winner not in ("A", "B", "TIE"):
+                raise ValueError(f"the judge named no winner: {reply[:200]!r}")
+            return winner, str(data.get("reasoning", ""))
+
+        (w1, r1), (w2, r2) = await asyncio.gather(ask(a, b), ask(b, a))
+        v1 = {"B": 1.0, "A": 0.0}.get(w1, 0.5)  # b was in place B
+        v2 = {"A": 1.0, "B": 0.0}.get(w2, 0.5)  # b was in place A
+        note = "" if v1 == v2 else "the verdicts disagreed when the outputs swapped places; "
+        return verdict((v1 + v2) / 2, f"{note}{r1}".strip()[:500] or r2[:500])
+    except Exception as exc:  # noqa: BLE001 - like every evaluator: None with the reason
+        return verdict(None, f"{type(exc).__name__}: {exc}"[:500])
 
 
 def trajectory_of(events: list[dict[str, Any]]) -> list[str]:

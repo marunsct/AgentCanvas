@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Evaluator, WorkflowRow
-from agentcanvas.errors import Conflict, NotFound
-from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, Spec, check_config, score
+from agentcanvas.errors import Conflict, InvalidInput, NotFound
+from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, check_config, score, spec_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services import gates
@@ -61,8 +61,22 @@ def _out(e: Evaluator) -> EvaluatorOut:
     )  # fmt: skip
 
 
-def spec(e: Evaluator) -> Spec:
-    return Spec(name=e.name, kind=e.kind, config=e.config, threshold=e.threshold)  # type: ignore[arg-type]
+async def siblings(session: AsyncSession, wf_id: str) -> list[Evaluator]:
+    q = select(Evaluator).where(Evaluator.workflow_id == wf_id).order_by(Evaluator.created_at, Evaluator.id)
+    return list((await session.scalars(q)).all())
+
+
+async def _check_parts(session: AsyncSession, wf_id: str, name: str, kind: str, config: dict[str, Any]) -> None:
+    """A composite combines other plain evaluators of the same workflow."""
+    if kind != "composite":
+        return
+    by_name = {e.name: e for e in await siblings(session, wf_id)}
+    for part in config["evaluators"]:
+        e = by_name.get(part)
+        if part == name or e is None:
+            raise InvalidInput(f"composite evaluator: '{part}' is not another evaluator of this workflow")
+        if e.kind in ("composite", "pairwise"):
+            raise InvalidInput(f"composite evaluator: '{part}' is a {e.kind} evaluator; combine plain ones")
 
 
 async def _get(session: AsyncSession, evaluator_id: str) -> Evaluator:
@@ -82,8 +96,7 @@ async def _commit(session: AsyncSession, name: str) -> None:
 
 @router.get("/workflows/{wf_id}/evaluators", response_model=list[EvaluatorOut])
 async def list_evaluators(wf_id: str, session: AsyncSession = Depends(get_session)) -> list[EvaluatorOut]:
-    q = select(Evaluator).where(Evaluator.workflow_id == wf_id).order_by(Evaluator.created_at, Evaluator.id)
-    return [_out(e) for e in (await session.scalars(q)).all()]
+    return [_out(e) for e in await siblings(session, wf_id)]
 
 
 @router.post("/workflows/{wf_id}/evaluators", response_model=EvaluatorOut, status_code=201)
@@ -93,9 +106,11 @@ async def create_evaluator(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> EvaluatorOut:
+    config = check_config(body.kind, body.config)
+    await _check_parts(session, wf_id, body.name, body.kind, config)
     e = Evaluator(
-        id=new_id("evl"), workflow_id=wf_id, name=body.name, kind=body.kind,
-        config=check_config(body.kind, body.config), threshold=body.threshold, created_by=user.id,
+        id=new_id("evl"), workflow_id=wf_id, name=body.name, kind=body.kind, config=config,
+        threshold=body.threshold, created_by=user.id,
     )  # fmt: skip
     session.add(e)
     await _commit(session, body.name)
@@ -110,7 +125,9 @@ async def update_evaluator(
     if body.name is not None:
         e.name = body.name
     if body.config is not None:
-        e.config = check_config(e.kind, body.config)
+        config = check_config(e.kind, body.config)
+        await _check_parts(session, e.workflow_id, e.name, e.kind, config)
+        e.config = config
     if "threshold" in body.model_fields_set:
         e.threshold = body.threshold
     await _commit(session, e.name)
@@ -130,9 +147,10 @@ async def try_evaluator(
 ) -> Score:
     """Score a hand-written observation (input, output, reference, trajectory) without running anything."""
     e = await _get(session, evaluator_id)
+    resolved = spec_of(e, await siblings(session, e.workflow_id))
     row = await session.get(WorkflowRow, e.workflow_id)
     assert row is not None
     wf = Workflow.model_validate(row.draft_ir)
     PROJECT_OF[wf.id] = row.project_id  # the judge's keys and workspace code come from this workflow's project
     await session.close()  # no connection held while a judge model answers
-    return await score(spec(e), body, **scorers(request.app.state.runner, wf))
+    return await score(resolved, body, **scorers(request.app.state.runner, wf))

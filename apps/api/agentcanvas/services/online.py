@@ -23,7 +23,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from agentcanvas.db.models import EvalAlert, Evaluator, OnlineEvaluator, RunScore, WorkflowRow, WorkflowVersion
-from agentcanvas.evaluation import Observation, Spec, score, trajectory_of
+from agentcanvas.evaluation import Observation, score, spec_of, trajectory_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
@@ -172,12 +172,12 @@ class OnlineScorer:
                 return []
             wf = Workflow.model_validate(version.ir)
             PROJECT_OF[wf.id] = row.project_id
+            siblings = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == h.workflow_id))).all()
         obs = observation(h, status, error)
         out: list[RunScore] = []
         for _, e in chosen:
             usage: dict[str, dict[str, int]] = {}
-            spec = Spec(name=e.name, kind=e.kind, config=e.config, threshold=e.threshold)  # type: ignore[arg-type]
-            sc = await score(spec, obs, **scorers(self.runner, wf, usage))
+            sc = await score(spec_of(e, siblings), obs, **scorers(self.runner, wf, usage))
             tokens, cost = judge_cost(usage)
             out.append(
                 RunScore(
