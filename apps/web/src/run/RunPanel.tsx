@@ -51,6 +51,7 @@ export function sampleInput(wf: WF): string {
 
 export function RunPanel() {
   const wf = useEditor((s) => s.wf);
+  const nodeName = (id: string) => wf?.nodes.find((n) => n.id === id)?.name ?? id;
   const errors = useEditor((s) => s.diagnostics.filter((d) => d.severity === "error").length);
   const busyEditing = useEditor((s) => s.pending.length > 0 || s.inflight);
   const breakpoints = useEditor((s) => s.breakpoints.length);
@@ -107,6 +108,17 @@ export function RunPanel() {
         <p className="small"><button type="button" className="link" onClick={() => void openTrace(run.runId!)}>Open trace in LangSmith ↗</button></p>
       )}
       {run.warnings.map((w, i) => <p key={i} className="warn-text">⚠ {w}</p>)}
+      {run.rubric.length > 0 && (
+        <ul className="rubric small" data-testid="rubric-rounds">
+          {run.rubric.map((r) => (
+            <li key={`${r.node}-${r.iteration}`} className={r.result === "satisfied" ? "ok-text" : r.result ? "warn-text" : "muted"}>
+              Rubric{r.node ? ` (${nodeName(r.node)})` : ""}, round {r.iteration + 1}: {r.result ? r.result.replace(/_/g, " ") : "grading…"}
+              {r.result && r.explanation && <span className="muted"> · {r.explanation}</span>}
+              {r.gaps.length > 0 && <ul>{r.gaps.map((g) => <li key={g}>{g}</li>)}</ul>}
+            </li>
+          ))}
+        </ul>
+      )}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}
       {!run.running && run.interrupts.map((intr) => (
         <DecisionCard key={intr.id} intr={intr} busy={!can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />

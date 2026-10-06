@@ -387,11 +387,17 @@ class Resources:
         return self._mcp[key]
 
     def middleware(
-        self, name: str, type_: str, config: dict[str, Any], *, models: Sequence[BaseChatModel] = ()
+        self,
+        name: str,
+        type_: str,
+        config: dict[str, Any],
+        *,
+        models: Sequence[BaseChatModel] = (),
+        tools: Sequence[Any] = (),
     ) -> AgentMiddleware:
         if name in self._overrides:
             return self._overrides[name]
-        return middleware(type_, config, models=models)
+        return middleware(type_, config, models=models, tools=tools)
 
     def _resolve(self, value: Any) -> Any:
         if isinstance(value, dict) and "$secret" in value:
@@ -543,7 +549,9 @@ def _set(config: dict[str, Any], *keys: str) -> dict[str, Any]:
 _RETRY_KEYS = ("max_retries", "on_failure", "backoff_factor", "initial_delay", "max_delay", "jitter")
 
 
-def middleware(type_: str, config: dict[str, Any], *, models: Sequence[BaseChatModel] = ()) -> Any:
+def middleware(
+    type_: str, config: dict[str, Any], *, models: Sequence[BaseChatModel] = (), tools: Sequence[Any] = ()
+) -> Any:
     """Build a LangChain agent middleware from a `mw.*` resource (spec doc 04 §5, M3-T12).
 
     Omitted options keep the upstream defaults (V-07 #9), e.g. ModelCallLimit exits with "end",
@@ -580,7 +588,48 @@ def middleware(type_: str, config: dict[str, Any], *, models: Sequence[BaseChatM
         return TodoListMiddleware()
     if type_ == "mw.tool_selector":
         return LLMToolSelectorMiddleware(model=models[0] if models else None, **_set(c, "max_tools", "always_include"))
+    if type_ == "mw.rubric":
+        if not models:
+            raise ValueError("a rubric needs a wired grader model")
+        return rubric_middleware(
+            c["rubric"], models[0], tools=tools, max_iterations=c.get("max_iterations", 3),
+            instructions=c.get("grader_instructions") or None,
+        )  # fmt: skip
     raise ValueError(f"unknown middleware type '{type_}'")
+
+
+def rubric_middleware(
+    rubric: str,
+    model: BaseChatModel,
+    *,
+    tools: Sequence[Any] = (),
+    max_iterations: int = 3,
+    instructions: str | None = None,
+) -> Any:
+    """deepagents `RubricMiddleware` with the rubric authored on the canvas (FR-EVAL-08).
+
+    Upstream grades only when the caller puts a `rubric` in the agent's input state; a canvas agent reads its
+    parent's `messages` alone, so this one supplies its own rubric when the state has none. Its grading events
+    (`rubric_evaluation_start` / `_end` on the custom stream) become `ac.rubric` events."""
+    from deepagents.middleware import RubricMiddleware
+
+    class CanvasRubric(RubricMiddleware):
+        def _with_rubric(self, state: Any) -> tuple[Any, dict[str, Any]]:
+            if state.get("rubric"):
+                return state, {}
+            return {**state, "rubric": rubric}, {"rubric": rubric}
+
+        def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+            state, extra = self._with_rubric(state)
+            return {**extra, **(super().before_agent(state, runtime) or {})} or None
+
+        async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+            state, extra = self._with_rubric(state)
+            return {**extra, **(await super().abefore_agent(state, runtime) or {})} or None
+
+    return CanvasRubric(
+        model=model, tools=list(tools) or None, max_iterations=max_iterations, system_prompt=instructions
+    )
 
 
 def _hitl(approve_tools: Sequence[str] | None) -> dict[str, Any]:

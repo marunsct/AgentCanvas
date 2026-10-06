@@ -569,3 +569,88 @@ async def test_research_template_equivalence(tmp_path):
 
     a, b = await both(wf, tmp_path, res, run)
     assert a == b and a[1] == ["/findings.md"]
+
+
+# --------------------------------------------------------------------------------------- rubric (S13) ----
+def grader_says(result: str, gap: str = "") -> Any:
+    criterion = {"name": "Names the city", "passed": not gap, **({"gap": gap} if gap else {})}
+    return tool_call("GraderResponse", {"result": result, "explanation": gap or "all good", "criteria": [criterion]})
+
+
+@pytest.mark.asyncio
+async def test_rubric_sends_the_answer_back_until_it_passes(tmp_path):
+    """FR-EVAL-08: the grader finds a gap, the agent revises, the grader is satisfied; ac.rubric events stream."""
+    from agentcanvas.adapters.langchain.events import translate
+
+    wf = agent_wf(
+        resources=[
+            ("grader", "model.chat", {"model": "fake:scripted"}),
+            ("rubric", "mw.rubric", {"rubric": "Names the city", "max_iterations": 3}),
+        ],
+        wiring=[("grader", "rubric", "model"), ("rubric", "agent", "middleware")],
+    )
+
+    def res():
+        return Resources(
+            overrides={
+                "model": scripted("It is in France.", "The capital is Paris."),
+                "grader": scripted(grader_says("needs_revision", "name the city"), grader_says("satisfied")),
+            }
+        )
+
+    async def run(graph):
+        events = []
+        out = None
+        async for part in graph.astream(
+            {"messages": [("user", "capital of France?")]}, cfg(), stream_mode=["custom", "values"],
+            subgraphs=True, version="v2",
+        ):  # fmt: skip
+            if part["type"] == "values" and not part["ns"]:
+                out = part["data"]
+            events += [e for e in translate(part, {"agent": "agent"}) if e.get("name") == "ac.rubric"]
+        assert out is not None
+        return last_text(out), [(e["value"]["phase"], e["value"].get("result"), e["canvas_node_id"]) for e in events]
+
+    a, b = await both(wf, tmp_path, res, run)
+    assert a == b
+    text, events = a
+    assert text == "The capital is Paris."
+    assert events == [
+        ("start", None, "agent"), ("end", "needs_revision", "agent"),
+        ("start", None, "agent"), ("end", "satisfied", "agent"),
+    ]  # fmt: skip
+    assert "tools=[" not in generate(wf).split("rubric = resources.middleware(")[1].split("\n")[0]
+
+
+def test_a_rubric_needs_a_grader_and_text():
+    no_grader = agent_wf(
+        resources=[("rubric", "mw.rubric", {"rubric": "x"})], wiring=[("rubric", "agent", "middleware")]
+    )
+    assert errors(no_grader)
+    no_text = agent_wf(
+        resources=[("grader", "model.chat", {"model": "fake:scripted"}), ("rubric", "mw.rubric", {})],
+        wiring=[("grader", "rubric", "model"), ("rubric", "agent", "middleware")],
+    )
+    assert errors(no_text)
+
+
+def test_rubric_rounds_are_kept_as_run_scores():
+    from types import SimpleNamespace
+
+    from agentcanvas.runtime.runner import rubric_scores
+
+    def end(i: int, result: str, criteria: list[dict]) -> dict:
+        value = {"phase": "end", "iteration": i, "result": result, "explanation": "e", "criteria": criteria}
+        return {"type": "CUSTOM", "name": "ac.rubric", "canvas_node_id": "agent", "value": value}
+
+    gap = [{"name": "Names the city", "passed": False, "gap": "name it"}]
+    h = SimpleNamespace(
+        run_id="run_1", thread_id="th_1", workflow_id="wf_1", deployment_id=None,
+        events=[{"type": "CUSTOM", "name": "ac.rubric", "value": {"phase": "start"}}, end(0, "needs_revision", gap),
+                end(1, "satisfied", []), end(2, "grader_error", [])],
+    )  # fmt: skip
+    scores = rubric_scores(h)
+    assert [(s.evaluator, s.source, s.score, s.passed) for s in scores] == [
+        ("rubric", "rubric", 0.0, False), ("rubric", "rubric", 1.0, True), ("rubric", "rubric", None, False),
+    ]  # fmt: skip
+    assert scores[0].comment == "agent, round 1: needs_revision. e Names the city: name it"

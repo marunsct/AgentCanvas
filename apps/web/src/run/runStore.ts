@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { InterruptInfo, RunEvent, Usage } from "./events";
+import type { InterruptInfo, RubricRound, RunEvent, Usage } from "./events";
 
 export type NodeStatus = "idle" | "running" | "ok" | "error" | "interrupted";
 
@@ -21,6 +21,7 @@ export interface RunState {
   interrupt: InterruptInfo | null; // first pending interrupt (convenience)
   finalOutput: Record<string, unknown> | null;
   warnings: string[];
+  rubric: RubricRound[]; // grading rounds of this run's agents, live
   error: string | null;
   running: boolean;
   breakpoint: boolean;
@@ -42,7 +43,7 @@ export interface RunState {
 }
 
 const empty = {
-  status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], error: null, breakpoint: false,
+  status: {}, output: {}, interrupts: [], interrupt: null, finalOutput: null, warnings: [], rubric: [] as RubricRound[], error: null, breakpoint: false,
   highlight: [], next: [], metrics: {}, usage: null, durationMs: null, deltas: {}, route: [] as string[],
   input: null as Record<string, unknown> | null, traced: false,
 };
@@ -60,7 +61,7 @@ export const useRun = create<RunState>((set) => ({
 export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
   switch (ev.type) {
     case "RUN_STARTED":
-      return { threadId: ev.threadId, runId: ev.runId ?? null, running: true, error: null, interrupt: null, interrupts: [],
+      return { threadId: ev.threadId, runId: ev.runId ?? null, running: true, error: null, interrupt: null, interrupts: [], rubric: [],
         breakpoint: false, finalOutput: null, metrics: {}, usage: null, durationMs: null, route: [] };
     case "STEP_STARTED":
       return {
@@ -87,6 +88,18 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         return { interrupts, interrupt: interrupts[0] };
       }
       if (ev.name === "ac.warning") return { warnings: [...s.warnings, String(ev.value.message ?? "")] };
+      if (ev.name === "ac.rubric") {
+        const v = ev.value;
+        const node = ev.canvas_node_id ?? null;
+        const iteration = Number(v.iteration ?? 0);
+        const rest = s.rubric.filter((r) => !(r.node === node && r.iteration === iteration));
+        const criteria = Array.isArray(v.criteria) ? (v.criteria as { name?: string; passed?: boolean; gap?: string }[]) : [];
+        const round: RubricRound = {
+          node, iteration, result: v.phase === "end" ? String(v.result ?? "") : null, explanation: String(v.explanation ?? ""),
+          gaps: criteria.filter((c) => !c.passed).map((c) => `${c.name}: ${c.gap ?? ""}`),
+        };
+        return { rubric: [...rest, round] };
+      }
       if (ev.name === "ac.usage" && typeof ev.value.canvas_node_id === "string") {
         const id = ev.value.canvas_node_id;
         const m = s.metrics[id] ?? ZERO;

@@ -89,6 +89,12 @@ def translate(
     elif kind == "custom":
         if isinstance(data, dict) and "ac_dry_run" in data:  # a stubbed tool recorded a call (FR-X-02)
             yield {"type": "CUSTOM", "name": "ac.dry_run", "value": jsonable(data["ac_dry_run"])}
+        elif isinstance(data, dict) and str(data.get("type", "")).startswith("rubric_evaluation_"):  # FR-EVAL-08
+            parent = ns[0].split(":")[0] if ns else None
+            value = {k: v for k, v in data.items() if k != "type"}
+            value["phase"] = "start" if data["type"].endswith("_start") else "end"
+            yield {"type": "CUSTOM", "name": "ac.rubric", "canvas_node_id": names.get(parent or ""),
+                   "value": jsonable(value)}  # fmt: skip
         else:
             yield {"type": "CUSTOM", "name": "ac.custom", "value": jsonable(data)}
 

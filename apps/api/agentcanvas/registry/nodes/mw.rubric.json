@@ -1,0 +1,56 @@
+{
+  "type": "mw.rubric",
+  "kind": "resource",
+  "label": "Rubric",
+  "category": "Middleware",
+  "icon": "list-checks",
+  "color": "#9333EA",
+  "description": "Self-grading: before the agent answers, a grader model checks the work against a rubric and sends it back with what is missing, up to a number of times (deepagents RubricMiddleware). Grading streams as ac.rubric events.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": true,
+      "description": "Grader model"
+    },
+    {
+      "name": "tools",
+      "type": "Tool",
+      "multi": true,
+      "description": "Tools the grader may use to check the work (run tests, read files)"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "middleware",
+      "type": "Middleware"
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["rubric"],
+    "properties": {
+      "rubric": {
+        "type": "string",
+        "title": "Rubric",
+        "format": "prompt",
+        "minLength": 1,
+        "description": "What done looks like, one criterion per line"
+      },
+      "max_iterations": {
+        "type": "integer",
+        "title": "Max grading rounds",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 3
+      },
+      "grader_instructions": {
+        "type": "string",
+        "title": "Grader instructions",
+        "format": "prompt",
+        "description": "Replaces the grader's default system prompt"
+      }
+    }
+  }
+}

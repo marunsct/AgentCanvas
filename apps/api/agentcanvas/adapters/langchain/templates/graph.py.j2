@@ -27,7 +27,7 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
 {%- if r.type == "model.chat" %}
     {{ r.name }} = resources.model({{ r.name | py }}, {{ r.config | pp }})
 {%- elif r.type.startswith("mw.") %}
-    {{ r.name }} = resources.middleware({{ r.name | py }}, {{ r.type | py }}, {{ r.config | pp }}, models=[{{ (pr.wired.get("models", []) + pr.wired.get("model", [])) | join(", ") }}])
+    {{ r.name }} = resources.middleware({{ r.name | py }}, {{ r.type | py }}, {{ r.config | pp }}, models=[{{ (pr.wired.get("models", []) + pr.wired.get("model", [])) | join(", ") }}]{% if pr.wired.get("tools") %}, tools=[{{ refs(pr.wired.get("tools", []), plan.many) }}]{% endif %})
 {%- elif r.type == "agent.subagent" %}
     {{ r.name }} = ac.subagent(name={{ r.name | py }}, description={{ r.config.description | py }}, system_prompt={{ r.config.system_prompt | py }}, model={{ pr.wired.get("model", ["None"])[0] }}, tools=[{{ refs(pr.wired.get("tools", []), plan.many) }}], middleware=[{{ pr.wired.get("middleware", []) | join(", ") }}], approve_tools={{ r.config.get("approve_tools") | py }})
 {%- elif r.type in ("mcp.server", "tool.http") %}

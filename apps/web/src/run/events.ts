@@ -29,5 +29,14 @@ export type RunEvent = { seq?: number } & (
     }
   | { type: "TEXT_MESSAGE_CONTENT"; canvas_node_id: string | null; delta: string }
   | { type: "STATE_DELTA"; canvas_node_id: string | null; delta: Record<string, unknown> }
-  | { type: "CUSTOM"; name: string; value: Record<string, unknown> }
+  | { type: "CUSTOM"; name: string; value: Record<string, unknown>; canvas_node_id?: string | null }
 );
+
+/** One rubric grading round of an agent (FR-EVAL-08, `ac.rubric`): `result` is set when the round ended. */
+export interface RubricRound {
+  node: string | null;
+  iteration: number;
+  result: string | null;
+  explanation: string;
+  gaps: string[];
+}

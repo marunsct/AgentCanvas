@@ -19,7 +19,7 @@ from typing import Any, Literal
 from sqlalchemy import func, select, update
 
 from agentcanvas.adapters.spi import FrameworkAdapter
-from agentcanvas.db.models import InterruptTask, Run, Thread
+from agentcanvas.db.models import InterruptTask, Run, RunScore, Thread
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -81,6 +81,37 @@ def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
 
 class BudgetExceeded(Exception):
     """A run went over its workflow budget (FR-X-15)."""
+
+
+def rubric_scores(h: Any) -> list[RunScore]:
+    """The run's rubric grading rounds (FR-EVAL-08 `ac.rubric` end events) as run scores, so the thread's timeline
+    keeps them after the live events are gone: 1 when the grader was satisfied, 0 when it asked for a revision or
+    gave up, none when grading itself failed."""
+    out = []
+    for ev in h.events:
+        if ev.get("type") != "CUSTOM" or ev.get("name") != "ac.rubric" or ev["value"].get("phase") != "end":
+            continue
+        v = ev["value"]
+        result = str(v.get("result") or "")
+        value = None if result in ("grader_error", "failed") else float(result == "satisfied")
+        gaps = "; ".join(f"{c.get('name')}: {c.get('gap')}" for c in v.get("criteria") or [] if not c.get("passed"))
+        out.append(
+            RunScore(
+                id=new_id("rsc"),
+                run_id=h.run_id,
+                thread_id=h.thread_id,
+                workflow_id=h.workflow_id,
+                deployment_id=h.deployment_id,
+                evaluator="rubric",
+                source="rubric",
+                score=value,
+                passed=value == 1.0,
+                comment=f"{ev.get('canvas_node_id') or 'agent'}, round {int(v.get('iteration') or 0) + 1}: {result}. "
+                f"{v.get('explanation') or ''} {gaps}".strip()[:2000],
+                created_at=datetime.now(UTC),
+            )
+        )
+    return out
 
 
 def price(model_id: str | None, tokens_in: int, tokens_out: int) -> float | None:
@@ -400,6 +431,7 @@ class Runner:
                                 payload=_as_object(intr["payload"]),
                             )
                         )
+                s.add_all(rubric_scores(h))
                 await s.commit()
         except Exception:
             log.exception("run.finish_failed", run_id=h.run_id)
