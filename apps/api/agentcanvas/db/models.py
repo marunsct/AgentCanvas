@@ -258,6 +258,8 @@ class Dataset(Base):
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # S13: the LangSmith dataset it is synced with {dataset_id, name, url, pushed_version, pulled_version, synced_at}
+    langsmith: Mapped[dict[str, Any] | None] = mapped_column(Json)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 

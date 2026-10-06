@@ -127,7 +127,9 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
   });
   const remove = useMutation({ mutationFn: (exId: string) => apiFetch(`/datasets/${dsId}/examples/${exId}`, { method: "DELETE" }), onSuccess: changed });
   const drop = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}`, { method: "DELETE" }), onSuccess: onGone });
-  const error = add.error ?? fromTests.error ?? upload.error ?? remove.error ?? drop.error;
+  const push = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}/langsmith/push`, { method: "POST", json: { version } }), onSuccess: changed });
+  const pull = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}/langsmith/pull`, { method: "POST" }), onSuccess: changed });
+  const error = add.error ?? fromTests.error ?? upload.error ?? remove.error ?? drop.error ?? push.error ?? pull.error;
   if (!ds.data) return <QueryStatus q={ds} what="the dataset" />;
   const d = ds.data;
   const latest = version === null;
@@ -146,6 +148,21 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
           <button type="button" className="link small" onClick={() => { if (confirm(`Delete dataset ${d.name}?`)) drop.mutate(); }}>Delete dataset</button>
         )}
       </div>
+      <p className="small" data-testid="langsmith-link">
+        {d.langsmith
+          ? <>LangSmith: {d.langsmith.url ? <a href={d.langsmith.url} target="_blank" rel="noreferrer">{d.langsmith.name} ↗</a> : d.langsmith.name}
+              {d.langsmith.pushed_version != null && ` · v${d.langsmith.pushed_version} pushed`}
+              {d.langsmith.pulled_version != null && ` · v${d.langsmith.pulled_version} pulled`}
+              {" "}<span className="muted">{new Date(d.langsmith.synced_at).toLocaleString()}</span></>
+          : <span className="muted">Not synced with LangSmith.</span>}
+        {can("builder") && (
+          <>
+            {" "}<button type="button" className="link small" disabled={push.isPending} onClick={() => push.mutate()}>Push {version ? `v${version}` : "latest"} to LangSmith</button>
+            {d.langsmith && latest && <> · <button type="button" className="link small" disabled={pull.isPending}
+              onClick={() => { if (confirm("Replace the examples with LangSmith's (as a new version)?")) pull.mutate(); }}>Pull from LangSmith</button></>}
+          </>
+        )}
+      </p>
       {error && <p role="alert" className="error-text">{errorText(error)}</p>}
       <table className="table" data-testid="examples">
         <thead><tr><th>#</th><th>Input</th><th>Reference</th><th>Split</th><th /></tr></thead>

@@ -1331,6 +1331,17 @@
             "title": "Items",
             "type": "array"
           },
+          "langsmith": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LangSmithLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the LangSmith dataset it is synced with"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1415,6 +1426,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "langsmith": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LangSmithLink"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the LangSmith dataset it is synced with"
           },
           "name": {
             "title": "Name",
@@ -3588,6 +3610,66 @@
         "title": "KeyOut",
         "type": "object"
       },
+      "LangSmithLink": {
+        "properties": {
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pulled_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the version the last pull made here",
+            "title": "Pulled Version"
+          },
+          "pushed_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the version last pushed",
+            "title": "Pushed Version"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "title": "Synced At",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "name",
+          "url",
+          "synced_at"
+        ],
+        "title": "LangSmithLink",
+        "type": "object"
+      },
       "LayoutUpdate": {
         "properties": {
           "positions": {
@@ -5066,6 +5148,24 @@
           "checklist"
         ],
         "title": "PublishOut",
+        "type": "object"
+      },
+      "PushIn": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "default: the latest version",
+            "title": "Version"
+          }
+        },
+        "title": "PushIn",
         "type": "object"
       },
       "QueueIn": {
@@ -8620,6 +8720,148 @@
           }
         ],
         "summary": "Import Examples",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/v1/datasets/{ds_id}/langsmith/pull": {
+      "post": {
+        "description": "A new version holding the linked LangSmith dataset's current examples.",
+        "operationId": "pull_from_langsmith_v1_datasets__ds_id__langsmith_pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ds_id",
+            "required": true,
+            "schema": {
+              "title": "Ds Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pull From Langsmith",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/v1/datasets/{ds_id}/langsmith/push": {
+      "post": {
+        "description": "Make the linked LangSmith dataset (created on the first push) hold this version's examples.",
+        "operationId": "push_to_langsmith_v1_datasets__ds_id__langsmith_push_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ds_id",
+            "required": true,
+            "schema": {
+              "title": "Ds Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Push To Langsmith",
         "tags": [
           "datasets"
         ]

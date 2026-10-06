@@ -266,23 +266,35 @@ export type Split = string;
  */
 export type Trajectory = string[] | null;
 export type Items1 = Example[];
+export type DatasetId1 = string;
 export type Name12 = string;
+/**
+ * the version the last pull made here
+ */
+export type PulledVersion = number | null;
+/**
+ * the version last pushed
+ */
+export type PushedVersion = number | null;
+export type SyncedAt = string;
+export type Url = string | null;
+export type Name13 = string;
 export type UpdatedAt1 = string;
 export type Version1 = number;
 export type VersionId = string;
 export type WorkflowId = string;
 export type Description5 = string;
-export type Name13 = string;
+export type Name14 = string;
 export type CreatedAt5 = string;
 export type Description6 = string;
 export type Examples1 = number;
 export type Id15 = string;
-export type Name14 = string;
+export type Name15 = string;
 export type UpdatedAt2 = string;
 export type Version2 = number;
 export type WorkflowId1 = string;
 export type Description7 = string | null;
-export type Name15 = string | null;
+export type Name16 = string | null;
 export type CreatedAt6 = string;
 export type CreatedBy = string | null;
 export type Examples2 = number;
@@ -312,14 +324,14 @@ export type Added = string[];
 export type Path1 = string;
 export type Fields1 = FieldChange[];
 export type Id18 = string;
-export type Name16 = string | null;
+export type Name17 = string | null;
 export type Changed = ElementChange[];
 export type Removed = string[];
 export type Summary1 = string;
 export type Workflow = FieldChange[];
 export type Enabled = boolean;
 export type Kind3 = "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code" | "composite" | "pairwise";
-export type Name17 = string;
+export type Name18 = string;
 /**
  * passes at score >= threshold
  */
@@ -328,7 +340,7 @@ export type CreatedAt8 = string;
 export type EffectiveThreshold = number;
 export type Id19 = string;
 export type Kind4 = "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code" | "composite" | "pairwise";
-export type Name18 = string;
+export type Name19 = string;
 /**
  * passes at score >= threshold
  */
@@ -337,7 +349,7 @@ export type WorkflowId2 = string;
 export type Config4 = {
   [k: string]: unknown;
 } | null;
-export type Name19 = string | null;
+export type Name20 = string | null;
 export type Threshold2 = number | null;
 /**
  * pairwise: 95% confidence interval of the win rate (the mean; ties count half)
@@ -381,7 +393,7 @@ export type Message4 = string;
 export type Route1 = string[] | null;
 export type Status3 = "success" | "interrupted" | "error";
 export type Concurrency = number;
-export type DatasetId1 = string;
+export type DatasetId2 = string;
 /**
  * default: the latest version
  */
@@ -390,7 +402,7 @@ export type DatasetVersion = number | null;
  * default: every evaluator of the workflow
  */
 export type EvaluatorIds = string[] | null;
-export type Name20 = string | null;
+export type Name21 = string | null;
 /**
  * what they want; an example's metadata.goal wins
  */
@@ -434,13 +446,13 @@ export type Label3 = string | null;
 export type Version3 = string | null;
 export type Concurrency1 = number;
 export type CreatedAt10 = string;
-export type DatasetId2 = string;
+export type DatasetId3 = string;
 export type DatasetVersion1 = number;
 export type EndedAt = string | null;
 export type Error1 = string | null;
 export type Evaluators = string[];
 export type Id21 = string;
-export type Name21 = string;
+export type Name22 = string;
 /**
  * pairwise judges: each target's mean is its win rate against the first target
  */
@@ -521,7 +533,7 @@ export type Stream = boolean;
 export type Values = {
   [k: string]: unknown;
 } | null;
-export type Name22 = string;
+export type Name23 = string;
 /**
  * @minItems 1
  * @maxItems 500
@@ -531,7 +543,7 @@ export type RunIds = [string, ...string[]];
  * these test cases (default: all of the workflow's)
  */
 export type Ids = string[] | null;
-export type DatasetId3 = string;
+export type DatasetId4 = string;
 /**
  * the dataset version to gate on (default: latest)
  */
@@ -540,7 +552,7 @@ export type DatasetVersion2 = number | null;
  * largest allowed drop in pass rate against the live version
  */
 export type MaxRegression = number | null;
-export type DatasetId4 = string;
+export type DatasetId5 = string;
 /**
  * the dataset version to gate on (default: latest)
  */
@@ -641,10 +653,10 @@ export type Replace = boolean;
 /**
  * Resource name (lets dev/test hosts substitute an in-process server)
  */
-export type Name23 = string;
+export type Name24 = string;
 export type Description8 = string;
 export type Destructive = boolean;
-export type Name24 = string;
+export type Name25 = string;
 export type ReadOnly = boolean;
 export type Email = string;
 export type Id28 = string;
@@ -680,7 +692,7 @@ export type Tools1 = boolean;
 export type Vision = boolean;
 export type Namespace1 = string;
 export type Parts = string[];
-export type Name25 = string;
+export type Name26 = string;
 export type Writes = string[];
 export type BuiltinTools = string[];
 export type Category = string;
@@ -695,7 +707,7 @@ export type Icon = string;
 export type Impl = string | null;
 export type Description10 = string | null;
 export type Multi = boolean;
-export type Name26 = string;
+export type Name27 = string;
 export type Ordered = boolean;
 export type Required1 = boolean;
 export type Type6 = string;
@@ -792,7 +804,7 @@ export type Environments = string[];
  * CEL: which elements the policy is about
  */
 export type Match = string;
-export type Name27 = string;
+export type Name28 = string;
 /**
  * CEL: what must hold for each of them
  */
@@ -817,7 +829,7 @@ export type Id31 = string;
  * CEL: which elements the policy is about
  */
 export type Match1 = string;
-export type Name28 = string;
+export type Name29 = string;
 /**
  * CEL: what must hold for each of them
  */
@@ -830,10 +842,10 @@ export type Severity3 = "error" | "warning";
 export type Done = number;
 export type Pending = number;
 export type Total = number;
-export type Name29 = string;
+export type Name30 = string;
 export type CreatedAt18 = string;
 export type Id32 = string;
-export type Name30 = string;
+export type Name31 = string;
 export type Environment2 = string;
 export type Message7 = string;
 /**
@@ -845,8 +857,12 @@ export type OverrideReason = string | null;
  */
 export type ApiKey1 = string | null;
 export type Checklist = Check[];
+/**
+ * default: the latest version
+ */
+export type Version6 = number | null;
 export type Instructions = string;
-export type Name31 = string;
+export type Name32 = string;
 export type ReviewersPerItem = number;
 /**
  * @minItems 1
@@ -1049,7 +1065,7 @@ export type ThumbsDown = boolean;
 export type CreatedAt19 = string;
 export type Id33 = string;
 export type Instructions1 = string;
-export type Name32 = string;
+export type Name33 = string;
 export type ReviewersPerItem1 = number;
 /**
  * @minItems 1
@@ -1243,7 +1259,7 @@ export type Rubric1 =
     ];
 export type WorkflowId6 = string;
 export type Instructions2 = string | null;
-export type Name33 = string | null;
+export type Name34 = string | null;
 export type ReviewersPerItem2 = number | null;
 export type Commands1 = {
   [k: string]: unknown;
@@ -1295,28 +1311,28 @@ export type Status12 = string;
 export type ThreadId10 = string;
 export type Value5 = string;
 export type CreatedAt20 = string;
-export type Name34 = string;
+export type Name35 = string;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
-export type Name35 = string | null;
+export type Name36 = string | null;
 /**
  * @minItems 1
  */
 export type NodeIds = [string, ...string[]];
 export type Description13 = string;
 export type Id35 = string;
-export type Name36 = string;
+export type Name37 = string;
 export type NodeCount = number;
 export type Context6 = {
   [k: string]: unknown;
 } | null;
-export type Name37 = string;
+export type Name38 = string;
 export type Context7 = {
   [k: string]: unknown;
 } | null;
 export type CreatedAt21 = string;
 export type Id36 = string;
-export type Name38 = string;
+export type Name39 = string;
 /**
  * run only these cases (default: all)
  */
@@ -1324,7 +1340,7 @@ export type Ids1 = string[] | null;
 /**
  * run against a version instead of the draft
  */
-export type Version6 = string | null;
+export type Version7 = string | null;
 export type Failed1 = number;
 export type Passed3 = number;
 export type Results1 = CaseResult[];
@@ -1342,7 +1358,7 @@ export type Enabled3 = boolean;
 export type Id38 = string;
 export type Kind8 = string;
 export type Secret = string | null;
-export type Url = string | null;
+export type Url1 = string | null;
 export type DeploymentId3 = string | null;
 export type Kind9 = "webhook" | "cron";
 export type CreatedAt24 = string;
@@ -1350,7 +1366,7 @@ export type DeploymentId4 = string | null;
 export type Enabled4 = boolean;
 export type Id39 = string;
 export type Kind10 = string;
-export type Url1 = string | null;
+export type Url2 = string | null;
 export type CreatedAt25 = string;
 export type CreatedBy2 = string | null;
 export type Id40 = string;
@@ -1371,14 +1387,14 @@ export type CreatedAt27 = string;
 export type Diagnostics3 = Diagnostic[];
 export type Id42 = string;
 export type IrHash4 = string;
-export type Name39 = string;
+export type Name40 = string;
 export type ProjectId1 = string;
 export type UpdatedAt6 = string;
-export type Version7 = number;
-export type Id43 = string;
-export type Name40 = string;
-export type UpdatedAt7 = string;
 export type Version8 = number;
+export type Id43 = string;
+export type Name41 = string;
+export type UpdatedAt7 = string;
+export type Version9 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
 
@@ -1463,6 +1479,7 @@ export interface ApiSchemas {
   ItemOut?: ItemOut;
   ItemsIn?: ItemsIn;
   KeyOut?: KeyOut;
+  LangSmithLink?: LangSmithLink;
   LayoutUpdate?: LayoutUpdate;
   LintItem?: LintItem;
   Mapping?: Mapping;
@@ -1493,6 +1510,7 @@ export interface ApiSchemas {
   ProjectOut?: ProjectOut;
   PublishIn?: PublishIn;
   PublishOut?: PublishOut;
+  PushIn?: PushIn;
   QueueIn?: QueueIn;
   QueueOut?: QueueOut;
   QueuePatch?: QueuePatch;
@@ -2177,7 +2195,11 @@ export interface DatasetDetail {
   examples: Examples;
   id: Id13;
   items: Items1;
-  name: Name12;
+  /**
+   * the LangSmith dataset it is synced with
+   */
+  langsmith?: LangSmithLink | null;
+  name: Name13;
   splits: Splits;
   updated_at: UpdatedAt1;
   version: Version1;
@@ -2210,6 +2232,18 @@ export interface Reference1 {
   [k: string]: unknown;
 }
 /**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "LangSmithLink".
+ */
+export interface LangSmithLink {
+  dataset_id: DatasetId1;
+  name: Name12;
+  pulled_version?: PulledVersion;
+  pushed_version?: PushedVersion;
+  synced_at: SyncedAt;
+  url: Url;
+}
+/**
  * examples per split ('' = none)
  */
 export interface Splits {
@@ -2221,7 +2255,7 @@ export interface Splits {
  */
 export interface DatasetIn {
   description?: Description5;
-  name: Name13;
+  name: Name14;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2232,7 +2266,11 @@ export interface DatasetOut {
   description: Description6;
   examples: Examples1;
   id: Id15;
-  name: Name14;
+  /**
+   * the LangSmith dataset it is synced with
+   */
+  langsmith?: LangSmithLink | null;
+  name: Name15;
   splits: Splits1;
   updated_at: UpdatedAt2;
   version: Version2;
@@ -2250,7 +2288,7 @@ export interface Splits1 {
  */
 export interface DatasetPatch {
   description?: Description7;
-  name?: Name15;
+  name?: Name16;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2329,7 +2367,7 @@ export interface ElementDiff {
 export interface ElementChange {
   fields?: Fields1;
   id: Id18;
-  name?: Name16;
+  name?: Name17;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2360,7 +2398,7 @@ export interface EnabledIn {
 export interface EvaluatorIn {
   config?: Config2;
   kind: Kind3;
-  name: Name17;
+  name: Name18;
   threshold?: Threshold;
 }
 export interface Config2 {
@@ -2376,7 +2414,7 @@ export interface EvaluatorOut {
   effective_threshold: EffectiveThreshold;
   id: Id19;
   kind: Kind4;
-  name: Name18;
+  name: Name19;
   threshold?: Threshold1;
   workflow_id: WorkflowId2;
 }
@@ -2389,7 +2427,7 @@ export interface Config3 {
  */
 export interface EvaluatorPatch {
   config?: Config4;
-  name?: Name19;
+  name?: Name20;
   threshold?: Threshold2;
 }
 /**
@@ -2471,10 +2509,10 @@ export interface Channels1 {
  */
 export interface ExperimentIn {
   concurrency?: Concurrency;
-  dataset_id: DatasetId1;
+  dataset_id: DatasetId2;
   dataset_version?: DatasetVersion;
   evaluator_ids?: EvaluatorIds;
-  name?: Name20;
+  name?: Name21;
   /**
    * chat workflows: a simulated user holds a conversation per example
    */
@@ -2517,13 +2555,13 @@ export interface Overrides {
 export interface ExperimentOut {
   concurrency: Concurrency1;
   created_at: CreatedAt10;
-  dataset_id: DatasetId2;
+  dataset_id: DatasetId3;
   dataset_version: DatasetVersion1;
   ended_at: EndedAt;
   error: Error1;
   evaluators: Evaluators;
   id: Id21;
-  name: Name21;
+  name: Name22;
   pairwise?: Pairwise;
   simulation?: Simulation | null;
   split: Split3;
@@ -2686,7 +2724,7 @@ export interface ForkRequest {
  * via the `definition` "FromRunIn".
  */
 export interface FromRunIn {
-  name: Name22;
+  name: Name23;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2707,7 +2745,7 @@ export interface FromTestCasesIn {
  * via the `definition` "GateIn".
  */
 export interface GateIn {
-  dataset_id: DatasetId3;
+  dataset_id: DatasetId4;
   dataset_version?: DatasetVersion2;
   max_regression?: MaxRegression;
   min_scores?: MinScores;
@@ -2723,7 +2761,7 @@ export interface MinScores {
  * via the `definition` "GateOut".
  */
 export interface GateOut {
-  dataset_id: DatasetId4;
+  dataset_id: DatasetId5;
   dataset_version?: DatasetVersion3;
   environment: Environment1;
   evaluators: Evaluators2;
@@ -2922,7 +2960,7 @@ export interface Positions {
  */
 export interface McpInspectRequest {
   config: Config5;
-  name: Name23;
+  name: Name24;
 }
 export interface Config5 {
   [k: string]: unknown;
@@ -2934,7 +2972,7 @@ export interface Config5 {
 export interface McpToolInfo {
   description?: Description8;
   destructive?: Destructive;
-  name: Name24;
+  name: Name25;
   read_only?: ReadOnly;
 }
 /**
@@ -3014,7 +3052,7 @@ export interface NamespaceOut {
  * via the `definition` "NewScript".
  */
 export interface NewScript {
-  name: Name25;
+  name: Name26;
   writes?: Writes;
 }
 /**
@@ -3066,7 +3104,7 @@ export interface ConfigSchema {
 export interface PortSpec {
   description?: Description10;
   multi?: Multi;
-  name: Name26;
+  name: Name27;
   ordered?: Ordered;
   required?: Required1;
   type: Type6;
@@ -3162,7 +3200,7 @@ export interface PolicyIn {
   enabled?: Enabled1;
   environments?: Environments;
   match?: Match;
-  name: Name27;
+  name: Name28;
   require: Require;
   scope?: Scope;
   severity?: Severity2;
@@ -3178,7 +3216,7 @@ export interface PolicyOut {
   environments?: Environments1;
   id: Id31;
   match?: Match1;
-  name: Name28;
+  name: Name29;
   require: Require1;
   scope?: Scope1;
   severity?: Severity3;
@@ -3197,7 +3235,7 @@ export interface Progress {
  * via the `definition` "ProjectIn".
  */
 export interface ProjectIn {
-  name: Name29;
+  name: Name30;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3206,7 +3244,7 @@ export interface ProjectIn {
 export interface ProjectOut {
   created_at: CreatedAt18;
   id: Id32;
-  name: Name30;
+  name: Name31;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3228,11 +3266,18 @@ export interface PublishOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "PushIn".
+ */
+export interface PushIn {
+  version?: Version6;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "QueueIn".
  */
 export interface QueueIn {
   instructions?: Instructions;
-  name: Name31;
+  name: Name32;
   reviewers_per_item?: ReviewersPerItem;
   rubric: Rubric;
   rules?: Rules;
@@ -3261,7 +3306,7 @@ export interface QueueOut {
   created_at: CreatedAt19;
   id: Id33;
   instructions?: Instructions1;
-  name: Name32;
+  name: Name33;
   progress: Progress;
   reviewers_per_item?: ReviewersPerItem1;
   rubric: Rubric1;
@@ -3280,7 +3325,7 @@ export interface Agreement {
  */
 export interface QueuePatch {
   instructions?: Instructions2;
-  name?: Name33;
+  name?: Name34;
   reviewers_per_item?: ReviewersPerItem2;
   rules?: Rules | null;
 }
@@ -3392,7 +3437,7 @@ export interface SecretIn {
  */
 export interface SecretOut {
   created_at: CreatedAt20;
-  name: Name34;
+  name: Name35;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3411,7 +3456,7 @@ export interface Values1 {
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
-  name?: Name35;
+  name?: Name36;
   node_ids: NodeIds;
 }
 /**
@@ -3421,7 +3466,7 @@ export interface SubgraphRequest {
 export interface TemplateInfo {
   description: Description13;
   id: Id35;
-  name: Name36;
+  name: Name37;
   node_count: NodeCount;
 }
 /**
@@ -3433,7 +3478,7 @@ export interface TestCaseIn {
   expect?: Expect;
   input?: Input9;
   mocks?: Mocks3;
-  name: Name37;
+  name: Name38;
   pins?: Pins3;
 }
 export interface Input9 {
@@ -3465,7 +3510,7 @@ export interface TestCaseOut {
   input?: Input10;
   last_result?: CaseResult | null;
   mocks?: Mocks4;
-  name: Name38;
+  name: Name39;
   pins?: Pins4;
 }
 export interface Input10 {
@@ -3491,7 +3536,7 @@ export interface Pins4 {
  */
 export interface TestRunIn {
   ids?: Ids1;
-  version?: Version6;
+  version?: Version7;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3534,7 +3579,7 @@ export interface TriggerCreated {
   id: Id38;
   kind: Kind8;
   secret?: Secret;
-  url?: Url;
+  url?: Url1;
 }
 export interface Config6 {
   [k: string]: unknown;
@@ -3562,7 +3607,7 @@ export interface TriggerOut {
   enabled: Enabled4;
   id: Id39;
   kind: Kind10;
-  url?: Url1;
+  url?: Url2;
 }
 export interface Config8 {
   [k: string]: unknown;
@@ -3620,10 +3665,10 @@ export interface WorkflowOut {
   ir: Ir3;
   ir_hash: IrHash4;
   layout: Layout2;
-  name: Name39;
+  name: Name40;
   project_id: ProjectId1;
   updated_at: UpdatedAt6;
-  version: Version7;
+  version: Version8;
 }
 export interface Ir3 {
   [k: string]: unknown;
@@ -3645,7 +3690,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id43;
-  name: Name40;
+  name: Name41;
   updated_at: UpdatedAt7;
-  version: Version8;
+  version: Version9;
 }

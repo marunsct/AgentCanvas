@@ -238,6 +238,17 @@ class DatasetService:
             raise Conflict("the dataset changed meanwhile; reload it and try again") from None
         return v
 
+    async def replace(self, ds_id: str, examples: list[Example], message: str, user_id: str | None) -> DatasetVersion:
+        """A new version holding exactly `examples` (checked); those without an id get one."""
+        ds = await self.get(ds_id)
+        check(await self._workflow(ds.workflow_id), examples)
+        seen: set[str] = set()
+        for ex in examples:
+            if not ex.id or ex.id in seen:
+                ex.id = new_id("ex")
+            seen.add(ex.id)
+        return await self.change(ds_id, lambda _: examples, message, user_id)
+
     async def add(self, ds_id: str, examples: list[Example], message: str, user_id: str | None) -> DatasetVersion:
         if not examples:
             raise InvalidInput("no examples to add")
