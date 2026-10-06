@@ -34,6 +34,8 @@ from agentcanvas.evaluation import ONLY_IN_EXPERIMENTS, Observation, Score, Spec
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
+from agentcanvas.services import simulation
+from agentcanvas.services.simulation import Simulation
 
 log = get_logger(__name__)
 
@@ -192,6 +194,7 @@ class ExperimentService:
         concurrency: int,
         created_by: str | None,
         workspace_commit: str | None = None,
+        simulation: dict[str, Any] | None = None,
     ) -> Experiment:
         """`targets` are resolved: {label, version, version_id, overrides, ir}."""
         if split is not None:
@@ -211,6 +214,7 @@ class ExperimentService:
             evaluators=[e.model_dump() for e in evaluators],
             concurrency=concurrency,
             workspace_commit=workspace_commit,
+            simulation=simulation,
             status="running",
             heartbeat_at=datetime.now(UTC),
             created_by=created_by,
@@ -399,7 +403,7 @@ class ExperimentJob:
             examples = {e["id"]: e for e in version.examples}
             targets, specs, created_by = exp.targets, [Spec(**e) for e in exp.evaluators], exp.created_by
             org_id = await ScopeRepo(s).org_of("workflow", exp.workflow_id)
-            concurrency = exp.concurrency
+            concurrency, sim = exp.concurrency, exp.simulation
         if row is not None:
             PROJECT_OF[exp.workflow_id] = row.project_id
         workflows = [Workflow.model_validate(t["ir"]) for t in targets]
@@ -412,7 +416,7 @@ class ExperimentJob:
                     await self._save(result_id, status="done", run_status="error", error="example not found")
                     return
                 who = (created_by, org_id)
-                await self._example(result_id, workflows[target], targets[target], example, specs, who)
+                await self._example(result_id, workflows[target], targets[target], example, specs, who, sim)
 
         tasks = [asyncio.ensure_future(one(*j)) for j in jobs]
         try:
@@ -510,7 +514,11 @@ class ExperimentJob:
         example: dict[str, Any],
         specs: list[Spec],
         who: tuple[str | None, str | None],
+        simulation: dict[str, Any] | None = None,
     ) -> None:
+        if simulation is not None:
+            await self._conversation(result_id, wf, target, example, specs, who, Simulation(**simulation))
+            return
         user_id, org_id = who
         started = time.perf_counter()
         try:
@@ -526,35 +534,62 @@ class ExperimentJob:
         except Unavailable:  # draining: another instance runs this example
             return
         except Exception as exc:  # noqa: BLE001 - reported on the result
-            # a run that never started fails every evaluator: leaving it unscored would let averages (and release
-            # gates) skip exactly the examples the workflow cannot handle
-            failed = [
-                Score(evaluator=x.name, score=0.0, passed=False, comment="the run did not start")
-                for x in specs
-                if x.kind not in ONLY_IN_EXPERIMENTS
-            ]
-            await self._save(
-                result_id, status="done", run_status="error", error=f"could not start: {exc}"[:500],
-                scores=[f.model_dump() for f in failed],
-            )  # fmt: skip
+            await self._not_started(result_id, specs, exc)
             return
         await self._save(result_id, status="running", run_id=handle.run_id, thread_id=handle.thread_id)
+        run_status, error, output = await self._wait(handle)
+        usage = (handle.usage["input_tokens"], handle.usage["output_tokens"], float(handle.usage["cost_usd"] or 0))
+        await self._scored(
+            result_id, wf, example, specs, run_status=run_status, error=error, output=output,
+            trajectory=trajectory_of(handle.events), usage=usage, started=started,
+        )  # fmt: skip
+
+    async def _not_started(self, result_id: str, specs: list[Spec], exc: Exception) -> None:
+        # a run that never started fails every evaluator: leaving it unscored would let averages (and release
+        # gates) skip exactly the examples the workflow cannot handle
+        failed = [
+            Score(evaluator=x.name, score=0.0, passed=False, comment="the run did not start")
+            for x in specs
+            if x.kind not in ONLY_IN_EXPERIMENTS
+        ]
+        await self._save(
+            result_id, status="done", run_status="error", error=f"could not start: {exc}"[:500],
+            scores=[f.model_dump() for f in failed],
+        )  # fmt: skip
+
+    async def _wait(self, handle: Any) -> tuple[str, str | None, dict[str, Any]]:
+        """A started run's status, error and final output (the run is cancelled when it takes too long)."""
         try:
             await asyncio.wait_for(handle.done.wait(), EXAMPLE_TIMEOUT_S)
-            run_status, error, output = "error", None, {}
-            for ev in handle.events:
-                if ev["type"] == "RUN_FINISHED":
-                    run_status, output = ev.get("status") or "success", ev.get("output") or {}
-                elif ev["type"] == "RUN_ERROR":
-                    run_status, error = "error", ev.get("message")
         except TimeoutError:
             await self.runner.cancel(handle.run_id)
-            run_status, error, output = "timeout", f"no result after {EXAMPLE_TIMEOUT_S:g} s", {}
+            return "timeout", f"no result after {EXAMPLE_TIMEOUT_S:g} s", {}
         except asyncio.CancelledError:
             await self.runner.cancel(handle.run_id)
             raise
+        run_status, error, output = "error", None, {}
+        for ev in handle.events:
+            if ev["type"] == "RUN_FINISHED":
+                run_status, output = ev.get("status") or "success", ev.get("output") or {}
+            elif ev["type"] == "RUN_ERROR":
+                run_status, error = "error", ev.get("message")
+        return run_status, error, output
+
+    async def _scored(
+        self,
+        result_id: str,
+        wf: Workflow,
+        example: dict[str, Any],
+        specs: list[Spec],
+        *,
+        run_status: str,
+        error: str | None,
+        output: dict[str, Any],
+        trajectory: list[str],
+        usage: tuple[int, int, float],
+        started: float,
+    ) -> None:
         latency = round((time.perf_counter() - started) * 1000)
-        trajectory = trajectory_of(handle.events)
         obs = Observation(
             input=example.get("input") or {},
             output=output,
@@ -576,8 +611,88 @@ class ExperimentJob:
             output=output,
             trajectory=trajectory,
             scores=[s.model_dump() for s in scores],
-            tokens_in=handle.usage["input_tokens"],
-            tokens_out=handle.usage["output_tokens"],
-            cost_usd=float(handle.usage["cost_usd"] or 0),
+            tokens_in=usage[0],
+            tokens_out=usage[1],
+            cost_usd=usage[2],
             latency_ms=latency,
         )
+
+    async def _conversation(
+        self,
+        result_id: str,
+        wf: Workflow,
+        target: dict[str, Any],
+        example: dict[str, Any],
+        specs: list[Spec],
+        who: tuple[str | None, str | None],
+        sim: Simulation,
+    ) -> None:
+        """FR-EVAL-07: a simulated user talks with the workflow on one thread; the conversation is one result."""
+        user_id, org_id = who
+        started = time.perf_counter()
+        complete = scorers(self.runner, wf)["complete"]
+        goal = str((example.get("metadata") or {}).get("goal") or sim.goal)
+        first_input = {k: v for k, v in (example.get("input") or {}).items() if k != "messages"}
+        transcript: list[dict[str, str]] = []
+        trajectory: list[str] = []
+        tokens_in = tokens_out = 0
+        cost = 0.0
+        run_status, error, output, ended = "success", None, {}, "max_turns"
+        try:
+            context = context_for(wf, example.get("context") or {}, user_id, org_id)
+            message = simulation.opener(example) or await simulation.next_message(sim, goal, [], complete)
+        except Exception as exc:  # noqa: BLE001 - reported on the result
+            await self._not_started(result_id, specs, exc)
+            return
+        if message is None:
+            await self._not_started(result_id, specs, RuntimeError("the simulated user did not say anything"))
+            return
+        thread_id: str | None = None
+        for turn in range(sim.max_turns):
+            transcript.append({"role": "user", "content": message})
+            try:
+                handle = await self.runner.start(
+                    wf,
+                    thread_id=thread_id,
+                    input={**(first_input if turn == 0 else {}), "messages": [{"role": "user", "content": message}]},
+                    context=context,
+                    user_id=user_id,
+                    origin="test",
+                    version_id=target.get("version_id"),
+                )
+            except Unavailable:
+                return
+            except Exception as exc:  # noqa: BLE001
+                if turn == 0:
+                    await self._not_started(result_id, specs, exc)
+                    return
+                run_status, error, ended = "error", f"turn {turn + 1} could not start: {exc}"[:500], "error"
+                break
+            thread_id = handle.thread_id
+            await self._save(result_id, status="running", run_id=handle.run_id, thread_id=handle.thread_id)
+            run_status, error, output = await self._wait(handle)
+            tokens_in += handle.usage["input_tokens"]
+            tokens_out += handle.usage["output_tokens"]
+            cost += float(handle.usage["cost_usd"] or 0)
+            trajectory += trajectory_of(handle.events)
+            transcript.append({"role": "assistant", "content": simulation.reply_of(output)})
+            if run_status != "success":
+                ended = "error"
+                break
+            if turn == sim.max_turns - 1:
+                break
+            try:
+                following = await simulation.next_message(sim, goal, transcript, complete)
+            except Exception as exc:  # noqa: BLE001 - the workflow did nothing wrong; the conversation is cut short
+                error, ended = f"the simulated user failed: {type(exc).__name__}: {exc}"[:500], "simulator_error"
+                break
+            if following is None:
+                ended = "goal"
+                break
+            message = following
+        final = {k: v for k, v in output.items() if k != "messages"}
+        final.update(transcript=transcript, turns=sum(t["role"] == "user" for t in transcript), ended=ended)
+        await self._scored(
+            result_id, wf, example, specs, run_status=run_status, error=error, output=final,
+            trajectory=trajectory, usage=(tokens_in, tokens_out, round(cost, 6)), started=started,
+        )  # fmt: skip

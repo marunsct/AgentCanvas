@@ -312,6 +312,8 @@ class Experiment(Base):
     concurrency: Mapped[int] = mapped_column(Integer, server_default=text("4"), default=4)
     # the project's workspace head when it started: workspace code changes behaviour without changing the IR
     workspace_commit: Mapped[str | None] = mapped_column(Text)
+    # S13 FR-EVAL-07: a simulated user drives each example as a conversation (services/simulation.py)
+    simulation: Mapped[dict[str, Any] | None] = mapped_column(Json)
     status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
     error: Mapped[str | None] = mapped_column(Text)
     owner: Mapped[str | None] = mapped_column(Text)  # the instance working on it (S13); taking over changes it

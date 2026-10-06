@@ -392,6 +392,23 @@ export type DatasetVersion = number | null;
 export type EvaluatorIds = string[] | null;
 export type Name20 = string | null;
 /**
+ * what they want; an example's metadata.goal wins
+ */
+export type Goal = string;
+/**
+ * user messages at most
+ */
+export type MaxTurns = number;
+/**
+ * catalog model that plays the user
+ */
+export type Model = string;
+/**
+ * who the user is and how they write
+ */
+export type Persona = string;
+export type StopPhrase = string;
+/**
  * only the examples of this split
  */
 export type Split2 = string | null;
@@ -1501,6 +1518,7 @@ export interface ApiSchemas {
   SecretOut?: SecretOut;
   SetChannels?: SetChannels;
   SetContext?: SetContext;
+  Simulation?: Simulation;
   StateEdit?: StateEdit;
   SubgraphRequest?: SubgraphRequest;
   Surface?: Surface;
@@ -2457,8 +2475,23 @@ export interface ExperimentIn {
   dataset_version?: DatasetVersion;
   evaluator_ids?: EvaluatorIds;
   name?: Name20;
+  /**
+   * chat workflows: a simulated user holds a conversation per example
+   */
+  simulation?: Simulation | null;
   split?: Split2;
   targets?: Targets;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Simulation".
+ */
+export interface Simulation {
+  goal?: Goal;
+  max_turns?: MaxTurns;
+  model: Model;
+  persona: Persona;
+  stop_phrase?: StopPhrase;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2492,6 +2525,7 @@ export interface ExperimentOut {
   id: Id21;
   name: Name21;
   pairwise?: Pairwise;
+  simulation?: Simulation | null;
   split: Split3;
   status: Status4;
   summary: Summary2;

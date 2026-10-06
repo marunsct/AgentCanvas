@@ -272,6 +272,7 @@ function Experiments({ wfId }: { wfId: string }) {
   const [targets, setTargets] = useState<TargetDraft[]>([{ version: "", overrides: "", label: "" }]);
   const [open, setOpen] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<string>("");
+  const [sim, setSim] = useState({ on: false, model: "anthropic:claude-haiku-4-5", persona: "", goal: "", max_turns: "5" });
   const start = useMutation({
     mutationFn: () => apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
       method: "POST",
@@ -281,6 +282,7 @@ function Experiments({ wfId }: { wfId: string }) {
           version: t.version || null, label: t.label || null,
           overrides: t.overrides.trim() ? parseJson(t.overrides, "overrides") : {},
         })),
+        simulation: sim.on ? { model: sim.model, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
       },
     }),
     onSuccess: (e) => { setOpen(e.id); void qc.invalidateQueries({ queryKey: key }); },
@@ -314,6 +316,17 @@ function Experiments({ wfId }: { wfId: string }) {
             </div>
           ))}
           <button type="button" className="link small" onClick={() => setTargets((ts) => [...ts, { version: "", overrides: "", label: "" }])}>+ Add a version or variant</button>
+          <label className="row small" title="chat workflows: a model plays the user and holds a conversation per example">
+            <input type="checkbox" checked={sim.on} onChange={(e) => setSim((x) => ({ ...x, on: e.target.checked }))} />simulated user
+          </label>
+          {sim.on && (
+            <div className="row gap small" data-testid="simulation">
+              <input aria-label="simulated user model" value={sim.model} onChange={(e) => setSim((x) => ({ ...x, model: e.target.value }))} style={{ width: 200 }} />
+              <input aria-label="persona" placeholder="persona: who the user is, how they write" value={sim.persona} onChange={(e) => setSim((x) => ({ ...x, persona: e.target.value }))} style={{ width: 260 }} />
+              <input aria-label="goal" placeholder="goal (an example's metadata.goal wins)" value={sim.goal} onChange={(e) => setSim((x) => ({ ...x, goal: e.target.value }))} style={{ width: 240 }} />
+              <label className="row">max turns<input aria-label="max turns" value={sim.max_turns} onChange={(e) => setSim((x) => ({ ...x, max_turns: e.target.value }))} style={{ width: 40 }} /></label>
+            </div>
+          )}
           {start.error && <p role="alert" className="error-text">{errorText(start.error)}</p>}
         </form>
       )}
@@ -430,7 +443,19 @@ function OutputDiff({ row, labels }: { row: ReturnType<typeof grid>[number]; lab
           return (
             <tr key={ch} className={differs ? "changed" : ""}>
               <td>{ch}{differs && " ≠"}</td>
-              {values.map((v, i) => <td key={i}><code>{v}</code></td>)}
+              {row.cells.map((c, i) => {
+                const v = c?.output?.[ch];
+                if (ch === "transcript" && Array.isArray(v)) { // a simulated-user conversation (S13)
+                  return (
+                    <td key={i} data-testid="transcript">
+                      {(v as { role: string; content: string }[]).map((t, j) => (
+                        <p key={j} className={t.role === "user" ? "muted" : ""}><b>{t.role === "user" ? "User" : "Assistant"}:</b> {t.content}</p>
+                      ))}
+                    </td>
+                  );
+                }
+                return <td key={i}><code>{values[i]}</code></td>;
+              })}
             </tr>
           );
         })}

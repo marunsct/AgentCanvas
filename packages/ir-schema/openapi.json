@@ -2466,6 +2466,17 @@
             ],
             "title": "Name"
           },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Simulation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "chat workflows: a simulated user holds a conversation per example"
+          },
           "split": {
             "anyOf": [
               {
@@ -2558,6 +2569,16 @@
             },
             "title": "Pairwise",
             "type": "array"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Simulation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "split": {
             "anyOf": [
@@ -5990,6 +6011,50 @@
           "fields"
         ],
         "title": "SetContext",
+        "type": "object"
+      },
+      "Simulation": {
+        "properties": {
+          "goal": {
+            "default": "",
+            "description": "what they want; an example's metadata.goal wins",
+            "maxLength": 4000,
+            "title": "Goal",
+            "type": "string"
+          },
+          "max_turns": {
+            "default": 5,
+            "description": "user messages at most",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Turns",
+            "type": "integer"
+          },
+          "model": {
+            "description": "catalog model that plays the user",
+            "title": "Model",
+            "type": "string"
+          },
+          "persona": {
+            "description": "who the user is and how they write",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Persona",
+            "type": "string"
+          },
+          "stop_phrase": {
+            "default": "DONE",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Stop Phrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "persona"
+        ],
+        "title": "Simulation",
         "type": "object"
       },
       "StateEdit": {
