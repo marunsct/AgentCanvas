@@ -76,4 +76,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 |---|---|
 | S0–S9: foundations to MVP (v0.1.0) | ✅ merged |
 | S10: accounts & access (v0.2.0) | ✅ merged ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
-| S11: production readiness (v0.3.0) | 🚧 in progress: containers, compose prod and Helm, observability, backups and retention, safe redeploy, load test, security review ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s11--production-readiness--v030)) |
+| S11: production readiness (v0.3.0) | ✅ done in #4 (awaiting merge): containers, compose prod and Helm, observability, retention and backups, safe redeploy, load test, security review, KMS |
+| S12: Evaluation Studio (v0.4.0) | 🚧 in progress: datasets, evaluators, experiments, results grid, release gate ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s12--evaluation-studio--v040)) |

@@ -2,16 +2,16 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/sprint-11-production-readiness` for S11, in [#4](https://github.com/marunsct/AgentCanvas/pull/4). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2) and S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3).
+- **Branch:** `claude/sprint-12-evaluation-studio` for S12, in [#5](https://github.com/marunsct/AgentCanvas/pull/5) (based on the S11 branch until #4 merges). S11 is in [#4](https://github.com/marunsct/AgentCanvas/pull/4), awaiting the maintainer's merge. S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2) and S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** Sprint 10 merged (#3, 2026-10-05); Sprint 11 started on `claude/sprint-11-production-readiness` (containers, compose prod, Helm, cron across replicas done).
+- **Last updated:** 2026-10-06. Sprint 11 finished and reviewed (#4, awaiting merge; tag `v0.3.0` is the maintainer's call); Sprint 12 Evaluation Studio started.
 
 ## At a glance
 
 | Area | Status |
 |---|---|
 | Specification (functional, technical, IR/compiler, node catalog, workspaces/events, reviews v0.5/v0.6, new features) | ✅ done (docs 01–15, ADRs 0001–0017) |
-| Sprint plan S0–S12 | ✅ done |
+| Sprint plan S0–S12 | ✅ done (S12 backlog planned 2026-10-06) |
 | S0 Foundations | ✅ done |
 | S1 IR v1.1 & API | ✅ done |
 | S2 Runner & persistence | ✅ done |
@@ -23,14 +23,15 @@ Live status of the project. Update it with every commit that finishes or changes
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
 | S10 Accounts & access → v0.2.0 | ✅ done (merged in #3; tag `v0.2.0` pending) |
-| **S11 Production readiness → v0.3.0** | 🚧 **in progress** (M8-T1, M8-T2 and the cron leader lock done) |
-| S12+ GA backlog | ⬜ pending |
+| S11 Production readiness → v0.3.0 | ✅ done (in #4, awaiting merge; tag `v0.3.0` pending) |
+| **S12 Evaluation Studio → v0.4.0** | 🚧 **in progress** |
+| S13+ GA backlog | ⬜ pending |
 
-**Test totals** during S11:
+**Test totals** at the end of S11:
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 255 passed, 1 skipped, 1 known upstream canary (xfail) |
+| API (pytest) | 281 passed, 1 known upstream canary (xfail) |
 | Web unit tests (vitest) | 51 passed |
 | Browser journeys (Playwright) | 31 passed |
 
@@ -137,24 +138,40 @@ Live status of the project. Update it with every commit that finishes or changes
 - [x] Merged in #3 (2026-10-05).
 - [ ] Tag `v0.2.0` (maintainer's call).
 
-### S11 — production readiness → v0.3.0 (in progress; detail in the sprint plan §3)
+### S11 — production readiness → v0.3.0 (detail in the sprint plan §3)
 - [x] M8-T1 containers: non-root images built in CI, SSE-safe nginx.
 - [x] M8-T2 compose prod and Helm chart; `/readyz` pings the database and the store.
 - [x] Cron across replicas: each minute is claimed with a conditional update, so it fires once (works on SQLite too, no advisory lock needed).
-- [ ] M8-T3 observability: OpenTelemetry, Prometheus `/metrics`, a Grafana dashboard.
-- [ ] M8-T4 retention job and a rehearsed restore runbook.
-- [ ] FR-X-10 safe redeploy: drain on shutdown, resume on another replica or a compatible new version.
-- [ ] M8-T5 k6 load test: 200 concurrent streams, p95 event latency under 250 ms.
-- [ ] M8-T6 security review, with dependency and container scanning in CI.
-- [ ] KMS envelope encryption for secrets; today the key is derived from `AGENTCANVAS_SECRET_KEY`.
-- [ ] S10 review carry-overs:
-  - invitations need acceptance when the person already belongs to another organisation;
-  - the default organisation is the one used last;
-  - silent token refresh (`offline_access`); the web app reads its project per request;
-  - ~~document `FORWARDED_ALLOW_IPS`~~ done: deployment guide §4.
+- [x] M8-T3 observability: OpenTelemetry traces (FastAPI, SQLAlchemy, httpx), Prometheus `/metrics`, a Grafana dashboard and alert rules.
+- [x] M8-T4 conversation retention job, backup and restore scripts with a runbook.
+- [x] FR-X-10 safe redeploy: runs drain on shutdown and another instance resumes them, on a new version only when it is resume-compatible.
+- [x] M8-T5 k6 load test on compose prod: 200 concurrent streams, 5,875 runs, 0 failed, first-event p95 89 ms (target 250 ms).
+- [x] M8-T6 security review: checklist completed with evidence, no open P0; pip-audit, pnpm audit and Trivy in CI; Dependabot.
+- [x] KMS envelope encryption: per-organisation data keys wrapped by a file, AWS KMS or GCP KMS master key, with a re-wrap command.
+- [x] S10 review carry-overs: invitations need acceptance, last-used organisation is the default, silent token refresh, project read per request, `FORWARDED_ALLOW_IPS` documented.
+- [ ] Merge #4 and tag `v0.3.0` (maintainer's call).
 
-### S12+ — GA backlog
-- [ ] Evals studio, multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.
+**Review (2026-10-06).** Every S11 item met its acceptance. Things to know before deploying:
+- Webhook senders must now sign `timestamp.body` and send the timestamp header; old-format signatures are refused.
+- `offline_access` needs refresh tokens enabled at the identity provider, otherwise sessions end when the access token does.
+- The CSP keeps `'unsafe-eval'` because form validation (Ajv) compiles schemas at runtime.
+- Rate limits exist only in nginx, per client address.
+- The AWS and GCP KMS adapters are tested with fakes only; long-term memory (the store) is not encrypted.
+- A pod killed without a graceful shutdown leaves its runs marked running.
+- Throughput on the load test was CPU-bound (about 37 runs/s on two replicas).
+
+The follow-ups are in the S12 backlog.
+
+### S12 — Evaluation Studio → v0.4.0 (in progress; detail in the sprint plan §3)
+- [ ] FR-EVAL-02 datasets: from saved test cases, CSV/JSONL and past runs; versions and splits.
+- [ ] FR-EVAL-03 evaluators: exact/regex/JSON Schema, LLM-as-judge rubric, trajectory match, workspace code evaluators.
+- [ ] FR-EVAL-04 experiments: workflow versions × dataset × model/prompt variants, run in the background.
+- [ ] Results grid and comparison UI.
+- [ ] FR-EVAL-05 release gate at publish.
+- [ ] S11 follow-ups: API rate limits per key and project, orphaned-run sweeper, trace masking, audit and memory retention, drop `'unsafe-eval'`, base images by digest, workspace symlink test.
+
+### S13+ — GA backlog
+- [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.
 - [ ] The remaining FR-X items: 03, 04, 05, 06, 09, 11, 12, 16, 20, 21, 23.
 
 ### Open items carried forward
