@@ -308,6 +308,7 @@ class Resources:
         self.dry_run: set[str] | None = None  # tool names replaced by recorders (FR-X-02 dry run)
         self._cache: dict[str, Any] = {}
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
+        self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
@@ -318,8 +319,20 @@ class Resources:
         return self._cache[name]
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:
-        """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`)."""
-        found = self._tool(name, config, type_)
+        """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`), tagged with its resource name so
+        its calls are recorded (FR-X-13); a resource with recorded calls answers from them instead (replay)."""
+        if name in self._replays:
+            calls = ReplayQueue(self._replays[name])  # a fresh queue per graph build
+            if type_ == "mcp.server":  # never contacts the server
+                found: Any = replay_stubs(name, calls)
+            else:
+                found = replay_tool(as_tool(self._tool(name, config, type_)), name, calls)
+        else:
+            found = self._tool(name, config, type_)
+        if isinstance(found, list):  # the MCP tools this Resources loaded: its own objects, tagged in place
+            found = [tagged(t, name, in_place=True) for t in found]
+        else:
+            found = tagged(as_tool(found), name)
         if self.dry_run is None:
             return found
         if isinstance(found, list):  # MCP: also the live `destructive_hint`, in case "Browse tools" is stale or unused
@@ -352,9 +365,11 @@ class Resources:
         return Workspace(self.workspace).revision() if self.workspace and self.workspace.exists() else ""
 
     def with_mocks(self, mocks: dict[str, list[Any]]) -> Resources:
-        """A copy whose named chat models answer with scripted replies (debug "mock mode", M4-T9).
+        """A copy whose named chat models answer with scripted replies (debug "mock mode", M4-T9), and whose named
+        tool resources answer with recorded outputs (FR-X-13 replay) instead of being called.
 
-        A reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}; the last reply repeats."""
+        A model reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}; the last reply repeats. A tool
+        recording is {"tool", "args", "output" | "error"} (see `ReplayQueue`)."""
         from langchain_core.messages import AIMessage
 
         from agentcanvas.adapters.langchain.testing import MockChatModel
@@ -372,12 +387,18 @@ class Resources:
             {**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner, self.registry
         )
         clone._mcp = self._mcp
+        clone._replays = {**self._replays}
         for name, replies in mocks.items():
+            if replies and all(is_tool_recording(r) for r in replies):
+                clone._replays[name] = list(replies)
+                continue
             clone._overrides[name] = MockChatModel(replies=[message(i, r) for i, r in enumerate(replies or [""])])
         return clone
 
     async def load_mcp(self, name: str, config: dict[str, Any], *, refresh: bool = False) -> list[BaseTool]:
         """Discover an MCP server's tools (network I/O, so it happens before the synchronous graph build)."""
+        if name in self._replays:  # replayed: the recorded tools stand in, the server is not contacted
+            return replay_stubs(name, ReplayQueue(self._replays[name]))
         key = (name, _config_key(config))
         if refresh or key not in self._mcp:
             target = self._overrides.get(name) or mcp_target(config, self._resolve)
@@ -425,6 +446,86 @@ def dry_run_tool(t: Any) -> Any:
     return StructuredTool.from_function(
         coroutine=record, name=t.name, description=t.description, args_schema=t.args_schema
     )
+
+
+# ------------------------------------------------------- record/replay (FR-X-13) ----
+def as_tool(t: Any) -> Any:
+    """A workspace tool function as the tool the agent would make of it (anything else unchanged)."""
+    if isinstance(t, BaseTool) or not callable(t):
+        return t
+    from langchain_core.tools import tool as make_tool
+
+    return make_tool(t)
+
+
+def tagged(t: Any, resource: str, *, in_place: bool = False) -> Any:
+    """The tool carrying its resource name, so `UsageTracker` records its calls for replay (a copy unless
+    `in_place`: a workspace module's tool object is shared)."""
+    if not isinstance(t, BaseTool) or (t.metadata or {}).get("ac_resource") == resource:
+        return t
+    metadata = {**(t.metadata or {}), "ac_resource": resource}
+    if in_place:
+        t.metadata = metadata
+        return t
+    return t.model_copy(update={"metadata": metadata})
+
+
+def is_tool_recording(r: Any) -> bool:
+    return isinstance(r, dict) and "tool" in r and ("output" in r or "error" in r) and "content" not in r
+
+
+class ReplayQueue:
+    """A tool resource's recorded calls. A call takes the first unused recording of that tool with the same
+    arguments, else the next unused one of that tool, else reuses one with the same arguments (a resumed run
+    rebuilds its graph); with none left it is a tool error, never a real call."""
+
+    def __init__(self, recordings: list[dict[str, Any]]):
+        self.recordings = list(recordings)
+        self.used = [False] * len(self.recordings)
+
+    def take(self, tool: str, args: dict[str, Any]) -> Any:
+        same = [i for i, r in enumerate(self.recordings) if r.get("tool") == tool]
+        exact = [i for i in same if self.recordings[i].get("args") == args]
+        pick = next((i for i in exact + same if not self.used[i]), exact[0] if exact else None)
+        if pick is None:
+            raise ToolException(f"no recorded output of '{tool}' left to replay")
+        self.used[pick] = True
+        r = self.recordings[pick]
+        if "error" in r:
+            raise ToolException(str(r["error"]))
+        return r.get("output")
+
+    def tools(self) -> list[str]:
+        return list(dict.fromkeys(str(r.get("tool")) for r in self.recordings))
+
+
+def replay_tool(t: Any, resource: str, calls: ReplayQueue) -> Any:
+    """The same tool (name, description, arguments) answering from `calls` instead of running."""
+    if not isinstance(t, BaseTool):
+        return t
+
+    async def replay(**kwargs: Any) -> Any:
+        return calls.take(t.name, json.loads(json.dumps(kwargs, default=str)))
+
+    return StructuredTool.from_function(
+        coroutine=replay, name=t.name, description=t.description, args_schema=t.args_schema, handle_tool_error=True
+    )
+
+
+def replay_stubs(resource: str, calls: ReplayQueue) -> list[BaseTool]:
+    """An MCP server's recorded tools, replayed (their schemas are not recorded: any arguments are accepted)."""
+    schema = {"type": "object", "properties": {}, "additionalProperties": True}
+
+    def stub(tool: str) -> BaseTool:
+        async def replay(**kwargs: Any) -> Any:
+            return calls.take(tool, json.loads(json.dumps(kwargs, default=str)))
+
+        return StructuredTool.from_function(
+            coroutine=replay, name=tool, description=f"{tool} ({resource}, replayed)", args_schema=schema,
+            handle_tool_error=True, metadata={"ac_resource": resource},
+        )  # fmt: skip
+
+    return [stub(name) for name in calls.tools()]
 
 
 # ------------------------------------------------------------ tools: MCP ----

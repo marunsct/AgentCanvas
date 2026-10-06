@@ -75,3 +75,9 @@ def interrupt_kind(payload: Any) -> InterruptKind:
         if payload.get("kind") == "approval":
             return "approval"
     return "input"
+
+
+def is_tool_recording(r: Any) -> bool:
+    """A recorded tool call in a cassette's `mocks` ({"tool", "args", "output" | "error"}), as opposed to a model
+    reply (FR-X-13; the adapter's `Resources.with_mocks` tells them apart the same way)."""
+    return isinstance(r, dict) and "tool" in r and ("output" in r or "error" in r) and "content" not in r

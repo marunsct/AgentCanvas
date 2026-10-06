@@ -63,7 +63,8 @@ class RunHandle:
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
-    """The run as a cassette (FR-X-13): replaying its model replies should reproduce status, route and output."""
+    """The run as a cassette (FR-X-13): replaying its model replies and tool outputs should reproduce status, route
+    and output."""
     if h.input is None or status not in ("success", "interrupted"):
         return None
     mocks: dict[str, list[Any]] = {}
@@ -72,6 +73,11 @@ def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
     for ev in h.events:
         if ev["type"] == "CUSTOM" and ev.get("name") == "ac.model_reply":
             mocks.setdefault(ev["value"]["resource"], []).append(ev["value"]["reply"])
+        elif ev["type"] == "CUSTOM" and ev.get("name") == "ac.tool_io":  # tool resources replay these (S13)
+            io = ev["value"]
+            mocks.setdefault(io["resource"], []).append(
+                {k: io[k] for k in ("tool", "args", "output", "error") if k in io}
+            )
         elif ev["type"] == "STEP_STARTED" and ev.get("canvas_node_id") not in route:
             route.append(ev["canvas_node_id"])
         elif ev["type"] == "RUN_FINISHED":

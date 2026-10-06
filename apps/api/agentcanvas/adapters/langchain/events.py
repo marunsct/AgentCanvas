@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
+from langgraph.errors import GraphBubbleUp
 
 from agentcanvas.ir.models import Workflow
 
@@ -114,6 +115,8 @@ class UsageTracker(BaseCallbackHandler):
         self._resources: dict[UUID, str] = {}
         self._records: list[dict[str, Any]] = []
         self._replies: list[dict[str, Any]] = []  # FR-X-13: what each model resource answered, in order
+        self._tool_calls: dict[UUID, dict[str, Any]] = {}
+        self._tool_io: list[dict[str, Any]] = []  # FR-X-13: what each tool resource was asked and answered
 
     def on_chat_model_start(self, serialized: Any, messages: Any, *, run_id: UUID, **kw: Any) -> None:
         md = kw.get("metadata") or {}
@@ -153,10 +156,34 @@ class UsageTracker(BaseCallbackHandler):
         self._calls.pop(run_id, None)
         self._resources.pop(run_id, None)
 
+    def on_tool_start(self, serialized: Any, input_str: str, *, run_id: UUID, **kw: Any) -> None:
+        resource = (kw.get("metadata") or {}).get("ac_resource")
+        if not resource:  # only tool resources (built by `Resources.tool`) are recorded
+            return
+        inputs = kw.get("inputs")
+        self._tool_calls[run_id] = {
+            "resource": str(resource),
+            "tool": (serialized or {}).get("name") or kw.get("name"),
+            "args": jsonable(inputs if isinstance(inputs, dict) else {"input": input_str}),
+        }
+
+    def on_tool_end(self, output: Any, *, run_id: UUID, **kw: Any) -> None:
+        if call := self._tool_calls.pop(run_id, None):
+            self._tool_io.append({**call, "output": jsonable(getattr(output, "content", output))})
+
+    def on_tool_error(self, error: BaseException, *, run_id: UUID, **kw: Any) -> None:
+        call = self._tool_calls.pop(run_id, None)
+        if call and not isinstance(error, GraphBubbleUp):  # an interrupt is not the tool's answer
+            self._tool_io.append({**call, "error": f"{type(error).__name__}: {error}"})
+
     def drain(self) -> list[dict[str, Any]]:
         out, self._records = self._records, []
         return out
 
     def drain_replies(self) -> list[dict[str, Any]]:
         out, self._replies = self._replies, []
+        return out
+
+    def drain_tool_io(self) -> list[dict[str, Any]]:
+        out, self._tool_io = self._tool_io, []
         return out

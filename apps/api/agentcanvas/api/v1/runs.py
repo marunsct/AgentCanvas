@@ -27,7 +27,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
-from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.runtime.types import ResumeSpec, is_tool_recording
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.secrets import hide_secrets
@@ -226,7 +226,10 @@ def _debug(wf: Workflow, opts: DebugOptions, mode: str) -> dict[str, Any]:
         if n is None or n.type in ("core.router", "core.map"):
             raise InvalidInput(f"'{node_id}' cannot be pinned (unknown node, router or map)")
     models = {r.name for r in wf.resources if r.type == "model.chat"}
-    for name in opts.mocks or {}:
+    tools = {r.name for r in wf.resources if r.type in ("tool.python", "tool.http", "mcp.server")}
+    for name, replies in (opts.mocks or {}).items():
+        if name in tools and replies and all(is_tool_recording(r) for r in replies):
+            continue  # recorded tool outputs (FR-X-13 replay)
         if name not in models:
             raise InvalidInput(f"'{name}' is not a chat model resource of this workflow")
     return {"pins": opts.pins or {}, "mocks": opts.mocks or {}, "dry_run": opts.dry_run}
