@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 7 acceptance (J3 part 2): an event handler written as code starts a workflow; dry run first.
 

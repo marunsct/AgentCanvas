@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // The walking-skeleton journey on the real editor: template -> run -> tool approval -> complete; reject on a new thread.
 test("run → approve → complete, then reject on a new thread", async ({ page }) => {

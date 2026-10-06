@@ -65,7 +65,7 @@ Items marked *Partial* keep a follow-up in the S12 backlog ([13-sprint-plan.md](
 |---|--------|----------|-----------|
 | S1 | Pass | CEL and `SandboxedEnvironment` only (`agentcanvas/expr.py`); `test_security.py::test_templates_cannot_reach_python_internals`, `::test_cel_cannot_reach_python_internals` | |
 | S2 | Pass | `sandbox/runners.py`: `--network none --read-only --cap-drop ALL --user 65534`, memory/CPU/pids limits, the container is killed on timeout; hosted refuses to start without the docker or LangSmith sandbox (`security/auth.py`). `test_workspace.py::test_docker_sandbox_has_no_network`, `test_auth.py::test_dev_mode_is_refused_in_production` | |
-| S3 | Pass | `workspace/store.py` resolves and stays under the root; `test_workspace.py::test_workspace_scaffold_git_and_path_safety`, `::test_file_api` | add a symlink case |
+| S3 | Pass | `workspace/store.py` resolves and stays under the root; `test_workspace.py::test_workspace_scaffold_git_and_path_safety`, `::test_file_api`, `::test_symlinks_cannot_escape_the_workspace` (file and directory links out of the root are refused and not listed) | — |
 | S4 | Pass | allowed prefixes (`security/imports.py`), E080, `test_security.py::test_imports_outside_workspace_are_refused`. Exported code imports workspace packages from its own path by design | |
 | S5 | Pass | `$secret` references only; `test_secrets.py::test_secrets_are_write_only_and_redacted_everywhere` | |
 | S6 | Pass | W002 for destructive MCP tools and for tools that write or send (HTTP other than GET/HEAD, declared `external_write`/`message_send`) without approval (`validation/rules/agents.py`) | |
@@ -84,12 +84,12 @@ Items marked *Partial* keep a follow-up in the S12 backlog ([13-sprint-plan.md](
 | S19 | Pass | `test_publish.py::test_publish_pins_the_version_and_keys_rotate` | |
 | S20 | Pass | HMAC over timestamp and body, 5-minute window, constant-time compare, unknown triggers answer 401. `test_triggers.py::test_signed_webhook_starts_a_run` | |
 | S21 | Pass | `test_auth.py::test_cors_refuses_other_origins` | |
-| S22 | Pass | CSP (`infra/web/20-csp.envsh`), nosniff, `frame-ancestors 'self'` (the silent sign-in renewal frames the app itself; no other site can); CI checks the headers. `script-src` allows `'unsafe-eval'` for Ajv form validation; the whole e2e suite passes under this policy | drop `'unsafe-eval'` with an interpreting JSON Schema validator |
+| S22 | Pass | CSP (`infra/web/20-csp.envsh`), nosniff, `frame-ancestors 'self'` (the silent sign-in renewal frames the app itself; no other site can); CI checks the headers. `script-src 'self'` only (S12): forms validate with an interpreting JSON Schema validator (`src/ui/validator.ts`), and CI runs the whole e2e suite against the production build under this policy, failing any journey that logs a CSP violation | — |
 | S23 | Pass | no `dangerouslySetInnerHTML`/`innerHTML` in `apps/web/src`; model text renders as text | |
 | S24 | N/A | bearer tokens only | |
 | S25 | Pass | `uv sync --frozen`, `pnpm install --frozen-lockfile` in CI and images | |
 | S26 | Pass | CI `audit` job (pip-audit, pnpm audit) and Dependabot; clean on 2026-10-06 | |
-| S27 | Pass | non-root images, OS updates applied at build, Trivy (HIGH/CRITICAL with a fix) in CI | pin base images by digest |
+| S27 | Pass | non-root images, OS updates applied at build, Trivy (HIGH/CRITICAL with a fix) in CI; base images pinned by digest, updated by Dependabot | — |
 | S28 | Pass | `test_audit.py` | |
 | S29 | Partial | conversation retention job (`services/retention.py`, `test_retention.py`) | audit-log and memory retention |
 | S30 | Pass (S12) | nginx limits deployment and webhook endpoints per client address (20 r/s, burst 40, 429); the API limits each deployment key, webhook and project per minute across replicas (`services/ratelimit.py`). `test_ratelimit.py` | |

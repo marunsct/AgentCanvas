@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 5 acceptance: map-reduce research with a Deep Agent, and the structured-output designer.
 

@@ -20,6 +20,10 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
-    { command: "pnpm dev --port 5173 --strictPort", url: "http://localhost:5173", reuseExistingServer: !process.env.CI, timeout: 120_000 },
+    // CI (or E2E_PROD=1) drives the production build under the production Content-Security-Policy (no eval, no
+    // inline script); locally the dev server is faster to iterate with
+    process.env.CI || process.env.E2E_PROD
+      ? { command: "pnpm build && pnpm preview --port 5173 --strictPort", url: "http://localhost:5173", reuseExistingServer: false, timeout: 300_000 }
+      : { command: "pnpm dev --port 5173 --strictPort", url: "http://localhost:5173", reuseExistingServer: true, timeout: 120_000 },
   ],
 });

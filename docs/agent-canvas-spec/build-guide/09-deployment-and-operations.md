@@ -23,7 +23,7 @@ docker build -f infra/Dockerfile.web -t agentcanvas-web:$(git rev-parse --short 
 
 - **API image:** multi-stage (uv builds the virtualenv; the runtime stage has no build tools), runs as uid 10001, includes `git` for project workspaces, logs JSON, and exposes `/healthz` (liveness) and `/readyz` (the database and the run store answer; 503 otherwise). `ruff` is a runtime dependency: the code generator formats output with it. On SIGTERM uvicorn lets open streams finish for up to 30 s.
 - **Web image:** nginx (unprivileged, port 8080) serves the built app and proxies `/api/` to `$API_UPSTREAM` (default `http://api:8000`) without buffering, so Server-Sent Events stream in real time. Hashed assets are cached for a year; the app shell is always revalidated.
-- Base images are build arguments (`PYTHON_IMAGE`, `UV_IMAGE`, `NODE_IMAGE`, `NGINX_IMAGE`) for mirrors and pinned digests.
+- Base images are pinned by digest in the Dockerfiles; Dependabot proposes new digests weekly. To build from a mirror, replace the exact reference with BuildKit: `docker build --build-context 'python:3.12-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/python@sha256:<digest>' …` (same digest: the mirror serves the same image).
 
 ## 3. Single host: `compose.prod.yml` (small teams, staging)
 

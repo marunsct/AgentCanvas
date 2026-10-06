@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // Sprint 9 (FR-X-24): the guided build advances as the real workflow takes shape.
 

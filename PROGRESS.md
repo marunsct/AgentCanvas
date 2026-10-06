@@ -155,7 +155,7 @@ Live status of the project. Update it with every commit that finishes or changes
 **Review (2026-10-06).** Every S11 item met its acceptance. Things to know before deploying:
 - Webhook senders must now sign `timestamp.body` and send the timestamp header; old-format signatures are refused.
 - `offline_access` needs refresh tokens enabled at the identity provider, otherwise sessions end when the access token does.
-- The CSP keeps `'unsafe-eval'` because form validation (Ajv) compiles schemas at runtime.
+- The CSP keeps `'unsafe-eval'` because form validation (Ajv) compiles schemas at runtime (dropped in S12).
 - Rate limits exist only in nginx, per client address.
 - The AWS and GCP KMS adapters are tested with fakes only; long-term memory (the store) is not encrypted.
 - A pod killed without a graceful shutdown leaves its runs marked running.
@@ -173,7 +173,8 @@ The follow-ups are in the S12 backlog.
 - [x] API rate limits per deployment key, webhook and project, counted in the database across replicas (429 with `Retry-After`).
 - [x] Trace masking: secrets masked in LangSmith runs and OTel spans; `settings.trace_redact` fields redacted in every step's trace.
 - [x] Audit-log retention (400 days by default) and opt-in long-term memory retention in the daily job.
-- [ ] S11 follow-ups: drop `'unsafe-eval'`, base images by digest, workspace symlink test.
+- [x] CSP without `'unsafe-eval'`: interpreting form validator; CI runs the e2e suite on the production build under the production policy.
+- [x] Base images pinned by digest; workspace symlink escape test.
 
 ### S13+ — GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.

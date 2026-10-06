@@ -82,7 +82,8 @@ class Workspace:
         out = []
         for p in sorted(self.root.rglob("*")):
             rel = p.relative_to(self.root)
-            if p.is_file() and not any(part in HIDDEN for part in rel.parts):
+            inside = p.resolve().is_relative_to(self.root)  # a symlink out of the workspace is not listed (S12)
+            if inside and p.is_file() and not any(part in HIDDEN for part in rel.parts):
                 st = p.stat()
                 out.append(FileInfo(rel.as_posix(), st.st_size, st.st_mtime))
         return out
