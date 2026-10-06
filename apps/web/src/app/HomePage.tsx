@@ -1,5 +1,5 @@
 /** Home: workflows of the current project; builders create empty or from a template. */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
@@ -47,6 +47,7 @@ export function HomePage() {
         <span className="muted small" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
         {signInEnabled() && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
       </header>
+      <Invitations />
       {!can("builder") && (
         <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({ME.role}) cannot create or edit them.</p>
       )}
@@ -94,5 +95,31 @@ export function HomePage() {
         </ul>
       </section>
     </div>
+  );
+}
+
+interface Invitation { org_id: string; org_name: string; role: string }
+
+/** Organisations that invited you while you belong to another one: joining is your choice (S11). */
+function Invitations() {
+  const invitations = useQuery({ queryKey: ["invitations"], queryFn: () => apiFetch<Invitation[]>("/me/invitations") });
+  const answer = useMutation({
+    mutationFn: ({ org, accept }: { org: string; accept: boolean }) =>
+      apiFetch(`/me/invitations/${encodeURIComponent(org)}${accept ? "/accept" : ""}`, { method: accept ? "POST" : "DELETE" }),
+    // accepting switches to the organisation just joined: start over in it
+    onSuccess: (_, { accept }) => (accept ? location.assign("/") : void invitations.refetch()),
+  });
+  if (!invitations.data?.length) return null;
+  return (
+    <section className="guided" data-testid="invitations">
+      {invitations.data.map((i) => (
+        <p key={i.org_id} className="row gap">
+          <span>You are invited to join <b>{i.org_name}</b> as {i.role}.</span>
+          <button type="button" className="primary" onClick={() => answer.mutate({ org: i.org_id, accept: true })}>Join</button>
+          <button type="button" onClick={() => answer.mutate({ org: i.org_id, accept: false })}>Decline</button>
+        </p>
+      ))}
+      {answer.error && <p className="error-text">{(answer.error as Error).message}</p>}
+    </section>
   );
 }

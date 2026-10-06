@@ -105,6 +105,7 @@ CHILD_PARAMS = {
     "path": "a file inside {project_id}'s workspace",
     "policy_id": "PolicyRepo.require filters by the caller's organisation",
     "user_id": "member routes act on the caller's organisation only",
+    "org_id": "/me/invitations: the caller's own invitations only",
 }
 
 

@@ -58,7 +58,7 @@ bearer_scheme = HTTPBearer(auto_error=False, description="the identity provider'
 async def current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    org: str | None = Header(None, alias="X-Org-Id", description="organisation to act in (default: your first)"),
+    org: str | None = Header(None, alias="X-Org-Id", description="organisation to act in (default: last used)"),
     session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
     """The signed-in user and the organisation this request acts in.
@@ -84,11 +84,18 @@ async def current_user(
         and identity.email.lower() in {e.lower() for e in settings.bootstrap_admin_emails}
     ):
         memberships = await repo.bootstrap_admin(user.id, DEV_ORG)
+    if not memberships and (invited := await repo.invitations(user.id)):
+        # nowhere else to be: the first invitation needs no acceptance (it does when it would move them)
+        await repo.answer(user.id, invited[0][0].id, accept=True)
+        memberships = await repo.memberships(user.id)
     if not memberships:
         raise Forbidden("you are not a member of any organisation; ask an admin to invite you")
-    org_id = org or sorted(memberships)[0]
+    default = next(iter(memberships))  # the organisation used last
+    org_id = org or default
     if org_id not in memberships:
         raise Forbidden(f"you are not a member of organisation '{org_id}'")
+    if org_id != default:
+        await repo.used(user.id, org_id)  # choosing another organisation makes it the default
     return CurrentUser(id=user.id, org_id=org_id, role=memberships[org_id], email=user.email, memberships=memberships)
 
 
@@ -131,6 +138,8 @@ ROLE_EXCEPTIONS = {
     ("POST", "/expressions/check"): "viewer",
     ("POST", "/inbox/{interrupt_id}/decision"): "reviewer",
     ("POST", "/threads/{thread_id}/resume"): "reviewer",
+    ("POST", "/me/invitations/{org_id}/accept"): "viewer",  # anyone answers their own invitations
+    ("DELETE", "/me/invitations/{org_id}"): "viewer",
 }
 
 

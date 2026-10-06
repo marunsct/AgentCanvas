@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     oidc_audience: str | None = None  # the token's `aud` the API accepts
     oidc_client_id: str | None = None  # public SPA client id, handed to the web app by /v1/auth/config
     oidc_jwks_url: str | None = None  # None = from the issuer's discovery document
-    oidc_scopes: str = "openid profile email"
+    oidc_scopes: str = "openid profile email offline_access"  # offline_access: silent token refresh
     oidc_email_claim: str = "email"
     # treat the email claim as verified when the provider sends no `email_verified` (e.g. a corporate IdP that
     # owns the domain); leave off for providers where users choose their own email

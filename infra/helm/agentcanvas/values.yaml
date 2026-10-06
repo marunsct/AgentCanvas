@@ -16,7 +16,7 @@ config:
     issuer: ""                    # e.g. https://login.example.com/realms/acme
     audience: ""
     clientId: ""
-    scopes: "openid profile email"
+    scopes: "openid profile email offline_access"   # offline_access: silent token refresh
   bootstrapAdminEmails: []        # become admins of the default organisation on first sign-in
   corsOrigins: []
   scriptExecution: subprocess     # inprocess | subprocess | docker | langsmith

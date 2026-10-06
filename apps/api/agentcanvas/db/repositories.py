@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select, update
@@ -84,10 +85,10 @@ class UserRepo:
         """Move an invitation's memberships to the user who claimed it (existing memberships win), then drop it.
         Two first requests in parallel may both try: the loser finds the work done and lets it be."""
         try:
-            mine = await self.memberships(user.id)
+            mine = await self.memberships(user.id, accepted_only=False)
             for m in (await self.s.scalars(select(Membership).where(Membership.user_id == pending.id))).all():
-                if m.org_id not in mine:
-                    self.s.add(Membership(org_id=m.org_id, user_id=user.id, role=m.role))
+                if m.org_id not in mine:  # someone who already belongs somewhere accepts it first
+                    self.s.add(Membership(org_id=m.org_id, user_id=user.id, role=m.role, accepted=not mine))
                 await self.s.delete(m)
             await self.s.flush()
             await self.s.delete(pending)
@@ -95,9 +96,41 @@ class UserRepo:
         except (IntegrityError, StaleDataError):
             await self.s.rollback()
 
-    async def memberships(self, user_id: str) -> dict[str, str]:
-        rows = await self.s.execute(select(Membership.org_id, Membership.role).where(Membership.user_id == user_id))
-        return {org: role for org, role in rows.all()}
+    async def memberships(self, user_id: str, accepted_only: bool = True) -> dict[str, str]:
+        """org id -> role; the default organisation (the one used last) first."""
+        q = select(Membership.org_id, Membership.role).where(Membership.user_id == user_id)
+        if accepted_only:
+            q = q.where(Membership.accepted.is_(True))
+        q = q.order_by(Membership.last_used_at.desc().nulls_last(), Membership.org_id)
+        return {org: role for org, role in (await self.s.execute(q)).all()}
+
+    async def used(self, user_id: str, org_id: str) -> None:
+        """Remember the organisation a user just chose: it is their default from now on."""
+        await self.s.execute(
+            update(Membership)
+            .where(Membership.user_id == user_id, Membership.org_id == org_id)
+            .values(last_used_at=datetime.now(UTC))
+        )
+        await self.s.commit()
+
+    async def invitations(self, user_id: str) -> list[tuple[Organization, str]]:
+        q = (
+            select(Organization, Membership.role)
+            .join(Membership, Membership.org_id == Organization.id)
+            .where(Membership.user_id == user_id, Membership.accepted.is_(False))
+            .order_by(Organization.name)
+        )
+        return [(o, role) for o, role in (await self.s.execute(q)).all()]
+
+    async def answer(self, user_id: str, org_id: str, accept: bool) -> None:
+        m = await self.s.get(Membership, (org_id, user_id))
+        if m is None or m.accepted:
+            raise NotFound(f"no invitation to organisation '{org_id}'")
+        if accept:
+            m.accepted, m.last_used_at = True, datetime.now(UTC)  # land in the organisation just joined
+        else:
+            await self.s.delete(m)
+        await self.s.commit()
 
     async def bootstrap_admin(self, user_id: str, org_id: str) -> dict[str, str]:
         try:  # a parallel bootstrap may create the organisation or the membership first
@@ -134,14 +167,14 @@ class MemberRepo:
     def __init__(self, s: AsyncSession):
         self.s = s
 
-    async def list(self, org_id: str) -> list[tuple[AppUser, str]]:
+    async def list(self, org_id: str) -> list[tuple[AppUser, Membership]]:
         q = (
-            select(AppUser, Membership.role)
+            select(AppUser, Membership)
             .join(Membership, Membership.user_id == AppUser.id)
             .where(Membership.org_id == org_id)
             .order_by(AppUser.email)
         )
-        return [(u, role) for u, role in (await self.s.execute(q)).all()]
+        return [(u, m) for u, m in (await self.s.execute(q)).all()]
 
     async def set_role(self, org_id: str, email: str, role: str, *, retry: bool = True) -> tuple[AppUser, str]:
         """Add the person with this email to the organisation, or change their role. Someone who has never
@@ -161,7 +194,13 @@ class MemberRepo:
                 return await self.set_role(org_id, email, role, retry=False)
         m = await self.s.get(Membership, (org_id, user.id))
         if m is None:
-            self.s.add(Membership(org_id=org_id, user_id=user.id, role=role))
+            elsewhere = await self.s.scalar(
+                select(func.count())
+                .select_from(Membership)
+                .where(Membership.user_id == user.id, Membership.org_id != org_id, Membership.accepted.is_(True))
+            )
+            # someone who already belongs to another organisation decides whether to join (S11)
+            self.s.add(Membership(org_id=org_id, user_id=user.id, role=role, accepted=not elsewhere))
         else:
             m.role = role
             await self._keep_an_admin(org_id)
@@ -192,7 +231,7 @@ class MemberRepo:
             select(func.count())
             .select_from(Membership)
             .join(AppUser, AppUser.id == Membership.user_id)
-            .where(Membership.org_id == org_id, Membership.role == "admin")
+            .where(Membership.org_id == org_id, Membership.role == "admin", Membership.accepted.is_(True))
             .where(~AppUser.oidc_subject.startswith("pending:"))
         )
         if not await self.s.scalar(q):

@@ -28,6 +28,7 @@ class MemberOut(BaseModel):
     display_name: str | None
     role: Role
     invited: bool = Field(description="has not signed in yet")
+    accepted: bool = Field(True, description="false: belongs to another organisation and has not accepted yet")
 
 
 class MemberIn(BaseModel):
@@ -35,10 +36,11 @@ class MemberIn(BaseModel):
     role: Role
 
 
-def _out(u, role: str) -> MemberOut:
+def _out(u, role: str, accepted: bool = True) -> MemberOut:
+    """Profile details (the name from their identity provider) only once they joined (S11)."""
     return MemberOut(
-        user_id=u.id, email=u.email, display_name=u.display_name, role=role,  # type: ignore[arg-type]
-        invited=u.oidc_subject.startswith("pending:"),
+        user_id=u.id, email=u.email, display_name=u.display_name if accepted else None,
+        role=role, invited=u.oidc_subject.startswith("pending:"), accepted=accepted,  # type: ignore[arg-type]
     )  # fmt: skip
 
 
@@ -46,7 +48,7 @@ def _out(u, role: str) -> MemberOut:
 async def list_members(
     session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> list[MemberOut]:
-    return [_out(u, role) for u, role in await MemberRepo(session).list(user.org_id)]
+    return [_out(u, m.role, m.accepted) for u, m in await MemberRepo(session).list(user.org_id)]
 
 
 @router.put("/members", response_model=MemberOut)
@@ -57,9 +59,11 @@ async def set_member(
     user: CurrentUser = Depends(current_user),
 ) -> MemberOut:
     """Invite someone by email or change their role. Invitations take effect at their first verified sign-in."""
-    u, role = await MemberRepo(session).set_role(user.org_id, body.email, body.role)
+    repo = MemberRepo(session)
+    u, role = await repo.set_role(user.org_id, body.email, body.role)
     note(request, target=f"user_id={u.id}", email=u.email, role=role)
-    return _out(u, role)
+    accepted = next(m.accepted for v, m in await repo.list(user.org_id) if v.id == u.id)
+    return _out(u, role, accepted)
 
 
 @router.delete("/members/{user_id}", status_code=204)

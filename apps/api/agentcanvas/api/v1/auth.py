@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.api.deps import CurrentUser, current_user, get_settings_dep
+from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.db.repositories import UserRepo
 from agentcanvas.settings import Settings
 
 public_router = APIRouter(tags=["auth"])
@@ -45,3 +47,35 @@ def auth_config(settings: Settings = Depends(get_settings_dep)) -> AuthConfig:
 def me(user: CurrentUser = Depends(current_user)) -> MeOut:
     """The signed-in user, the organisation this request acts in and their role there."""
     return MeOut(id=user.id, email=user.email, org_id=user.org_id, role=user.role, memberships=user.memberships)
+
+
+class InvitationOut(BaseModel):
+    org_id: str
+    org_name: str
+    role: str
+
+
+@router.get("/me/invitations", response_model=list[InvitationOut])
+async def my_invitations(
+    user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> list[InvitationOut]:
+    """Organisations that invited you while you belong to another one; joining needs your acceptance (S11)."""
+    rows = await UserRepo(session).invitations(user.id)
+    return [InvitationOut(org_id=o.id, org_name=o.name, role=role) for o, role in rows]
+
+
+@router.post("/me/invitations/{org_id}/accept", status_code=204)
+async def accept_invitation(
+    org_id: str, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> Response:
+    """Join the organisation; it becomes your default."""
+    await UserRepo(session).answer(user.id, org_id, accept=True)
+    return Response(status_code=204)
+
+
+@router.delete("/me/invitations/{org_id}", status_code=204)
+async def decline_invitation(
+    org_id: str, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> Response:
+    await UserRepo(session).answer(user.id, org_id, accept=False)
+    return Response(status_code=204)

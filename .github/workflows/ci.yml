@@ -121,7 +121,7 @@ jobs:
           asset=$(curl -fsS http://localhost:8080/ | grep -o '/assets/[^"]*\.js' | head -1)
           curl -fsSI "http://localhost:8080$asset" | grep -qi "immutable"
           curl -fsSI http://localhost:8080/ | grep -i "content-security-policy" | grep -q "connect-src 'self' https://login.example.com;"
-          curl -fsSI http://localhost:8080/ | grep -qi "frame-ancestors 'none'"
+          curl -fsSI http://localhost:8080/ | grep -qi "frame-ancestors 'self'"
           curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
           docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001

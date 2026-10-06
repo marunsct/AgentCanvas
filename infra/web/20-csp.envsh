@@ -2,8 +2,9 @@
 # Content-Security-Policy for the app (S22), rendered into the nginx template before it starts.
 # connect-src: this origin plus the identity provider's (sign-in fetches its discovery document, keys and token
 # endpoint). CSP_CONNECT_SRC lists extra origins, space-separated; by default it is the origin of OIDC_ISSUER.
+# frame-ancestors 'self': only the app frames itself (the silent sign-in renewal's hidden iframe).
 # 'unsafe-eval': the settings forms validate with Ajv, which compiles JSON Schemas to functions at runtime.
 if [ -z "${CSP_CONNECT_SRC:-}" ] && [ -n "${OIDC_ISSUER:-}" ]; then
   CSP_CONNECT_SRC=$(printf '%s' "$OIDC_ISSUER" | sed -E 's#^(https?://[^/]+).*#\1#')
 fi
-export CONTENT_SECURITY_POLICY="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${CSP_CONNECT_SRC:-}; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+export CONTENT_SECURITY_POLICY="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${CSP_CONNECT_SRC:-}; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"

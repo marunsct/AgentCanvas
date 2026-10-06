@@ -84,7 +84,7 @@ Items marked *Partial* keep a follow-up in the S12 backlog ([13-sprint-plan.md](
 | S19 | Pass | `test_publish.py::test_publish_pins_the_version_and_keys_rotate` | |
 | S20 | Pass | HMAC over timestamp and body, 5-minute window, constant-time compare, unknown triggers answer 401. `test_triggers.py::test_signed_webhook_starts_a_run` | |
 | S21 | Pass | `test_auth.py::test_cors_refuses_other_origins` | |
-| S22 | Pass | CSP (`infra/web/20-csp.envsh`), nosniff, frame-ancestors none; CI checks the headers. `script-src` allows `'unsafe-eval'` for Ajv form validation; the whole e2e suite passes under this policy | drop `'unsafe-eval'` with an interpreting JSON Schema validator |
+| S22 | Pass | CSP (`infra/web/20-csp.envsh`), nosniff, `frame-ancestors 'self'` (the silent sign-in renewal frames the app itself; no other site can); CI checks the headers. `script-src` allows `'unsafe-eval'` for Ajv form validation; the whole e2e suite passes under this policy | drop `'unsafe-eval'` with an interpreting JSON Schema validator |
 | S23 | Pass | no `dangerouslySetInnerHTML`/`innerHTML` in `apps/web/src`; model text renders as text | |
 | S24 | N/A | bearer tokens only | |
 | S25 | Pass | `uv sync --frozen`, `pnpm install --frozen-lockfile` in CI and images | |

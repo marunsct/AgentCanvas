@@ -77,6 +77,9 @@ class Membership(Base):
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str] = mapped_column(Text)
+    # false: an invitation to someone who already belongs to another organisation, until they accept it (S11)
+    accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the default organisation
 
 
 class Project(Base):

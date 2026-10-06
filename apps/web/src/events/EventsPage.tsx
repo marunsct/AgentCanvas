@@ -32,12 +32,13 @@ interface LoggedEvent {
   created_at: string;
 }
 
-const base = `/projects/${PROJECT_ID}/events`;
+// read per request: the project is chosen after sign-in, and may change
+const base = () => `/projects/${PROJECT_ID}/events`;
 
 export function EventsPage() {
   const qc = useQueryClient();
   const catalog = useWorkspaceCatalog();
-  const log = useQuery({ queryKey: ["events"], queryFn: () => apiFetch<LoggedEvent[]>(`${base}?limit=50`), refetchInterval: 5000 });
+  const log = useQuery({ queryKey: ["events", PROJECT_ID], queryFn: () => apiFetch<LoggedEvent[]>(`${base()}?limit=50`), refetchInterval: 5000 });
   const [type, setType] = useState("");
   const [data, setData] = useState("{}");
   const [result, setResult] = useState<EventResult | null>(null);
@@ -48,8 +49,8 @@ export function EventsPage() {
     parsed = null;
   }
   const send = useMutation({
-    mutationFn: (dry: boolean) => apiFetch<EventResult>(dry ? `${base}/dry-run` : base, { method: "POST", json: { type, data: parsed } }),
-    onSuccess: (r) => { setResult(r); void qc.invalidateQueries({ queryKey: ["events"] }); },
+    mutationFn: (dry: boolean) => apiFetch<EventResult>(dry ? `${base()}/dry-run` : base(), { method: "POST", json: { type, data: parsed } }),
+    onSuccess: (r) => { setResult(r); void qc.invalidateQueries({ queryKey: ["events", PROJECT_ID] }); },
   });
   const handlers = catalog.data?.handlers ?? [];
   const types = [...new Set([...handlers.map((h) => h.type), ...(catalog.data?.schemas ?? [])])].sort();
