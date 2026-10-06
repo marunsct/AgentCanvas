@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from typing import Any, Protocol
 
 from agentcanvas.ir.models import Workflow
@@ -72,6 +73,10 @@ class FrameworkAdapter(Protocol):
     async def memory_delete(self, namespace: tuple[str, ...], key: str) -> None: ...
 
     async def memory_erase(self, prefix: tuple[str, ...]) -> int: ...
+
+    async def memory_expire(self, prefix: tuple[str, ...], before: datetime) -> int:
+        """Delete the memories under `prefix` last updated before `before`; returns how many (S12)."""
+        ...
 
     async def memory_adopt(self, org_id: str) -> int:
         """Move memories written before organisations existed under `org_id`'s root; returns how many moved."""

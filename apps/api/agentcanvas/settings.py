@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
     # unless the organisation sets its own (M8-T4); 0 keeps them forever
     retention_days: int = 90
+    audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever (S12)
+    memory_retention_days: int = 0  # long-term memories not updated for this long are deleted; 0 (default): kept
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20

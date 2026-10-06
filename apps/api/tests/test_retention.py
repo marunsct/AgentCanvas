@@ -60,3 +60,32 @@ async def test_organisations_choose_their_retention(app, api_client):
     assert entry["detail"]["retention_days"] == 14
     async with app.state.db.sessionmaker() as s:
         assert (await s.get(Organization, "org_default")).retention_days == 14  # type: ignore[union-attr]
+
+
+async def test_audit_rows_and_memories_expire(app, api_client):
+    """S12: audit rows older than the audit retention go; memories go only when memory retention is set."""
+    from agentcanvas.db.models import AuditLog
+
+    job = app.state.retention
+    assert (job.audit_days, job.memory_days) == (400, 0)  # the defaults
+    await make_greeter(api_client)  # audited
+    async with app.state.db.sessionmaker() as s:
+        s.add(
+            AuditLog(org_id="org_default", action="old", target="-", created_at=datetime.now(UTC) - timedelta(days=401))
+        )
+        await s.commit()
+    await job.tick(datetime.now(UTC))
+    actions = [e["action"] for e in (await api_client.get("/v1/org/audit")).json()]
+    assert "old" not in actions and "create_workflow" in actions
+
+    store = app.state.runner.adapter.store
+    await store.aput(("org:org_default", "users", "u1"), "likes", {"text": "tea"})
+    later = datetime.now(UTC) + timedelta(days=30)
+    assert await job.expire_memory(later, ["org_default"]) == 0  # off by default
+    job.memory_days = 7
+    try:
+        assert await job.expire_memory(datetime.now(UTC), ["org_default"]) == 0  # still fresh
+        assert await job.expire_memory(later, ["org_default"]) == 1
+        assert await store.aget(("org:org_default", "users", "u1"), "likes") is None
+    finally:
+        job.memory_days = 0

@@ -84,7 +84,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.finish_hooks.append(observability.run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
             app.state.ratelimit = RateLimiter(db)
-            app.state.retention = RetentionJob(db, runner, settings.retention_days, settings.retention_interval_s)
+            app.state.retention = RetentionJob(
+                db, runner, settings.retention_days, settings.retention_interval_s,
+                audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days,
+            )  # fmt: skip
 
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)

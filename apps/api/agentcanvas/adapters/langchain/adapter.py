@@ -10,6 +10,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -175,6 +176,20 @@ class LangChainAdapter:
                 await self.store.adelete(i.namespace, i.key)
             deleted += len(items)
         return deleted
+
+    async def memory_expire(self, prefix: tuple[str, ...], before: datetime) -> int:
+        """Delete the memories under `prefix` last updated before `before` (retention, S12)."""
+
+        def old(at: datetime | None) -> bool:  # the SQLite store returns naive UTC times
+            return at is not None and (at if at.tzinfo else at.replace(tzinfo=UTC)) < before
+
+        stale, offset = [], 0
+        while page := await self.store.asearch(prefix, limit=500, offset=offset):
+            stale += [i for i in page if old(i.updated_at)]
+            offset += len(page)
+        for i in stale:
+            await self.store.adelete(i.namespace, i.key)
+        return len(stale)
 
     ADOPTED = (("org:_system", "migrations"), "memory_adopt")
 
