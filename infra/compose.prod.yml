@@ -13,6 +13,8 @@ x-api: &api
     AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
     AGENTCANVAS_EDITION: ${AGENTCANVAS_EDITION:-dev}
     AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:?set AGENTCANVAS_SECRET_KEY (64+ random characters)}
+    LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:-}  # 32 characters: checkpoints encrypted at rest
+    AGENTCANVAS_KMS_KEY: ${AGENTCANVAS_KMS_KEY:-}
     AGENTCANVAS_AUTO_MIGRATE: "false"          # the migrate service runs them once, before any replica starts
     AGENTCANVAS_SEED_DEV_DATA: ${AGENTCANVAS_SEED_DEV_DATA:-true}  # creates the default organisation and project
     AGENTCANVAS_AUTH_MODE: ${AGENTCANVAS_AUTH_MODE:-oidc}
@@ -62,6 +64,8 @@ services:
     image: ${WEB_IMAGE:-agentcanvas-web:latest}
     environment:
       API_UPSTREAM: http://api:8000            # compose balances across the api replicas
+      OIDC_ISSUER: ${AGENTCANVAS_OIDC_ISSUER:-} # its origin is allowed in the Content-Security-Policy
+      CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-}     # other identity provider origins (e.g. a separate token host)
     ports: ["${WEB_PORT:-8080}:8080"]
     depends_on:
       api: { condition: service_healthy }

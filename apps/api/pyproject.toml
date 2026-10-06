@@ -36,6 +36,7 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.51b0",
   "opentelemetry-instrumentation-sqlalchemy>=0.51b0",
   "opentelemetry-instrumentation-httpx>=0.51b0",
+  "pycryptodome>=3.23",
 ]
 
 [dependency-groups]

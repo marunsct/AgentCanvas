@@ -6,5 +6,6 @@ apps/web/test-results
 apps/web/playwright-report
 apps/web/*.tsbuildinfo
 !infra/nginx.conf
+!infra/web
 !packages/ir-schema
 !apps/api/examples

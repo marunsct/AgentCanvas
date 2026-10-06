@@ -32,6 +32,16 @@ def _sqlite_path(url: str) -> str:
 POOL_SIZE = int(os.getenv("AGENTCANVAS_PERSISTENCE_POOL_SIZE", "20"))  # checkpoint/store connections per process
 
 
+def checkpoint_serde() -> Any:
+    """AES-encrypted checkpoints when `LANGGRAPH_AES_KEY` (16, 24 or 32 bytes) is set (S14); None = plain JSON.
+    Checkpoints written before the key was set stay readable."""
+    if not os.getenv("LANGGRAPH_AES_KEY"):
+        return None
+    from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
+
+    return EncryptedSerializer.from_pycryptodome_aes()
+
+
 @asynccontextmanager
 async def open_persistence(database_url: str | None) -> AsyncIterator[Persistence]:
     if not database_url or database_url == "memory":
@@ -47,7 +57,8 @@ async def open_persistence(database_url: str | None) -> AsyncIterator[Persistenc
         # (M8-T5). The same settings `from_conn_string` uses, which also keep transaction pooling (PgBouncer) safe.
         kwargs = {"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row}
         async with AsyncConnectionPool(conn, min_size=1, max_size=POOL_SIZE, kwargs=kwargs, open=False) as pool:
-            saver, st = AsyncPostgresSaver(conn=pool), AsyncPostgresStore(conn=pool)  # type: ignore[arg-type]
+            saver = AsyncPostgresSaver(conn=pool, serde=checkpoint_serde())  # type: ignore[arg-type]
+            st = AsyncPostgresStore(conn=pool)  # type: ignore[arg-type]
             await saver.setup()
             await st.setup()
             yield Persistence(saver, st, "postgres")
@@ -57,6 +68,8 @@ async def open_persistence(database_url: str | None) -> AsyncIterator[Persistenc
 
         path = _sqlite_path(database_url)
         async with AsyncSqliteSaver.from_conn_string(path) as saver, AsyncSqliteStore.from_conn_string(path) as st:
+            if (serde := checkpoint_serde()) is not None:
+                saver.serde = serde
             await saver.setup()
             await st.setup()
             yield Persistence(saver, st, "sqlite")

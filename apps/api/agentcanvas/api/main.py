@@ -7,6 +7,7 @@ uvicorn agentcanvas.dev.fake_server:app --reload   # scripted fake models (no ke
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -87,6 +88,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.cron.start()
                 app.state.retention.start()
                 app.state.handover.start()
+            if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
+                log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
             log.info(
                 "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
                 database=db.engine.dialect.name,

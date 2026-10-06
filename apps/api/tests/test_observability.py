@@ -76,6 +76,16 @@ async def test_requests_are_traced_with_their_request_id_and_logs_carry_the_trac
     assert server.attributes["http.route"] == "/hello"
     assert seen["trace_id"] == format(server.context.trace_id, "032x")
 
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    observability.trace_engine(engine)  # SQLAlchemy 2.1 is newer than the instrumentation declares
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+    await engine.dispose()
+    assert any(s.attributes.get("db.system") == "sqlite" for s in exporter.get_finished_spans())
+
 
 def test_route_labels_hide_ids():
     scope = {

@@ -140,7 +140,7 @@ def trace_engine(engine: Any) -> None:
         return
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-    SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
+    SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine, skip_dep_check=True)  # SQLAlchemy 2.1 works
 
 
 def tag_current_span(**attributes: Any) -> None:

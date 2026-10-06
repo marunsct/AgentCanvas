@@ -23,6 +23,14 @@
       "config": {
         "model": "anthropic:claude-sonnet-5-5"
       }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 25
+      }
     }
   ],
   "nodes": [
@@ -67,6 +75,18 @@
         "node": "n_agent",
         "port": "model"
       }
+    },
+    {
+      "id": "w_limit",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "middleware"
+      },
+      "order": 0
     }
   ]
 }
