@@ -4,6 +4,7 @@
 
 | | |
 |---|---|
+| **User guide** (run it, use it) | [docs/user-guide/index.md](docs/user-guide/index.md) — start with [Run AgentCanvas on your computer](docs/user-guide/run-locally.md) |
 | Specification (v0.6) | [docs/agent-canvas-spec/README.md](docs/agent-canvas-spec/README.md) |
 | Concept & new features | [docs/agent-canvas-spec/15-concept-evolution-and-new-features.md](docs/agent-canvas-spec/15-concept-evolution-and-new-features.md) |
 | Latest review | [docs/agent-canvas-spec/14-deep-review-v0.6.md](docs/agent-canvas-spec/14-deep-review-v0.6.md) |
@@ -32,6 +33,9 @@ make setup        # uv sync + pnpm install
 make dev-fake     # API with scripted fake models on :8000
 make dev-web      # web app on http://localhost:5173 (in another terminal)
 ```
+
+Step-by-step version with prerequisites, a smoke test and troubleshooting:
+[Run AgentCanvas on your computer](docs/user-guide/run-locally.md).
 
 Open the web app and click **Start the guided build** for a six-step tour, or pick a template, press **▶ Run**,
 approve the tool call and watch the nodes light up.
