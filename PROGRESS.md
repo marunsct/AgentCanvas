@@ -167,7 +167,7 @@ The follow-ups are in the S12 backlog.
 - [x] FR-EVAL-02 datasets API: examples from test cases, past runs and CSV/JSONL (LangSmith-style JSONL too), checked against the input contract; every change is an immutable version; splits; JSONL export. The page comes with the results UI.
 - [x] FR-EVAL-03 evaluators API: exact/regex/JSON Schema, LLM-as-judge rubric (catalog model, 0-1 score with reasoning), trajectory match (strict/unordered/subset), workspace code evaluators in the sandbox; thresholds, and a Try endpoint.
 - [x] FR-EVAL-04 experiments API: draft/versions × pinned dataset version × variants (config overrides on resources or steps), in the background with bounded concurrency; scores, tokens, cost and latency per example; aggregates per target; cancel; taken over by another instance after a redeploy.
-- [ ] Results grid and comparison UI.
+- [x] Evaluation page: datasets, evaluators (try on a sample), experiments with variants and live progress, results grid with output diff and timeline links, comparison of two experiments (Playwright journey).
 - [ ] FR-EVAL-05 release gate at publish.
 - [x] Orphaned-run sweeper: runs of an instance killed without draining are handed over after `AGENTCANVAS_ORPHAN_AFTER_S` (60 s) without a heartbeat.
 - [x] API rate limits per deployment key, webhook and project, counted in the database across replicas (429 with `Retry-After`).
