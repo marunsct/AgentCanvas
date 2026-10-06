@@ -81,12 +81,15 @@ def context_for(wf: Workflow, given: dict[str, Any], user_id: str | None, org_id
     return ctx
 
 
-def scorers(runner: Any, wf: Workflow) -> dict[str, Any]:
-    """The adapter's model call (for judges) and workspace functions (for code evaluators), for `wf`'s project."""
+def scorers(runner: Any, wf: Workflow, usage: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The adapter's model call (for judges) and workspace functions (for code evaluators), for `wf`'s project.
+    `usage`, when given, collects the judge's tokens per model: {model: {input_tokens, output_tokens}}."""
     adapter, resources = runner.adapter, runner.resources("", wf)
 
     async def complete(system: str, prompt: str, model: str) -> str:
-        return await adapter.complete(resources, model, system, prompt)
+        if usage is None:
+            return await adapter.complete(resources, model, system, prompt)
+        return await adapter.complete(resources, model, system, prompt, usage=usage.setdefault(model, {}))
 
     return {"complete": complete, "script": lambda path: adapter.script(resources, path)}
 

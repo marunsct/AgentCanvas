@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
@@ -191,6 +191,9 @@ class ApiRunIn(BaseModel):
     user_id: str | None = Field(
         None, description="your end user's id; context fields with source 'user' get api:<deployment>:<user_id>"
     )
+    metadata: dict[str, Annotated[str, StringConstraints(max_length=200)]] = Field(
+        default_factory=dict, max_length=20, description="labels for this run; online evaluators can filter on them"
+    )
 
 
 class ApiResumeIn(BaseModel):
@@ -250,7 +253,7 @@ async def _start(request: Request, session: AsyncSession, dep_id: str, body: Api
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
     return await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
-        deployment_id=dep.id, version_id=version_id,
+        deployment_id=dep.id, version_id=version_id, labels=body.metadata,
     )  # fmt: skip
 
 

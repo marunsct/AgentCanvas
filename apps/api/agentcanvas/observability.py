@@ -1,7 +1,8 @@
 """Metrics and traces (M8-T3).
 
 - **Prometheus** at `GET /metrics` (`AGENTCANVAS_METRICS_ENABLED`, on by default): runs started and finished by
-  status, run duration, tokens and cost, active runs, open event streams, HTTP requests by route and status.
+  status, run duration, tokens and cost, active runs, open event streams, HTTP requests by route and status, and
+  online evaluation (mean score per deployment and evaluator, open drift alerts).
   The web image's nginx does not proxy it; scrape the API pods directly.
 - **OpenTelemetry** traces for FastAPI, SQLAlchemy and httpx when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (the
   standard OTel environment variables configure the exporter). Each request span carries the request id, and log
@@ -45,6 +46,17 @@ HTTP_DURATION = Histogram(
     ["method", "route"],
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
 )
+
+# online evaluation (S13 FR-EVAL-06): per deployment and evaluator, so bounded by the number of deployments
+ONLINE_SCORE = Gauge(
+    "agentcanvas_online_score_mean", "Mean online score over the evaluator's alert window", ["deployment", "evaluator"]
+)
+EVAL_ALERT_OPEN = Gauge(
+    "agentcanvas_eval_alert_open",
+    "1 while an online evaluator's drift rule is broken",
+    ["deployment", "evaluator", "kind"],
+)
+EVAL_ALERTS = Counter("agentcanvas_eval_alerts_total", "Drift alerts opened by online evaluators", ["kind"])
 
 _started: dict[str, float] = {}
 

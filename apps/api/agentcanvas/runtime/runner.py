@@ -57,6 +57,9 @@ class RunHandle:
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
+    deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
+    version_id: str | None = None
+    labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
@@ -150,6 +153,7 @@ class Runner:
         origin: str = "user",
         deployment_id: str | None = None,
         version_id: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         if self.draining:
@@ -193,6 +197,7 @@ class Runner:
                     status="running",
                     context=context,
                     trace_url=trace_ref(run_id),
+                    labels=labels or None,
                 )
             )
             if resume is not None:
@@ -221,7 +226,10 @@ class Runner:
                 if v
             },
         )
-        handle = RunHandle(run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin)
+        handle = RunHandle(
+            run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin,
+            deployment_id=deployment_id, version_id=version_id, labels=dict(labels or {}),
+        )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = input

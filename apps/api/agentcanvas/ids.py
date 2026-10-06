@@ -31,6 +31,11 @@ PREFIXES = {
     "dd",
     "tc",
     "pol",
+    "oev",  # online evaluator (S13)
+    "rsc",  # run score
+    "alr",  # evaluation alert
+    "aq",  # annotation queue
+    "aqi",  # annotation queue item
 }
 
 

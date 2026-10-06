@@ -35,6 +35,7 @@ from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
+from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.projects import ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
@@ -82,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.finish_hooks.append(app.state.events.on_run_finished)
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
+            app.state.online = OnlineScorer(db, runner)
+            runner.finish_hooks.append(app.state.online.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
@@ -101,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.cron.start()
                 app.state.retention.start()
                 app.state.handover.start()
+                app.state.online.start()
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
             log.info(
@@ -115,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.cron.stop()
                 await app.state.retention.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
+                await app.state.online.stop()  # after the drain: runs finishing in it are scored too
                 await runner.shutdown()
                 await app.state.projects.aclose()
                 await db.dispose()

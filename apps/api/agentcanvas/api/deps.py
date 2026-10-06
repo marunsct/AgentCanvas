@@ -112,6 +112,7 @@ SCOPED_PARAMS = {
     "ds_id": "dataset",
     "evaluator_id": "evaluator",
     "exp_id": "experiment",
+    "oev_id": "online_evaluator",
 }
 
 

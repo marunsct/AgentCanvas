@@ -51,12 +51,17 @@ class LangChainAdapter:
 
     # ------------------------------------------------------------ plumbing ----
     # ----------------------------------------------------------- evaluation ----
-    async def complete(self, resources: Any, model: str, system: str, prompt: str) -> str:
+    async def complete(
+        self, resources: Any, model: str, system: str, prompt: str, usage: dict[str, int] | None = None
+    ) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
 
         reply = await resources.model("judge", {"model": model}).ainvoke(
             [SystemMessage(content=system), HumanMessage(content=prompt)]
         )
+        if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
+            usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
+            usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
         return reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
 
     def script(self, resources: Any, import_path: str) -> Any:

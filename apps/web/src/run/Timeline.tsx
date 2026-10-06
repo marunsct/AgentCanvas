@@ -7,6 +7,8 @@ import { lineageAt } from "./lineage";
 import { useRun } from "./runStore";
 import { editState, forkRun } from "./session";
 import { QueryStatus } from "../ui/QueryStatus";
+import type { ScoreOut } from "../api/generated";
+import { ScoreBadge } from "../evaluation/ScoreBadge";
 
 export interface Checkpoint {
   checkpoint_id: string;
@@ -56,6 +58,7 @@ export function Timeline() {
 
   return (
     <div className="timeline" data-testid="timeline">
+      <ThreadScores threadId={threadId} runSeq={runSeq} />
       <div className="ticks" role="listbox" aria-label="checkpoints">
         {ticks.map((t, i) => (
           <button type="button" role="option" key={t.checkpoint_id} aria-selected={t.checkpoint_id === selected}
@@ -118,6 +121,18 @@ function Lineage({ ticks, index, name, onPick }: {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** Scores the thread's runs were given (online evaluators, S13): shown above the checkpoints when there are any. */
+function ThreadScores({ threadId, runSeq }: { threadId: string; runSeq: number }) {
+  const scores = useQuery({ queryKey: ["thread-scores", threadId, runSeq], queryFn: () => apiFetch<ScoreOut[]>(`/threads/${threadId}/scores`) });
+  if (!scores.data?.length) return null;
+  return (
+    <div className="row gap small" data-testid="thread-scores">
+      <span className="muted">Scores</span>
+      {scores.data.map((s) => <ScoreBadge key={s.id} s={s} />)}
     </div>
   );
 }

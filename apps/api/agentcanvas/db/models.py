@@ -199,6 +199,8 @@ class Run(Base):
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
+    labels: Mapped[dict[str, Any] | None] = mapped_column(Json)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -364,6 +366,65 @@ class ReleaseGate(Base):
     evaluators: Mapped[list[Any] | None] = mapped_column(Json)  # [{name, kind, config, threshold}]
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     updated_at: Mapped[datetime] = _now()
+
+
+class OnlineEvaluator(Base):
+    """FR-EVAL-06: an evaluator scoring a sample of a deployment's finished runs in the background (S13)."""
+
+    __tablename__ = "online_evaluator"
+    __table_args__ = (UniqueConstraint("deployment_id", "evaluator_id", name="online_evaluator_once"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"), index=True)
+    evaluator_id: Mapped[str] = mapped_column(ForeignKey("evaluator.id", ondelete="CASCADE"))
+    sampling: Mapped[float] = mapped_column(Float)  # share of matching runs scored, 0-1
+    filter: Mapped[dict[str, Any]]  # {"status": [..], "metadata": {key: value}}; empty: every run
+    # drift rules: the mean over the last `window_minutes` below `alert_below`, or more than `alert_drop` below
+    # the trailing 7-day mean, opens an alert (once `min_samples` runs were scored in the window)
+    alert_below: Mapped[float | None] = mapped_column(Float)
+    alert_drop: Mapped[float | None] = mapped_column(Float)
+    window_minutes: Mapped[int] = mapped_column(Integer, server_default=text("60"), default=60)
+    min_samples: Mapped[int] = mapped_column(Integer, server_default=text("5"), default=5)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class RunScore(Base):
+    """A score given to a run after it finished: by an online evaluator, or by a person (S13)."""
+
+    __tablename__ = "run_score"
+    __table_args__ = (Index("run_score_deployment_idx", "deployment_id", "evaluator", "created_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    thread_id: Mapped[str] = mapped_column(Text)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    evaluator: Mapped[str] = mapped_column(Text)  # the evaluator's name, or "feedback" / a rubric criterion
+    source: Mapped[str] = mapped_column(Text)  # "online" | "feedback" | "annotation"
+    score: Mapped[float | None] = mapped_column(Float)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    # what scoring itself cost (an LLM judge's tokens); never added to the run's own cost
+    judge_tokens: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    judge_cost_usd: Mapped[float] = mapped_column(Float, server_default=text("0"), default=0.0)
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
+class EvalAlert(Base):
+    """A drift alert of an online evaluator: open while its rule holds, resolved when it no longer does."""
+
+    __tablename__ = "eval_alert"
+    __table_args__ = (Index("eval_alert_open_idx", "deployment_id", "evaluator", "kind", "resolved_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    evaluator: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)  # "below" | "drop"
+    message: Mapped[str] = mapped_column(Text)
+    value: Mapped[float] = mapped_column(Float)  # the window mean that broke the rule
+    baseline: Mapped[float | None] = mapped_column(Float)  # the trailing mean ("drop")
+    created_at: Mapped[datetime] = _now()
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RateWindow(Base):

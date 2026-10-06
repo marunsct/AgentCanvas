@@ -61,6 +61,75 @@
         "title": "AddResource",
         "type": "object"
       },
+      "AlertOut": {
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "deployment_id",
+          "evaluator",
+          "kind",
+          "message",
+          "value",
+          "baseline",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
       "ApiResult": {
         "properties": {
           "error": {
@@ -152,6 +221,16 @@
           "input": {
             "additionalProperties": true,
             "title": "Input",
+            "type": "object"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "maxLength": 200,
+              "type": "string"
+            },
+            "description": "labels for this run; online evaluators can filter on them",
+            "maxProperties": 20,
+            "title": "Metadata",
             "type": "object"
           },
           "thread_id": {
@@ -359,6 +438,57 @@
           }
         },
         "title": "Breakpoints",
+        "type": "object"
+      },
+      "BucketOut": {
+        "properties": {
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "judge_cost_usd": {
+            "title": "Judge Cost Usd",
+            "type": "number"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "pass_rate": {
+            "title": "Pass Rate",
+            "type": "number"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "evaluator",
+          "runs",
+          "scored",
+          "mean",
+          "pass_rate",
+          "judge_cost_usd"
+        ],
+        "title": "BucketOut",
         "type": "object"
       },
       "CachePolicySpec": {
@@ -2604,6 +2734,41 @@
         "title": "FileSave",
         "type": "object"
       },
+      "FilterIn": {
+        "properties": {
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "only runs the caller labelled so",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "success",
+                    "interrupted",
+                    "error",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only runs that ended so (default: any)",
+            "title": "Status"
+          }
+        },
+        "title": "FilterIn",
+        "type": "object"
+      },
       "ForkRequest": {
         "properties": {
           "as_node": {
@@ -3920,6 +4085,242 @@
         "title": "Observation",
         "type": "object"
       },
+      "OnlineIn": {
+        "properties": {
+          "alert_below": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is below",
+            "title": "Alert Below"
+          },
+          "alert_drop": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is this far below the trailing 7-day mean",
+            "title": "Alert Drop"
+          },
+          "evaluator_id": {
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FilterIn"
+          },
+          "min_samples": {
+            "default": 5,
+            "description": "scored runs a window needs before rules apply",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Min Samples",
+            "type": "integer"
+          },
+          "sampling": {
+            "default": 1.0,
+            "description": "share of matching runs scored",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Sampling",
+            "type": "number"
+          },
+          "window_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Window Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluator_id"
+        ],
+        "title": "OnlineIn",
+        "type": "object"
+      },
+      "OnlineOut": {
+        "properties": {
+          "alert_below": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is below",
+            "title": "Alert Below"
+          },
+          "alert_drop": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "alert when the window mean is this far below the trailing 7-day mean",
+            "title": "Alert Drop"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "evaluator_id": {
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FilterIn"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "min_samples": {
+            "default": 5,
+            "description": "scored runs a window needs before rules apply",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Min Samples",
+            "type": "integer"
+          },
+          "sampling": {
+            "default": 1.0,
+            "description": "share of matching runs scored",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Sampling",
+            "type": "number"
+          },
+          "window_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Window Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "id",
+          "deployment_id",
+          "evaluator",
+          "created_at"
+        ],
+        "title": "OnlineOut",
+        "type": "object"
+      },
+      "OnlinePatch": {
+        "properties": {
+          "alert_below": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Below"
+          },
+          "alert_drop": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Drop"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_samples": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Samples"
+          },
+          "sampling": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampling"
+          },
+          "window_minutes": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Minutes"
+          }
+        },
+        "title": "OnlinePatch",
+        "type": "object"
+      },
       "OrgSettings": {
         "properties": {
           "retention_days": {
@@ -4817,6 +5218,126 @@
           "passed"
         ],
         "title": "Score",
+        "type": "object"
+      },
+      "ScoreOut": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "judge_cost_usd": {
+            "title": "Judge Cost Usd",
+            "type": "number"
+          },
+          "judge_tokens": {
+            "title": "Judge Tokens",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "thread_id",
+          "evaluator",
+          "source",
+          "score",
+          "passed",
+          "comment",
+          "judge_tokens",
+          "judge_cost_usd",
+          "created_by",
+          "created_at"
+        ],
+        "title": "ScoreOut",
+        "type": "object"
+      },
+      "ScoredRunOut": {
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreOut"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "status",
+          "started_at",
+          "scores"
+        ],
+        "title": "ScoredRunOut",
         "type": "object"
       },
       "SecretIn": {
@@ -7024,6 +7545,149 @@
         ]
       }
     },
+    "/v1/deployments/{dep_id}/online-evaluators": {
+      "get": {
+        "operationId": "list_online_v1_deployments__dep_id__online_evaluators_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OnlineOut"
+                  },
+                  "title": "Response List Online V1 Deployments  Dep Id  Online Evaluators Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Online",
+        "tags": [
+          "online evaluation"
+        ]
+      },
+      "post": {
+        "description": "Score a sample of this deployment's finished runs with one of the workflow's evaluators.",
+        "operationId": "add_online_v1_deployments__dep_id__online_evaluators_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnlineIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnlineOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Online",
+        "tags": [
+          "online evaluation"
+        ]
+      }
+    },
     "/v1/deployments/{dep_id}/rotate-key": {
       "post": {
         "description": "A new key; the old one stops working immediately.",
@@ -7223,6 +7887,184 @@
         "summary": "Api Run Wait",
         "tags": [
           "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/scored-runs": {
+      "get": {
+        "description": "The deployment's latest scored runs, newest first, with their scores.",
+        "operationId": "scored_runs_v1_deployments__dep_id__scored_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScoredRunOut"
+                  },
+                  "title": "Response Scored Runs V1 Deployments  Dep Id  Scored Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scored Runs",
+        "tags": [
+          "online evaluation"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/scores": {
+      "get": {
+        "description": "Online scores per evaluator, by hour or day, over the last `days` days.",
+        "operationId": "score_summary_v1_deployments__dep_id__scores_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "hour",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BucketOut"
+                  },
+                  "title": "Response Score Summary V1 Deployments  Dep Id  Scores Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Score Summary",
+        "tags": [
+          "online evaluation"
         ]
       }
     },
@@ -8904,6 +9746,137 @@
         "summary": "Node Types",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/v1/online-evaluators/{oev_id}": {
+      "delete": {
+        "operationId": "delete_online_v1_online_evaluators__oev_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oev_id",
+            "required": true,
+            "schema": {
+              "title": "Oev Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Online",
+        "tags": [
+          "online evaluation"
+        ]
+      },
+      "patch": {
+        "operationId": "update_online_v1_online_evaluators__oev_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oev_id",
+            "required": true,
+            "schema": {
+              "title": "Oev Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnlinePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnlineOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Online",
+        "tags": [
+          "online evaluation"
         ]
       }
     },
@@ -11924,6 +12897,76 @@
         ]
       }
     },
+    "/v1/threads/{thread_id}/scores": {
+      "get": {
+        "description": "Every score given to the thread's runs (online evaluators, feedback, reviewers), oldest first.",
+        "operationId": "thread_scores_v1_threads__thread_id__scores_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScoreOut"
+                  },
+                  "title": "Response Thread Scores V1 Threads  Thread Id  Scores Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Thread Scores",
+        "tags": [
+          "online evaluation"
+        ]
+      }
+    },
     "/v1/threads/{thread_id}/state": {
       "post": {
         "operationId": "edit_state_v1_threads__thread_id__state_post",
@@ -12339,6 +13382,89 @@
         "summary": "Replace Workflow",
         "tags": [
           "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/alerts": {
+      "get": {
+        "operationId": "list_alerts_v1_workflows__wf_id__alerts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "enum": [
+                "open",
+                "all"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlertOut"
+                  },
+                  "title": "Response List Alerts V1 Workflows  Wf Id  Alerts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Alerts",
+        "tags": [
+          "online evaluation"
         ]
       }
     },
