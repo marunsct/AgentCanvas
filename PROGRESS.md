@@ -164,7 +164,7 @@ Live status of the project. Update it with every commit that finishes or changes
 The follow-ups are in the S12 backlog.
 
 ### S12 — Evaluation Studio → v0.4.0 (in progress; detail in the sprint plan §3)
-- [ ] FR-EVAL-02 datasets: from saved test cases, CSV/JSONL and past runs; versions and splits.
+- [x] FR-EVAL-02 datasets API: examples from test cases, past runs and CSV/JSONL (LangSmith-style JSONL too), checked against the input contract; every change is an immutable version; splits; JSONL export. The page comes with the results UI.
 - [ ] FR-EVAL-03 evaluators: exact/regex/JSON Schema, LLM-as-judge rubric, trajectory match, workspace code evaluators.
 - [ ] FR-EVAL-04 experiments: workflow versions × dataset × model/prompt variants, run in the background.
 - [ ] Results grid and comparison UI.

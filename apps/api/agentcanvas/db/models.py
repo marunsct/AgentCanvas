@@ -246,6 +246,32 @@ class Connection(Base):
     config: Mapped[dict[str, Any]]
 
 
+class Dataset(Base):
+    """Examples to evaluate a workflow on (FR-EVAL-02). Every change makes a new immutable `DatasetVersion`;
+    experiments pin the version they ran on."""
+
+    __tablename__ = "dataset"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class DatasetVersion(Base):
+    __tablename__ = "dataset_version"
+    __table_args__ = (UniqueConstraint("dataset_id", "number", name="dataset_version_number"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # [{id, input, context, reference, trajectory, split, metadata}] — the whole set, so a version never changes
+    examples: Mapped[list[Any]]
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
 class RateWindow(Base):
     """Requests counted per limit key and fixed window (S12, S30): shared by every API instance."""
 

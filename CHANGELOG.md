@@ -5,6 +5,7 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased (v0.4.0)
 
 ### Added
+- **Datasets** (API) to evaluate a workflow on: build them from test cases, past runs, CSV or JSONL files; every change is kept as a version. `GET/POST /v1/workflows/{id}/datasets`, `/v1/datasets/{id}/…`.
 - **Rate limits per caller.** The public API limits each deployment key (120/min), webhook (120/min) and project (600/min) across all API instances, and answers 429 with `Retry-After` beyond that. See `AGENTCANVAS_RATE_LIMIT_*`.
 
 ### Fixed

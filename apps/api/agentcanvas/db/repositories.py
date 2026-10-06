@@ -13,6 +13,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from agentcanvas.db.models import (
     AppUser,
     AuditLog,
+    Dataset,
     Deployment,
     InterruptTask,
     Membership,
@@ -296,6 +297,7 @@ class ScopeRepo:
                 Deployment.id == rid
             ),
             "trigger": via_workflow.join(Trigger, Trigger.workflow_id == WorkflowRow.id).where(Trigger.id == rid),
+            "dataset": via_workflow.join(Dataset, Dataset.workflow_id == WorkflowRow.id).where(Dataset.id == rid),
             "interrupt": via_thread.join(InterruptTask, InterruptTask.thread_id == Thread.id).where(
                 InterruptTask.id == rid
             ),

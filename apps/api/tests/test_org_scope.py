@@ -101,6 +101,7 @@ CHILD_PARAMS = {
     "b": "a version of {wf_id}",
     "ref": "a version of {wf_id}",
     "case_id": "a test case looked up within {wf_id}",
+    "ex_id": "an example looked up within {ds_id}",
     "name": "a secret looked up within {project_id}",
     "path": "a file inside {project_id}'s workspace",
     "policy_id": "PolicyRepo.require filters by the caller's organisation",
