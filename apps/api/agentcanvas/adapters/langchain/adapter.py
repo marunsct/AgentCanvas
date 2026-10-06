@@ -48,6 +48,18 @@ class LangChainAdapter:
         self._shared = ac.Resources()
 
     # ------------------------------------------------------------ plumbing ----
+    # ----------------------------------------------------------- evaluation ----
+    async def complete(self, resources: Any, model: str, system: str, prompt: str) -> str:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        reply = await resources.model("judge", {"model": model}).ainvoke(
+            [SystemMessage(content=system), HumanMessage(content=prompt)]
+        )
+        return reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
+
+    def script(self, resources: Any, import_path: str) -> Any:
+        return ac.script_node(import_path=import_path, resources=resources)
+
     def default_resources(self) -> ac.Resources:
         return self._shared
 

@@ -82,6 +82,15 @@ class FrameworkAdapter(Protocol):
         """Tools of an MCP server: name, description, destructive/read_only annotations."""
         ...
 
+    # ---- evaluation (FR-EVAL-03)
+    async def complete(self, resources: Any, model: str, system: str, prompt: str) -> str:
+        """One chat completion with a catalog model (the LLM-as-judge evaluator). Resource name: "judge"."""
+        ...
+
+    def script(self, resources: Any, import_path: str) -> Any:
+        """A workspace function `(state) -> dict` as an async callable, sandboxed when the project has one."""
+        ...
+
     def default_resources(self) -> Any:
         """Resources (models/tools resolver) used when the host installs no override."""
         ...

@@ -16,6 +16,7 @@ ROOT = pathlib.Path(__file__).parents[1]
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")  # set in CI to run against Postgres
 TABLES = [
     "rate_window",
+    "evaluator",
     "dataset_version",
     "dataset",
     "test_case",

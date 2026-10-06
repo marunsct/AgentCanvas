@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -268,6 +269,21 @@ class DatasetVersion(Base):
     message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     # [{id, input, context, reference, trajectory, split, metadata}] — the whole set, so a version never changes
     examples: Mapped[list[Any]]
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class Evaluator(Base):
+    """How runs of a workflow are scored (FR-EVAL-03); kinds and configs in `agentcanvas.evaluation`."""
+
+    __tablename__ = "evaluator"
+    __table_args__ = (UniqueConstraint("workflow_id", "name", name="evaluator_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    config: Mapped[dict[str, Any]]
+    threshold: Mapped[float | None] = mapped_column(Float)  # passes at score >= threshold; None = kind default
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 

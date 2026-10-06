@@ -1,0 +1,160 @@
+"""Evaluators (S12 FR-EVAL-03): exact, regex, JSON schema, LLM judge, trajectory and workspace-code scoring."""
+
+from __future__ import annotations
+
+from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
+from test_publish import make_greeter
+
+from agentcanvas.api.deps import current_user
+from agentcanvas.evaluation import Observation, Spec, score, trajectory_of, trajectory_score
+
+P = "/v1/projects/prj_default"
+HAIKU = "anthropic:claude-haiku-4-5"
+SHAPE = {"channel": "out", "schema": {"type": "object", "required": ["id"]}}
+
+
+async def new(api, wf: str, name: str, kind: str, config: dict, **extra) -> dict:
+    r = await api.post(f"/v1/workflows/{wf}/evaluators", json={"name": name, "kind": kind, "config": config, **extra})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+async def attempt(api, evaluator: dict, **obs) -> dict:
+    r = await api.post(f"/v1/evaluators/{evaluator['id']}/try", json=obs)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def test_deterministic_evaluators(api_client):
+    wf = await make_greeter(api_client)
+    exact = await new(api_client, wf, "exact", "exact", {})
+    assert exact["effective_threshold"] == 1.0 and exact["threshold"] is None
+    hit = await attempt(api_client, exact, output={"out": "Hello Ada"}, reference={"out": "Hello Ada"})
+    assert hit == {"evaluator": "exact", "score": 1.0, "passed": True, "comment": ""}
+    miss = await attempt(api_client, exact, output={"out": "Hi"}, reference={"out": "Hello Ada", "n": 1})
+    assert miss["score"] == 0.0 and not miss["passed"] and miss["comment"] == "differs: out, n"
+    none = await attempt(api_client, exact, output={"out": "Hi"})
+    assert none["score"] is None and not none["passed"]
+
+    rx = await new(api_client, wf, "greets", "regex", {"channel": "out", "pattern": r"^Hello \w+$"})
+    assert (await attempt(api_client, rx, output={"out": "Hello Ada"}))["passed"]
+    assert (await attempt(api_client, rx, output={"other": 1}))["comment"] == "the run did not produce 'out'"
+
+    js = await new(api_client, wf, "shape", "json_schema", SHAPE)
+    assert js["config"]["schema"]["required"] == ["id"]
+    assert (await attempt(api_client, js, output={"out": {"id": 1}}))["passed"]
+    bad = await attempt(api_client, js, output={"out": {}})
+    assert not bad["passed"] and "'id' is a required property" in bad["comment"]
+
+    traj = await new(api_client, wf, "tools", "trajectory", {"mode": "subset"}, threshold=1)
+    ok = await attempt(api_client, traj, trajectory=["search", "fetch", "search"], expected_trajectory=["search"])
+    assert ok["passed"]
+    assert not (await attempt(api_client, traj, trajectory=[], expected_trajectory=["search"]))["passed"]
+
+    listed = (await api_client.get(f"/v1/workflows/{wf}/evaluators")).json()
+    assert [e["name"] for e in listed] == ["exact", "greets", "shape", "tools"]
+
+
+def test_trajectory_modes_and_events():
+    assert trajectory_score("strict", ["a", "b"], ["a", "b"]) == 1
+    assert trajectory_score("strict", ["b", "a"], ["a", "b"]) == 0
+    assert trajectory_score("unordered", ["b", "a"], ["a", "b"]) == 1
+    assert trajectory_score("unordered", ["a", "a", "b"], ["a", "b"]) == 0
+    assert trajectory_score("subset", ["a", "c", "b"], ["a", "b"]) == 1
+    assert trajectory_score("subset", ["a"], ["a", "a"]) == 0
+
+    def reply(**r) -> dict:
+        return {"type": "CUSTOM", "name": "ac.model_reply", "value": {"reply": r}}
+
+    events = [
+        reply(tool_calls=[{"name": "search"}]),
+        {"type": "STEP_STARTED"},
+        reply(content="done"),
+        reply(tool_calls=[{"name": "a"}, {"name": "b"}]),
+    ]
+    assert trajectory_of(events) == ["search", "a", "b"]
+
+
+async def test_configs_are_validated(api_client):
+    wf = await make_greeter(api_client)
+    for kind, config, says in [
+        ("regex", {"channel": "out", "pattern": "("}, "invalid pattern"),
+        ("regex", {"pattern": "x"}, "channel"),
+        ("json_schema", {"channel": "out", "schema": {"type": "nope"}}, "invalid schema"),
+        ("llm_judge", {"model": "nobody:nothing", "rubric": "polite?"}, "not a model in the catalog"),
+        ("llm_judge", {"model": HAIKU, "rubric": ""}, "rubric"),
+        ("code", {"function": "os:system"}, "scripts.<module>:<function>"),
+        ("trajectory", {"mode": "fuzzy"}, "mode"),
+    ]:
+        r = await api_client.post(f"/v1/workflows/{wf}/evaluators", json={"name": "x", "kind": kind, "config": config})
+        assert r.status_code == 422 and says in r.json()["detail"], f"{kind} {config}: {r.text}"
+    e = await new(api_client, wf, "exact", "exact", {})
+    dup = await api_client.post(f"/v1/workflows/{wf}/evaluators", json={"name": "exact", "kind": "trajectory"})
+    assert dup.status_code == 409
+    assert (await api_client.patch(f"/v1/evaluators/{e['id']}", json={"config": {"channels": 3}})).status_code == 422
+    patched = (await api_client.patch(f"/v1/evaluators/{e['id']}", json={"threshold": 0.5, "name": "eq"})).json()
+    assert patched["effective_threshold"] == 0.5 and patched["name"] == "eq"
+    assert (await api_client.delete(f"/v1/evaluators/{e['id']}")).status_code == 204
+    assert (await api_client.get(f"/v1/workflows/{wf}/evaluators")).json() == []
+
+
+async def test_llm_judge_scores_with_the_model(app, api_client):
+    from agentcanvas.testing import DemoResources
+
+    wf = await make_greeter(api_client)
+    judge = await new(api_client, wf, "polite", "llm_judge", {"model": HAIKU, "rubric": "Is it polite?"})
+    assert judge["effective_threshold"] == 0.7
+
+    def judge_says(reply: str) -> None:
+        app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks({"judge": [reply]})
+
+    judge_says('{"score": 0.9, "reasoning": "warm greeting"}')
+    first = await attempt(api_client, judge, input={"who": "Ada"}, output={"out": "Hello Ada"})
+    assert first == {"evaluator": "polite", "score": 0.9, "passed": True, "comment": "warm greeting"}
+    judge_says("I'd say 0.4 at most.")
+    second = await attempt(api_client, judge, output={"out": "Go away"})
+    assert second["score"] == 0.4 and not second["passed"]
+    judge_says("no idea")
+    broken = await attempt(api_client, judge, output={"out": "?"})
+    assert broken["score"] is None and "no score" in broken["comment"]
+
+
+async def test_code_evaluator_runs_workspace_code(api_client):
+    wf = await make_greeter(api_client)
+    src = (
+        "def check(sample):\n"
+        "    ok = sample['output'].get('out', '').endswith(sample['input']['who'])\n"
+        "    return {'score': 1 if ok else 0, 'comment': 'names the user' if ok else 'wrong name'}\n"
+    )
+    assert (await api_client.put(f"{P}/files/scripts/evals.py", json={"content": src})).status_code in (200, 201, 204)
+    code = await new(api_client, wf, "names", "code", {"function": "scripts.evals:check"})
+    ok = await attempt(api_client, code, input={"who": "Ada"}, output={"out": "Hello Ada"})
+    assert ok == {"evaluator": "names", "score": 1.0, "passed": True, "comment": "names the user"}
+    assert (await attempt(api_client, code, input={"who": "Ada"}, output={"out": "Hello Bob"}))["score"] == 0.0
+    missing = await new(api_client, wf, "missing", "code", {"function": "scripts.nope:check"})
+    gone = await attempt(api_client, missing, input={"who": "Ada"})
+    assert gone["score"] is None and gone["comment"]
+
+
+async def test_evaluators_never_raise():
+    spec = Spec(name="j", kind="llm_judge", config={"model": "x", "rubric": "r"})
+    assert (await score(spec, Observation())).comment == "no model available for the judge"
+
+    async def slow(system: str, prompt: str, model: str) -> str:
+        raise TimeoutError("judge timed out")
+
+    out = await score(spec, Observation(), complete=slow)
+    assert out.score is None and not out.passed and "TimeoutError" in out.comment
+
+
+async def test_evaluators_stay_in_their_organisation(app, api_client, org_b):  # noqa: F811
+    wf = await make_greeter(api_client)
+    e = await new(api_client, wf, "exact", "exact", {})
+    act_as_b(app)
+    try:
+        assert (await api_client.get(f"/v1/workflows/{wf}/evaluators")).status_code == 404
+        assert (await api_client.patch(f"/v1/evaluators/{e['id']}", json={"name": "mine"})).status_code == 404
+        assert (await api_client.post(f"/v1/evaluators/{e['id']}/try", json={})).status_code == 404
+        assert (await api_client.delete(f"/v1/evaluators/{e['id']}")).status_code == 404
+    finally:
+        app.dependency_overrides.pop(current_user)

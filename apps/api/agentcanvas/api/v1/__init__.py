@@ -13,6 +13,7 @@ from agentcanvas.api.v1 import (
     catalog,
     datasets,
     deployments,
+    evaluators,
     events,
     memory,
     org,
@@ -40,6 +41,7 @@ signed_in.include_router(secrets.router)
 signed_in.include_router(events.router)
 signed_in.include_router(versions.router)
 signed_in.include_router(datasets.router)
+signed_in.include_router(evaluators.router)
 signed_in.include_router(deployments.router)
 signed_in.include_router(triggers.router)
 

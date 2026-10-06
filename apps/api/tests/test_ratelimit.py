@@ -13,7 +13,13 @@ from agentcanvas.services.ratelimit import RateLimiter
 
 
 @pytest.fixture
-def limits(app):
+def limits(app, monkeypatch):
+    """Lower limits, on a clock that stays inside one minute (a slow test crossing a minute would reset them)."""
+    from types import SimpleNamespace
+
+    from agentcanvas.services import ratelimit
+
+    monkeypatch.setattr(ratelimit, "time", SimpleNamespace(time=lambda: 1_800_000_030.0))
     s = app.state.settings
     saved = (s.rate_limit_per_deployment, s.rate_limit_per_webhook, s.rate_limit_per_project)
     yield s
