@@ -2,9 +2,9 @@
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
 
-- **Branch:** `claude/sprint-12-evaluation-studio` for S12, in [#5](https://github.com/marunsct/AgentCanvas/pull/5) (based on the S11 branch until #4 merges). S11 is in [#4](https://github.com/marunsct/AgentCanvas/pull/4), awaiting the maintainer's merge. S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2) and S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3).
+- **Branch:** `claude/sprint-12-evaluation-studio` for S12, in [#5](https://github.com/marunsct/AgentCanvas/pull/5) . S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2) and S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3) and S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-06. Sprint 11 finished and reviewed (#4, awaiting merge; tag `v0.3.0` is the maintainer's call); Sprint 12 Evaluation Studio started.
+- **Last updated:** 2026-10-06. Sprint 11 finished, reviewed and merged (#4; tag `v0.3.0` is the maintainer's call); Sprint 12 Evaluation Studio started.
 
 ## At a glance
 
@@ -23,7 +23,7 @@ Live status of the project. Update it with every commit that finishes or changes
 | S8 Export & publish | ✅ done |
 | S9 MVP hardening → v0.1.0 | ✅ done (git tag pending) |
 | S10 Accounts & access → v0.2.0 | ✅ done (merged in #3; tag `v0.2.0` pending) |
-| S11 Production readiness → v0.3.0 | ✅ done (in #4, awaiting merge; tag `v0.3.0` pending) |
+| S11 Production readiness → v0.3.0 | ✅ done (merged in #4; tag `v0.3.0` pending) |
 | **S12 Evaluation Studio → v0.4.0** | 🚧 **in progress** |
 | S13+ GA backlog | ⬜ pending |
 
@@ -149,7 +149,8 @@ Live status of the project. Update it with every commit that finishes or changes
 - [x] M8-T6 security review: checklist completed with evidence, no open P0; pip-audit, pnpm audit and Trivy in CI; Dependabot.
 - [x] KMS envelope encryption: per-organisation data keys wrapped by a file, AWS KMS or GCP KMS master key, with a re-wrap command.
 - [x] S10 review carry-overs: invitations need acceptance, last-used organisation is the default, silent token refresh, project read per request, `FORWARDED_ALLOW_IPS` documented.
-- [ ] Merge #4 and tag `v0.3.0` (maintainer's call).
+- [x] Merged in #4 (2026-10-06).
+- [ ] Tag `v0.3.0` (maintainer's call).
 
 **Review (2026-10-06).** Every S11 item met its acceptance. Things to know before deploying:
 - Webhook senders must now sign `timestamp.body` and send the timestamp header; old-format signatures are refused.
