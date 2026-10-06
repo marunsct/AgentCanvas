@@ -83,7 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.finish_hooks.append(app.state.events.on_run_finished)
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
-            app.state.online = OnlineScorer(db, runner)
+            # tests check drift after every score; servers at most every few seconds per evaluator
+            app.state.online = OnlineScorer(db, runner, drift_every_s=0 if settings.env == "test" else 10.0)
             runner.finish_hooks.append(app.state.online.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
             app.state.ratelimit = RateLimiter(db)

@@ -32,7 +32,7 @@ Live status of the project. Update it with every commit that finishes or changes
 
 | Suite | Result |
 |---|---|
-| API (pytest) | 341 passed, 1 skipped, 1 known upstream canary (xfail) |
+| API (pytest) | 343 passed, 1 known upstream canary (xfail) |
 | Web unit tests (vitest) | 59 passed |
 | Playwright journeys | 33 passed (production build under the production CSP) |
 | Browser journeys (Playwright) | 31 passed |
@@ -196,7 +196,7 @@ to know before deploying:
 - [x] LangSmith dataset push and pull.
 - [x] Record/replay captures tool I/O (HTTP, MCP, workspace tools).
 - [x] End-of-sprint review fixes (drift alerts, annotation races, online scoring of handed-over runs, pairwise pass rate).
-- [ ] Demo on compose prod and the load-test latency check.
+- [x] Demo on compose prod and the deployment latency check (scoring every run: p95 42 → 52 ms at 30 requests/s; details in the sprint plan).
 - [ ] Merge #8 (owner's call) and tag `v0.5.0` (maintainer's call).
 
 **Review (2026-10-06).** Every S13 item met its acceptance in the tests. Things to know before deploying:

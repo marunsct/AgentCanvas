@@ -34,6 +34,7 @@ log = get_logger(__name__)
 
 BASELINE_DAYS = 7
 CONCURRENCY = 4  # scoring tasks at once per instance: judges must not crowd out runs
+DRIFT_EVERY_S = 10.0  # each instance checks an evaluator's drift rules at most this often (a window is minutes long)
 
 
 def sampled(run_id: str, online_id: str, rate: float) -> bool:
@@ -93,12 +94,14 @@ def _utc(t: datetime) -> datetime:
 class OnlineScorer:
     """Scores deployment runs in the background (a runner finish hook) and keeps drift alerts current."""
 
-    def __init__(self, db: Any, runner: Any, interval_s: float = 60.0):
-        self.db, self.runner, self.interval_s = db, runner, interval_s
+    def __init__(self, db: Any, runner: Any, interval_s: float = 60.0, drift_every_s: float = DRIFT_EVERY_S):
+        self.db, self.runner, self.interval_s, self.drift_every_s = db, runner, interval_s, drift_every_s
         self.tasks: set[asyncio.Task] = set()
         self._gate = asyncio.Semaphore(CONCURRENCY)
         self._loop_task: asyncio.Task | None = None
         self._reported: set[tuple[str, str, str]] = set()
+        self._workflows: dict[str, Workflow] = {}  # published versions never change: parsed once
+        self._checked: dict[tuple[str, str], float] = {}  # (deployment, evaluator) -> when drift was last checked
 
     def start(self) -> None:
         self._loop_task = asyncio.create_task(self._loop(), name="online-metrics")
@@ -212,7 +215,10 @@ class OnlineScorer:
             row = await s.get(WorkflowRow, h.workflow_id)
             if version is None or row is None:
                 return []
-            wf = Workflow.model_validate(version.ir)
+            wf = self._workflows.get(version.id) or Workflow.model_validate(version.ir)
+            if len(self._workflows) > 256:
+                self._workflows.clear()
+            self._workflows[version.id] = wf
             PROJECT_OF[wf.id] = row.project_id
             siblings = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == h.workflow_id))).all()
         obs = observation(h, status, error, input)
@@ -241,7 +247,12 @@ class OnlineScorer:
         async with self.db.sessionmaker() as s:
             s.add_all(out)
             await s.commit()
+            now = asyncio.get_running_loop().time()
             for online, e in chosen:
+                key = (online.deployment_id, e.name)
+                if self.drift_every_s and now - self._checked.get(key, -self.drift_every_s) < self.drift_every_s:
+                    continue  # checked a moment ago: the window has barely moved
+                self._checked[key] = now
                 await self.check_drift(s, online, e.name, h.workflow_id)
             await s.commit()
         return out

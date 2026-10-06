@@ -699,6 +699,9 @@ def middleware(
     raise ValueError(f"unknown middleware type '{type_}'")
 
 
+GRADER_STEP_LIMIT = 25  # a grader that never returns a verdict ends that grading round instead of looping
+
+
 def rubric_middleware(
     rubric: str,
     model: BaseChatModel,
@@ -711,7 +714,9 @@ def rubric_middleware(
 
     Upstream grades only when the caller puts a `rubric` in the agent's input state; a canvas agent reads its
     parent's `messages` alone, so this one supplies its own rubric when the state has none. Its grading events
-    (`rubric_evaluation_start` / `_end` on the custom stream) become `ac.rubric` events."""
+    (`rubric_evaluation_start` / `_end` on the custom stream) become `ac.rubric` events. The grader sub-agent gets
+    `GRADER_STEP_LIMIT` steps (upstream inherits LangGraph's default of about 10,000): a grader model that never
+    answers with a verdict ends the round as `grader_error` instead of holding the run."""
     from deepagents.middleware import RubricMiddleware
 
     class CanvasRubric(RubricMiddleware):
@@ -727,6 +732,10 @@ def rubric_middleware(
         async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
             state, extra = self._with_rubric(state)
             return {**extra, **(await super().abefore_agent(state, runtime) or {})} or None
+
+        @staticmethod
+        def _grader_invocation_config(metadata: dict[str, str]) -> Any:
+            return {**RubricMiddleware._grader_invocation_config(metadata), "recursion_limit": GRADER_STEP_LIMIT}
 
     return CanvasRubric(
         model=model, tools=list(tools) or None, max_iterations=max_iterations, system_prompt=instructions

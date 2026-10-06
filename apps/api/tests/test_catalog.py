@@ -622,6 +622,33 @@ async def test_rubric_sends_the_answer_back_until_it_passes(tmp_path):
     assert "tools=[" not in generate(wf).split("rubric = resources.middleware(")[1].split("\n")[0]
 
 
+@pytest.mark.asyncio
+async def test_a_grader_that_never_decides_ends_the_round(tmp_path):
+    """A grader model that never returns a verdict (the demo model) ends grading as `grader_error`, not a hang."""
+    from agentcanvas.adapters.langchain.events import translate
+    from agentcanvas.adapters.langchain.testing import DemoResources
+
+    wf = agent_wf(
+        resources=[
+            ("grader", "model.chat", {"model": "fake:scripted"}),
+            ("rubric", "mw.rubric", {"rubric": "Names the city", "max_iterations": 2}),
+        ],
+        wiring=[("grader", "rubric", "model"), ("rubric", "agent", "middleware")],
+    )
+
+    async def run(graph):
+        results = []
+        async for part in graph.astream(
+            {"messages": [("user", "capital of France?")]}, {**cfg(), "recursion_limit": 25},
+            stream_mode=["custom"], subgraphs=True, version="v2",
+        ):  # fmt: skip
+            results += [e["value"].get("result") for e in translate(part, {}) if e.get("name") == "ac.rubric"]
+        return [r for r in results if r]
+
+    a, b = await both(wf, tmp_path, DemoResources, run)
+    assert a == b == ["grader_error"]
+
+
 def test_a_rubric_needs_a_grader_and_text():
     no_grader = agent_wf(
         resources=[("rubric", "mw.rubric", {"rubric": "x"})], wiring=[("rubric", "agent", "middleware")]
