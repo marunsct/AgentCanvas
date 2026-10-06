@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     auto_migrate: bool = True  # run Alembic `upgrade head` at startup
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
     secret_key: str = "dev-only-change-me"
+    # master key that wraps each organisation's data key (see agentcanvas/security/kms.py): "" derives it from
+    # secret_key (development), or file:<path>, aws:<key ARN>, gcp:<key name>; previous keys still unwrap
+    kms_key: str = ""
+    kms_previous_keys: list[str] = []
     # Authentication (M7-T1). dev = every request is the seeded development admin (refused in staging/prod);
     # oidc = bearer JWTs from the identity provider, checked against its JWKS.
     auth_mode: Literal["dev", "oidc"] = "dev"

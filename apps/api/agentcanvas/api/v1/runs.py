@@ -30,6 +30,7 @@ from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
+from agentcanvas.services.secrets import hide_secrets
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -373,8 +374,9 @@ async def get_thread(
 ) -> dict[str, Any]:
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
-    state = await r.adapter.get_state(wf, thread_id, r.resources(thread_id, wf))
-    return {
+    res = r.resources(thread_id, wf)
+    state = await r.adapter.get_state(wf, thread_id, res)
+    return hide_secrets({
         "id": t.id,
         "workflow_id": t.workflow_id,
         "status": t.status,
@@ -385,7 +387,11 @@ async def get_thread(
         "checkpoint_id": state.checkpoint_id,
         "step": state.step,
         "interrupts": [i.__dict__ for i in state.interrupts],
-    }
+    }, _secrets(res))  # fmt: skip
+
+
+def _secrets(resources: Any) -> dict[str, str]:
+    return getattr(resources, "_secrets", None) or {}
 
 
 @router.get("/threads/{thread_id}/history")
@@ -399,8 +405,10 @@ async def thread_history(
 ) -> list[dict[str, Any]]:
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
-    items = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values)
-    return [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
+    res = r.resources(thread_id, wf)
+    items = await r.adapter.history(wf, thread_id, res, limit, include_values)
+    out = [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
+    return hide_secrets(out, _secrets(res))
 
 
 @router.get("/threads/{thread_id}/explain")
@@ -414,8 +422,9 @@ async def explain_thread(
     """Explain mode (FR-X-17): what ran at each super-step, what it wrote and why routers chose their route."""
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
-    history = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values=True)
-    return explain(wf, history)
+    res = r.resources(thread_id, wf)
+    history = await r.adapter.history(wf, thread_id, res, limit, include_values=True)
+    return hide_secrets(explain(wf, history), _secrets(res))
 
 
 @router.get("/threads/{thread_id}/runs", response_model=list[RunOut])

@@ -51,6 +51,17 @@ class Organization(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class OrgDataKey(Base):
+    """An organisation's data key, wrapped by the master key (KMS envelope encryption, S11)."""
+
+    __tablename__ = "org_data_key"
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
+    master_key_id: Mapped[str] = mapped_column(Text)  # which master key wrapped it ("local:…", "aws:…", "gcp:…")
+    wrapped_key: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = _now()
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AppUser(Base):
     __tablename__ = "app_user"
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -214,6 +225,8 @@ class Secret(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    # encrypted with the organisation's data key; false = written before envelope encryption (S10 and earlier)
+    org_key: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 

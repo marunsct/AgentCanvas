@@ -19,8 +19,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 FROM ${PYTHON_IMAGE} AS runtime
-# git: project workspaces are git repositories (M5-T1)
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 app \
     && mkdir -p /data/workspaces && chown app:app /data/workspaces

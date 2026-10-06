@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import UTC, datetime
 
 import pytest
 from test_publish import make_greeter, set_greeting
 
 from agentcanvas.services.triggers import Cron, sign
+
+
+def signed(secret: str, body: bytes, ts: int | None = None) -> dict[str, str]:
+    ts = int(time.time()) if ts is None else ts
+    return {"X-AgentCanvas-Signature": sign(secret, body, ts), "X-AgentCanvas-Timestamp": str(ts)}
 
 
 def at(s: str) -> datetime:
@@ -49,17 +55,21 @@ async def test_signed_webhook_starts_a_run(app, api_client):
     body = json.dumps({"user": {"login": "octocat"}}).encode()
     hook = trig["url"]
     assert (await api_client.post(hook, content=body)).status_code == 401
-    bad = await api_client.post(hook, content=body, headers={"X-AgentCanvas-Signature": sign("nope", body)})
-    assert bad.status_code == 401
-    ok = await api_client.post(hook, content=body, headers={"X-AgentCanvas-Signature": sign(trig["secret"], body)})
+    assert (await api_client.post(hook, content=body, headers=signed("nope", body))).status_code == 401
+    stale = signed(trig["secret"], body, int(time.time()) - 301)  # a captured delivery replayed later
+    assert (await api_client.post(hook, content=body, headers=stale)).status_code == 401
+    moved = {**signed(trig["secret"], body), "X-AgentCanvas-Timestamp": str(int(time.time()) + 1)}
+    assert (await api_client.post(hook, content=body, headers=moved)).status_code == 401  # timestamp is signed
+    unknown = await api_client.post("/v1/hooks/trg_unknown", content=body, headers=signed(trig["secret"], body))
+    assert unknown.status_code == 401  # same answer as a bad signature: trigger ids cannot be probed
+    ok = await api_client.post(hook, content=body, headers=signed(trig["secret"], body))
     assert ok.status_code == 202, ok.text
     await asyncio.wait_for(app.state.runner.handles[ok.json()["run_id"]].done.wait(), 10)
     thread = (await api_client.get(f"/v1/threads/{ok.json()['thread_id']}")).json()
     assert thread["values"]["out"] == "Hello octocat"
 
     await api_client.patch(f"/v1/triggers/{trig['id']}", json={"enabled": False})
-    sig = {"X-AgentCanvas-Signature": sign(trig["secret"], body)}
-    assert (await api_client.post(hook, content=body, headers=sig)).status_code == 404
+    assert (await api_client.post(hook, content=body, headers=signed(trig["secret"], body))).status_code == 401
     await api_client.delete(f"/v1/triggers/{trig['id']}")
     assert (await api_client.get(f"/v1/workflows/{wf}/triggers")).json() == []
 
@@ -102,7 +112,7 @@ async def test_replicas_fire_each_cron_minute_once(app, api_client):
         f"/v1/workflows/{wf}/triggers", json={"kind": "cron", "config": {"schedule": "* * * * *", "input": {}}}
     )
     assert r.status_code == 201, r.text
-    replicas = [app.state.cron, CronScheduler(app.state.db, app.state.runner, app.state.settings.secret_key)]
+    replicas = [app.state.cron, CronScheduler(app.state.db, app.state.runner, app.state.keyring)]
     fired = await asyncio.gather(*(c.tick(at("2026-10-06T09:00")) for c in replicas))
     assert sorted(len(f) for f in fired) == [0, 1]
     assert [len(await c.tick(at("2026-10-06T09:00"))) for c in replicas] == [0, 0]

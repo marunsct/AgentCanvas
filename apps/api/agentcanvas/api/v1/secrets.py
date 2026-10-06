@@ -25,7 +25,7 @@ class SecretIn(BaseModel):
 
 
 def service(request: Request, session: AsyncSession = Depends(get_session)) -> SecretService:
-    return SecretService(session, request.app.state.settings.secret_key)
+    return SecretService(session, request.app.state.keyring)
 
 
 @router.get("", response_model=list[SecretOut])

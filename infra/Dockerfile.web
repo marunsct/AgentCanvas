@@ -3,7 +3,7 @@
 #   docker build -f infra/Dockerfile.web -t agentcanvas-web .
 # nginx (unprivileged, port 8080) serves the SPA and proxies /api/ to $API_UPSTREAM (default http://api:8000).
 ARG NODE_IMAGE=node:22-slim
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.27-alpine
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.29-alpine
 
 FROM ${NODE_IMAGE} AS build
 ARG PNPM_VERSION=10
@@ -18,6 +18,10 @@ COPY apps/web/ ./
 RUN pnpm build
 
 FROM ${NGINX_IMAGE}
+# OS security fixes newer than the base image (M8-T6); the image's nginx user (101) runs the server
+USER root
+RUN apk upgrade --no-cache
+USER 101
 # the image renders /etc/nginx/templates/*.template with the environment at start-up (only defined variables)
 COPY infra/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html

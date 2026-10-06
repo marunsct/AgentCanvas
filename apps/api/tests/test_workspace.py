@@ -153,10 +153,18 @@ def _docker_ready() -> bool:
 async def test_docker_sandbox_has_no_network(sandbox_ws):
     """M5-T4 AC: a script trying to open a network socket fails in docker mode."""
     subprocess.run(["docker", "pull", "-q", "python:3.12-slim"], check=False, capture_output=True, timeout=300)
-    run = lambda path: run_in_sandbox("docker", sandbox_ws, path, {"n": 1}, image="python:3.12-slim", timeout=120)  # noqa: E731
+    for p in [sandbox_ws, *sandbox_ws.parents][:3]:  # pytest's tmp dirs are private; the sandbox user is nobody
+        p.chmod(0o755)
+    run = lambda path, t=120: run_in_sandbox("docker", sandbox_ws, path, {"n": 1}, image="python:3.12-slim", timeout=t)  # noqa: E731
     assert await run("scripts.ok:run") == {"n": 2}
     with pytest.raises(ScriptError):
         await run("scripts.net:run")
+    with pytest.raises(TimeoutError):  # S2: the container itself is stopped, not only the docker client
+        await run("scripts.slow:run", 3)
+    left = subprocess.run(
+        ["docker", "ps", "-q", "--filter", "name=ac-sbx-"], capture_output=True, text=True, check=True
+    )
+    assert left.stdout.strip() == ""
 
 
 async def test_sandboxed_script_node_in_a_run(app, api_client):

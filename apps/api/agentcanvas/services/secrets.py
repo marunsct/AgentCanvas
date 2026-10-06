@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 from typing import Any
 
@@ -11,22 +12,35 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Secret
+from agentcanvas.db.models import Project, Secret
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.log import get_logger
+from agentcanvas.security.kms import Keyring
+
+log = get_logger(__name__)
 
 NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 
 
 def _fernet(secret_key: str) -> Fernet:
-    # AGENTCANVAS_SECRET_KEY -> 32-byte Fernet key (KMS envelope encryption replaces this in M8)
+    """The pre-envelope key (S10 and earlier): only reads secrets written before KMS envelope encryption."""
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode()).digest()))
 
 
+async def _org_of(session: AsyncSession, project_id: str) -> str:
+    org_id = await session.scalar(select(Project.org_id).where(Project.id == project_id))
+    if org_id is None:
+        raise NotFound(f"project '{project_id}' not found")
+    return org_id
+
+
 class SecretService:
-    def __init__(self, session: AsyncSession, secret_key: str):
+    """Values are encrypted with the project's organisation data key (`Keyring`, envelope encryption)."""
+
+    def __init__(self, session: AsyncSession, keyring: Keyring):
         self.s = session
-        self.f = _fernet(secret_key)
+        self.keys = keyring
 
     async def names(self, project_id: str) -> list[Secret]:
         q = select(Secret).where(Secret.project_id == project_id).order_by(Secret.name)
@@ -37,12 +51,18 @@ class SecretService:
             raise InvalidInput("secret names are UPPER_SNAKE_CASE, e.g. OPENAI_API_KEY")
         if not value:
             raise InvalidInput("a secret needs a value")
+        f = await self.keys.fernet(self.s, await _org_of(self.s, project_id))
+        token = f.encrypt(value.encode())
         row = await self.s.scalar(select(Secret).where(Secret.project_id == project_id, Secret.name == name))
-        token = self.f.encrypt(value.encode())
         if row is None:
-            self.s.add(Secret(id=new_id("sec"), project_id=project_id, name=name, ciphertext=token, created_by=user_id))
+            self.s.add(
+                Secret(
+                    id=new_id("sec"), project_id=project_id, name=name, ciphertext=token, org_key=True,
+                    created_by=user_id,
+                )
+            )  # fmt: skip
         else:
-            row.ciphertext = token
+            row.ciphertext, row.org_key = token, True
         await self.s.commit()
 
     async def delete(self, project_id: str, name: str) -> None:
@@ -53,14 +73,46 @@ class SecretService:
 
     async def values(self, project_id: str | None = None) -> dict[str, dict[str, str]]:
         """Decrypted values per project (for the runtime resolver only)."""
-        q = select(Secret) if project_id is None else select(Secret).where(Secret.project_id == project_id)
+        q = select(Secret, Project.org_id).join(Project, Project.id == Secret.project_id)
+        if project_id is not None:
+            q = q.where(Secret.project_id == project_id)
         out: dict[str, dict[str, str]] = {}
-        for row in (await self.s.scalars(q)).all():
+        for row, org_id in (await self.s.execute(q)).all():
+            f = await self.keys.fernet(self.s, org_id) if row.org_key else self.keys.legacy
             try:
-                out.setdefault(row.project_id, {})[row.name] = self.f.decrypt(row.ciphertext).decode()
+                out.setdefault(row.project_id, {})[row.name] = f.decrypt(row.ciphertext).decode()
             except InvalidToken:  # encrypted with another key: unusable, never crash startup
-                continue
+                log.warning("secret.undecryptable", project_id=row.project_id, name=row.name)
         return out
+
+
+async def migrate_legacy(session: AsyncSession, keyring: Keyring) -> int:
+    """Re-encrypt secrets written before envelope encryption with their organisation's data key."""
+    moved = 0
+    q = select(Secret, Project.org_id).join(Project, Project.id == Secret.project_id).where(Secret.org_key.is_(False))
+    for row, org_id in (await session.execute(q)).all():
+        try:
+            value = keyring.legacy.decrypt(row.ciphertext)
+        except InvalidToken:
+            log.warning("secret.undecryptable", project_id=row.project_id, name=row.name)
+            continue
+        row.ciphertext = (await keyring.fernet(session, org_id)).encrypt(value)
+        row.org_key = True
+        moved += 1
+    await session.commit()
+    return moved
+
+
+def hide_secrets(payload: Any, secrets: dict[str, str]) -> Any:
+    """`payload` with every secret value (6+ characters) masked: state a run wrote can hold a value a tool or
+    script read, and thread state, history and explanations return it (S12)."""
+    hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
+    if not hidden:
+        return payload
+    text = json.dumps(payload, default=str)
+    if not any(v in text for v in hidden):
+        return payload
+    return json.loads(redact(text, hidden))
 
 
 def redact(text: str, values: list[str]) -> str:

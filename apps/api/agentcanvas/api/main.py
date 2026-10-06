@@ -29,6 +29,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
+from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.projects import ProjectRegistry
@@ -65,8 +66,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 log.info("memory.adopted", org_id=DEV_ORG, items=moved)
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
+            app.state.keyring = Keyring.from_settings(settings)
             async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
-                for project, values in (await SecretService(s, settings.secret_key).values()).items():
+                for project, values in (await SecretService(s, app.state.keyring).values()).items():
                     app.state.projects.secrets.setdefault(project, {}).update(values)
             runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, thread_id, wf))
             app.state.runner = runner
@@ -74,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.finish_hooks.append(app.state.events.on_run_finished)
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
-            app.state.cron = CronScheduler(db, runner, settings.secret_key)
+            app.state.cron = CronScheduler(db, runner, app.state.keyring)
             app.state.retention = RetentionJob(db, runner, settings.retention_days, settings.retention_interval_s)
 
             async def handover_target(s, thread_id, version_id):
@@ -100,7 +102,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.projects.aclose()
                 await db.dispose()
 
-    app = FastAPI(title="AgentCanvas API", version="0.1.0", lifespan=lifespan)
+    # interactive docs and the schema stay off in production: they map the attack surface (S15)
+    docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
+    app = FastAPI(title="AgentCanvas API", version="0.3.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

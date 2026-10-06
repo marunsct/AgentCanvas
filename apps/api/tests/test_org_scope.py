@@ -60,6 +60,20 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
         assert (await api_client.delete(f"/v1/workflows/{wf_id}")).status_code == 404
         assert (await api_client.post(f"/v1/deployments/{dep_id}/rotate-key")).status_code == 404
         assert (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "x"})).status_code == 404
+        for method, path, body in [  # S17: every kind of write names a resource of A, so every one is a 404
+            ("PUT", "/v1/projects/prj_default/secrets/TOKEN", {"value": "mine"}),
+            ("DELETE", "/v1/projects/prj_default/secrets/TOKEN", None),
+            ("PUT", "/v1/projects/prj_default/files/scripts/x.py", {"content": "x = 1"}),
+            ("POST", f"/v1/workflows/{wf_id}/runs/stream", {"input": {}}),
+            ("POST", f"/v1/workflows/{wf_id}/triggers", {"kind": "cron", "config": {"schedule": "* * * * *"}}),
+            ("POST", f"/v1/runs/{h.run_id}/cancel", None),
+            ("POST", f"/v1/threads/{h.thread_id}/resume", {"value": True}),
+            ("POST", f"/v1/threads/{h.thread_id}/fork", {}),
+            ("DELETE", f"/v1/threads/{h.thread_id}", None),
+            ("DELETE", f"/v1/deployments/{dep_id}", None),
+        ]:
+            r = await api_client.request(method, path, json=body)
+            assert r.status_code == 404, f"{method} {path}: {r.status_code} {r.text}"
         # lists show only B's own things
         assert [p["id"] for p in (await api_client.get("/v1/projects")).json()] == [PROJECT_B]
         assert (await api_client.get("/v1/threads")).json()["items"] == []
@@ -79,3 +93,26 @@ async def test_create_project_in_own_org(api_client):
     assert r.status_code == 201
     assert "Support bots" in [p["name"] for p in (await api_client.get("/v1/projects")).json()]
     assert (await api_client.post("/v1/projects", json={"name": "Support bots"})).status_code == 409
+
+
+# path parameters that org_scope does not check itself, and what keeps each inside the organisation (S17)
+CHILD_PARAMS = {
+    "a": "a version of {wf_id}",
+    "b": "a version of {wf_id}",
+    "ref": "a version of {wf_id}",
+    "case_id": "a test case looked up within {wf_id}",
+    "name": "a secret looked up within {project_id}",
+    "path": "a file inside {project_id}'s workspace",
+    "policy_id": "PolicyRepo.require filters by the caller's organisation",
+    "user_id": "member routes act on the caller's organisation only",
+}
+
+
+def test_every_path_parameter_is_scoped(app):
+    """A new route with an id that neither org_scope nor a parent check covers fails here (S17)."""
+    import re
+
+    from agentcanvas.api.deps import SCOPED_PARAMS
+
+    params = {p for path in app.openapi()["paths"] for p in re.findall(r"\{([^}]+)\}", path)}
+    assert params - set(SCOPED_PARAMS) - set(CHILD_PARAMS) == set()

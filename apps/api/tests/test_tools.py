@@ -225,3 +225,16 @@ def test_http_tool_rules():
     leaked = http_wf()
     leaked.resource("get_order").config["headers"] = {"x-key": "sk-ant-" + "a" * 30}  # type: ignore[union-attr]
     assert "E050" in errors(leaked)
+
+
+@pytest.mark.parametrize(
+    "host", ["169.254.169.254", "127.0.0.1", "10.1.2.3", "192.168.0.10", "172.16.5.4", "[::1]", "localhost"]
+)
+async def test_http_tool_refuses_internal_addresses(host):
+    """S7: an allowed domain that is (or resolves to) a metadata, loopback or private address is refused."""
+    from agentcanvas.adapters.langchain.nodes import http_tool
+
+    bare = host.strip("[]")
+    tool = http_tool(name="t", config={"url": f"http://{host}/latest/meta-data", "allowed_domains": [bare]})
+    out = await tool.ainvoke({})
+    assert "private or internal address" in out

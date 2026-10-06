@@ -10,12 +10,11 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.api.deps import get_session, get_settings_dep
+from agentcanvas.api.deps import get_session
 from agentcanvas.db.models import Trigger
 from agentcanvas.errors import InvalidInput
 from agentcanvas.expr import ExpressionError
-from agentcanvas.services.triggers import SIGNATURE_HEADER, TriggerIn, TriggerService, map_input
-from agentcanvas.settings import Settings
+from agentcanvas.services.triggers import SIGNATURE_HEADER, TIMESTAMP_HEADER, TriggerIn, TriggerService, map_input
 
 router = APIRouter(tags=["triggers"])
 public_router = APIRouter(tags=["triggers"])  # signed webhooks, not user sign-in
@@ -47,8 +46,8 @@ def _out(t: Trigger) -> dict[str, Any]:
     }  # fmt: skip
 
 
-def svc(session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings_dep)):
-    return TriggerService(session, settings.secret_key)
+def svc(request: Request, session: AsyncSession = Depends(get_session)):
+    return TriggerService(session, request.app.state.keyring)
 
 
 @router.post("/workflows/{wf_id}/triggers", response_model=TriggerCreated, status_code=201)
@@ -78,12 +77,13 @@ async def webhook(
     trigger_id: str,
     request: Request,
     signature: str | None = Header(None, alias=SIGNATURE_HEADER),
+    timestamp: str | None = Header(None, alias=TIMESTAMP_HEADER),
     s: TriggerService = Depends(svc),
 ) -> dict[str, Any]:
-    """Start a run from a signed webhook delivery (401 on a bad signature, before anything else happens)."""
+    """Start a run from a signed webhook delivery (401 on a bad, stale or missing signature, before anything else
+    happens)."""
     raw = await request.body()
-    trig = await s.require(trigger_id)
-    s.verify(trig, raw, signature)
+    trig = await s.verify(trigger_id, raw, signature, timestamp)
     try:
         body = json.loads(raw or b"{}")
         payload = map_input(trig.config.get("input_mapping"), body)

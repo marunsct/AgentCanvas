@@ -4605,7 +4605,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.1.0"
+    "version": "0.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5086,7 +5086,7 @@
     },
     "/v1/hooks/{trigger_id}": {
       "post": {
-        "description": "Start a run from a signed webhook delivery (401 on a bad signature, before anything else happens).",
+        "description": "Start a run from a signed webhook delivery (401 on a bad, stale or missing signature, before anything else\nhappens).",
         "operationId": "webhook_v1_hooks__trigger_id__post",
         "parameters": [
           {
@@ -5112,6 +5112,22 @@
                 }
               ],
               "title": "X-Agentcanvas-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-AgentCanvas-Timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agentcanvas-Timestamp"
             }
           }
         ],
