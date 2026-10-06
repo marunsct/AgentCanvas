@@ -15,6 +15,7 @@ from agentcanvas.api.v1 import (
     deployments,
     evaluators,
     events,
+    experiments,
     memory,
     org,
     projects,
@@ -42,6 +43,7 @@ signed_in.include_router(events.router)
 signed_in.include_router(versions.router)
 signed_in.include_router(datasets.router)
 signed_in.include_router(evaluators.router)
+signed_in.include_router(experiments.router)
 signed_in.include_router(deployments.router)
 signed_in.include_router(triggers.router)
 

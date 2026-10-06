@@ -15,6 +15,8 @@ PREFIXES = {
     "dsv",
     "ex",
     "evl",
+    "exp",
+    "exr",
     "th",
     "run",
     "n",

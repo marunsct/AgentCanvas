@@ -17,6 +17,7 @@ from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, Spec, check_config, score
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
+from agentcanvas.services.experiments import scorers
 
 router = APIRouter(tags=["evaluators"])
 
@@ -66,17 +67,6 @@ async def _commit(session: AsyncSession, name: str) -> None:
     except IntegrityError:
         await session.rollback()
         raise Conflict(f"this workflow already has an evaluator named '{name}'") from None
-
-
-def scorers(request: Request, wf: Workflow) -> dict[str, Any]:
-    """The adapter's model call and workspace functions, for the workflow's project."""
-    runner = request.app.state.runner
-    adapter, resources = runner.adapter, runner.resources("", wf)
-
-    async def complete(system: str, prompt: str, model: str) -> str:
-        return await adapter.complete(resources, model, system, prompt)
-
-    return {"complete": complete, "script": lambda path: adapter.script(resources, path)}
 
 
 @router.get("/workflows/{wf_id}/evaluators", response_model=list[EvaluatorOut])
@@ -133,4 +123,4 @@ async def try_evaluator(
     assert row is not None
     wf = Workflow.model_validate(row.draft_ir)
     await session.close()  # no connection held while a judge model answers
-    return await score(spec(e), body, **scorers(request, wf))
+    return await score(spec(e), body, **scorers(request.app.state.runner, wf))

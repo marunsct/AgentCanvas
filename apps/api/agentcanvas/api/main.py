@@ -33,6 +33,7 @@ from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
+from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.projects import ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
@@ -88,7 +89,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )
+            app.state.experiments = ExperimentJob(db, runner, settings.handover_interval_s, settings.orphan_after_s)
             if settings.env != "test":  # tests drive the schedulers with explicit ticks
+                app.state.experiments.start()
                 app.state.cron.start()
                 app.state.retention.start()
                 app.state.handover.start()
@@ -101,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.handover.stop()
                 await app.state.cron.stop()
                 await app.state.retention.stop()

@@ -16,6 +16,7 @@ from agentcanvas.db.models import (
     Dataset,
     Deployment,
     Evaluator,
+    Experiment,
     InterruptTask,
     Membership,
     Organization,
@@ -301,6 +302,9 @@ class ScopeRepo:
             "dataset": via_workflow.join(Dataset, Dataset.workflow_id == WorkflowRow.id).where(Dataset.id == rid),
             "evaluator": via_workflow.join(Evaluator, Evaluator.workflow_id == WorkflowRow.id).where(
                 Evaluator.id == rid
+            ),
+            "experiment": via_workflow.join(Experiment, Experiment.workflow_id == WorkflowRow.id).where(
+                Experiment.id == rid
             ),
             "interrupt": via_thread.join(InterruptTask, InterruptTask.thread_id == Thread.id).where(
                 InterruptTask.id == rid

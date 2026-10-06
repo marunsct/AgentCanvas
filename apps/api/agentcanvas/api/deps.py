@@ -111,6 +111,7 @@ SCOPED_PARAMS = {
     "interrupt_id": "interrupt",
     "ds_id": "dataset",
     "evaluator_id": "evaluator",
+    "exp_id": "experiment",
 }
 
 

@@ -288,6 +288,62 @@ class Evaluator(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class Experiment(Base):
+    """A workflow run over a pinned dataset version, once per target (the draft, a version, or either with model
+    or prompt overrides), and scored by evaluators (FR-EVAL-04). Targets and evaluators are snapshots taken at
+    creation, so later edits never change what an experiment measured."""
+
+    __tablename__ = "experiment"
+    __table_args__ = (
+        CheckConstraint("status IN ('running','done','cancelled','error')", name="experiment_status"),
+        Index("experiment_status_idx", "status", "heartbeat_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
+    dataset_version: Mapped[int] = mapped_column(Integer)
+    split: Mapped[str | None] = mapped_column(Text)
+    # [{label, version, version_id, overrides, ir}] — `ir` is the exact workflow each target runs
+    targets: Mapped[list[Any]]
+    evaluators: Mapped[list[Any]]  # [{name, kind, config, threshold}]
+    concurrency: Mapped[int] = mapped_column(Integer, server_default=text("4"), default=4)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
+    error: Mapped[str | None] = mapped_column(Text)
+    # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExperimentResult(Base):
+    """One example run for one target of an experiment, with its scores."""
+
+    __tablename__ = "experiment_result"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','running','done')", name="experiment_result_status"),
+        UniqueConstraint("experiment_id", "target", "example_id", name="experiment_result_example"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    experiment_id: Mapped[str] = mapped_column(ForeignKey("experiment.id", ondelete="CASCADE"), index=True)
+    target: Mapped[int] = mapped_column(Integer)  # index into Experiment.targets
+    example_id: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer)  # the example's place in the dataset version
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    run_id: Mapped[str | None] = mapped_column(Text)
+    thread_id: Mapped[str | None] = mapped_column(Text)
+    run_status: Mapped[str | None] = mapped_column(Text)  # success / interrupted / error / cancelled / timeout
+    error: Mapped[str | None] = mapped_column(Text)
+    output: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    trajectory: Mapped[list[Any] | None] = mapped_column(Json)
+    scores: Mapped[list[Any] | None] = mapped_column(Json)  # [{evaluator, score, passed, comment}]
+    tokens_in: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, server_default=text("0"), default=0.0)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+
+
 class RateWindow(Base):
     """Requests counted per limit key and fixed window (S12, S30): shared by every API instance."""
 
