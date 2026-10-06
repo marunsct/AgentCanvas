@@ -16,15 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Deployment, Project, WorkflowVersion
-from agentcanvas.errors import InvalidInput
+from agentcanvas.errors import Forbidden, InvalidInput
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.services import gates
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
@@ -41,6 +43,9 @@ WAIT_TIMEOUT_S = 300.0
 class PublishIn(BaseModel):
     environment: str = Field("prod", pattern=r"^[a-z][a-z0-9-]{0,30}$")
     message: str = Field("", max_length=500)
+    override_reason: str | None = Field(
+        None, max_length=500, description="admins: publish although the release gate fails (audited)"
+    )
 
 
 class DeploymentOut(BaseModel):
@@ -98,6 +103,19 @@ async def publish(
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
+    gate = await gate_for(session, wf_id, body.environment)
+    if gate is not None and all(c.ok for c in checks):  # an evaluation is costly: only when nothing else failed
+        evaluation = await gates.evaluate(
+            request.app.state.db, request.app.state.experiments, gate, wf,
+            await _live(session, wf_id, body.environment), user.id,
+        )  # fmt: skip
+        if not evaluation.ok and body.override_reason:
+            if user.role != "admin":
+                raise Forbidden("only an admin can publish over a failed release gate")
+            evaluation.ok = True
+            evaluation.detail = f"overridden by {user.id}: {body.override_reason} ({evaluation.detail})"
+            note(request, gate_override=body.override_reason, gate_failures=evaluation.items)
+        checks.append(evaluation)
     failed = [c for c in checks if not c.ok]
     if failed:
         raise InvalidInput(
@@ -111,6 +129,17 @@ async def publish(
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version)
     return PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+
+
+async def _live(session: AsyncSession, wf_id: str, environment: str) -> tuple[Workflow, str, str] | None:
+    """The workflow, version id and semver `environment` serves now (None before its first publish)."""
+    from sqlalchemy import select
+
+    dep = await session.scalar(
+        select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.environment == environment)
+    )
+    live = await session.get(WorkflowVersion, dep.version_id) if dep and dep.active else None
+    return (Workflow.model_validate(live.ir), live.id, live.semver) if live else None
 
 
 async def _contract_check(session: AsyncSession, wf_id: str, environment: str, wf: Workflow) -> Check:

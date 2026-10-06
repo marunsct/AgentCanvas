@@ -344,6 +344,21 @@ class ExperimentResult(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer)
 
 
+class ReleaseGate(Base):
+    """FR-EVAL-05: publishing this workflow to `environment` must pass an evaluation on `dataset_id` first."""
+
+    __tablename__ = "release_gate"
+    __table_args__ = (UniqueConstraint("workflow_id", "environment", name="release_gate_environment"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    environment: Mapped[str] = mapped_column(Text)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
+    min_scores: Mapped[dict[str, Any]]  # evaluator name -> minimum mean score; empty: every evaluator, its threshold
+    max_regression: Mapped[float | None] = mapped_column(Float)  # largest allowed drop in pass rate vs. live
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    updated_at: Mapped[datetime] = _now()
+
+
 class RateWindow(Base):
     """Requests counted per limit key and fixed window (S12, S30): shared by every API instance."""
 

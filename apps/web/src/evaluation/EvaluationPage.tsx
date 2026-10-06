@@ -5,13 +5,13 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { apiDownload, apiFetch } from "../api/client";
 import type {
-  DatasetDetail, DatasetOut, DatasetVersionOut, EvaluatorOut, ExperimentOut, ExperimentResultOut, Score, VersionOut,
+  DatasetDetail, DatasetOut, GateOut, DatasetVersionOut, EvaluatorOut, ExperimentOut, ExperimentResultOut, Score, VersionOut,
 } from "../api/generated";
 import { can } from "../api/session";
 import { QueryStatus, errorText } from "../ui/QueryStatus";
 import { KIND_CONFIG, compare, fmt, grid, passed, pct } from "./compare";
 
-type Tab = "datasets" | "evaluators" | "experiments";
+type Tab = "datasets" | "evaluators" | "experiments" | "gates";
 
 function parseJson(text: string, what: string): Record<string, unknown> {
   if (!text.trim()) return {};
@@ -38,14 +38,15 @@ export function EvaluationPage() {
         <span className="crumb">/ <Link to={`/workflows/${id}`}>{wf.data?.name ?? id}</Link> / Evaluation</span>
       </header>
       <nav className="tabs" role="tablist">
-        {(["datasets", "evaluators", "experiments"] as Tab[]).map((t) => (
+        {(["datasets", "evaluators", "experiments", "gates"] as Tab[]).map((t) => (
           <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
-            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments" }[t]}</button>
+            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates" }[t]}</button>
         ))}
       </nav>
       {tab === "datasets" && <Datasets wfId={id} />}
       {tab === "evaluators" && <Evaluators wfId={id} />}
       {tab === "experiments" && <Experiments wfId={id} />}
+      {tab === "gates" && <Gates wfId={id} />}
     </div>
   );
 }
@@ -458,5 +459,77 @@ function Comparison({ before, after }: { before: ExperimentOut; after: Experimen
         Regressed: {c.regressed.length ? c.regressed.map((x) => <code key={x} className="error-text">{x.slice(-6)} </code>) : "none"}
       </p>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------------- release gates ----
+function Gates({ wfId }: { wfId: string }) {
+  const qc = useQueryClient();
+  const key = ["gates", wfId];
+  const list = useQuery({ queryKey: key, queryFn: () => apiFetch<GateOut[]>(`/workflows/${wfId}/gates`) });
+  const datasets = useQuery({ queryKey: ["datasets", wfId], queryFn: () => apiFetch<DatasetOut[]>(`/workflows/${wfId}/datasets`) });
+  const evaluators = useQuery({ queryKey: ["evaluators", wfId], queryFn: () => apiFetch<EvaluatorOut[]>(`/workflows/${wfId}/evaluators`) });
+  const [environment, setEnvironment] = useState("prod");
+  const [dataset, setDataset] = useState("");
+  const [mins, setMins] = useState<Record<string, string>>({});
+  const [regression, setRegression] = useState("");
+  const save = useMutation({
+    mutationFn: () => apiFetch<GateOut>(`/workflows/${wfId}/gates/${environment}`, {
+      method: "PUT",
+      json: {
+        dataset_id: dataset || datasets.data?.[0]?.id,
+        min_scores: Object.fromEntries(Object.entries(mins).filter(([, v]) => v.trim()).map(([k, v]) => [k, Number(v)])),
+        max_regression: regression.trim() ? Number(regression) / 100 : null,
+      },
+    }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
+  });
+  const remove = useMutation({ mutationFn: (env: string) => apiFetch(`/workflows/${wfId}/gates/${env}`, { method: "DELETE" }), onSuccess: () => void qc.invalidateQueries({ queryKey: key }) });
+  const name = (id: string) => datasets.data?.find((d) => d.id === id)?.name ?? id;
+  return (
+    <section className="pad">
+      <p className="small muted">
+        Publishing to a gated environment first evaluates the exact workflow on the dataset (reusing an experiment that already
+        did) and is refused when a minimum mean score is missed or the pass rate drops more than allowed against the live version.
+        Admins set gates and can publish over a failed one with a reason, which the audit log keeps.
+      </p>
+      <QueryStatus q={list} what="release gates" empty={<p className="muted">No release gates: publishing needs no evaluation.</p>} />
+      {list.data && list.data.length > 0 && (
+        <table className="table" data-testid="gates">
+          <thead><tr><th>Environment</th><th>Dataset</th><th>Minimum mean</th><th>Max drop vs live</th><th /></tr></thead>
+          <tbody>
+            {list.data.map((g) => (
+              <tr key={g.id}>
+                <td>{g.environment}</td><td>{name(g.dataset_id)}</td>
+                <td className="small">{Object.entries(g.min_scores ?? {}).map(([k, v]) => `${k} ≥ ${v}`).join(", ") || "each evaluator's threshold"}</td>
+                <td>{g.max_regression == null ? "—" : pct(g.max_regression)}</td>
+                <td>{can("admin") && <button type="button" className="link small" onClick={() => remove.mutate(g.environment)}>Remove</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {can("admin") && (
+        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }} data-testid="gate-form">
+          <div className="row gap">
+            <input aria-label="gate environment" value={environment} onChange={(e) => setEnvironment(e.target.value)} style={{ width: 110 }} />
+            <select aria-label="gate dataset" value={dataset} onChange={(e) => setDataset(e.target.value)}>
+              {datasets.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <input aria-label="max regression" placeholder="max drop in pass rate, %" value={regression} onChange={(e) => setRegression(e.target.value)} style={{ width: 190 }} />
+            <button type="submit" disabled={save.isPending || !datasets.data?.length}>Save gate</button>
+          </div>
+          <div className="row gap small">
+            Minimum mean (empty: the evaluator's threshold):
+            {evaluators.data?.map((e) => (
+              <label key={e.id} className="row">{e.name}
+                <input aria-label={`minimum ${e.name}`} style={{ width: 60 }} value={mins[e.name] ?? ""} onChange={(x) => setMins((m) => ({ ...m, [e.name]: x.target.value }))} />
+              </label>
+            ))}
+          </div>
+          {save.error && <p role="alert" className="error-text">{errorText(save.error)}</p>}
+        </form>
+      )}
+    </section>
   );
 }

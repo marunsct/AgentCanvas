@@ -60,3 +60,36 @@ test("dataset, evaluator, experiment with a variant, results grid and comparison
   await expect(page).toHaveURL(new RegExp(`/workflows/${wf.id}\\?thread=th_`));
   await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
 });
+
+test("a release gate refuses a regression; an admin publishes over it with a reason", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Gate ${Date.now()}` } })).json();
+  const ir = (greeting: string) => ({
+    ...wf.ir, state: { channels: [{ name: "who" }, { name: "out" }] },
+    nodes: [{ id: "n_g", type: "core.set", name: "greet", config: { values: { out: `${greeting} {{ state.who }}` } } }],
+    edges: [
+      { id: "e1", kind: "flow", source: { node: "START" }, target: { node: "n_g" } },
+      { id: "e2", kind: "flow", source: { node: "n_g" }, target: { node: "END" } },
+    ],
+  });
+  expect((await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir: ir("Hello") }, headers: { "If-Match": "1" } })).ok()).toBeTruthy();
+  const ds = await (await api.post(`/api/v1/workflows/${wf.id}/datasets`, { data: { name: "Smoke" } })).json();
+  await api.post(`/api/v1/datasets/${ds.id}/examples`, { data: { examples: [{ input: { who: "Ada" }, reference: { out: "Hello Ada" } }] } });
+  await api.post(`/api/v1/workflows/${wf.id}/evaluators`, { data: { name: "exact", kind: "exact", config: {} } });
+
+  await page.goto(`/workflows/${wf.id}/evaluation`);
+  await page.getByRole("tab", { name: "Release gates" }).click();
+  await page.getByLabel("minimum exact").fill("0.9");
+  await page.getByRole("button", { name: "Save gate" }).click();
+  await expect(page.getByTestId("gates")).toContainText("exact ≥ 0.9");
+
+  expect((await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir: ir("Hey") }, headers: { "If-Match": "2" } })).ok()).toBeTruthy();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Publish to prod" }).click();
+  await expect(page.getByTestId("publish-checklist")).toContainText("exact: mean 0.0 (needs 0.9)");
+  page.once("dialog", (d) => void d.accept("demo for the partner call"));
+  await page.getByRole("button", { name: "Publish anyway…" }).click();
+  await expect(page.getByTestId("publish-checklist")).toContainText("overridden by");
+  await expect(page.getByTestId("deployment-prod")).toBeVisible();
+});

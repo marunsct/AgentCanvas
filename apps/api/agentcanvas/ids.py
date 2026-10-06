@@ -17,6 +17,7 @@ PREFIXES = {
     "evl",
     "exp",
     "exr",
+    "gate",
     "th",
     "run",
     "n",

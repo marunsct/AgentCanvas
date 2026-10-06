@@ -17,9 +17,9 @@ export function PublishSection({ wfId }: { wfId: string }) {
     void qc.invalidateQueries({ queryKey: ["test-cases", wfId] });
   };
   const publish = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (override_reason?: string) => {
       await useEditor.getState().flush();
-      return apiFetch<PublishOut>(`/workflows/${wfId}/publish`, { method: "POST", json: { environment: "prod" } });
+      return apiFetch<PublishOut>(`/workflows/${wfId}/publish`, { method: "POST", json: { environment: "prod", override_reason } });
     },
     onSuccess: (out) => {
       setChecks(out.checklist ?? []);
@@ -41,10 +41,16 @@ export function PublishSection({ wfId }: { wfId: string }) {
   return (
     <section className="publish" aria-label="publish">
       <h4>Publish</h4>
-      {can("builder") && <button type="button" className="primary" disabled={publish.isPending} onClick={() => publish.mutate()}>
+      {can("builder") && <button type="button" className="primary" disabled={publish.isPending} onClick={() => publish.mutate(undefined)}>
         {publish.isPending ? "Checking…" : "Publish to prod"}
       </button>}
       {publish.error && <p className="error-text small" role="alert">{(publish.error as Error).message}</p>}
+      {publish.error && can("admin") && checks?.some((c) => c.name === "evaluation" && !c.ok) && checks.every((c) => c.ok || c.name === "evaluation") && (
+        <button type="button" className="small danger" onClick={() => {
+          const reason = window.prompt("Publish although the release gate fails? The reason goes to the audit log.");
+          if (reason?.trim()) publish.mutate(reason.trim());
+        }}>Publish anyway…</button>
+      )}
       {checks && (
         <ul className="checklist small" data-testid="publish-checklist">
           {checks.map((c) => (
