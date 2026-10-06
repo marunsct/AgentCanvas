@@ -7,6 +7,11 @@ checkpoint: the run ends `interrupted` with code `redeploy` and `Run.handover` s
 **Hand-over.** Every instance runs `HandoverJob`: it claims a handed-over run (one conditional UPDATE, so exactly
 one instance wins) and continues its thread from the checkpoint, on the version the run started on.
 
+**Lost instances.** An instance killed without draining (OOM, node failure) cannot hand its runs over. Every
+instance refreshes `Run.heartbeat_at` of its running runs on each tick; a run still `running` whose heartbeat is
+older than `AGENTCANVAS_ORPHAN_AFTER_S` lost its instance, so the sweep marks it `interrupted` with `handover` set
+and the hand-over continues it from its last checkpoint like a drained one.
+
 **New versions.** A conversation of a deployment continues on the deployment's current version only when that
 version can resume it (`resume_compatible`: the same state channels and pause points); otherwise it finishes on
 the version it started on, and new conversations get the new version.
@@ -16,12 +21,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Run, WorkflowVersion
+from agentcanvas.db.models import Run, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, Unavailable
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
@@ -30,6 +36,7 @@ from agentcanvas.log import get_logger
 log = get_logger(__name__)
 
 BATCH = 100
+ORPHANED = "its server stopped unexpectedly; it continues automatically"
 # (session, thread_id, version_id of the handed-over run) -> (workflow, Runner.start kwargs)
 Target = Callable[[AsyncSession, str, str | None], Awaitable[tuple[Workflow, dict[str, Any]]]]
 
@@ -75,8 +82,9 @@ async def thread_version(session: AsyncSession, thread_id: str, current: Workflo
 class HandoverJob:
     """Continues the runs a draining instance handed over (every instance runs it; claims are exclusive)."""
 
-    def __init__(self, db: Any, runner: Any, target: Target, interval_s: float = 10.0):
+    def __init__(self, db: Any, runner: Any, target: Target, interval_s: float = 10.0, orphan_after_s: float = 60.0):
         self.db, self.runner, self.target, self.interval_s = db, runner, target, interval_s
+        self.orphan_after_s = orphan_after_s
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -103,8 +111,36 @@ class HandoverJob:
             await s.commit()
         return res.rowcount == 1  # type: ignore[attr-defined]
 
+    async def sweep(self, now: datetime | None = None) -> list[str]:
+        """Hand over the runs whose instance stopped without draining; returns their ids."""
+        cutoff = (now or datetime.now(UTC)) - timedelta(seconds=self.orphan_after_s)
+        stale = (Run.status == "running", func.coalesce(Run.heartbeat_at, Run.started_at) < cutoff)
+        mine = set(self.runner.active())
+        swept: list[str] = []
+        async with self.db.sessionmaker() as s:
+            rows = (await s.execute(select(Run.id, Run.thread_id).where(*stale).limit(BATCH))).all()
+            for run_id, thread_id in rows:
+                if run_id in mine:  # alive here; its heartbeat is just late
+                    continue
+                res = await s.execute(
+                    update(Run)
+                    .where(Run.id == run_id, *stale)  # exactly one instance sweeps it
+                    .values(status="interrupted", error=ORPHANED, ended_at=datetime.now(UTC), handover=True)
+                )
+                if res.rowcount == 1:  # type: ignore[attr-defined]
+                    await s.execute(update(Thread).where(Thread.id == thread_id).values(status="interrupted"))
+                    swept.append(run_id)
+            await s.commit()
+        if swept:
+            log.warning("handover.orphaned_runs", runs=swept)
+        return swept
+
     async def tick(self) -> list[str]:
-        """Continue the handed-over runs' threads; returns the ids of the runs started."""
+        """Keep this instance's runs alive, sweep orphaned runs and continue the handed-over runs' threads;
+        returns the ids of the runs started."""
+        await self.runner.heartbeat()
+        if not self.runner.draining:
+            await self.sweep()
         started: list[str] = []
         async with self.db.sessionmaker() as s:
             rows = (

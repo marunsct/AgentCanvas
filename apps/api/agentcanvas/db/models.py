@@ -196,6 +196,8 @@ class Run(Base):
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -168,7 +168,8 @@ The follow-ups are in the S12 backlog.
 - [ ] FR-EVAL-04 experiments: workflow versions × dataset × model/prompt variants, run in the background.
 - [ ] Results grid and comparison UI.
 - [ ] FR-EVAL-05 release gate at publish.
-- [ ] S11 follow-ups: API rate limits per key and project, orphaned-run sweeper, trace masking, audit and memory retention, drop `'unsafe-eval'`, base images by digest, workspace symlink test.
+- [x] Orphaned-run sweeper: runs of an instance killed without draining are handed over after `AGENTCANVAS_ORPHAN_AFTER_S` (60 s) without a heartbeat.
+- [ ] S11 follow-ups: API rate limits per key and project, trace masking, audit and memory retention, drop `'unsafe-eval'`, base images by digest, workspace symlink test.
 
 ### S13+ — GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.

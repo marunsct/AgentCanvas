@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
     drain_grace_s: float = 20.0
     handover_interval_s: float = 10.0
+    # a running run whose instance has not refreshed it for this long lost its instance and is handed over
+    orphan_after_s: float = 60.0
 
 
 @cache

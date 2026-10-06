@@ -83,7 +83,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
 
-            app.state.handover = HandoverJob(db, runner, handover_target, settings.handover_interval_s)
+            app.state.handover = HandoverJob(
+                db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
+            )
             if settings.env != "test":  # tests drive the schedulers with explicit ticks
                 app.state.cron.start()
                 app.state.retention.start()
