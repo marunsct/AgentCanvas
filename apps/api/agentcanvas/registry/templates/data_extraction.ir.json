@@ -31,6 +31,14 @@
         "model": "anthropic:claude-haiku-4-5",
         "temperature": 0
       }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 25
+      }
     }
   ],
   "nodes": [
@@ -98,6 +106,18 @@
         "node": "n_extract",
         "port": "model"
       }
+    },
+    {
+      "id": "w_limit",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_extract",
+        "port": "middleware"
+      },
+      "order": 0
     }
   ]
 }

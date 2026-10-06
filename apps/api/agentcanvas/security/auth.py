@@ -34,6 +34,9 @@ class Identity:
     email_verified: bool
 
 
+DEV_SECRET_KEY = "dev-only-change-me"
+
+
 def check_auth_settings(settings: Settings) -> None:
     """Fail fast on configurations that would leave the API open or unable to verify tokens."""
     if settings.auth_mode == "dev" and (settings.env in ("staging", "prod") or settings.edition == "hosted"):
@@ -43,6 +46,17 @@ def check_auth_settings(settings: Settings) -> None:
         )
     if settings.auth_mode == "oidc" and not (settings.oidc_issuer and settings.oidc_audience):
         raise RuntimeError("AGENTCANVAS_AUTH_MODE=oidc needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE")
+    production = settings.env in ("staging", "prod") or settings.edition == "hosted"
+    if production and (settings.secret_key == DEV_SECRET_KEY or len(settings.secret_key) < 32):
+        raise RuntimeError(
+            "AGENTCANVAS_SECRET_KEY is the development default or shorter than 32 characters; set 64+ random "
+            "characters for staging, prod or the hosted edition"
+        )
+    if settings.edition == "hosted" and settings.script_execution not in ("docker", "langsmith"):
+        raise RuntimeError(
+            "the hosted edition runs workspace scripts in a sandbox: set AGENTCANVAS_SCRIPT_EXECUTION=docker "
+            "(or langsmith)"
+        )
 
 
 class Authenticator:

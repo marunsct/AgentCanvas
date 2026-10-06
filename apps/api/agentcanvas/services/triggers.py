@@ -1,11 +1,13 @@
 """Webhook and cron triggers (M6-T5).
 
-- **Webhook** `POST /v1/hooks/{trigger_id}`: the body is signed with the trigger's secret —
-  header `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of the raw body>` — and mapped to the workflow
+- **Webhook** `POST /v1/hooks/{trigger_id}`: the delivery is signed with the trigger's secret —
+  `X-AgentCanvas-Timestamp: <unix seconds>` and `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of
+  "<timestamp>." + raw body>`; deliveries more than 5 minutes old are refused (replays) — and mapped to the workflow
   input with templates over `body` (e.g. `{"ticket": "{{ body.issue.title }}"}`); without a mapping the body
   itself is the input.
-- **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process; each
-  minute fires at most once. Multi-instance deployments need a leader lock (Postgres advisory lock, S11).
+- **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process. Each
+  minute fires at most once across every replica: a scheduler claims it by moving the trigger's `last_fired`
+  forward in one conditional UPDATE, and only the replica whose update matched starts the run.
 
 A trigger runs its deployment's pinned version when it has one, otherwise the draft.
 """
@@ -21,18 +23,21 @@ from typing import Any, Literal
 
 import structlog
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Deployment, Trigger, WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import Deployment, Project, Trigger, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound, Unauthorized
 from agentcanvas.expr import render_template
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
-from agentcanvas.services.secrets import _fernet
+from agentcanvas.security.kms import Keyring
 
 log = structlog.get_logger()
 SIGNATURE_HEADER = "X-AgentCanvas-Signature"
+TIMESTAMP_HEADER = "X-AgentCanvas-Timestamp"
+TOLERANCE_S = 300  # how old a signed delivery may be
+_ORG_KEY = "v2:"  # webhook secrets encrypted with the organisation's data key; unprefixed = legacy key
 _RANGES = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)]  # day of week: 0 and 7 are Sunday
 
 
@@ -105,8 +110,8 @@ class TriggerIn(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
-def sign(secret: str, body: bytes) -> str:
-    return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+def sign(secret: str, body: bytes, timestamp: int | str) -> str:
+    return "sha256=" + hmac.new(secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
 
 
 def map_input(mapping: dict[str, str] | None, body: Any) -> dict[str, Any]:
@@ -118,9 +123,19 @@ def map_input(mapping: dict[str, str] | None, body: Any) -> dict[str, Any]:
 
 
 class TriggerService:
-    def __init__(self, session: AsyncSession, secret_key: str):
+    def __init__(self, session: AsyncSession, keyring: Keyring):
         self.s = session
-        self.f = _fernet(secret_key)
+        self.keys = keyring
+
+    async def _org_fernet(self, wf_id: str):
+        org_id = await self.s.scalar(
+            select(Project.org_id)
+            .join(WorkflowRow, WorkflowRow.project_id == Project.id)
+            .where(WorkflowRow.id == wf_id)
+        )
+        if org_id is None:
+            raise NotFound(f"workflow '{wf_id}' not found")
+        return await self.keys.fernet(self.s, org_id)
 
     async def create(self, wf_id: str, body: TriggerIn) -> tuple[Trigger, str | None]:
         row = await self.s.get(WorkflowRow, wf_id)
@@ -134,7 +149,7 @@ class TriggerService:
         if body.kind == "webhook":
             config = WebhookConfig.model_validate(body.config).model_dump()
             secret = "whsec_" + secrets.token_urlsafe(24)
-            config["secret"] = self.f.encrypt(secret.encode()).decode()
+            config["secret"] = _ORG_KEY + (await self._org_fernet(wf_id)).encrypt(secret.encode()).decode()
         else:
             try:
                 config = CronConfig.model_validate(body.config).model_dump()
@@ -169,12 +184,28 @@ class TriggerService:
         await self.s.commit()
         return trig
 
-    def verify(self, trig: Trigger, body: bytes, signature: str | None) -> None:
-        if trig.kind != "webhook" or not trig.enabled:
-            raise NotFound(f"trigger '{trig.id}' is not an enabled webhook")
-        secret = self.f.decrypt(trig.config["secret"].encode()).decode()
-        if not signature or not hmac.compare_digest(sign(secret, body), signature.strip()):
-            raise Unauthorized(f"invalid or missing {SIGNATURE_HEADER} header")
+    async def verify(
+        self, trigger_id: str, body: bytes, signature: str | None, timestamp: str | None, now: float | None = None
+    ) -> Trigger:
+        """The enabled webhook trigger this delivery is signed for. Every failure, an unknown trigger included,
+        is the same 401, so callers cannot probe for trigger ids."""
+        refused = Unauthorized(f"invalid, stale or missing {SIGNATURE_HEADER} / {TIMESTAMP_HEADER} headers")
+        trig = await self.s.get(Trigger, trigger_id)
+        if trig is None or trig.kind != "webhook" or not trig.enabled or not signature or not timestamp:
+            raise refused
+        try:
+            age = abs((now if now is not None else datetime.now(UTC).timestamp()) - int(timestamp))
+        except ValueError:
+            raise refused from None
+        stored: str = trig.config["secret"]
+        if stored.startswith(_ORG_KEY):
+            f = await self._org_fernet(trig.workflow_id)
+            secret = f.decrypt(stored.removeprefix(_ORG_KEY).encode()).decode()
+        else:
+            secret = self.keys.legacy.decrypt(stored.encode()).decode()
+        if age > TOLERANCE_S or not hmac.compare_digest(sign(secret, body, timestamp), signature.strip()):
+            raise refused
+        return trig
 
     async def target(self, trig: Trigger) -> tuple[Workflow, dict[str, Any]]:
         """The workflow a trigger runs (its deployment's version, or the draft) and `Runner.start` kwargs."""
@@ -196,11 +227,10 @@ class TriggerService:
 
 # ------------------------------------------------------------------------------------------- scheduler ----
 class CronScheduler:
-    """Fires due cron triggers once per minute (single API instance; see module docstring)."""
+    """Fires due cron triggers once per minute, across replicas (see module docstring)."""
 
-    def __init__(self, db: Any, runner: Any, secret_key: str, tick_s: float = 15.0):
-        self.db, self.runner, self.secret_key, self.tick_s = db, runner, secret_key, tick_s
-        self.fired: dict[str, str] = {}  # trigger id -> "YYYY-mm-ddTHH:MM" it last fired for
+    def __init__(self, db: Any, runner: Any, keyring: Keyring, tick_s: float = 15.0):
+        self.db, self.runner, self.keyring, self.tick_s = db, runner, keyring, tick_s
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -225,11 +255,10 @@ class CronScheduler:
         started = []
         async with self.db.sessionmaker() as s:
             rows = (await s.scalars(select(Trigger).where(Trigger.kind == "cron", Trigger.enabled))).all()
-            svc = TriggerService(s, self.secret_key)
+            svc = TriggerService(s, self.keyring)
             for trig in rows:
-                if self.fired.get(trig.id) == minute or not Cron(trig.config["schedule"]).matches(now):
+                if not Cron(trig.config["schedule"]).matches(now) or not await self._claim(s, trig.id, minute):
                     continue
-                self.fired[trig.id] = minute
                 try:
                     wf, kw = await svc.target(trig)
                     h = await self.runner.start(wf, input=dict(trig.config.get("input") or {}), origin="trigger", **kw)
@@ -238,3 +267,14 @@ class CronScheduler:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("cron.failed", trigger=trig.id, error=str(exc))
         return started
+
+    @staticmethod
+    async def _claim(s: AsyncSession, trigger_id: str, minute: str) -> bool:
+        """True for exactly one scheduler per trigger and minute, however many replicas tick."""
+        claimed = await s.execute(
+            update(Trigger)
+            .where(Trigger.id == trigger_id, or_(Trigger.last_fired.is_(None), Trigger.last_fired < minute))
+            .values(last_fired=minute)
+        )
+        await s.commit()
+        return claimed.rowcount == 1  # type: ignore[attr-defined]

@@ -133,7 +133,7 @@ All paths are prefixed with `/v1`. Auth: `Authorization: Bearer <OIDC JWT>` (M7;
 | `POST /inbox/{id}/decision` | `{"value": ...}` → resumes; SSE optional via `?stream=true` |
 | `GET/POST/DELETE /projects/{id}/secrets` | POST `{"name","value"}`; GET returns names only |
 | `CRUD /workflows/{id}/triggers` | webhook/cron config |
-| `POST /hooks/{trigger_id}` | public; HMAC header `X-AgentCanvas-Signature: sha256=<hex>` |
+| `POST /hooks/{trigger_id}` | public; headers `X-AgentCanvas-Timestamp: <unix s>` and `X-AgentCanvas-Signature: sha256=<hex HMAC of "<timestamp>." + body>`; older than 5 min → 401 |
 | `POST /workflows/{id}/deployments` | `{"version_id"}` → `{"id","api_key"}` (key shown once) |
 | `POST /deployments/{id}/runs/stream` | API-key auth; same body as draft runs |
 

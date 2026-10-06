@@ -8,6 +8,7 @@ import json
 import math
 import os
 import sys
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -50,9 +51,12 @@ def subprocess_command(workspace: Path, import_path: str) -> tuple[list[str], di
     return [sys.executable, "-I", str(CHILD), import_path], env, workspace
 
 
-def docker_command(image: str, workspace: Path, import_path: str, memory_mb: int = 512) -> list[str]:
+def docker_command(
+    image: str, workspace: Path, import_path: str, memory_mb: int = 512, name: str | None = None
+) -> list[str]:
     return [
-        "docker", "run", "--rm", "-i",
+        "docker", "run", "--rm", "-i", *(["--name", name] if name else []),
+        "--user", "65534:65534",  # nobody: never root inside the sandbox (S2)
         "--network", "none", "--memory", f"{memory_mb}m", "--cpus", "1", "--pids-limit", "64",
         "--read-only", "--tmpfs", "/tmp:size=16m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "-v", f"{workspace}:/ws:ro", "-v", f"{CHILD}:/sandbox/child.py:ro", "-w", "/ws",
@@ -82,8 +86,9 @@ async def _exchange(
     timeout: float,
     memory_mb: int = MEMORY_MB,
 ) -> dict:
+    name = f"ac-sbx-{uuid.uuid4().hex[:12]}"
     if mode == "docker":
-        argv, env, cwd = docker_command(image, workspace, import_path, memory_mb), None, None
+        argv, env, cwd = docker_command(image, workspace, import_path, memory_mb, name), None, None
     else:
         argv, env, cwd = subprocess_command(workspace, import_path)
     limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout))
@@ -101,6 +106,11 @@ async def _exchange(
     except TimeoutError:
         proc.kill()
         await proc.wait()
+        if mode == "docker":  # killing the client leaves the container running: stop the container itself
+            killer = await asyncio.create_subprocess_exec(
+                "docker", "kill", name, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await killer.wait()
         raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
     return _parse(import_path, out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode)
 

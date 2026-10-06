@@ -1,0 +1,15 @@
+# Load-test overlay (M8-T5): compose prod with demo models and dev sign-in, so k6 needs no provider keys or tokens.
+# Never use it for real users: every request is an admin of the default organisation.
+#   docker compose -f infra/compose.prod.yml -f infra/load/compose.load.yml --env-file infra/.env.prod up -d
+#   k6 run infra/load/runs.js
+services:
+  api:
+    command: ["uvicorn", "agentcanvas.dev.fake_server:app", "--host", "0.0.0.0", "--port", "8000",
+              "--proxy-headers", "--timeout-graceful-shutdown", "30"]
+    environment:
+      AGENTCANVAS_ENV: dev
+      AGENTCANVAS_AUTH_MODE: dev
+  migrate:
+    environment:
+      AGENTCANVAS_ENV: dev
+      AGENTCANVAS_AUTH_MODE: dev

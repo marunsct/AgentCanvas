@@ -10,7 +10,7 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) in review |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) merged, tag pending |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 
 ## Repository layout
@@ -19,7 +19,7 @@
 apps/api/        Python 3.12 — FastAPI control plane + runner, IR, validator, node library, compiler
 apps/web/        React 19 + TypeScript — canvas (React Flow), inspector, run panel
 packages/        shared artifacts (IR JSON Schema for the web app)
-infra/           docker-compose (Postgres + pgvector, Redis 8, Keycloak), Dockerfiles, reference DDL
+infra/           Dockerfiles, nginx, compose.prod.yml, Helm chart (helm/agentcanvas), dev docker-compose, reference DDL
 docs/            specification, build guide, ADRs
 ```
 
@@ -46,6 +46,12 @@ make docs         # documentation site on http://localhost:8001
 
 Use real models with `make dev-api` after exporting provider keys (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
 
+## Deploy
+
+Container images, a production compose file (`infra/compose.prod.yml`, two API replicas behind nginx) and a Helm
+chart (`infra/helm/agentcanvas`) are in `infra/`; the
+[deployment guide](docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md) walks through both.
+
 ## What you can do in v0.1.0
 
 Build on the canvas (agents, Deep Agents, routers, map/join, subgraphs, MCP/HTTP tools, memory, workspace
@@ -69,5 +75,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | Sprint | State |
 |---|---|
 | S0–S9: foundations to MVP (v0.1.0) | ✅ merged |
-| S10: accounts & access (v0.2.0) | ✅ done, in review ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
-| S11: production readiness (v0.3.0) | 📋 planned: containers, compose prod and Helm, observability, backups and retention, safe redeploy, load test, security review ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s11--production-readiness--v030)) |
+| S10: accounts & access (v0.2.0) | ✅ merged ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
+| S11: production readiness (v0.3.0) | ✅ done in #4 (awaiting merge): containers, compose prod and Helm, observability, retention and backups, safe redeploy, load test, security review, KMS |
+| S12: Evaluation Studio (v0.4.0) | 🚧 in progress: datasets, evaluators, experiments, results grid, release gate ([backlog](docs/agent-canvas-spec/build-guide/13-sprint-plan.md#s12--evaluation-studio--v040)) |

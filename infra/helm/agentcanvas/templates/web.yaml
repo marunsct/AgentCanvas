@@ -1,0 +1,61 @@
+{{- $name := include "agentcanvas.fullname" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-web
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentcanvas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+      {{- with .Values.web.podAnnotations }}
+      annotations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      containers:
+        - name: web
+          image: {{ include "agentcanvas.image" (dict "root" . "component" "web") }}
+          imagePullPolicy: {{ .Values.image.web.pullPolicy }}
+          env:
+            - name: API_UPSTREAM
+              value: "http://{{ $name }}-api:{{ .Values.service.api.port }}"
+            - name: OIDC_ISSUER   # its origin is allowed in the Content-Security-Policy
+              value: {{ .Values.config.oidc.issuer | default "" | quote }}
+            - name: CSP_CONNECT_SRC
+              value: {{ .Values.web.cspConnectSrc | default "" | quote }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          livenessProbe:
+            httpGet: { path: /, port: http }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            {{- include "agentcanvas.containerSecurity" . | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-web
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    {{- include "agentcanvas.selector" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.service.web.port }}, targetPort: http }

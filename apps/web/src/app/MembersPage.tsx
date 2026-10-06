@@ -6,7 +6,7 @@ import { apiFetch } from "../api/client";
 import { can, ME, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 
-interface Member { user_id: string; email: string; display_name: string | null; role: Role; invited: boolean }
+interface Member { user_id: string; email: string; display_name: string | null; role: Role; invited: boolean; accepted: boolean }
 
 const ROLES: { role: Role; what: string }[] = [
   { role: "viewer", what: "sees workflows and runs" },
@@ -51,7 +51,7 @@ export function MembersPage() {
           {(members.data ?? []).map((m) => (
             <tr key={m.user_id}>
               <td>{m.display_name ?? m.email}{m.display_name && <span className="muted small"> {m.email}</span>}</td>
-              <td>{m.invited ? <span className="muted small">invited</span> : null}</td>
+              <td>{m.invited || !m.accepted ? <span className="muted small">{m.invited ? "invited" : "awaiting acceptance"}</span> : null}</td>
               <td>
                 {admin && m.user_id !== ME.id
                   ? <select value={m.role} aria-label={`role of ${m.email}`} onChange={(e) => set.mutate({ email: m.email, role: e.target.value as Role })}>

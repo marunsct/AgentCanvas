@@ -107,8 +107,8 @@ async def test_org_header_must_name_a_membership(client):
 
 async def test_public_routes_need_no_sign_in(client):
     cfg = (await client.get("/v1/auth/config")).json()
-    assert cfg == {"mode": "oidc", "issuer": ISSUER, "client_id": "spa", "scopes": "openid profile email",
-                   "audience": AUDIENCE}  # fmt: skip
+    assert cfg == {"mode": "oidc", "issuer": ISSUER, "client_id": "spa",
+                   "scopes": "openid profile email offline_access", "audience": AUDIENCE}  # fmt: skip
     # deployment and webhook endpoints keep their own credentials: no sign-in, but still refused without them
     assert (await client.post("/v1/deployments/dep_x/runs/wait", json={})).status_code in (401, 404)
     assert (await client.post("/v1/hooks/trg_x", content=b"{}")).status_code in (401, 404)
@@ -120,7 +120,14 @@ def test_dev_mode_is_refused_in_production():
         check_auth_settings(Settings(env="prod", auth_mode="dev"))
     with pytest.raises(RuntimeError, match="OIDC_ISSUER"):
         check_auth_settings(Settings(env="prod", auth_mode="oidc"))
-    check_auth_settings(Settings(env="prod", auth_mode="oidc", oidc_issuer=ISSUER, oidc_audience=AUDIENCE))
+    oidc = {"auth_mode": "oidc", "oidc_issuer": ISSUER, "oidc_audience": AUDIENCE}
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):  # S11: the development key never reaches production
+        check_auth_settings(Settings(env="prod", **oidc))
+    strong = "k" * 64
+    check_auth_settings(Settings(env="prod", secret_key=strong, **oidc))
+    with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION"):  # S2: hosted runs scripts in the sandbox only
+        check_auth_settings(Settings(edition="hosted", secret_key=strong, **oidc))
+    check_auth_settings(Settings(edition="hosted", secret_key=strong, script_execution="docker", **oidc))
     check_auth_settings(Settings(env="dev"))
 
 
@@ -141,3 +148,85 @@ async def test_seeded_dev_user_has_no_rights_with_sign_in_on(client):
     assert [m["user_id"] for m in members] == [me["id"]]
     # a token whose subject is the dev user's is just another stranger
     assert (await client.get("/v1/me", headers=bearer(token(sub="dev", email="x@example.com")))).status_code == 403
+
+
+# routes reachable without signing in (S15); deployment and webhook routes check their own credentials
+PUBLIC = {("GET", "/v1/auth/config"), ("GET", "/healthz"), ("GET", "/readyz")}
+OWN_CREDENTIALS = ("/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/")
+
+
+async def test_every_other_route_needs_sign_in(app, client):
+    """S15 route scan: every operation in the API answers 401 without a token, except the public allowlist."""
+    import re
+
+    open_routes = []
+    for path, ops in app.openapi()["paths"].items():
+        url = re.sub(r"\{[^}]+\}", "x", path)
+        for method in ops:
+            r = await client.request(method.upper(), url, json={})
+            public = (method.upper(), path) in PUBLIC
+            if public or path.startswith(OWN_CREDENTIALS):
+                assert public or r.status_code == 401, (method, path, r.status_code)
+            elif r.status_code != 401:
+                open_routes.append((method, path, r.status_code))
+    assert open_routes == []
+    assert (await client.get("/openapi.json")).status_code == 200  # docs stay on outside production
+
+
+async def test_api_docs_are_off_in_production(settings):
+    from agentcanvas.api.main import create_app
+
+    prod = create_app(settings.model_copy(update={"env": "prod", "secret_key": "k" * 64}))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=prod), base_url="http://test") as c:
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert (await c.get(path)).status_code == 404, path
+
+
+async def test_cors_refuses_other_origins(client):
+    """S21: a browser on another origin gets no CORS grant (allowed origins come from AGENTCANVAS_CORS_ORIGINS)."""
+    pre = {"Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization"}
+    evil = await client.options("/v1/projects", headers={"Origin": "https://evil.test", **pre})
+    assert "access-control-allow-origin" not in evil.headers
+    ok = await client.options("/v1/projects", headers={"Origin": "http://localhost:5173", **pre})
+    assert ok.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+async def test_joining_another_organisation_needs_acceptance(app, client):
+    """S11: an invitation to someone who already belongs elsewhere waits for them; the org used last is the default."""
+    from agentcanvas.db.models import Membership, Organization
+    from agentcanvas.db.repositories import UserRepo
+
+    alice, bob = bearer(token()), bearer(token(sub="bob-sub", email="bob@example.com", name="Bob"))
+    assert (await client.get("/v1/me", headers=alice)).json()["org_id"] == "org_default"
+    assert (await client.get("/v1/me", headers=bob)).status_code == 403
+    async with app.state.db.sessionmaker() as s:
+        bob_id = (await UserRepo(s).by_subject("oidc:bob-sub")).id  # type: ignore[union-attr]
+        s.add(Organization(id="org_b", name="Org B"))
+        await s.flush()
+        s.add(Membership(org_id="org_b", user_id=bob_id, role="admin"))
+        await s.commit()
+
+    invited = await client.put("/v1/org/members", headers=bob, json={"email": "alice@example.com", "role": "builder"})
+    assert invited.status_code == 200 and invited.json()["accepted"] is False
+    [row] = [m for m in (await client.get("/v1/org/members", headers=bob)).json() if m["email"] == "alice@example.com"]
+    assert row["accepted"] is False and row["display_name"] is None  # no profile details before she joins
+    me = (await client.get("/v1/me", headers=alice)).json()
+    assert me["org_id"] == "org_default" and set(me["memberships"]) == {"org_default"}
+    assert (await client.get("/v1/me", headers={**alice, "X-Org-Id": "org_b"})).status_code == 403
+    assert (await client.get("/v1/me/invitations", headers=alice)).json() == [
+        {"org_id": "org_b", "org_name": "Org B", "role": "builder"}
+    ]
+
+    assert (await client.post("/v1/me/invitations/org_b/accept", headers=alice)).status_code == 204
+    me = (await client.get("/v1/me", headers=alice)).json()
+    assert me["org_id"] == "org_b" and me["role"] == "builder"  # the organisation just joined is the default
+    [row] = [m for m in (await client.get("/v1/org/members", headers=bob)).json() if m["email"] == "alice@example.com"]
+    assert row["accepted"] is True and row["display_name"] == "Alice"
+    await client.get("/v1/projects", headers={**alice, "X-Org-Id": "org_default"})  # switching back...
+    assert (await client.get("/v1/me", headers=alice)).json()["org_id"] == "org_default"  # ...sticks
+
+    await client.put("/v1/org/members", headers=alice, json={"email": "bob@example.com", "role": "viewer"})
+    assert (await client.delete("/v1/me/invitations/org_default", headers=bob)).status_code == 204  # declined
+    assert (await client.get("/v1/me/invitations", headers=bob)).json() == []
+    assert set((await client.get("/v1/me", headers=bob)).json()["memberships"]) == {"org_b"}
+    assert (await client.post("/v1/me/invitations/org_default/accept", headers=bob)).status_code == 404

@@ -95,7 +95,7 @@ export async function initAuth(config: AuthConfig): Promise<string | null> {
     redirect_uri: `${location.origin}${CALLBACK_PATH}`,
     post_logout_redirect_uri: location.origin,
     response_type: "code", // PKCE is on by default for the code flow
-    scope: config.scopes ?? "openid profile email",
+    scope: config.scopes ?? "openid profile email offline_access", // offline_access: a refresh token renews silently
     extraQueryParams: config.audience ? { audience: config.audience } : {},
     automaticSilentRenew: true,
     userStore: new WebStorageStateStore({ store: window.sessionStorage }),

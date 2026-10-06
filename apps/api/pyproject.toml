@@ -25,10 +25,18 @@ dependencies = [
   "structlog>=24.4",
   "pydantic-settings>=2.6",
   "jsonschema>=4.23",
-  "httpx>=0.27",  # HTTP request tool (M3-T6)
-  "cryptography>=43",  # project secrets (M5-T6)
-  "pyjwt[crypto]>=2.9",  # OIDC bearer tokens (M7-T1)
+  "httpx>=0.27", # HTTP request tool (M3-T6)
+  "cryptography>=43", # project secrets (M5-T6)
+  "pyjwt[crypto]>=2.9", # OIDC bearer tokens (M7-T1)
   "langgraph-checkpoint-sqlite>=3.1.1,<4",
+  "prometheus-client>=0.21",
+  "opentelemetry-api>=1.30",
+  "opentelemetry-sdk>=1.30",
+  "opentelemetry-exporter-otlp-proto-http>=1.30",
+  "opentelemetry-instrumentation-fastapi>=0.51b0",
+  "opentelemetry-instrumentation-sqlalchemy>=0.51b0",
+  "opentelemetry-instrumentation-httpx>=0.51b0",
+  "pycryptodome>=3.23",
 ]
 
 [dependency-groups]

@@ -22,6 +22,18 @@ async def test_health_ready_and_request_id(api_client):
     assert (await api_client.get("/healthz")).headers["x-request-id"].startswith("req_")
 
 
+async def test_not_ready_when_the_run_store_does_not_answer(app, api_client, monkeypatch):
+    """S11 M8-T2: load balancers stop sending traffic to a replica whose store is down; liveness stays up."""
+
+    async def down(*_, **__):
+        raise ConnectionError("store unreachable")
+
+    monkeypatch.setattr(app.state.runner.adapter.store, "alist_namespaces", down)
+    r = await api_client.get("/readyz")
+    assert r.status_code == 503 and r.json() == {"status": "unavailable", "failed": ["store"]}
+    assert (await api_client.get("/healthz")).status_code == 200
+
+
 async def test_default_project_is_seeded(api_client):
     assert [p["id"] for p in (await api_client.get("/v1/projects")).json()] == ["prj_default"]
 

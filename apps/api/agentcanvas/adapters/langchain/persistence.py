@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -28,6 +30,25 @@ def _sqlite_path(url: str) -> str:
     return str(p.with_name(p.stem + ".checkpoints" + (p.suffix or ".db")))
 
 
+SETUP_LOCK = 0x6163_7365_7475_70  # Postgres advisory lock id held while migrating the checkpoint/store tables
+POOL_SIZE = int(os.getenv("AGENTCANVAS_PERSISTENCE_POOL_SIZE", "20"))  # checkpoint/store connections per process
+
+
+def checkpoint_serde() -> Any:
+    """AES-encrypted checkpoints when `LANGGRAPH_AES_KEY` (16, 24 or 32 bytes) is set (S14); None = plain JSON.
+    Checkpoints written before the key was set stay readable."""
+    if not os.getenv("LANGGRAPH_AES_KEY"):
+        return None
+    from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
+
+    return EncryptedSerializer.from_pycryptodome_aes()
+
+
+async def _try_lock(conn: Any) -> bool:
+    row = await (await conn.execute("SELECT pg_try_advisory_lock(%s) AS ok", (SETUP_LOCK,))).fetchone()
+    return bool(row["ok"])
+
+
 @asynccontextmanager
 async def open_persistence(database_url: str | None) -> AsyncIterator[Persistence]:
     if not database_url or database_url == "memory":
@@ -35,11 +56,28 @@ async def open_persistence(database_url: str | None) -> AsyncIterator[Persistenc
     elif database_url.startswith(("postgresql", "postgres")):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         from langgraph.store.postgres.aio import AsyncPostgresStore
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
         conn = "postgresql://" + database_url.split("://", 1)[1]
-        async with AsyncPostgresSaver.from_conn_string(conn) as saver, AsyncPostgresStore.from_conn_string(conn) as st:
-            await saver.setup()
-            await st.setup()
+        # a pool, not one shared connection: concurrent runs would queue behind each other's checkpoint writes
+        # (M8-T5). The same settings `from_conn_string` uses, which also keep transaction pooling (PgBouncer) safe.
+        kwargs = {"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row}
+        async with AsyncConnectionPool(conn, min_size=1, max_size=POOL_SIZE, kwargs=kwargs, open=False) as pool:
+            saver = AsyncPostgresSaver(conn=pool, serde=checkpoint_serde())  # type: ignore[arg-type]
+            st = AsyncPostgresStore(conn=pool)  # type: ignore[arg-type]
+            # replicas starting together would run the migrations at once and deadlock on CREATE INDEX
+            # CONCURRENTLY: one instance migrates at a time, the others then find nothing to do. The others poll
+            # with a try-lock: a session blocked in pg_advisory_lock is a running statement, which CREATE INDEX
+            # CONCURRENTLY would wait for.
+            async with pool.connection() as lock:
+                while not await _try_lock(lock):
+                    await asyncio.sleep(0.2)
+                try:
+                    await saver.setup()
+                    await st.setup()
+                finally:
+                    await lock.execute("SELECT pg_advisory_unlock(%s)", (SETUP_LOCK,))
             yield Persistence(saver, st, "postgres")
     elif database_url.startswith("sqlite"):
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -47,6 +85,8 @@ async def open_persistence(database_url: str | None) -> AsyncIterator[Persistenc
 
         path = _sqlite_path(database_url)
         async with AsyncSqliteSaver.from_conn_string(path) as saver, AsyncSqliteStore.from_conn_string(path) as st:
+            if (serde := checkpoint_serde()) is not None:
+                saver.serde = serde
             await saver.setup()
             await st.setup()
             yield Persistence(saver, st, "sqlite")

@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
-from agentcanvas.errors import InvalidInput
+from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
 from agentcanvas.validation.policies import check_policy
 
@@ -27,6 +28,7 @@ class MemberOut(BaseModel):
     display_name: str | None
     role: Role
     invited: bool = Field(description="has not signed in yet")
+    accepted: bool = Field(True, description="false: belongs to another organisation and has not accepted yet")
 
 
 class MemberIn(BaseModel):
@@ -34,10 +36,11 @@ class MemberIn(BaseModel):
     role: Role
 
 
-def _out(u, role: str) -> MemberOut:
+def _out(u, role: str, accepted: bool = True) -> MemberOut:
+    """Profile details (the name from their identity provider) only once they joined (S11)."""
     return MemberOut(
-        user_id=u.id, email=u.email, display_name=u.display_name, role=role,  # type: ignore[arg-type]
-        invited=u.oidc_subject.startswith("pending:"),
+        user_id=u.id, email=u.email, display_name=u.display_name if accepted else None,
+        role=role, invited=u.oidc_subject.startswith("pending:"), accepted=accepted,  # type: ignore[arg-type]
     )  # fmt: skip
 
 
@@ -45,7 +48,7 @@ def _out(u, role: str) -> MemberOut:
 async def list_members(
     session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> list[MemberOut]:
-    return [_out(u, role) for u, role in await MemberRepo(session).list(user.org_id)]
+    return [_out(u, m.role, m.accepted) for u, m in await MemberRepo(session).list(user.org_id)]
 
 
 @router.put("/members", response_model=MemberOut)
@@ -56,9 +59,11 @@ async def set_member(
     user: CurrentUser = Depends(current_user),
 ) -> MemberOut:
     """Invite someone by email or change their role. Invitations take effect at their first verified sign-in."""
-    u, role = await MemberRepo(session).set_role(user.org_id, body.email, body.role)
+    repo = MemberRepo(session)
+    u, role = await repo.set_role(user.org_id, body.email, body.role)
     note(request, target=f"user_id={u.id}", email=u.email, role=role)
-    return _out(u, role)
+    accepted = next(m.accepted for v, m in await repo.list(user.org_id) if v.id == u.id)
+    return _out(u, role, accepted)
 
 
 @router.delete("/members/{user_id}", status_code=204)
@@ -142,6 +147,50 @@ def _checked(body: PolicyIn) -> dict[str, Any]:
     except ExpressionError as exc:
         raise InvalidInput(str(exc)) from None
     return body.model_dump()
+
+
+class OrgSettings(BaseModel):
+    retention_days: int | None = Field(
+        None, ge=0, le=3650,
+        description="days a conversation is kept after its last activity; null = the server default, 0 = forever",
+    )  # fmt: skip
+
+
+class OrgSettingsOut(OrgSettings):
+    effective_retention_days: int = Field(description="what applies now (0 = conversations are kept forever)")
+
+
+async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
+    org = await session.get(Organization, org_id)
+    if org is None:
+        raise NotFound(f"organisation '{org_id}' not found")
+    default = request.app.state.settings.retention_days
+    days = org.retention_days
+    return OrgSettingsOut(retention_days=days, effective_retention_days=default if days is None else days)
+
+
+@router.get("/settings", response_model=OrgSettingsOut)
+async def get_org_settings(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> OrgSettingsOut:
+    """Organisation settings: how long conversations are kept (M8-T4)."""
+    return await _settings_out(session, request, user.org_id)
+
+
+@router.put("/settings", response_model=OrgSettingsOut)
+async def put_org_settings(
+    body: OrgSettings,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> OrgSettingsOut:
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    org.retention_days = body.retention_days
+    await session.commit()
+    note(request, target=f"org_id={user.org_id}", retention_days=body.retention_days)
+    return await _settings_out(session, request, user.org_id)
 
 
 @router.get("/policies", response_model=list[PolicyOut])

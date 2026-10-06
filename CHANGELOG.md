@@ -2,7 +2,28 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
-## Unreleased (v0.2.0)
+## Unreleased (v0.3.0)
+
+### Production readiness
+- **Containers, compose and Helm.** Non-root API and web images, `infra/compose.prod.yml` (two API replicas, a one-shot migration) and a Helm chart in `infra/helm/agentcanvas`. `/readyz` checks the database and the run store.
+- **Observability.** OpenTelemetry traces for requests, database calls and outgoing HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; Prometheus metrics on `/metrics`; a Grafana dashboard and alert rules in `infra/observability/`.
+- **Retention and backups.** Conversations older than the retention period are deleted daily; backup and restore scripts with a runbook.
+- **Safe redeploy.** On shutdown an instance stops taking runs, lets running ones reach a step boundary and hands them to another instance, which resumes them. Threads move to a newly published version only when it is resume-compatible.
+- **Load tested.** 200 concurrent streaming runs on compose prod: 5,875 runs, none failed, first event p95 89 ms.
+- **Secrets under a master key.** Each organisation's secrets use their own data key, wrapped by a key file, AWS KMS or Google Cloud KMS (`AGENTCANVAS_KMS_KEY`). Rotate with `python -m agentcanvas.security.kms rewrap`.
+- **Encrypted checkpoints** when `LANGGRAPH_AES_KEY` is set.
+- **Security review** completed (`10-security-checklist.md` §7). Dependency and image scanning run in CI; the web server sends a Content Security Policy and rate-limits deployment and webhook calls.
+
+### Changed
+- **Webhook signatures include a timestamp.** Senders send `X-AgentCanvas-Timestamp` and sign `"<timestamp>." + body`; deliveries older than five minutes are refused. Update existing senders before upgrading.
+- Invitations to someone who already belongs to another organisation wait until they accept them (Home shows a banner). Members who have not accepted show no profile details.
+- You start in the organisation you used last.
+- The web app asks for `offline_access` and renews sessions silently; enable refresh tokens at your identity provider.
+- The HTTP tool refuses private, loopback and link-local addresses unless the tool allows private networks.
+- The docker sandbox runs as an unprivileged user and is killed on timeout.
+- Production refuses the development secret key, and the hosted edition refuses to start without a sandbox. API docs are off in production.
+
+## v0.2.0 — Accounts & access (merged 2026-10-05, not tagged yet)
 
 ### Accounts & access
 - **Sign-in with your identity provider (OIDC).** Set `AGENTCANVAS_AUTH_MODE=oidc`; the web app signs in with authorization code + PKCE and the API checks every token. Deployment API keys and signed webhooks work as before.

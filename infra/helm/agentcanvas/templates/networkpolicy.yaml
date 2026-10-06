@@ -1,0 +1,27 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "agentcanvas.fullname" . }}-api
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "agentcanvas.selector" (dict "root" . "component" "web") | nindent 14 }}
+      ports:
+        - { port: 8000 }
+    {{- if .Values.observability.metrics.enabled }}
+    - from:   # Prometheus
+        - namespaceSelector:
+            {{- toYaml .Values.observability.metrics.scraperNamespaceSelector | nindent 12 }}
+      ports:
+        - { port: 8000 }
+    {{- end }}
+{{- end }}

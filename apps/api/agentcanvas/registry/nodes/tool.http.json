@@ -97,6 +97,12 @@
         },
         "description": "Requests to any other host are refused (subdomains are allowed)"
       },
+      "allow_private_network": {
+        "type": "boolean",
+        "title": "Allow private network",
+        "default": false,
+        "description": "Let the allowed domains resolve to private, loopback or link-local addresses (internal services). Off: such hosts are refused, which also protects cloud metadata endpoints"
+      },
       "timeout": {
         "type": "number",
         "title": "Timeout (s)",

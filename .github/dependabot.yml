@@ -1,0 +1,19 @@
+# Weekly dependency updates (M8-T6), grouped so each ecosystem opens at most one pull request a week;
+# security updates are opened as soon as an advisory is published.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /apps/api
+    schedule: { interval: weekly }
+    groups: { python: { patterns: ["*"] } }
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule: { interval: weekly }
+    groups: { web: { patterns: ["*"] } }
+  - package-ecosystem: docker
+    directories: [/infra]
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups: { actions: { patterns: ["*"] } }

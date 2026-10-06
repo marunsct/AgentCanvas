@@ -307,6 +307,9 @@ export type Status4 = string;
 export type ThreadId3 = string;
 export type WorkflowId = string | null;
 export type WorkflowName = string | null;
+export type OrgId = string;
+export type OrgName = string;
+export type Role = string;
 export type ApiKey = string;
 export type Replace = boolean;
 /**
@@ -319,17 +322,21 @@ export type Name14 = string;
 export type ReadOnly = boolean;
 export type Email = string;
 export type Id16 = string;
-export type OrgId = string;
-export type Role = string;
+export type OrgId1 = string;
+export type Role1 = string;
 export type Email1 = string;
-export type Role1 = "admin" | "builder" | "reviewer" | "viewer";
+export type Role2 = "admin" | "builder" | "reviewer" | "viewer";
+/**
+ * false: belongs to another organisation and has not accepted yet
+ */
+export type Accepted = boolean;
 export type DisplayName = string | null;
 export type Email2 = string;
 /**
  * has not signed in yet
  */
 export type Invited = boolean;
-export type Role2 = "admin" | "builder" | "reviewer" | "viewer";
+export type Role3 = "admin" | "builder" | "reviewer" | "viewer";
 export type UserId1 = string;
 export type CreatedAt5 = string | null;
 export type Key = string;
@@ -382,6 +389,18 @@ export type TemplateFields = string[];
 export type Type7 = string;
 export type Version1 = string;
 export type Writes1 = string[];
+/**
+ * days a conversation is kept after its last activity; null = the server default, 0 = forever
+ */
+export type RetentionDays = number | null;
+/**
+ * what applies now (0 = conversations are kept forever)
+ */
+export type EffectiveRetentionDays = number;
+/**
+ * days a conversation is kept after its last activity; null = the server default, 0 = forever
+ */
+export type RetentionDays1 = number | null;
 /**
  * shown with every violation
  */
@@ -621,6 +640,7 @@ export interface ApiSchemas {
   HTTPValidationError?: HTTPValidationError;
   InlineRequest?: InlineRequest;
   InterruptOut?: InterruptOut;
+  InvitationOut?: InvitationOut;
   KeyOut?: KeyOut;
   LayoutUpdate?: LayoutUpdate;
   LintItem?: LintItem;
@@ -637,6 +657,8 @@ export interface ApiSchemas {
   NodeBlast?: NodeBlast;
   NodeManifest?: NodeManifest;
   NodePolicies?: NodePolicies;
+  OrgSettings?: OrgSettings;
+  OrgSettingsOut?: OrgSettingsOut;
   PolicyIn?: PolicyIn;
   PolicyOut?: PolicyOut;
   PortSpec?: PortSpec;
@@ -1474,6 +1496,15 @@ export interface Payload {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "InvitationOut".
+ */
+export interface InvitationOut {
+  org_id: OrgId;
+  org_name: OrgName;
+  role: Role;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "KeyOut".
  */
 export interface KeyOut {
@@ -1521,8 +1552,8 @@ export interface MeOut {
   email: Email;
   id: Id16;
   memberships: Memberships;
-  org_id: OrgId;
-  role: Role;
+  org_id: OrgId1;
+  role: Role1;
 }
 export interface Memberships {
   [k: string]: string;
@@ -1533,17 +1564,18 @@ export interface Memberships {
  */
 export interface MemberIn {
   email: Email1;
-  role: Role1;
+  role: Role2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "MemberOut".
  */
 export interface MemberOut {
+  accepted?: Accepted;
   display_name: DisplayName;
   email: Email2;
   invited: Invited;
-  role: Role2;
+  role: Role3;
   user_id: UserId1;
 }
 /**
@@ -1648,6 +1680,21 @@ export interface PortSpec {
 }
 export interface Targets {
   [k: string]: "full" | "partial" | "none";
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "OrgSettings".
+ */
+export interface OrgSettings {
+  retention_days?: RetentionDays;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "OrgSettingsOut".
+ */
+export interface OrgSettingsOut {
+  effective_retention_days: EffectiveRetentionDays;
+  retention_days?: RetentionDays1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

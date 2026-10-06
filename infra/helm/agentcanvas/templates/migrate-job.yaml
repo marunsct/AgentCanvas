@@ -1,0 +1,41 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agentcanvas.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # before the new API pods start; the existing Secret must already be there
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "agentcanvas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            {{- include "agentcanvas.apiEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ include "agentcanvas.secret" . }}
+          securityContext:
+            {{- include "agentcanvas.containerSecurity" . | nindent 12 }}
+{{- end }}

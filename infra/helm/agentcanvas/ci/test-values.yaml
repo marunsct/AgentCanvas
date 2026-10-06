@@ -1,0 +1,6 @@
+# Values CI renders the chart with (helm lint / helm template); not for real installs.
+secrets: { existingSecret: agentcanvas-secrets }
+config:
+  oidc: { issuer: "https://login.example.com/realms/acme", audience: agentcanvas-api, clientId: agentcanvas-web }
+  bootstrapAdminEmails: [admin@example.com]
+ingress: { enabled: true, tls: [{ secretName: agentcanvas-tls, hosts: [agentcanvas.example.com] }] }

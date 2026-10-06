@@ -440,6 +440,25 @@ def _host_allowed(host: str, allowed: Sequence[str]) -> bool:
     return any(host == d.lower() or host.endswith("." + d.lower()) for d in allowed)
 
 
+async def _public_address(host: str, port: int) -> str:
+    """One address `host` resolves to, refusing hosts that resolve to a private, loopback, link-local (cloud
+    metadata, 169.254.169.254), reserved or multicast address (S7). The caller connects to this very address, so
+    a second DNS answer cannot point the request elsewhere (rebinding)."""
+    import asyncio
+    import ipaddress
+    import socket
+
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ToolException(f"cannot resolve '{host}': {exc}") from None
+    addresses = [str(info[4][0]) for info in infos]
+    for a in addresses:
+        if not ipaddress.ip_address(a.split("%")[0]).is_global:
+            raise ToolException(f"'{host}' resolves to a private or internal address ({a}); refused")
+    return addresses[0]
+
+
 def http_tool(
     *, name: str, config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v, transport: Any = None
 ) -> StructuredTool:
@@ -462,6 +481,13 @@ def http_tool(
         if parts.scheme not in ("http", "https") or not parts.hostname or not _host_allowed(parts.hostname, allowed):
             raise ToolException(f"'{parts.hostname or url}' is not an allowed domain for {name}")
         headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
+        extensions: dict[str, Any] = {}
+        if transport is None and not config.get("allow_private_network"):  # tests inject a transport
+            port = parts.port or (443 if parts.scheme == "https" else 80)
+            ip = await _public_address(parts.hostname, port)
+            headers.setdefault("Host", parts.netloc.rsplit("@", 1)[-1])
+            extensions["sni_hostname"] = parts.hostname  # TLS still checks the certificate of the name
+            url = parts._replace(netloc=f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}").geturl()
         async with httpx.AsyncClient(timeout=config.get("timeout", 20), transport=transport) as client:
             r = await client.request(
                 method,
@@ -469,7 +495,8 @@ def http_tool(
                 headers=headers,
                 params=args if send == "query" else None,
                 json=args if send == "json" else None,
-            )
+                extensions=extensions or None,
+            )  # redirects are not followed: a redirect cannot leave the allowed domains
         text = r.text[:limit]
         if r.status_code >= 400:
             raise ToolException(f"HTTP {r.status_code} from {parts.hostname}: {text[:500]}")

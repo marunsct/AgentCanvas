@@ -1,0 +1,76 @@
+# Production-style single host (M8-T2): Postgres, a one-shot migration, two API replicas behind nginx.
+#   docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
+#   docker build -f infra/Dockerfile.web -t agentcanvas-web .
+#   cp infra/.env.prod.example infra/.env.prod   # then fill it in
+#   docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d
+# Put a TLS-terminating proxy in front of `web` and keep response buffering off for /api/ (Server-Sent Events).
+name: agentcanvas
+
+x-api: &api
+  image: ${API_IMAGE:-agentcanvas-api:latest}
+  environment: &api-env
+    DATABASE_URL: postgresql://agentcanvas:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/agentcanvas
+    AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
+    AGENTCANVAS_EDITION: ${AGENTCANVAS_EDITION:-dev}
+    AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:?set AGENTCANVAS_SECRET_KEY (64+ random characters)}
+    LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:-}  # 32 characters: checkpoints encrypted at rest
+    AGENTCANVAS_KMS_KEY: ${AGENTCANVAS_KMS_KEY:-}
+    AGENTCANVAS_AUTO_MIGRATE: "false"          # the migrate service runs them once, before any replica starts
+    AGENTCANVAS_SEED_DEV_DATA: ${AGENTCANVAS_SEED_DEV_DATA:-true}  # creates the default organisation and project
+    AGENTCANVAS_AUTH_MODE: ${AGENTCANVAS_AUTH_MODE:-oidc}
+    AGENTCANVAS_OIDC_ISSUER: ${AGENTCANVAS_OIDC_ISSUER:-}
+    AGENTCANVAS_OIDC_AUDIENCE: ${AGENTCANVAS_OIDC_AUDIENCE:-}
+    AGENTCANVAS_OIDC_CLIENT_ID: ${AGENTCANVAS_OIDC_CLIENT_ID:-}
+    AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS: ${AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS:-[]}
+    AGENTCANVAS_CORS_ORIGINS: ${AGENTCANVAS_CORS_ORIGINS:-[]}
+    AGENTCANVAS_SCRIPT_EXECUTION: ${AGENTCANVAS_SCRIPT_EXECUTION:-subprocess}
+    FORWARDED_ALLOW_IPS: "*"                   # only nginx (web) reaches the API on this network
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  volumes:
+    - workspaces:/data/workspaces              # project workspaces (git), shared by the replicas on this host
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    environment:
+      POSTGRES_USER: agentcanvas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: agentcanvas
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentcanvas"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *api
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    <<: *api
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    stop_grace_period: 60s                     # streams get 30 s to finish, then runs 20 s before hand-over
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:-agentcanvas-web:latest}
+    environment:
+      API_UPSTREAM: http://api:8000            # compose balances across the api replicas
+      OIDC_ISSUER: ${AGENTCANVAS_OIDC_ISSUER:-} # its origin is allowed in the Content-Security-Policy
+      CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-}     # other identity provider origins (e.g. a separate token host)
+    ports: ["${WEB_PORT:-8080}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  workspaces:

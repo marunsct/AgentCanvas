@@ -59,6 +59,13 @@ async def test_secrets_are_write_only_and_redacted_everywhere(app, api_client):
     )
     stream = (await api_client.post(f"/v1/workflows/{leaks}/runs/stream", json={"thread_id": "th_leak"})).text
     assert VALUE not in stream and events(stream)[-1]["output"]["out"] == "value ***"  # masked in every event
+    for read in ("", "/history?include_values=true", "/explain"):  # S12: the state the run wrote holds it
+        r = await api_client.get(f"/v1/threads/th_leak{read}")
+        assert r.status_code == 200 and VALUE not in r.text and "value ***" in r.text, read
+    from agentcanvas.log import hide_secret_values
+
+    line = hide_secret_values(None, "error", {"event": "call failed", "exception": f"401 for token={VALUE}"})
+    assert line["exception"] == "401 for token=***"  # and in log lines
 
     ir = (await api_client.get(f"/v1/workflows/{uses}")).json()["ir"]
     ir["resources"] = [

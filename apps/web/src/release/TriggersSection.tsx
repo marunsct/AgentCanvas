@@ -49,8 +49,10 @@ export function TriggersSection({ wfId }: { wfId: string }) {
       {error && <p className="error-text small" role="alert">{error}</p>}
       {created && (
         <div className="key-box small" data-testid="webhook-secret">
-          POST <code>{location.origin}{API_BASE}{created.url?.replace(/^\/v1/, "")}</code> with header{" "}
-          <code>X-AgentCanvas-Signature: sha256=HMAC(body)</code> — signing secret (shown once): <code>{created.secret}</code>
+          POST <code>{location.origin}{API_BASE}{created.url?.replace(/^\/v1/, "")}</code> with headers{" "}
+          <code>X-AgentCanvas-Timestamp: &lt;unix seconds&gt;</code> and{" "}
+          <code>X-AgentCanvas-Signature: sha256=HMAC(timestamp + "." + body)</code> (refused after 5 minutes) — signing
+          secret (shown once): <code>{created.secret}</code>
         </div>
       )}
       <ul className="version-list">

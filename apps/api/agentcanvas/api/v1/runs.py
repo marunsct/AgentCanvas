@@ -15,18 +15,22 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
+from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.errors import Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
+from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.explain import explain
+from agentcanvas.services.redeploy import thread_version
+from agentcanvas.services.secrets import hide_secrets
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -154,7 +158,7 @@ def _sse(events: AsyncIterator[dict[str, Any]]) -> AsyncIterator[str]:
         async for ev in events:
             yield f"id: {ev.get('seq', '')}\ndata: {json.dumps(ev, default=str)}\n\n"
 
-    return gen()
+    return counted_stream(gen())
 
 
 def _respond(r: Runner, h: RunHandle, stream: bool) -> Response:
@@ -181,11 +185,25 @@ async def _thread_target(
         ver = await session.get(WorkflowVersion, dep.version_id) if dep else None
         if ver is None:
             raise NotFound(f"the deployment of thread '{t.id}' no longer exists")
+        ver = await thread_version(session, t.id, ver)  # FR-X-10: the new version only if it can resume it
         await svc.get(t.workflow_id)  # registers the workflow's project (workspace code)
         return Workflow.model_validate(ver.ir), {"deployment_id": dep.id, "version_id": ver.id}  # type: ignore[union-attr]
     if runnable:
         return await _runnable_workflow(svc, t.workflow_id), {}
     return (await svc.get(t.workflow_id)).workflow, {}
+
+
+async def handover_target(
+    session: AsyncSession, settings: Settings, thread_id: str, version_id: str | None
+) -> tuple[Workflow, dict[str, Any]]:
+    """What a run handed over by a draining server continues on (FR-X-10): the version it was running, or the
+    draft for a conversation in the editor."""
+    t = await _thread(session, thread_id)
+    ver = await session.get(WorkflowVersion, version_id) if t.deployment_id and version_id else None
+    if ver is None:
+        return await _thread_target(session, settings, t)
+    await _svc(session, settings).get(t.workflow_id)  # registers the workflow's project (workspace code)
+    return Workflow.model_validate(ver.ir), {"deployment_id": t.deployment_id, "version_id": ver.id}
 
 
 async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:
@@ -356,8 +374,9 @@ async def get_thread(
 ) -> dict[str, Any]:
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
-    state = await r.adapter.get_state(wf, thread_id, r.resources(thread_id, wf))
-    return {
+    res = r.resources(thread_id, wf)
+    state = await r.adapter.get_state(wf, thread_id, res)
+    return hide_secrets({
         "id": t.id,
         "workflow_id": t.workflow_id,
         "status": t.status,
@@ -368,7 +387,11 @@ async def get_thread(
         "checkpoint_id": state.checkpoint_id,
         "step": state.step,
         "interrupts": [i.__dict__ for i in state.interrupts],
-    }
+    }, _secrets(res))  # fmt: skip
+
+
+def _secrets(resources: Any) -> dict[str, str]:
+    return getattr(resources, "_secrets", None) or {}
 
 
 @router.get("/threads/{thread_id}/history")
@@ -382,8 +405,10 @@ async def thread_history(
 ) -> list[dict[str, Any]]:
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
-    items = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values)
-    return [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
+    res = r.resources(thread_id, wf)
+    items = await r.adapter.history(wf, thread_id, res, limit, include_values)
+    out = [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
+    return hide_secrets(out, _secrets(res))
 
 
 @router.get("/threads/{thread_id}/explain")
@@ -397,8 +422,9 @@ async def explain_thread(
     """Explain mode (FR-X-17): what ran at each super-step, what it wrote and why routers chose their route."""
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
-    history = await r.adapter.history(wf, thread_id, r.resources(thread_id, wf), limit, include_values=True)
-    return explain(wf, history)
+    res = r.resources(thread_id, wf)
+    history = await r.adapter.history(wf, thread_id, res, limit, include_values=True)
+    return hide_secrets(explain(wf, history), _secrets(res))
 
 
 @router.get("/threads/{thread_id}/runs", response_model=list[RunOut])
@@ -522,7 +548,7 @@ async def delete_thread(
     if thread_id in r.active_by_thread:
         await r.cancel(r.active_by_thread[thread_id])
     await r.adapter.delete_thread(thread_id)
-    await session.execute(delete(Thread).where(Thread.id == thread_id))
+    await delete_thread_rows(session, thread_id)
     await session.commit()
     return Response(status_code=204)
 

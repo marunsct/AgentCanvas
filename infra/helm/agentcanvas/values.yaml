@@ -1,0 +1,92 @@
+# AgentCanvas Helm values (M8-T2). Secrets never go here: create a Secret and name it in `secrets.existingSecret`.
+
+image:
+  api: { repository: agentcanvas-api, tag: "", pullPolicy: IfNotPresent }   # tag "" = the chart's appVersion
+  web: { repository: agentcanvas-web, tag: "", pullPolicy: IfNotPresent }
+imagePullSecrets: []
+
+secrets:
+  # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY; optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
+  # Create it yourself, or with External Secrets from your cloud's secret manager.
+  existingSecret: ""
+
+config:
+  env: prod                       # AGENTCANVAS_ENV; staging and prod refuse AUTH_MODE=dev
+  oidc:
+    issuer: ""                    # e.g. https://login.example.com/realms/acme
+    audience: ""
+    clientId: ""
+    scopes: "openid profile email offline_access"   # offline_access: silent token refresh
+  bootstrapAdminEmails: []        # become admins of the default organisation on first sign-in
+  corsOrigins: []
+  scriptExecution: subprocess     # inprocess | subprocess | docker | langsmith
+  # proxies whose X-Forwarded-For / -Proto the API trusts (uvicorn); the web pods' network, or "*" when only
+  # the web service can reach the API
+  forwardedAllowIps: "*"
+  extraEnv: {}                    # more AGENTCANVAS_* settings, as NAME: value
+
+observability:
+  # Prometheus scrapes GET /metrics on the API pods (port 8000)
+  metrics:
+    enabled: true
+    podAnnotations: true          # prometheus.io/scrape, /port, /path on the API pods
+    # namespaces allowed through the NetworkPolicy to scrape the API (matched by label)
+    scraperNamespaceSelector:
+      matchLabels: { kubernetes.io/metadata.name: monitoring }
+  # OpenTelemetry traces: the OTLP/HTTP endpoint of your collector, e.g. http://otel-collector.monitoring:4318
+  otlpEndpoint: ""
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { memory: 2Gi }
+  # long enough for open streams to finish (uvicorn waits up to 30 s after SIGTERM)
+  terminationGracePeriodSeconds: 60
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+web:
+  replicas: 2
+  # identity provider origins the browser may call besides config.oidc.issuer's (Content-Security-Policy
+  # connect-src), space-separated, e.g. when the token endpoint is on another host
+  cspConnectSrc: ""
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  podAnnotations: {}
+
+migrations:
+  enabled: true                   # `alembic upgrade head` as a pre-install / pre-upgrade hook Job
+
+workspaces:
+  # project workspaces (git repositories) are shared by every API replica: a ReadWriteMany volume
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessModes: [ReadWriteMany]
+    size: 10Gi
+    existingClaim: ""
+
+service:
+  api: { port: 8000 }
+  web: { port: 80 }
+
+ingress:
+  enabled: false
+  className: nginx
+  host: agentcanvas.example.com
+  tls: []                         # - secretName: agentcanvas-tls
+  annotations:
+    # Server-Sent Events: never buffer, keep long-lived streams open
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+
+networkPolicy:
+  # only the web pods (and the ingress controller through them) reach the API; this is what makes
+  # config.forwardedAllowIps "*" safe
+  enabled: true

@@ -46,7 +46,20 @@ class Organization(Base):
     __tablename__ = "organization"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(Text)
+    # days a conversation is kept after its last activity (M8-T4); NULL = AGENTCANVAS_RETENTION_DAYS, 0 = forever
+    retention_days: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _now()
+
+
+class OrgDataKey(Base):
+    """An organisation's data key, wrapped by the master key (KMS envelope encryption, S11)."""
+
+    __tablename__ = "org_data_key"
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
+    master_key_id: Mapped[str] = mapped_column(Text)  # which master key wrapped it ("local:…", "aws:…", "gcp:…")
+    wrapped_key: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = _now()
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AppUser(Base):
@@ -64,6 +77,9 @@ class Membership(Base):
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str] = mapped_column(Text)
+    # false: an invitation to someone who already belongs to another organisation, until they accept it (S11)
+    accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the default organisation
 
 
 class Project(Base):
@@ -141,6 +157,7 @@ class Thread(Base):
     __table_args__ = (
         CheckConstraint("status IN ('idle','running','interrupted','error')", name="thread_status"),
         Index("thread_workflow_idx", "workflow_id", "updated_at"),
+        Index("thread_updated_idx", "updated_at"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
@@ -177,6 +194,8 @@ class Run(Base):
     context: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # FR-X-13 cassette of a fresh run: its input, each model resource's replies, status, route and output
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
+    handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -209,6 +228,8 @@ class Secret(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    # encrypted with the organisation's data key; false = written before envelope encryption (S10 and earlier)
+    org_key: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 
@@ -232,6 +253,8 @@ class Trigger(Base):
     kind: Mapped[str] = mapped_column(Text)
     config: Mapped[dict[str, Any]]
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    # cron: the UTC minute ("YYYY-mm-ddTHH:MM") it last fired for, claimed atomically so replicas fire it once
+    last_fired: Mapped[str | None] = mapped_column(String(16))
     created_at: Mapped[datetime] = _now()
 
 

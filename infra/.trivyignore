@@ -1,0 +1,2 @@
+# Vulnerabilities accepted in the container images (CI's Trivy scan, M8-T6). One CVE id per line, each with a
+# comment: why it does not apply or what we wait for, and when to look again.

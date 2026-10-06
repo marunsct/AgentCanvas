@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     auto_migrate: bool = True  # run Alembic `upgrade head` at startup
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
     secret_key: str = "dev-only-change-me"
+    # master key that wraps each organisation's data key (see agentcanvas/security/kms.py): "" derives it from
+    # secret_key (development), or file:<path>, aws:<key ARN>, gcp:<key name>; previous keys still unwrap
+    kms_key: str = ""
+    kms_previous_keys: list[str] = []
     # Authentication (M7-T1). dev = every request is the seeded development admin (refused in staging/prod);
     # oidc = bearer JWTs from the identity provider, checked against its JWKS.
     auth_mode: Literal["dev", "oidc"] = "dev"
@@ -28,7 +32,7 @@ class Settings(BaseSettings):
     oidc_audience: str | None = None  # the token's `aud` the API accepts
     oidc_client_id: str | None = None  # public SPA client id, handed to the web app by /v1/auth/config
     oidc_jwks_url: str | None = None  # None = from the issuer's discovery document
-    oidc_scopes: str = "openid profile email"
+    oidc_scopes: str = "openid profile email offline_access"  # offline_access: silent token refresh
     oidc_email_claim: str = "email"
     # treat the email claim as verified when the provider sends no `email_verified` (e.g. a corporate IdP that
     # owns the domain); leave off for providers where users choose their own email
@@ -49,6 +53,18 @@ class Settings(BaseSettings):
     recursion_limit: int = 50
     cors_origins: list[str] = ["http://localhost:5173"]
     log_json: bool = False
+    metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
+    # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
+    # unless the organisation sets its own (M8-T4); 0 keeps them forever
+    retention_days: int = 90
+    # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
+    # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
+    # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
+    drain_grace_s: float = 20.0
+    handover_interval_s: float = 10.0
 
 
 @cache

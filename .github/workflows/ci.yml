@@ -49,6 +49,93 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  audit:
+    # M8-T6: known vulnerabilities in the locked production dependencies (dev tools never ship)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Python (pip-audit)
+        working-directory: apps/api
+        run: |
+          uv export --frozen --no-dev --no-emit-project --no-hashes -o "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" --disable-pip --no-deps
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: JavaScript (pnpm audit)
+        working-directory: apps/web
+        run: pnpm audit --prod --audit-level high
+
+  images:
+    # M8-T1/T2: build both images, start the production compose stack and check it answers; render the Helm chart
+    runs-on: ubuntu-latest
+    env:
+      API_IMAGE: agentcanvas-api:ci
+      WEB_IMAGE: agentcanvas-web:ci
+      POSTGRES_PASSWORD: ci-only
+      AGENTCANVAS_SECRET_KEY: ci-only-secret-key-not-for-real-use-0123456789abcdef0123456789abcdef
+      AGENTCANVAS_OIDC_ISSUER: https://login.example.com/realms/ci
+      AGENTCANVAS_OIDC_AUDIENCE: agentcanvas-api
+      AGENTCANVAS_OIDC_CLIENT_ID: agentcanvas-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          file: infra/Dockerfile.api
+          load: true
+          tags: agentcanvas-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile.web
+          load: true
+          tags: agentcanvas-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Scan the images (Trivy)
+        # high and critical OS and library vulnerabilities that have a fix; accepted ones go in infra/.trivyignore
+        # with a reason. The scanner runs from an image pinned by digest, not a mutable action tag.
+        env:
+          TRIVY_IMAGE: aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
+        run: |
+          for image in agentcanvas-api:ci agentcanvas-web:ci; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/infra/.trivyignore:/.trivyignore:ro" \
+              "$TRIVY_IMAGE" image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --ignorefile /.trivyignore --exit-code 1 "$image"
+          done
+      - name: Start the production compose stack
+        run: docker compose -f infra/compose.prod.yml up -d --wait --wait-timeout 180
+      - name: Check it answers through nginx
+        run: |
+          set -eux
+          curl -fsS http://localhost:8080/api/readyz | grep -q ready
+          curl -fsS http://localhost:8080/ | grep -qi "<!doctype html>"
+          asset=$(curl -fsS http://localhost:8080/ | grep -o '/assets/[^"]*\.js' | head -1)
+          curl -fsSI "http://localhost:8080$asset" | grep -qi "immutable"
+          curl -fsSI http://localhost:8080/ | grep -i "content-security-policy" | grep -q "connect-src 'self' https://login.example.com;"
+          curl -fsSI http://localhost:8080/ | grep -qi "frame-ancestors 'self'"
+          curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
+          docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/metrics)" = 404
+          docker compose -f infra/compose.prod.yml exec -T api python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/metrics').read().decode())" | grep -q agentcanvas_runs_active
+      - name: Logs
+        if: failure()
+        run: docker compose -f infra/compose.prod.yml logs --no-color
+      - uses: azure/setup-helm@v4
+      - name: Lint and render the Helm chart
+        run: |
+          helm lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict
+          helm template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml > /dev/null
+
   e2e:
     runs-on: ubuntu-latest
     needs: [api, web]

@@ -21,6 +21,16 @@ def model_catalog(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 )
 
 
+def _writes(t: Resource, ctx: ValidationContext) -> str | None:
+    """The first state-changing effect of a tool (S6): sending messages or writing outside the run. An HTTP tool
+    writes unless it only reads (GET/HEAD)."""
+    from agentcanvas.validation.blast import tool_effects
+
+    if t.type == "tool.http" and str(t.config.get("method", "GET")).upper() in ("GET", "HEAD"):
+        return None
+    return next((e for e, _ in tool_effects(t, ctx.registry) if e in ("external_write", "message_send")), None)
+
+
 @rule
 def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
     for el in [*ctx.wf.nodes, *ctx.wf.resources]:
@@ -63,6 +73,13 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 names |= set(tm.builtin_tools)  # e.g. memory tools: search_memory, save_memory
             else:
                 names.add(t.name)
+                if t.name not in approve and (effect := _writes(t, ctx)):
+                    yield warning(
+                        "W002",
+                        f"'{el.name}' can call tool '{t.name}' ({effect.replace('_', ' ')}) without approval",
+                        node_id=el.id,
+                        hint="add it to the tools that need approval, or declare it read-only",
+                    )
         for t in approve if known else []:
             if t not in names:
                 yield error(
