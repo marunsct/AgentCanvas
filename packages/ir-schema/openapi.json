@@ -9817,7 +9817,7 @@
     },
     "/v1/deployments/{dep_id}/a2a": {
       "post": {
-        "description": "The deployment as an A2A agent (JSON-RPC).",
+        "description": "The deployment as an A2A agent (JSON-RPC, A2A 0.3).",
         "operationId": "a2a_endpoint_v1_deployments__dep_id__a2a_post",
         "parameters": [
           {
