@@ -404,3 +404,6 @@ a.button.primary { background: var(--accent); color: var(--accent-fg); }
 .help-drawer dd { margin: 0 0 0 12px; color: var(--muted); }
 .help-drawer ol, .help-drawer ul { padding-left: 20px; margin: 4px 0; }
 .help-drawer .help-close { margin-left: auto; }
+.port-row.out > span { margin-right: 6px; }
+/* a port's hover card must not hide under the minimap */
+.react-flow:has(.port-row:hover, .react-flow__handle:hover) .react-flow__minimap { z-index: 3; opacity: .35; }

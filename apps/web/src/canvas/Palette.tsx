@@ -85,7 +85,7 @@ export function Palette() {
           {items.map((m) => (
             <div
               key={m.type} className={`palette-item kind-${m.kind}`} draggable role="button" tabIndex={0}
-              title={`${m.description ?? ""}\n(${m.type})`} data-testid={`palette-${m.type}`}
+              title={`${m.description ?? ""}\n(${m.type})`} data-testid={`palette-${m.type}`} aria-label={m.label}
               style={{ borderLeftColor: m.color ?? "#64748b" }}
               onDragStart={(e) => { e.dataTransfer.setData(DND_MIME, m.type); e.dataTransfer.effectAllowed = "move"; }}
               onDoubleClick={() => addElement(m.type)}

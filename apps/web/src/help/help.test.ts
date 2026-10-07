@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyAll } from "../ir/commands";
 import { manifests, triage } from "../test/fixtures";
@@ -9,10 +7,8 @@ import { aType, CATEGORY_ORDER, firstSentence, portHelp } from "./glossary";
 
 describe("beginner help", () => {
   it("every validation code the server can emit has a plain-English explanation and fix", () => {
-    const dir = join(__dirname, "../../../api/agentcanvas/validation");
-    const files = [...readdirSync(join(dir, "rules")).map((f) => join(dir, "rules", f)), join(dir, "policies.py")];
-    const codes = new Set(files.filter((f) => f.endsWith(".py")).flatMap((f) => readFileSync(f, "utf8").match(/"[EWI]\d{3}"/g) ?? [])
-      .map((c) => c.slice(1, -1)));
+    const sources = import.meta.glob<string>("../../../api/agentcanvas/validation/**/*.py", { query: "?raw", import: "default", eager: true });
+    const codes = new Set(Object.values(sources).flatMap((src) => src.match(/"[EWI]\d{3}"/g) ?? []).map((c) => c.slice(1, -1)));
     expect(codes.size).toBeGreaterThan(30);
     for (const c of codes) expect(DIAGNOSTIC_HELP[c], c).toBeDefined();
   });
