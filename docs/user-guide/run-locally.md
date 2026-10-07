@@ -19,6 +19,11 @@ cd AgentCanvas
 make docker-up        # or: docker compose -f infra/compose.local.yml up -d --build --wait
 ```
 
+This one command starts everything the app needs, each in its own container: **Postgres 16 with pgvector** (your
+workflows, runs and keys, kept in a Docker volume), the **API** (it applies the database migrations itself on start)
+and the **web app**. Nothing else needs installing or running: no Python, Node or separate database. Redis is not
+used.
+
 The first build takes a few minutes. Then open <http://localhost:7777>: Home shows **Set up your model**.
 
 1. Click **Choose a model**.
