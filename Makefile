@@ -20,9 +20,9 @@ dev-fake:   ## API with scripted fake models (no keys)
 dev-web:    ## web app on http://localhost:5173
 	cd apps/web && pnpm dev
 
-docker-up:  ## the whole app in Docker on http://localhost:8080 (builds the images)
+docker-up:  ## the whole app in Docker on http://localhost:7777 (builds the images)
 	docker compose -f infra/compose.local.yml $(if $(wildcard infra/.env.local),--env-file infra/.env.local) up -d --build --wait
-	@echo "AgentCanvas is running on http://localhost:$${WEB_PORT:-8080}"
+	@echo "AgentCanvas is running on http://localhost:$${WEB_PORT:-7777}"
 
 docker-down: ## stop the Docker app (your data stays; add -v to the compose command to delete it)
 	docker compose -f infra/compose.local.yml down

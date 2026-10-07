@@ -1,6 +1,6 @@
 # The whole app on your own computer with Docker: Postgres, the API (with migrations) and the web app.
 #   make docker-up          (or: docker compose -f infra/compose.local.yml up -d --build --wait)
-# then open http://localhost:8080 and choose your model on the first-run screen (hosted or local).
+# then open http://localhost:7777 and choose your model on the first-run screen (hosted or local).
 # No sign-in: every request is the built-in local admin. Not for servers others can reach: use compose.prod.yml.
 # Optional settings come from your shell or a file passed with --env-file (see infra/.env.local.example).
 name: agentcanvas-local
@@ -30,7 +30,7 @@ services:
       AGENTCANVAS_AUTO_MIGRATE: "true"
       AGENTCANVAS_SEED_DEV_DATA: "true"
       AGENTCANVAS_SCRIPT_EXECUTION: subprocess
-      AGENTCANVAS_CORS_ORIGINS: '["http://localhost:${WEB_PORT:-8080}"]'
+      AGENTCANVAS_CORS_ORIGINS: '["http://localhost:${WEB_PORT:-7777}"]'
       # models on your computer (Ollama, LM Studio, vLLM, llama.cpp) are reached from inside the container here
       AGENTCANVAS_LOCAL_MODELS_HOST: ${AGENTCANVAS_LOCAL_MODELS_HOST:-host.docker.internal}
       FORWARDED_ALLOW_IPS: "*"
@@ -55,7 +55,7 @@ services:
     image: ${WEB_IMAGE:-agentcanvas-web:latest}
     environment:
       API_UPSTREAM: http://api:8000
-    ports: ["${WEB_PORT:-8080}:8080"]
+    ports: ["${WEB_PORT:-7777}:8080"]
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
