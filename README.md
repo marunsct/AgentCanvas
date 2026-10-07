@@ -27,7 +27,7 @@ docs/            specification, build guide, ADRs
 ## Quick start with Docker
 
 ```bash
-make docker-up    # Postgres + API + web app on http://localhost:7777
+make docker-up    # Postgres (pgvector) + migrations + API + web app on http://localhost:7777
 ```
 
 Open http://localhost:7777 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
