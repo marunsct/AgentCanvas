@@ -6,6 +6,7 @@
 |---|---|
 | **User guide** (run it, use it) | [docs/user-guide/index.md](docs/user-guide/index.md) — start with [Run AgentCanvas on your computer](docs/user-guide/run-locally.md) |
 | Specification (v0.6) | [docs/agent-canvas-spec/README.md](docs/agent-canvas-spec/README.md) |
+| Competitive roadmap (approved sprint order) | [docs/agent-canvas-spec/16-competitive-roadmap.md](docs/agent-canvas-spec/16-competitive-roadmap.md) |
 | Concept & new features | [docs/agent-canvas-spec/15-concept-evolution-and-new-features.md](docs/agent-canvas-spec/15-concept-evolution-and-new-features.md) |
 | Latest review | [docs/agent-canvas-spec/14-deep-review-v0.6.md](docs/agent-canvas-spec/14-deep-review-v0.6.md) |
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
@@ -98,4 +99,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S10: accounts & access (v0.2.0) | ✅ merged ([#3](https://github.com/marunsct/AgentCanvas/pull/3)) |
 | S11: production readiness (v0.3.0) | ✅ done (merged in #4; tag pending): containers, compose prod and Helm, observability, retention and backups, safe redeploy, load test, security review, KMS |
 | S12: Evaluation Studio (v0.4.0) | ✅ done: datasets, evaluators, experiments, results grid, release gate (merged in #5) |
-| S13: Evaluation in production (v0.5.0) | ✅ done (in review): online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users, LangSmith sync, tool record/replay |
+| S13: Evaluation in production (v0.5.0) | ✅ done (merged in #8): online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users, LangSmith sync, tool record/replay |
+| S14: AI Copilot I (v0.6.0) | ✅ done (merged in #15) |
+| S15–S32: open doors (MCP/A2A, connectors), any framework as a node, ship to users, Copilot II, deploy kit, Knowledge Studio, framework adapters | ⬜ planned, value-first order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
