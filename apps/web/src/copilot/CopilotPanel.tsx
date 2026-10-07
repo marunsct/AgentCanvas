@@ -37,7 +37,9 @@ export function CopilotPanel() {
   useEffect(() => {
     if (workflowId) void useCopilot.getState().load(workflowId).catch((e: Error) => useCopilot.setState({ error: e.message }));
   }, [workflowId]);
-  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [conversation?.messages.length, live?.text.length, live?.activity.length]);
+  useEffect(() => { // newer browsers return a promise here: an effect must not return it as its cleanup
+    end.current?.scrollIntoView?.({ block: "end" });
+  }, [conversation?.messages.length, live?.text.length, live?.activity.length]);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
