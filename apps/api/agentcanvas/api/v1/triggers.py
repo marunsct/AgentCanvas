@@ -94,6 +94,11 @@ async def webhook(
         payload = map_input(trig.config.get("input_mapping"), body)
     except (ValueError, ExpressionError) as exc:
         raise InvalidInput(f"cannot map the webhook body to the workflow input: {exc}") from None
-    wf, kw = await s.target(trig)
-    h = await request.app.state.runner.start(wf, input=payload, origin="trigger", **kw)
+    claim = await s.claim_delivery(trig, signature or "")
+    try:
+        wf, kw = await s.target(trig)
+        h = await request.app.state.runner.start(wf, input=payload, origin="trigger", **kw)
+    except Exception:
+        await s.release_delivery(claim)
+        raise
     return {"run_id": h.run_id, "thread_id": h.thread_id}

@@ -51,7 +51,12 @@ def _parse(namespace: str, user: CurrentUser, *, allow_empty: bool = False) -> t
 async def namespaces(
     prefix: str = "", r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)
 ) -> list[NamespaceOut]:
-    found = await r.adapter.memory_namespaces(_parse(prefix, user, allow_empty=True))
+    if user.role == "admin":
+        found = await r.adapter.memory_namespaces(_parse(prefix, user, allow_empty=True))
+    else:  # everyone else sees only the namespaces that are theirs
+        parts = tuple(p for p in prefix.strip("/").split("/") if p)
+        found = await r.adapter.memory_namespaces(_root(user) + parts, limit=10_000)
+        found = sorted(ns for ns in found if user.id in ns[len(_root(user)) :])[:200]
     own = [ns[len(_root(user)) :] for ns in sorted(found)]
     return [NamespaceOut(namespace="/".join(ns), parts=list(ns)) for ns in own]
 

@@ -25,6 +25,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.ir.models import Workflow
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -141,7 +142,7 @@ asyncio_mode = "auto"
 
 
 def _readme(wf: Workflow, pkg: str) -> str:
-    return f"""# {wf.name}
+    return f"""# {one_line(wf.name)}
 
 Exported from AgentCanvas. `src/{pkg}/graph.py` is generated from the canvas; `src/agentcanvas/` is the node
 library it calls; `src/scripts|tools|nodes/` is the project's workspace code.
@@ -322,7 +323,8 @@ def package(
             {"dependencies": ["."], "graphs": {pkg: f"./src/{pkg}/server.py:make_graph"}, "env": ".env"}, indent=2
         )
         + "\n",
-        f"src/{pkg}/__init__.py": f'"""{wf.name} (exported from AgentCanvas)."""\n',
+        f"src/{pkg}/__init__.py": repr(f"{one_line(wf.name)} (exported from AgentCanvas).")
+        + "\n",  # a literal the name cannot end
         f"src/{pkg}/graph.py": source,
         f"src/{pkg}/server.py": SERVER.format(pkg=pkg, secrets=json.dumps(secrets)),
         f"src/{pkg}/__main__.py": MAIN.format(pkg=pkg),

@@ -175,17 +175,29 @@ class EventService:
             return [h.run_id]
         if kind == "resume":
             thread_id = str(action["thread_id"])
-            from agentcanvas.db.models import Thread
+            from agentcanvas.db.models import Deployment, Thread, WorkflowVersion
+            from agentcanvas.services.projects import PROJECT_OF
+            from agentcanvas.services.redeploy import thread_version
 
+            target: dict[str, Any] = {}
             async with self.db.sessionmaker() as s:
                 t = await s.get(Thread, thread_id)
                 row = await s.get(WorkflowRow, t.workflow_id) if t is not None else None
-            # a handler acts only inside its own project: another project's thread is as good as missing
-            if row is None or row.project_id != project_id:
-                raise InvalidInput(f"thread '{thread_id}' not found")
+                # a handler acts only inside its own project: another project's thread is as good as missing
+                if t is None or row is None or row.project_id != project_id:
+                    raise InvalidInput(f"thread '{thread_id}' not found")
+                ir = row.draft_ir
+                if t.deployment_id:  # a published conversation continues on its deployment's version (M6-T4)
+                    dep = await s.get(Deployment, t.deployment_id)
+                    ver = await s.get(WorkflowVersion, dep.version_id) if dep else None
+                    if dep is None or ver is None:
+                        raise InvalidInput(f"the deployment of thread '{thread_id}' no longer exists")
+                    ver = await thread_version(s, thread_id, ver)
+                    ir, target = ver.ir, {"deployment_id": dep.id, "version_id": ver.id}
+            PROJECT_OF[row.id] = project_id  # the run's lifecycle events reach this project's handlers
             h = await self.runner.start(
-                Workflow.model_validate(row.draft_ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),
-                user_id=user_id, origin="event",
+                Workflow.model_validate(ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),
+                user_id=user_id, origin="event", **target,
             )  # fmt: skip
             return [h.run_id]
         if kind == "emit":

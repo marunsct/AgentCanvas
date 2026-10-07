@@ -78,6 +78,7 @@ export interface EditorState {
 }
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let saving: Promise<void> | null = null; // the commands request in flight
 let layoutTimer: ReturnType<typeof setTimeout> | null = null;
 let layoutDirty: Layout = {};
 const historyMode: { next: "push" | "undo" | "redo" } = { next: "push" };
@@ -124,6 +125,37 @@ export function coalesce(pending: Command[], cmd: Command): Command[] {
   return [...pending, cmd];
 }
 
+/** Send the queued edits as one commands request. */
+async function save(workflowId: string): Promise<void> {
+  const get = useEditor.getState, set = useEditor.setState;
+  const { pending: batch, version } = get();
+  const mode = historyMode.next;
+  historyMode.next = "push";
+  set({ pending: [], inflight: true });
+  try {
+    const res = await apiFetch<CommandResult>(`/workflows/${workflowId}/commands`, {
+      method: "POST", json: { commands: batch }, version,
+    });
+    const rest = get().pending; // edits made while the request was in flight are re-applied on top
+    const { undoStack, redoStack } = get();
+    set({
+      version: res.version,
+      irHash: res.ir_hash,
+      diagnostics: res.diagnostics,
+      wf: rest.length ? applyAll(normalize(res.ir), rest) : normalize(res.ir),
+      undoStack: mode === "undo" ? undoStack : [...undoStack, res.inverse].slice(-200),
+      redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack : [],
+    });
+  } catch (e) {
+    const conflict = e instanceof ApiError && e.status === 409;
+    const text = conflict ? "Updated elsewhere — reloaded the latest version." : `Edit rejected: ${(e as Error).message}`;
+    set({ pending: [], notice: { kind: conflict ? "info" : "error", text } });
+    await get().load(workflowId).catch(() => undefined);
+  } finally {
+    set({ inflight: false });
+  }
+}
+
 export const useEditor = create<EditorState>((set, get) => ({
   ...initial,
 
@@ -158,35 +190,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   flush: async () => {
-    const { workflowId, pending, inflight, version } = get();
-    if (!workflowId || inflight || pending.length === 0) return;
-    const batch = pending;
-    const mode = historyMode.next;
-    historyMode.next = "push";
-    set({ pending: [], inflight: true });
-    try {
-      const res = await apiFetch<CommandResult>(`/workflows/${workflowId}/commands`, {
-        method: "POST", json: { commands: batch }, version,
-      });
-      const rest = get().pending; // edits made while the request was in flight are re-applied on top
-      const { undoStack, redoStack } = get();
-      set({
-        version: res.version,
-        irHash: res.ir_hash,
-        diagnostics: res.diagnostics,
-        wf: rest.length ? applyAll(normalize(res.ir), rest) : normalize(res.ir),
-        undoStack: mode === "undo" ? undoStack : [...undoStack, res.inverse].slice(-200),
-        redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack : [],
-      });
-    } catch (e) {
-      const conflict = e instanceof ApiError && e.status === 409;
-      const text = conflict ? "Updated elsewhere — reloaded the latest version." : `Edit rejected: ${(e as Error).message}`;
-      set({ pending: [], notice: { kind: conflict ? "info" : "error", text } });
-      await get().load(workflowId).catch(() => undefined);
-    } finally {
-      set({ inflight: false });
-      if (get().pending.length) void get().flush();
-    }
+    while (saving) await saving; // callers that run or refactor need the edits saved, not only sent
+    const { workflowId, pending } = get();
+    if (!workflowId || pending.length === 0) return;
+    saving = save(workflowId).finally(() => {
+      saving = null;
+    });
+    await saving;
+    if (get().pending.length) await get().flush(); // edits made meanwhile
   },
 
   undo: () => {

@@ -29,7 +29,7 @@ from agentcanvas.runtime import masking
 from agentcanvas.runtime.tracing import trace_id
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
 from agentcanvas.sdk import _SECRETS
-from agentcanvas.services.secrets import redact
+from agentcanvas.services.secrets import hide_values
 from agentcanvas.validation.blast import dry_run_tools
 
 STREAM_MODES = ["tasks", "updates", "messages", "custom"]
@@ -389,7 +389,7 @@ class LangChainAdapter:
             yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
         state = await self._state(graph, self._config(wf, spec.thread_id), names)
         for intr in state.interrupts:
-            yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}
+            yield _redacted({"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}, hidden)
         paused = bool(state.interrupts or state.next)
         yield _redacted(
             {
@@ -478,12 +478,7 @@ class LangChainAdapter:
 
 def _redacted(event: dict[str, Any], hidden: list[str]) -> dict[str, Any]:
     """Mask project secret values wherever they show up in an event (e.g. an error echoing a header)."""
-    if not hidden:
-        return event
-    text = json.dumps(event, default=str)
-    if not any(v in text for v in hidden):
-        return event
-    return json.loads(redact(text, hidden))
+    return hide_values(event, hidden)
 
 
 def _registry(resources: Any) -> Any:

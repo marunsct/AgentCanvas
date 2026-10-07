@@ -7,6 +7,7 @@ deterministic (TR-COMP-01).
 from __future__ import annotations
 
 import pprint
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,16 @@ _env = Environment(
 )
 _env.filters["py"] = repr  # emit Python literals (e.g. 'text'), not JSON
 _env.filters["pp"] = lambda v: pprint.pformat(v, width=100, sort_dicts=True)
+_LINE_BREAKS = re.compile(r"[\x00-\x1f\x7f\x85\u2028\u2029]")
+
+
+def one_line(value: object) -> str:
+    """Text for a comment or docstring of generated code: a line break in a name or label would end the comment
+    and turn the rest into code."""
+    return _LINE_BREAKS.sub(" ", str(value))
+
+
+_env.filters["line"] = one_line
 
 CompileError = WorkflowHasErrors  # backwards-compatible name
 

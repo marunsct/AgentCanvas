@@ -22,7 +22,7 @@ from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
 from agentcanvas.db.repositories import delete_thread_rows
-from agentcanvas.errors import Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
+from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
@@ -323,6 +323,8 @@ async def open_trace(
 
 @router.get("/runs/{run_id}/events")
 async def run_events(run_id: str, after: int = Query(0, ge=0), r: Runner = Depends(runner)) -> Response:
+    if run_id not in r.handles:  # a 404 now, not a 200 stream that fails once the response has started
+        raise NotFound(f"run '{run_id}' is not active on this server (finished runs are kept briefly)")
     return StreamingResponse(_sse(r.subscribe(run_id, after)), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
@@ -391,6 +393,12 @@ async def get_thread(
         "step": state.step,
         "interrupts": [i.__dict__ for i in state.interrupts],
     }, _secrets(res))  # fmt: skip
+
+
+def _idle(r: Runner, thread_id: str) -> None:
+    """Checkpoints of a running thread are the run's to write: an edit now would race it."""
+    if thread_id in r.active_by_thread:
+        raise Conflict(f"thread '{thread_id}' has an active run", run_id=r.active_by_thread[thread_id])
 
 
 def _secrets(resources: Any) -> dict[str, str]:
@@ -493,6 +501,7 @@ async def edit_state(
 ) -> dict[str, Any]:
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
+    _idle(r, thread_id)
     cid = await r.adapter.update_state(
         wf, thread_id, r.resources(thread_id, wf), body.values, body.as_node, body.checkpoint_id
     )
@@ -512,6 +521,8 @@ async def fork_thread(
     t = await _thread(session, thread_id)
     wf, target_kw = await _thread_target(session, settings, t)
     target, checkpoint = thread_id, body.checkpoint_id
+    if body.mode == "branch":
+        _idle(r, thread_id)
     if body.mode == "copy":
         from agentcanvas.ids import new_id
 
@@ -548,8 +559,12 @@ async def delete_thread(
     thread_id: str, session: AsyncSession = Depends(get_session), r: Runner = Depends(runner)
 ) -> Response:
     await _thread(session, thread_id)
-    if thread_id in r.active_by_thread:
-        await r.cancel(r.active_by_thread[thread_id])
+    h = r.handles.get(r.active_by_thread.get(thread_id, ""))
+    if h is not None and await r.cancel(h.run_id):
+        try:  # the run writes its last checkpoint and status as it stops: let it, then delete
+            await asyncio.wait_for(h.done.wait(), timeout=10)
+        except TimeoutError:
+            pass
     await r.adapter.delete_thread(thread_id)
     await delete_thread_rows(session, thread_id)
     await session.commit()
@@ -612,7 +627,7 @@ async def decide(
         raise NotFound(f"inbox item '{interrupt_id}' not found")
     note(request, kind=task.kind, payload_sha256=payload_hash(body.value))
     if task.status != "pending":
-        raise InvalidInput(f"inbox item '{interrupt_id}' is already {task.status}")
+        raise Conflict(f"inbox item '{interrupt_id}' is already {task.status}")
     t = await _thread(session, task.thread_id)
     wf, target_kw = await _thread_target(session, settings, t)
     h = await r.start(
