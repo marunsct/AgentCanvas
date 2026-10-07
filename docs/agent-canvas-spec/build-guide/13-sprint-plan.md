@@ -350,6 +350,24 @@ review's findings were fixed first (see the S14 review below).
 | 7 | Ghost proposals | 4 | proposal previewed read-only on the canvas (new green, changed amber); Accept = one undoable edit; Reject |
 | 8 | Guardrails | 1 | Ask mode has read-only tools (viewers allowed); max 16 model calls per turn, 80 commands per proposal; workflow text marked as data; literal secrets refused; one turn at a time per conversation |
 
+**Pre-sprint review (2026-10-07).** A review of the whole codebase found 11 defects, all fixed before S14 work:
+two runs could start on one thread (double-clicked approvals; the thread slot is now taken before any await, and an
+inbox item is decided once, 409 after); event-handler `resume` used the wrong project's resources and could not
+resume deployment threads; an expired LangSmith sandbox was never replaced; secret masking missed values JSON escapes
+and the live `ac.interrupt` event; the editor's `flush()` returned while a save was in flight (a run could use a stale
+draft); the Memory page was 403 for non-admins; state edits and branch forks could change a thread with an active
+run; deleting a thread did not wait for its cancelled run; `GET /runs/{id}/events` sent 200 before a 404; a label
+with a newline could inject code into generated Python; signed webhooks could be replayed within the tolerance
+window (now 409, recorded in the shared dedup table).
+
+**Review (2026-10-07).** Every item met its acceptance in the tests (`test_copilot.py`, `e2e/copilot.spec.ts`).
+Deviations and gaps:
+- The eval harness has not been run against a hosted model here (no provider keys in this environment); CI runs it
+  with a scripted model. Run `python -m agentcanvas.copilot.evals --model …` before relying on a model.
+- Answers arrive per model turn, not token by token.
+- "One turn at a time per conversation" is enforced per API instance; two replicas could each take one message.
+- Removed elements are listed on the proposal card, not drawn as ghosts on the canvas.
+
 ### S20+ — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).
 
