@@ -61,3 +61,17 @@ test("structured output designer adds a schema; the missing channel is reported 
   await page.getByRole("tab", { name: "Code" }).click();
   await expect(page.getByTestId("code-view")).toContainText('"enum": ["low", "high"]');
 });
+
+test("connector gallery: a GitHub connector is one double-click away (S15)", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Connectors ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByLabel("Search widgets").fill("github");
+  await page.getByTestId("palette-connector-github").dblclick();
+  await expect(page.getByTestId("node-github")).toBeVisible();
+  const ir = await (async () => {
+    await expect.poll(async () => (await (await api.get(`/api/v1/workflows/${wf.id}`)).json()).ir.resources.length).toBe(1);
+    return (await (await api.get(`/api/v1/workflows/${wf.id}`)).json()).ir;
+  })();
+  expect(ir.resources[0]).toMatchObject({ type: "mcp.server", name: "github", config: { url: "https://api.githubcopilot.com/mcp/" } });
+});

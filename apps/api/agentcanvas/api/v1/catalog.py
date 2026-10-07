@@ -79,9 +79,7 @@ class McpConnector(BaseModel):
 @router.get("/mcp-connectors", response_model=list[McpConnector])
 def mcp_connectors() -> list[McpConnector]:
     """The one-click connector gallery (S15): curated MCP servers with their settings and the secrets they need."""
-    return [
-        McpConnector(**c, local=c["config"].get("transport") == "stdio") for c in load_gallery()["connectors"]
-    ]
+    return [McpConnector(**c, local=c["config"].get("transport") == "stdio") for c in load_gallery()["connectors"]]
 
 
 @router.get("/templates", response_model=list[TemplateInfo])
