@@ -99,6 +99,7 @@ source_modules = [
   "agentcanvas.api",
   "agentcanvas.settings",
   "agentcanvas.errors",
+  "agentcanvas.copilot",
 ]
 forbidden_modules = ["langchain", "langchain_core", "langgraph", "deepagents"]
 allow_indirect_imports = true

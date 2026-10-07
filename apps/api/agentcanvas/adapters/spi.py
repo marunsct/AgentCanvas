@@ -102,6 +102,24 @@ class FrameworkAdapter(Protocol):
         settings such as `base_url` and `api_key` (first-run setup's connection test)."""
         ...
 
+    # ---- Copilot (S14)
+    async def chat(
+        self,
+        resources: Any,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One tool-calling chat turn (the Copilot). Resource name: "copilot".
+
+        `messages` are framework-neutral: {"role": "system"|"user"|"assistant"|"tool", "content": str} plus
+        `tool_calls` [{"id", "name", "args"}] on assistant turns and `tool_call_id` on tool turns; a system
+        message may set `"cache": true` to ask providers that support it to cache that prefix. `tools` are
+        {"name", "description", "parameters" (JSON schema)}. Returns {"content": str, "tool_calls": [...]}."""
+        ...
+
     def script(self, resources: Any, import_path: str) -> Any:
         """A workspace function `(state) -> dict` as an async callable, sandboxed when the project has one."""
         ...

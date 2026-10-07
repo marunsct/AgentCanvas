@@ -86,6 +86,47 @@ async def test_secrets_are_write_only_and_redacted_everywhere(app, api_client):
     assert (await api_client.delete(f"{P}/secrets/API_TOKEN")).status_code == 404
 
 
+async def test_secrets_json_escapes_are_masked_too(app, api_client):
+    """A value with a quote, backslash or newline is masked in run events (the interrupt included) and thread reads,
+    though its JSON text differs from the value."""
+    from agentcanvas.services.secrets import hide_secrets
+
+    odd = 'pa"ss\\wo\nrd-77'
+    assert hide_secrets({"a": [f"x {odd} y"], odd: 1}, {"K": odd}) == {"a": ["x *** y"], "***": 1}
+    assert hide_secrets({"a": "clean"}, {"K": odd}) == {"a": "clean"}
+    assert (await api_client.put(f"{P}/secrets/ODD", json={"value": odd})).status_code == 204
+    await api_client.put(
+        f"{P}/files/scripts/leak.py",
+        json={
+            "content": "from agentcanvas.sdk import secret\n\n\ndef run(state):\n    return {'out': secret('ODD')}\n"
+        },
+    )
+    ask = {"id": "n_a", "type": "core.approval", "name": "sign", "config": {"show": "out", "output": "ok"}}
+    leak = {"id": "n_s", "type": "core.script", "name": "leak", "config": {"import_path": "scripts.leak:run"}}
+    ir = {
+        "name": "odd",
+        "state": {"channels": [{"name": "out"}, {"name": "ok"}]},
+        "nodes": [leak, ask],
+        "edges": [
+            {"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_s"}},
+            {"id": "e2", "kind": "flow", "source": {"node": "n_s"}, "target": {"node": "n_a"}},
+            {"id": "e3", "kind": "flow", "source": {"node": "n_a"}, "target": {"node": "END"}},
+        ],
+    }
+    wf = (await api_client.post(f"{P}/workflows", json={"name": "odd"})).json()
+    r = await api_client.put(
+        f"/v1/workflows/{wf['id']}", json={"ir": {**ir, "id": wf["id"]}}, headers={"If-Match": "1"}
+    )
+    assert r.status_code == 200, r.text
+    stream = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"thread_id": "th_odd"})).text
+    evs = events(stream)
+    assert evs[-1]["status"] == "interrupted" and any(e.get("name") == "ac.interrupt" for e in evs)
+    assert odd not in json.dumps(evs) and json.dumps(odd)[1:-1] not in stream
+    assert "***" in json.dumps([e for e in evs if e.get("name") == "ac.interrupt"])
+    thread = await api_client.get("/v1/threads/th_odd")
+    assert json.dumps(odd)[1:-1] not in thread.text and thread.json()["values"]["out"] == "***"
+
+
 async def test_secrets_survive_a_restart(settings, api_client):
     from agentcanvas.api.main import create_app
 

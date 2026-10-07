@@ -35,6 +35,8 @@ PREFIXES = {
     "rsc",  # run score
     "alr",  # evaluation alert
     "aq",  # annotation queue
+    "cpc",  # Copilot conversation (S14)
+    "prop",  # Copilot proposal
     "aqi",  # annotation queue item
     "ann",  # a reviewer's annotation of a queue item
 }

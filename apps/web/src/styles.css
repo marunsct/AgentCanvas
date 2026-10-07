@@ -407,3 +407,25 @@ a.button.primary { background: var(--accent); color: var(--accent-fg); }
 .port-row.out > span { margin-right: 6px; }
 /* a port's hover card must not hide under the minimap */
 .react-flow:has(.port-row:hover, .react-flow__handle:hover) .react-flow__minimap { z-index: 3; opacity: .35; }
+
+/* Copilot (S14) */
+.copilot { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
+.copilot-head { align-items: center; }
+.copilot-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
+.copilot-msg { padding: 6px 9px; border-radius: 8px; white-space: pre-wrap; line-height: 1.4; max-width: 95%; }
+.copilot-msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); }
+.copilot-msg.assistant { align-self: flex-start; background: var(--hl); color: var(--text); }
+@media (prefers-color-scheme: light) { .copilot-msg.assistant { background: #f1f5f9; } }
+.copilot-msg.live p { margin: 4px 0; }
+.copilot-empty { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.copilot-empty .chip { text-align: left; border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
+.copilot-brief, .copilot-proposal { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+.copilot-brief h4 { margin: 0 0 4px; }
+.copilot-brief ul { margin: 2px 0 6px 18px; padding: 0; }
+.copilot-proposal { border-color: var(--ok); }
+.copilot-input textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button { border: 0; border-radius: 0; padding: 2px 10px; }
+.segmented button.active { background: var(--accent); color: var(--accent-fg); }
+.ghost-banner { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5; padding: 6px 12px;
+  border: 1px solid var(--ok); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px rgb(0 0 0 / 12%); }

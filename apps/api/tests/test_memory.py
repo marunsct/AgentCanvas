@@ -152,6 +152,24 @@ async def test_memory_inspector_stays_inside_the_organisation(app, api_client):
 
 
 @pytest.mark.asyncio
+async def test_memory_inspector_lists_only_your_own_namespaces(app, api_client):
+    from agentcanvas.api.deps import CurrentUser, current_user
+
+    store = app.state.runner.adapter.store
+    for who in ("usr_m", "usr_n"):
+        await store.aput(("org:org_default", "prefs", "user", who), "k", {"value": who})
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_m", org_id="org_default", role="builder")
+    try:
+        for prefix in ("", "prefs"):  # no 403 without a user id in the prefix: the list is filtered instead
+            r = await api_client.get("/v1/memory/namespaces", params={"prefix": prefix})
+            assert r.status_code == 200 and [s["namespace"] for s in r.json()] == ["prefs/user/usr_m"], prefix
+        r = await api_client.get("/v1/memory/items", params={"namespace": "prefs/user/usr_n"})
+        assert r.status_code == 403  # reading another user's memories stays an admin's job
+    finally:
+        app.dependency_overrides.pop(current_user)
+
+
+@pytest.mark.asyncio
 async def test_memories_from_before_organisations_move_to_the_default_one(app):
     adapter = app.state.runner.adapter
     await adapter.store.adelete(*adapter.ADOPTED)  # startup already adopted the (empty) store: start over

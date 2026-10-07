@@ -148,6 +148,8 @@ ROLE_EXCEPTIONS = {
     ("POST", "/annotation-items/{item_id}/annotations"): "reviewer",
     ("POST", "/me/invitations/{org_id}/accept"): "viewer",  # anyone answers their own invitations
     ("DELETE", "/me/invitations/{org_id}"): "viewer",
+    ("POST", "/workflows/{wf_id}/copilot/messages"): "viewer",  # Ask mode for everyone; Build checks for builder
+    ("DELETE", "/workflows/{wf_id}/copilot"): "viewer",  # anyone starts their own chat over
     ("PUT", "/workflows/{wf_id}/gates/{environment}"): "admin",  # a builder must not lower the bar they publish over
     ("DELETE", "/workflows/{wf_id}/gates/{environment}"): "admin",
 }

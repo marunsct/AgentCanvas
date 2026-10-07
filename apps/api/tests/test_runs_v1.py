@@ -224,6 +224,51 @@ async def test_cancel_reattach_and_double_texting(api_client):
     assert tail == evs[-1:]
 
 
+async def test_concurrent_starts_on_one_thread_run_once(app, api_client):
+    wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
+    body = {"input": {"seconds": 30}, "thread_id": "th_race", "stream": False}
+    rs = await asyncio.gather(*(api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body) for _ in range(3)))
+    assert sorted(r.status_code for r in rs) == [202, 409, 409]
+    runs = (await api_client.get("/v1/threads/th_race/runs")).json()
+    assert len(runs) == 1 and app.state.runner.active_by_thread["th_race"] == runs[0]["id"]
+    # a running thread's checkpoints are the run's: edits and in-place forks wait, events of unknown runs are 404
+    edit = await api_client.post("/v1/threads/th_race/state", json={"values": {"out": "x"}})
+    fork = await api_client.post("/v1/threads/th_race/fork", json={"checkpoint_id": "c1", "stream": False})
+    assert edit.status_code == fork.status_code == 409
+    assert (await api_client.get("/v1/runs/run_nope/events")).status_code == 404
+    # deleting the thread stops the run and waits for it before removing its rows
+    h = app.state.runner.handles[runs[0]["id"]]
+    assert (await api_client.delete("/v1/threads/th_race")).status_code == 204
+    assert h.done.is_set() and "th_race" not in app.state.runner.active_by_thread
+    assert (await api_client.get(f"/v1/runs/{h.run_id}")).status_code == 404
+
+
+async def test_failed_start_releases_the_thread(app, triage_api):
+    from agentcanvas.errors import Conflict
+    from agentcanvas.ir.models import Workflow
+
+    await triage_api.post(
+        f"/v1/workflows/{triage_api.wf_id}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_x"}
+    )
+    other = Workflow.model_validate({**linear(script("n_slow", "examples.scripts:slow")), "id": "wf_other"})
+    with pytest.raises(Conflict, match="belongs to workflow"):
+        await app.state.runner.start(other, thread_id="th_x")
+    assert "th_x" not in app.state.runner.active_by_thread  # the refused start did not keep the thread busy
+    r = await triage_api.post("/v1/threads/th_x/resume", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert events(r.text)[-1]["status"] == "success"
+
+
+async def test_an_inbox_item_is_decided_once(triage_api):
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_low"})
+    item = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()[0]["id"]
+    body = {"value": {"decisions": [{"type": "approve"}]}}
+    rs = await asyncio.gather(*(api.post(f"/v1/inbox/{item}/decision", json=body) for _ in range(2)))
+    assert sorted(r.status_code for r in rs) == [202, 409]
+    await asyncio.sleep(0.5)
+    assert (await api.post(f"/v1/inbox/{item}/decision", json=body)).status_code == 409
+
+
 # ------------------------------------------------------------ policies & limits ----
 async def test_recursion_limit_is_a_readable_error(api_client):
     ir = linear(script("n_a", "examples.scripts:bump"), channels=("n", "m"), settings={"recursion_limit": 5})

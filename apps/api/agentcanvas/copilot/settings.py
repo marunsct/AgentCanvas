@@ -1,0 +1,85 @@
+"""Which model the Copilot talks with (S14): the workflow's own model, or a separate one; org policies apply.
+
+Stored in the project's settings under `copilot`. `source = "workflow"` (the default) uses the project's default
+model from first-run setup, else the first AI model in the workflow; `"separate"` uses `model` (with its own base
+URL and key secret). Either way the model must support tool calling and pass the organisation's model policies.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from agentcanvas.errors import InvalidInput
+from agentcanvas.ir.models import Resource, Workflow
+from agentcanvas.registry import Registry
+from agentcanvas.validation.policies import Policy, check_policies
+
+DEFAULT_TOKEN_CAP = 400_000
+
+
+class CopilotSettings(BaseModel):
+    enabled: bool = True
+    source: Literal["workflow", "separate"] = "workflow"
+    model: str | None = Field(None, pattern=r"^[a-z0-9_\-]+:.+$", description="provider:model when separate")
+    base_url: str | None = Field(None, max_length=500)
+    api_key: dict[str, str] | None = Field(None, description='{"$secret": NAME}')
+    token_cap: int = Field(DEFAULT_TOKEN_CAP, ge=1_000, le=10_000_000, description="per conversation, in + out")
+
+
+class ResolvedModel(BaseModel):
+    model: str
+    config: dict[str, Any] = Field(default_factory=dict)  # base_url, api_key reference
+    origin: str  # "project default", "workflow resource 'fast_model'", "Copilot settings"
+
+
+def load(project_settings: dict[str, Any] | None) -> CopilotSettings:
+    return CopilotSettings.model_validate((project_settings or {}).get("copilot") or {})
+
+
+def resolve(
+    settings: CopilotSettings,
+    project_settings: dict[str, Any] | None,
+    wf: Workflow,
+    registry: Registry,
+    policies: list[Policy],
+) -> ResolvedModel:
+    """The Copilot's model for this workflow, or InvalidInput saying what to change."""
+    if settings.source == "separate":
+        if not settings.model:
+            raise InvalidInput("the Copilot is set to use a separate model, but none is chosen in Copilot settings")
+        config = {k: v for k, v in (("base_url", settings.base_url), ("api_key", settings.api_key)) if v}
+        chosen = ResolvedModel(model=settings.model, config=config, origin="Copilot settings")
+    elif default := (project_settings or {}).get("default_model"):
+        config = {k: v for k, v in default.items() if k in ("base_url", "api_key")}
+        chosen = ResolvedModel(model=default["model"], config=config, origin="project default")
+    else:
+        res = next((r for r in wf.resources if r.type == "model.chat" and r.config.get("model")), None)
+        if res is None:
+            raise InvalidInput(
+                "the Copilot needs a model: finish first-run setup, add an AI model to this workflow, "
+                "or choose a separate model in Copilot settings"
+            )
+        config = {k: v for k, v in res.config.items() if k in ("base_url", "api_key")}
+        chosen = ResolvedModel(model=str(res.config["model"]), config=config, origin=f"workflow model '{res.name}'")
+    info = registry.model(chosen.model)
+    if info is not None and not info.tools:
+        raise InvalidInput(f"{chosen.model} cannot call tools, which the Copilot needs; choose another model")
+    check_model_policies(chosen.model, policies, registry)
+    return chosen
+
+
+def check_model_policies(model: str, policies: list[Policy], registry: Registry) -> None:
+    """The organisation's resource policies hold for the Copilot's model as for any AI model in a workflow."""
+    relevant = [p for p in policies if p.scope == "resource"]
+    if not relevant:
+        return
+    probe = Workflow(
+        id="wf_copilot_policy",
+        name="copilot",
+        resources=[Resource(id="r_copilot", type="model.chat", name="copilot_model", config={"model": model})],
+    )
+    broken = [d for d in check_policies(probe, relevant, registry) if d.severity == "error"]
+    if broken:
+        raise InvalidInput(f"your organisation's policies do not allow {model} for the Copilot: {broken[0].message}")

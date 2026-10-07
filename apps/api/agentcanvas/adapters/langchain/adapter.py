@@ -29,7 +29,7 @@ from agentcanvas.runtime import masking
 from agentcanvas.runtime.tracing import trace_id
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
 from agentcanvas.sdk import _SECRETS
-from agentcanvas.services.secrets import redact
+from agentcanvas.services.secrets import hide_values
 from agentcanvas.validation.blast import dry_run_tools
 
 STREAM_MODES = ["tasks", "updates", "messages", "custom"]
@@ -69,6 +69,60 @@ class LangChainAdapter:
             usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
             usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
         return reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
+
+    async def chat(
+        self,
+        resources: Any,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+        cacheable = model.startswith("anthropic:")
+        converted: list[Any] = []
+        for m in messages:
+            role, content = m["role"], str(m.get("content") or "")
+            if role == "system":
+                if m.get("cache") and cacheable:  # prompt caching: the knowledge pack is the same on every turn
+                    converted.append(
+                        SystemMessage(
+                            content=[{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
+                        )
+                    )
+                else:
+                    converted.append(SystemMessage(content=content))
+            elif role == "user":
+                converted.append(HumanMessage(content=content))
+            elif role == "assistant":
+                calls = [
+                    {"name": c["name"], "args": c.get("args") or {}, "id": c["id"]} for c in m.get("tool_calls") or []
+                ]
+                converted.append(AIMessage(content=content, tool_calls=calls))
+            elif role == "tool":
+                converted.append(ToolMessage(content=content, tool_call_id=m["tool_call_id"]))
+        specs = [
+            {
+                "type": "function",
+                "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]},
+            }
+            for t in tools
+        ]
+        llm = resources.model("copilot", {**(config or {}), "model": model})
+        reply = await (llm.bind_tools(specs) if specs else llm).ainvoke(converted)
+        if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
+            usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
+            usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+        content = reply.content
+        if isinstance(content, list):  # content blocks: keep the text ones
+            content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
+        calls = [
+            {"id": c.get("id") or f"call_{i}", "name": c["name"], "args": c.get("args") or {}}
+            for i, c in enumerate(getattr(reply, "tool_calls", None) or [])
+        ]
+        return {"content": str(content or ""), "tool_calls": calls}
 
     def script(self, resources: Any, import_path: str) -> Any:
         return ac.script_node(import_path=import_path, resources=resources)
@@ -335,7 +389,7 @@ class LangChainAdapter:
             yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
         state = await self._state(graph, self._config(wf, spec.thread_id), names)
         for intr in state.interrupts:
-            yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}
+            yield _redacted({"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}, hidden)
         paused = bool(state.interrupts or state.next)
         yield _redacted(
             {
@@ -424,12 +478,7 @@ class LangChainAdapter:
 
 def _redacted(event: dict[str, Any], hidden: list[str]) -> dict[str, Any]:
     """Mask project secret values wherever they show up in an event (e.g. an error echoing a header)."""
-    if not hidden:
-        return event
-    text = json.dumps(event, default=str)
-    if not any(v in text for v in hidden):
-        return event
-    return json.loads(redact(text, hidden))
+    return hide_values(event, hidden)
 
 
 def _registry(resources: Any) -> Any:

@@ -62,11 +62,17 @@ async def test_signed_webhook_starts_a_run(app, api_client):
     assert (await api_client.post(hook, content=body, headers=moved)).status_code == 401  # timestamp is signed
     unknown = await api_client.post("/v1/hooks/trg_unknown", content=body, headers=signed(trig["secret"], body))
     assert unknown.status_code == 401  # same answer as a bad signature: trigger ids cannot be probed
-    ok = await api_client.post(hook, content=body, headers=signed(trig["secret"], body))
+    delivery = signed(trig["secret"], body)
+    app.state.runner.draining = True  # a delivery whose run cannot start is not remembered: its retry works
+    assert (await api_client.post(hook, content=body, headers=delivery)).status_code == 503
+    app.state.runner.draining = False
+    ok = await api_client.post(hook, content=body, headers=delivery)
     assert ok.status_code == 202, ok.text
     await asyncio.wait_for(app.state.runner.handles[ok.json()["run_id"]].done.wait(), 10)
     thread = (await api_client.get(f"/v1/threads/{ok.json()['thread_id']}")).json()
     assert thread["values"]["out"] == "Hello octocat"
+    replay = await api_client.post(hook, content=body, headers=delivery)  # captured and replayed within 5 minutes
+    assert replay.status_code == 409 and len((await api_client.get("/v1/threads")).json()["items"]) == 1
 
     await api_client.patch(f"/v1/triggers/{trig['id']}", json={"enabled": False})
     assert (await api_client.post(hook, content=body, headers=signed(trig["secret"], body))).status_code == 401

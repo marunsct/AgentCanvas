@@ -36,7 +36,12 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S11** | 2 | Production readiness → v0.3.0 | M8-T1…T6 + S10 carry-overs | FR-X-10 safe redeploy | 23 | Containers, Helm, observability, backups, load & security review |
 | **S12** | 2 | Evaluation Studio → v0.4.0 | FR-EVAL-02…05 + S11 follow-ups | — | 23 | Datasets, evaluators, experiments, results grid, release gate |
 | **S13** | 2 | Evaluation in production → v0.5.0 | FR-EVAL-06…08, FR-EVAL-03 rest + S12 follow-ups | — | 22 | Online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users |
-| **S14+** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
+| **S14** | 2 | AI Copilot I → v0.6.0 | Copilot plan (Claude Doc "Copilot, export and beginner features", plan v2) | — | 24 | Copilot briefs, plans and builds workflows as proposals you accept on the canvas |
+| **S15** | 2 | AI Copilot II → v0.7.0 | configure, test, debug and fix | — | 23 | The Copilot tests, debugs and fixes workflows |
+| **S16** | 2 | Export deploy kit → v0.8.0 | export as a service | — | 24 | Exports are deployable codebases with prerequisites, setup and deploy guides |
+| **S17** | 2 | MCP server & Copilot extras → v0.9.0 | — | — | — | AgentCanvas as an MCP server; Copilot after launch |
+| **S18–S19** | 4 | Beginners I–II → v0.10.0/v0.11.0 | — | — | — | Playground, Simple mode, galleries, knowledge block, Push to GitHub |
+| **S20+** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, A2A/AG-UI exposure | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
 
 Total to MVP ≈ 19 weeks; to production-ready ≈ 23 weeks with four developers. One developer: multiply by ~3.5.
 
@@ -329,8 +334,42 @@ Deviations and gaps, carried into S14 unless noted:
 - `test_validation_of_200_nodes_is_fast` (150 ms) failed once on a slow CI runner (473 ms) and passed on the next
   runs; watch it.
 
-### S14+ — GA backlog (prioritised quarterly)
-Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · MCP/A2A/AG-UI exposure & chat widget · Copilot · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).
+### S14 — AI Copilot I → v0.6.0
+
+Before the sprint the whole codebase was reviewed (all gates green: API 364 passed; web 67 unit tests) and the
+review's findings were fixed first (see the S14 review below).
+
+| # | Item | Days | Acceptance |
+|---|------|-----:|------------|
+| 1 | Spike + eval harness | 3 | `agentcanvas.copilot.evals`: 10 plain-language build requests, each checked for a proposal that applies, validates without errors and uses the expected blocks; runs with any `provider:model`; CI runs it with a scripted model |
+| 2 | Tool layer | 4 | `copilot/tools.py`: `get_workflow`, `find_blocks`, `get_block`, `get_template`, `set_brief`, `propose_changes` over the IR command API; proposals apply to a working copy only, failures come back to the model, secrets refused |
+| 3 | Knowledge pack | 2 | `copilot/pack.py` generated from the registry (workspace blocks included) and templates plus a short guide; sent as a cacheable prefix |
+| 4 | Copilot service | 5 | brief → plan → build loop with self-repair (`copilot/service.py`), SSE `POST /v1/workflows/{id}/copilot/messages`, conversations stored per person and workflow, prompt caching on Anthropic |
+| 5 | Model setting | 2 | same model as the workflow or separate; tool-calling check; org model policies apply; token cap per conversation |
+| 6 | Chat panel and brief card | 3 | Copilot tab, Build/Ask modes, live tool activity, brief card |
+| 7 | Ghost proposals | 4 | proposal previewed read-only on the canvas (new green, changed amber); Accept = one undoable edit; Reject |
+| 8 | Guardrails | 1 | Ask mode has read-only tools (viewers allowed); max 16 model calls per turn, 80 commands per proposal; workflow text marked as data; literal secrets refused; one turn at a time per conversation |
+
+**Pre-sprint review (2026-10-07).** A review of the whole codebase found 11 defects, all fixed before S14 work:
+two runs could start on one thread (double-clicked approvals; the thread slot is now taken before any await, and an
+inbox item is decided once, 409 after); event-handler `resume` used the wrong project's resources and could not
+resume deployment threads; an expired LangSmith sandbox was never replaced; secret masking missed values JSON escapes
+and the live `ac.interrupt` event; the editor's `flush()` returned while a save was in flight (a run could use a stale
+draft); the Memory page was 403 for non-admins; state edits and branch forks could change a thread with an active
+run; deleting a thread did not wait for its cancelled run; `GET /runs/{id}/events` sent 200 before a 404; a label
+with a newline could inject code into generated Python; signed webhooks could be replayed within the tolerance
+window (now 409, recorded in the shared dedup table).
+
+**Review (2026-10-07).** Every item met its acceptance in the tests (`test_copilot.py`, `e2e/copilot.spec.ts`).
+Deviations and gaps:
+- The eval harness has not been run against a hosted model here (no provider keys in this environment); CI runs it
+  with a scripted model. Run `python -m agentcanvas.copilot.evals --model …` before relying on a model.
+- Answers arrive per model turn, not token by token.
+- "One turn at a time per conversation" is enforced per API instance; two replicas could each take one message.
+- Removed elements are listed on the proposal card, not drawn as ghosts on the canvas.
+
+### S20+ — GA backlog (prioritised quarterly)
+Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).
 
 ## 4. Risks to the schedule
 
