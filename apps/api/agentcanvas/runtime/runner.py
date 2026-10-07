@@ -201,47 +201,52 @@ class Runner:
         if thread_id in self.active_by_thread:  # double-texting policy "reject" (FR-RUN-11 later adds others)
             raise Conflict(f"thread '{thread_id}' already has an active run", run_id=self.active_by_thread[thread_id])
         run_id = new_id("run")
-        async with self.db.sessionmaker() as s:
-            thread = await s.get(Thread, thread_id)
-            if thread is None:
+        self.active_by_thread[thread_id] = run_id  # reserved before any await: a concurrent start is refused
+        try:
+            async with self.db.sessionmaker() as s:
+                thread = await s.get(Thread, thread_id)
+                if thread is None:
+                    s.add(
+                        Thread(
+                            id=thread_id,
+                            workflow_id=wf.id,
+                            deployment_id=deployment_id,
+                            status="running",
+                            created_by=user_id,
+                            title=_title(input),
+                        )
+                    )
+                elif thread.workflow_id != wf.id:
+                    raise Conflict(f"thread '{thread_id}' belongs to workflow '{thread.workflow_id}'")
+                elif thread.deployment_id != deployment_id:  # published and draft conversations never mix
+                    raise Conflict(
+                        f"thread '{thread_id}' belongs to {'a deployment' if thread.deployment_id else 'the draft'}"
+                    )
+                else:
+                    thread.status = "running"
+                if context is None:
+                    context = await self._last_context(s, context_from or thread_id)
+                org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
+                await s.flush()
                 s.add(
-                    Thread(
-                        id=thread_id,
-                        workflow_id=wf.id,
-                        deployment_id=deployment_id,
+                    Run(
+                        id=run_id,
+                        thread_id=thread_id,
+                        workflow_version_id=version_id,
+                        ir_hash=ir_hash(wf),
+                        mode=mode,
                         status="running",
-                        created_by=user_id,
-                        title=_title(input),
+                        context=context,
+                        trace_url=trace_ref(run_id),
+                        labels=labels or None,
                     )
                 )
-            elif thread.workflow_id != wf.id:
-                raise Conflict(f"thread '{thread_id}' belongs to workflow '{thread.workflow_id}'")
-            elif thread.deployment_id != deployment_id:  # published and draft conversations never mix
-                raise Conflict(
-                    f"thread '{thread_id}' belongs to {'a deployment' if thread.deployment_id else 'the draft'}"
-                )
-            else:
-                thread.status = "running"
-            if context is None:
-                context = await self._last_context(s, context_from or thread_id)
-            org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
-            await s.flush()
-            s.add(
-                Run(
-                    id=run_id,
-                    thread_id=thread_id,
-                    workflow_version_id=version_id,
-                    ir_hash=ir_hash(wf),
-                    mode=mode,
-                    status="running",
-                    context=context,
-                    trace_url=trace_ref(run_id),
-                    labels=labels or None,
-                )
-            )
-            if resume is not None:
-                await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
-            await s.commit()
+                if resume is not None:
+                    await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                await s.commit()
+        except BaseException:
+            self.active_by_thread.pop(thread_id, None)
+            raise
 
         spec = RunSpec(
             workflow=wf,
@@ -273,7 +278,6 @@ class Runner:
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = input
         self.handles[run_id] = handle
-        self.active_by_thread[thread_id] = run_id
         for hook in self.start_hooks:
             try:
                 hook(handle)
@@ -293,9 +297,11 @@ class Runner:
         if resume.interrupt_id:
             q = q.where(InterruptTask.id == resume.interrupt_id)
         decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
-        await s.execute(
+        res = await s.execute(
             q.values(status="decided", decision=decision, decided_by=decided_by, decided_at=datetime.now(UTC))
         )
+        if resume.interrupt_id and res.rowcount == 0 and await s.get(InterruptTask, resume.interrupt_id):
+            raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
 
     # ---------------------------------------------------------------- pump ----
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
