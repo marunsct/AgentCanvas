@@ -37,11 +37,24 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S12** | 2 | Evaluation Studio → v0.4.0 | FR-EVAL-02…05 + S11 follow-ups | — | 23 | Datasets, evaluators, experiments, results grid, release gate |
 | **S13** | 2 | Evaluation in production → v0.5.0 | FR-EVAL-06…08, FR-EVAL-03 rest + S12 follow-ups | — | 22 | Online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users |
 | **S14** | 2 | AI Copilot I → v0.6.0 | Copilot plan (Claude Doc "Copilot, export and beginner features", plan v2) | — | 24 | Copilot briefs, plans and builds workflows as proposals you accept on the canvas |
-| **S15** | 2 | AI Copilot II → v0.7.0 | configure, test, debug and fix | — | 23 | The Copilot tests, debugs and fixes workflows |
-| **S16** | 2 | Export deploy kit → v0.8.0 | export as a service | — | 24 | Exports are deployable codebases with prerequisites, setup and deploy guides |
-| **S17** | 2 | MCP server & Copilot extras → v0.9.0 | — | — | — | AgentCanvas as an MCP server; Copilot after launch |
-| **S18–S19** | 4 | Beginners I–II → v0.10.0/v0.11.0 | — | — | — | Playground, Simple mode, galleries, knowledge block, Push to GitHub |
-| **S20+** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, A2A/AG-UI exposure | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
+| **S15** | 2 | Open doors → v0.7.0 | [doc 16 §7](../16-competitive-roadmap.md#7-sprint-plan) | — | — | Deployments as MCP tools and A2A agents, MCP connector gallery (~30), OTel trace export |
+| **S16** | 2 | Any framework as a node → v0.8.0 | doc 16, doc 11 F1 | — | — | Wrapped, A2A and MCP agent nodes for 9 frameworks; Agent Spec import/export |
+| **S17** | 2 | Ship to users → v0.9.0 | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
+| **S18** | 2 | AI Copilot II → v0.10.0 | configure, test, debug and fix | — | — | The Copilot tests, debugs and fixes workflows |
+| **S19** | 2 | Export deploy kit → v0.11.0 | export as a service | — | — | Exports are deployable codebases with prerequisites, setup and deploy guides |
+| **S20** | 2 | Knowledge Studio → v0.12.0 | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
+| **S21** | 2 | OpenAI Agents SDK adapter → v0.13.0 | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Second framework; portability check; convert-and-compare |
+| **S22** | 2 | Model gateway & cost → v0.14.0 | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
+| **S23** | 2 | Onboarding & switching → v0.15.0 | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers |
+| **S24** | 2 | Pydantic AI & Agno → v0.16.0 | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
+| **S25–S26** | 4 | CrewAI adapter → v0.17.0 | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
+| **S27–S28** | 4 | Google ADK adapter → v0.18.0 | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full |
+| **S29** | 2 | Strands & LlamaIndex → v0.19.0 | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier |
+| **S30–S31** | 4 | Microsoft Agent Framework → v0.20.0 | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Full |
+| **S32** | 2 | Mastra → v0.21.0 | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
+| **Later** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, Git sync, hosted trial | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
+
+From S15 the order follows the value-first [competitive roadmap](../16-competitive-roadmap.md), approved 2026-10-07.
 
 Total to MVP ≈ 19 weeks; to production-ready ≈ 23 weeks with four developers. One developer: multiply by ~3.5.
 
@@ -370,6 +383,12 @@ Deviations and gaps:
 
 ### S20+ — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).
+
+### S15 onward
+
+Scope, exit criteria and ordering for S15–S32 are in the [competitive roadmap §7](../16-competitive-roadmap.md#7-sprint-plan),
+approved on 2026-10-07. Each sprint's detailed backlog is added here when the sprint starts, after the pre-sprint
+codebase review. Framework adapter sprints (S21, S24–S32) follow their [adapter specs](../adapters/README.md).
 
 ## 4. Risks to the schedule
 
