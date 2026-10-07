@@ -262,3 +262,12 @@ def test_the_copilot_knows_the_target_framework():
 
     assert "LangGraph" in framework_note("langchain")
     assert "no adapter" in framework_note("crewai")
+
+
+def test_a_turn_keeps_decisions_taken_meanwhile():
+    from agentcanvas.api.v1.copilot import merge_proposals
+
+    stored = [{"id": "p1", "status": "accepted"}, {"id": "p0", "status": "rejected"}]
+    turn = [{"id": "p1", "status": "superseded"}, {"id": "p2", "status": "pending"}]
+    merged = merge_proposals(stored, turn)
+    assert {p["id"]: p["status"] for p in merged} == {"p0": "rejected", "p1": "accepted", "p2": "pending"}

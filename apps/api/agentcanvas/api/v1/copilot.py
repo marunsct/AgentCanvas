@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
@@ -37,7 +38,7 @@ from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["copilot"])
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-_busy: set[str] = set()  # conversations answering right now (one turn at a time per conversation)
+_busy: set[tuple[str, str]] = set()  # (workflow, person) answering right now: one turn at a time per conversation
 _packs: dict[str, Pack] = {}  # registry + templates fingerprint -> pack
 
 
@@ -85,11 +86,13 @@ def _pack(registry: Registry, templates: dict[str, dict[str, Any]]) -> Pack:
     return _packs[key]
 
 
-async def _conversation(session: AsyncSession, wf_id: str, user_id: str) -> CopilotConversation | None:
+async def _conversation(
+    session: AsyncSession, wf_id: str, user_id: str, lock: bool = False
+) -> CopilotConversation | None:
     q = select(CopilotConversation).where(
         CopilotConversation.workflow_id == wf_id, CopilotConversation.user_id == user_id
     )
-    return await session.scalar(q)
+    return await session.scalar(q.with_for_update() if lock else q)
 
 
 async def _model(
@@ -146,6 +149,19 @@ async def get_conversation(
     )
 
 
+DECIDED = ("accepted", "rejected")
+
+
+def merge_proposals(stored: list[dict[str, Any]], turn: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The turn's proposals over the stored ones, except that a decision recorded meanwhile wins."""
+    by_id = {p.get("id"): p for p in stored}
+    out = []
+    for p in turn:
+        old = by_id.pop(p.get("id"), None)
+        out.append(old if old is not None and old.get("status") in DECIDED else p)
+    return [*by_id.values(), *out]
+
+
 @router.post("/workflows/{wf_id}/copilot/messages", response_class=StreamingResponse)
 async def send_message(
     wf_id: str,
@@ -158,6 +174,26 @@ async def send_message(
     """Ask the Copilot (`ask`: questions only, any role) or have it build (`build`: builders) — an SSE stream."""
     if body.mode == "build" and RANK.get(user.role, -1) < RANK["builder"]:
         raise Forbidden("only builders can have the Copilot change workflows; use Ask mode for questions")
+    key = (wf_id, user.id)
+    if key in _busy:  # checked and taken with no await in between
+        raise Conflict("the Copilot is still answering your last message")
+    _busy.add(key)
+    try:
+        return await _start_turn(wf_id, body, request, session, settings, user, key)
+    except BaseException:
+        _busy.discard(key)
+        raise
+
+
+async def _start_turn(
+    wf_id: str,
+    body: MessageIn,
+    request: Request,
+    session: AsyncSession,
+    settings: Settings,
+    user: CurrentUser,
+    key: tuple[str, str],
+) -> StreamingResponse:
     svc = _service(request, session, settings)
     view = await svc.get(wf_id)
     project_id = view.row.project_id
@@ -171,12 +207,13 @@ async def send_message(
         conv = CopilotConversation(id=new_id("cpc"), workflow_id=wf_id, user_id=user.id, messages=[], proposals=[])
         conv.usage = {}
         session.add(conv)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError as exc:  # the same person's first message from another tab won
+            raise Conflict("the Copilot is still answering your last message") from exc
     usage: dict[str, int] = dict(conv.usage or {})
     if usage.get("input_tokens", 0) + usage.get("output_tokens", 0) >= cs.token_cap:
         raise TooManyRequests("this conversation reached its token limit; start a new chat")
-    if conv.id in _busy:
-        raise Conflict("the Copilot is still answering your last message")
     registry = svc.registry(project_id) or default_registry()
     templates = list_templates(settings)
 
@@ -198,19 +235,24 @@ async def send_message(
         token_cap=cs.token_cap, base_version=view.row.version,
     )  # fmt: skip
     conv_id = conv.id
+    seen_messages = len(turn.history)
+    usage_before = dict(usage)
     await session.commit()  # the stream outlives this request's session (it is closed when the response starts)
-    _busy.add(conv_id)
     db = request.app.state.db
 
     async def save() -> None:
+        """Merge this turn into the row as it is now: decisions taken meanwhile (another tab) are kept."""
         async with db.sessionmaker() as s:
-            row = await s.get(CopilotConversation, conv_id)
+            row = await s.get(CopilotConversation, conv_id, with_for_update=True)
             if row is None:  # "New chat" while answering
                 return
-            row.messages = list(turn.history)
-            row.proposals = list(turn.proposals)
+            row.messages = [*(row.messages or []), *turn.history[seen_messages:]]
+            row.proposals = merge_proposals(list(row.proposals or []), turn.proposals)
             row.brief = ctx.brief
-            row.usage = dict(turn.usage)
+            now = dict(row.usage or {})
+            for k, v in turn.usage.items():
+                now[k] = now.get(k, 0) + v - usage_before.get(k, 0)
+            row.usage = now
             await s.commit()
 
     async def stream() -> AsyncIterator[str]:
@@ -222,8 +264,10 @@ async def send_message(
                             p["status"] = "superseded"
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         finally:
-            _busy.discard(conv_id)
-            await asyncio.shield(save())
+            try:
+                await asyncio.shield(save())
+            finally:
+                _busy.discard(key)
 
     return StreamingResponse(counted_stream(stream()), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -237,7 +281,7 @@ async def decide_proposal(
     user: CurrentUser = Depends(current_user),
 ) -> Response:
     """Record what the person did with a proposal (the editor applies accepted commands itself)."""
-    conv = await _conversation(session, wf_id, user.id)
+    conv = await _conversation(session, wf_id, user.id, lock=True)  # two tabs cannot both accept it
     proposals = [dict(p) for p in (conv.proposals if conv else [])]
     match = next((p for p in proposals if p["id"] == proposal_id), None)
     if conv is None or match is None:

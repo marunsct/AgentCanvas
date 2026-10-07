@@ -63,6 +63,7 @@ export function Canvas() {
   // drill-in (M2-T13): the canvas shows a subgraph's steps read-only, with live status from nested events
   // a Copilot proposal (S14) is previewed in place: the workflow as it would be, new and changed parts marked
   const ghost = useCopilot((s) => s.ghost);
+  const copilotBusy = useCopilot((s) => s.busy);
   const view = useMemo(
     () => (ghost && !drill.length ? ghost.workflow : wf && drill.length ? innerWorkflow(wf, drill) : wf),
     [wf, drill, ghost],
@@ -311,8 +312,10 @@ export function Canvas() {
       {ghost && !drill.length && (
         <div className="ghost-banner" role="status" data-testid="ghost-banner">
           Previewing the Copilot's proposal: green is new, amber is changed.{" "}
-          <button type="button" className="primary small" onClick={() => void useCopilot.getState().accept()}>Accept</button>{" "}
-          <button type="button" className="small" onClick={() => void useCopilot.getState().reject()}>Reject</button>
+          <button type="button" className="primary small" disabled={copilotBusy}
+            onClick={() => void useCopilot.getState().accept()}>Accept</button>{" "}
+          <button type="button" className="small" disabled={copilotBusy}
+            onClick={() => void useCopilot.getState().reject()}>Reject</button>
         </div>
       )}
       {wf && wf.nodes.length === 0 && (
