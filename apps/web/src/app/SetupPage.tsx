@@ -7,6 +7,7 @@ import { PROJECT_ID, useModelProviders, useModels, useSetup } from "../api/queri
 import { can } from "../api/session";
 import type { SetupOut } from "../api/types";
 import { QueryStatus } from "../ui/QueryStatus";
+import { CopilotSettings } from "../copilot/CopilotSettings";
 import { providerHint } from "../inspector/widgets";
 
 interface TestResult { ok: boolean; reply?: string | null; error?: string | null }
@@ -111,6 +112,7 @@ export function SetupPage() {
           {(test.error || save.error || skip.error) && <p className="error-text">{((test.error || save.error || skip.error) as Error).message}</p>}
         </form>
       )}
+      <CopilotSettings />
     </div>
   );
 }

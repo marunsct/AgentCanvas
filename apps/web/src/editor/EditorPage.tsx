@@ -6,6 +6,8 @@ import { useNodeTypes } from "../api/queries";
 import { Canvas } from "../canvas/Canvas";
 import { Palette } from "../canvas/Palette";
 import { CodePanel } from "../code/CodePanel";
+import { CopilotPanel } from "../copilot/CopilotPanel";
+import { useCopilot } from "../copilot/copilot";
 import { Inspector } from "../inspector/Inspector";
 import { useInbox } from "../inbox/InboxPage";
 import { ProblemsPanel } from "../problems/ProblemsPanel";
@@ -25,7 +27,7 @@ import { useEditor } from "./store";
 import { can, ME } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 
-type Tab = "inspect" | "run" | "tests" | "versions" | "code";
+type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
 
 export function EditorPage() {
   const { id } = useParams();
@@ -47,6 +49,7 @@ export function EditorPage() {
     if (!id) return;
     useEditor.getState().reset();
     useRun.getState().reset();
+    useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null });
     useEditor.getState().load(id).catch((e: Error) => setError(e.message));
     const thread = params.get("thread");  // "open this run's timeline", e.g. from an experiment's results
     if (thread) {
@@ -110,6 +113,8 @@ export function EditorPage() {
         <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
         <button type="button" onClick={() => useUi.getState().setHelp(!useUi.getState().help)} data-testid="help-button"
           title="A short guide for beginners: what the blocks, dots and arrows mean">❓ Help</button>
+        <button type="button" onClick={() => setTab("copilot")} data-testid="copilot-button"
+          title="Chat with the AI Copilot: describe a workflow, ask questions, get changes to review">✦ Copilot</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
       </header>
       {notice && (
@@ -126,13 +131,14 @@ export function EditorPage() {
       </main>
       <aside className="side">
         <nav className="tabs" role="tablist">
-          {(["inspect", "run", "tests", "versions", "code"] as Tab[]).map((t) => (
+          {(["inspect", "copilot", "run", "tests", "versions", "code"] as Tab[]).map((t) => (
             <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
-              onClick={() => setTab(t)}>{{ inspect: "Inspector", run: "Run", tests: "Tests", versions: "Versions", code: "Code" }[t]}</button>
+              onClick={() => setTab(t)}>{{ inspect: "Inspector", copilot: "Copilot", run: "Run", tests: "Tests", versions: "Versions", code: "Code" }[t]}</button>
           ))}
         </nav>
         <ErrorBoundary key={tab} label="This panel">
           {tab === "inspect" && <Inspector />}
+          {tab === "copilot" && <CopilotPanel />}
           {tab === "run" && <RunPanel />}
           {tab === "tests" && <TestsPanel />}
           {tab === "versions" && <VersionsPanel />}

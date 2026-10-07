@@ -14,6 +14,7 @@ import type { NodeManifest } from "../api/types";
 import type { Command } from "../ir/commands";
 import { allNames, defaultsFromSchema, innerWorkflow, uniqueName } from "../ir/model";
 import { useEditor } from "../editor/store";
+import { useCopilot } from "../copilot/copilot";
 import { useRun } from "../run/runStore";
 import { useUi } from "../editor/ui";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -60,17 +61,24 @@ export function Canvas() {
 
   const drill = useEditor((s) => s.drill);
   // drill-in (M2-T13): the canvas shows a subgraph's steps read-only, with live status from nested events
-  const view = useMemo(() => (wf && drill.length ? innerWorkflow(wf, drill) : wf), [wf, drill]);
-  const readOnly = drill.length > 0;
+  // a Copilot proposal (S14) is previewed in place: the workflow as it would be, new and changed parts marked
+  const ghost = useCopilot((s) => s.ghost);
+  const view = useMemo(
+    () => (ghost && !drill.length ? ghost.workflow : wf && drill.length ? innerWorkflow(wf, drill) : wf),
+    [wf, drill, ghost],
+  );
+  const readOnly = drill.length > 0 || Boolean(ghost);
   useEffect(() => {
     if (readOnly && !view) useEditor.getState().setDrill([]); // the subgraph was removed or inlined
   }, [readOnly, view]);
   const derived = useMemo(
     () => (view
-      ? irToFlow(view, readOnly ? {} : layout, manifests, readOnly ? [] : diagnostics, status, readOnly ? null : selected,
-        { highlight, breakpoints, output, metrics, pins, diff: readOnly ? null : diff, blast: readOnly ? null : blast })
+      ? irToFlow(view, drill.length ? {} : layout, manifests, readOnly ? [] : diagnostics, status, readOnly ? null : selected,
+        { highlight, breakpoints, output, metrics, pins, diff: ghost ? ghost.diff : readOnly ? null : diff,
+          blast: readOnly ? null : blast })
       : { nodes: [], edges: [] }),
-    [view, readOnly, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff, blast],
+    [view, readOnly, drill, ghost, layout, manifests, diagnostics, status, selected, highlight, breakpoints, output, metrics, pins, diff,
+      blast],
   );
   const [nodes, setNodes] = useState<Node<CanvasData>[]>(derived.nodes);
   const [edges, setEdges] = useState<Edge[]>(derived.edges);
@@ -299,7 +307,14 @@ export function Canvas() {
         // a safety view: a failed request must not look like "no effects"
         <div className="blast-status" data-testid="blast-status"><QueryStatus q={blastQuery} what="the blast radius" /></div>
       )}
-      {readOnly && <SubgraphCrumbs />}
+      {drill.length > 0 && <SubgraphCrumbs />}
+      {ghost && !drill.length && (
+        <div className="ghost-banner" role="status" data-testid="ghost-banner">
+          Previewing the Copilot's proposal: green is new, amber is changed.{" "}
+          <button type="button" className="primary small" onClick={() => void useCopilot.getState().accept()}>Accept</button>{" "}
+          <button type="button" className="small" onClick={() => void useCopilot.getState().reject()}>Reject</button>
+        </div>
+      )}
       {wf && wf.nodes.length === 0 && (
         <div className="empty-hint">
           Click the dot on the right of <b>▶ Start</b> to pick your first step, or drag a block from the left.

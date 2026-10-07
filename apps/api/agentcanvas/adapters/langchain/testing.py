@@ -116,6 +116,52 @@ class DemoChatModel(BaseChatModel):
         return AIMessage(content=f"Demo reply (no model key configured): {text[:120]}")
 
 
+_DEMO_GREETER = [
+    {"op": "SetChannels", "channels": [{"name": "who", "io": "in"}, {"name": "greeting", "io": "out"}]},
+    {"op": "AddResource", "resource": {"id": "r_demo_model", "type": "model.chat", "name": "demo_model",
+                                       "config": {"model": "anthropic:claude-haiku-4-5"}}},
+    {"op": "AddNode", "node": {"id": "n_greet", "type": "core.llm", "name": "greet", "label": "Greet",
+                               "config": {"prompt": "Greet {{ state.who }} warmly.", "output": "greeting"}}},
+    {"op": "Connect", "edge": {"id": "e_start_greet", "kind": "flow", "source": {"node": "START"},
+                               "target": {"node": "n_greet"}}},
+    {"op": "Connect", "edge": {"id": "e_greet_end", "kind": "flow", "source": {"node": "n_greet"},
+                               "target": {"node": "END"}}},
+    {"op": "Connect", "edge": {"id": "w_demo_model_greet", "kind": "wiring", "source": {"node": "r_demo_model"},
+                               "target": {"node": "n_greet", "port": "model"}}},
+]  # fmt: skip
+
+
+class DemoCopilotModel(BaseChatModel):
+    """The key-less dev server's Copilot: asked to build, it proposes a one-step greeter; otherwise it explains."""
+
+    tool_names: list[str] = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "agentcanvas-demo-copilot"
+
+    def __init__(self, **kwargs: Any):
+        super().__init__(**{"disable_streaming": True, **kwargs})
+
+    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> DemoCopilotModel:  # type: ignore[override]
+        names = [t["function"]["name"] if "function" in t else t.get("name", "") for t in tools]
+        return DemoCopilotModel(tool_names=names)
+
+    def _generate(
+        self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
+    ) -> ChatResult:
+        last = max((i for i, m in enumerate(messages) if m.type == "human"), default=-1)
+        if any(isinstance(m, ToolMessage) for m in messages[last + 1 :]):
+            reply = AIMessage(content="I proposed a Greet step that writes a friendly greeting (demo Copilot).")
+        elif "propose_changes" in self.tool_names and "build" in _last_human(messages).lower():
+            args = {"summary": "Add a Greet step", "commands": _DEMO_GREETER}
+            reply = AIMessage(content="Plan: one Ask AI step.", tool_calls=[
+                {"name": "propose_changes", "args": args, "id": "demo_copilot_1"}])  # fmt: skip
+        else:
+            reply = AIMessage(content="This is the demo Copilot (no model key configured). Ask me to build something.")
+        return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
 def _last_human(messages: list[BaseMessage]) -> str:
     return next((str(m.content) for m in reversed(messages) if m.type == "human"), "")
 
@@ -144,6 +190,8 @@ class DemoResources(Resources):
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
             return super().model(name, config)
+        if name == "copilot":
+            return DemoCopilotModel()
         model_id = str(config.get("model", "demo"))
         if name not in self._demos:
             self._demos[name] = tag_model(DemoChatModel(), model_id, name)
