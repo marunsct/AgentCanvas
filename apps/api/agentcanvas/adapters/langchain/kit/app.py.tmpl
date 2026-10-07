@@ -1,0 +1,366 @@
+"""HTTP service for this workflow, with the same API as an AgentCanvas deployment.
+
+    POST /v1/deployments/{deployment}/runs/wait                    run; the final state or the pending questions
+    POST /v1/deployments/{deployment}/runs/stream                  the same run as Server-Sent Events
+    POST /v1/deployments/{deployment}/threads/{thread_id}/resume   answer an approval or a question
+    POST /v1/deployments/{deployment}/runs/{run_id}/feedback       your end user's thumbs up or down
+    GET  /healthz   GET /docs
+
+`{deployment}` can be any name: it is kept so a client moves from AgentCanvas by changing only the base URL and the
+key. Every call except /healthz and /docs needs `Authorization: Bearer <one of API_KEYS>`.
+
+Conversations (approvals, chat history) are kept in DATABASE_URL (Postgres) when it is set, otherwise in the SQLite
+file SQLITE_PATH (one machine only). Run `make doctor` to check the environment; the service runs the same checks
+when it starts and stops with a plain message instead of failing on the first request.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import hmac
+import json
+import logging
+import os
+import sys
+import time
+import uuid
+from collections import OrderedDict
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Annotated, Any, Literal
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # src/: the node library and workspace code
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi.responses import JSONResponse, Response, StreamingResponse  # noqa: E402
+from langgraph.types import Command  # noqa: E402
+from pydantic import BaseModel, Field, StringConstraints  # noqa: E402
+
+import __PKG__.checks as checks  # noqa: E402
+from __PKG__ import graph as generated  # noqa: E402
+from __PKG__.server import make_resources  # noqa: E402
+
+KIT = checks.KIT
+log = logging.getLogger("__PKG__")
+RUN_TIMEOUT_S = float(os.environ.get("RUN_TIMEOUT_SECONDS", "300"))
+# token streaming skips LangGraph error handlers, so workflows with error routes stream steps only (as on AgentCanvas)
+STREAM_MODES = ["tasks"] if KIT["error_routes"] else ["tasks", "messages"]
+ORG_KEY = "agentcanvas_org_id"  # memories are kept per organisation; a self-hosted service is one organisation
+
+
+class RunIn(BaseModel):
+    input: dict[str, Any] = Field(default_factory=dict)
+    thread_id: str | None = Field(None, description="continue a conversation this service started")
+    context: dict[str, Any] = Field(default_factory=dict)
+    user_id: str | None = Field(None, description="your end user's id; memories are kept per end user")
+    metadata: dict[str, Annotated[str, StringConstraints(max_length=200)]] = Field(default_factory=dict, max_length=20)
+
+
+class ResumeIn(BaseModel):
+    value: Any = None
+    interrupt_id: str | None = None
+
+
+class Result(BaseModel):
+    run_id: str
+    thread_id: str
+    status: Literal["success", "interrupted", "error", "cancelled", "running"]
+    output: dict[str, Any] | None = None
+    interrupts: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None
+
+
+class FeedbackIn(BaseModel):
+    rating: Literal["up", "down"]
+    comment: str = Field(default="", max_length=2000)
+
+
+def jsonable(v: Any) -> Any:
+    if isinstance(v, dict):
+        return {str(k): jsonable(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [jsonable(x) for x in v]
+    if hasattr(v, "model_dump"):
+        return jsonable(v.model_dump(exclude_none=True))
+    if isinstance(v, (str, int, float, bool)) or v is None:
+        return v
+    return str(v)
+
+
+def interrupt_kind(payload: Any) -> str:
+    if isinstance(payload, dict):
+        if "action_requests" in payload:
+            return "tool_approval"
+        if payload.get("kind") == "approval":
+            return "approval"
+    return "input"
+
+
+class Service:
+    """The compiled graph with its checkpointer and store, and the runs this process has answered."""
+
+    def __init__(self) -> None:
+        self.graph: Any = None
+        self.locks: dict[str, asyncio.Lock] = {}
+        self.runs: OrderedDict[str, str] = OrderedDict()  # run id -> thread id (recent runs, for feedback)
+        self.exits = contextlib.AsyncExitStack()
+
+    async def start(self) -> None:
+        checkpointer, store = await self._persistence()
+        build = getattr(generated, "abuild_graph", None)
+        resources = make_resources()
+        if build:
+            self.graph = await build(resources, checkpointer=checkpointer, store=store)
+        else:
+            self.graph = generated.build_graph(resources, checkpointer=checkpointer, store=store)
+
+    async def _persistence(self) -> tuple[Any, Any]:
+        url = checks.database_url()
+        if url:
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            from langgraph.store.postgres.aio import AsyncPostgresStore
+
+            url = url.replace("postgresql+psycopg://", "postgresql://")
+            saver = await self.exits.enter_async_context(AsyncPostgresSaver.from_conn_string(url))
+            store = await self.exits.enter_async_context(AsyncPostgresStore.from_conn_string(url))
+            await saver.setup()  # creates or migrates its tables
+            await store.setup()
+            return saver, store
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        from langgraph.store.memory import InMemoryStore
+
+        path = Path(os.environ.get("SQLITE_PATH", "data/checkpoints.sqlite"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        saver = await self.exits.enter_async_context(AsyncSqliteSaver.from_conn_string(str(path)))
+        if KIT["needs_database"]:
+            log.warning("no DATABASE_URL: conversations are kept in %s (this machine only); memories in memory", path)
+        return saver, InMemoryStore()
+
+    async def stop(self) -> None:
+        await self.exits.aclose()
+
+    def config(self, thread_id: str, run_id: str, metadata: dict[str, str] | None = None) -> dict[str, Any]:
+        return {
+            "configurable": {"thread_id": thread_id, ORG_KEY: os.environ.get("TENANT_ID", "self-hosted")},
+            "recursion_limit": KIT["recursion_limit"],
+            "run_id": uuid.UUID(run_id.removeprefix("run_")),
+            "metadata": {**(metadata or {}), "workflow": KIT["name"], "version": KIT["version"]},
+        }
+
+    async def exists(self, thread_id: str) -> bool:
+        snap = await self.graph.aget_state({"configurable": {"thread_id": thread_id}})
+        return bool(snap.values or snap.next)
+
+    async def execute(
+        self, thread_id: str, graph_input: Any, context: dict[str, Any], metadata: dict[str, str] | None = None
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Run once on `thread_id`, yielding canonical run events; the last one is RUN_FINISHED or RUN_ERROR."""
+        lock = self.locks.setdefault(thread_id, asyncio.Lock())
+        if lock.locked():
+            raise HTTPException(409, f"thread '{thread_id}' is already running; wait for it to finish")
+        run_id = f"run_{uuid.uuid4().hex}"
+        async with lock:
+            self.runs[run_id] = thread_id
+            while len(self.runs) > 10_000:
+                self.runs.popitem(last=False)
+            yield {"type": "RUN_STARTED", "runId": run_id, "threadId": thread_id}
+            cfg = self.config(thread_id, run_id, metadata)
+            started = time.perf_counter()
+            names = KIT["node_ids"]
+            try:
+                async with asyncio.timeout(RUN_TIMEOUT_S):
+                    async for part in self.graph.astream(
+                        graph_input, cfg, context=context or None, stream_mode=STREAM_MODES, version="v2"
+                    ):
+                        kind, data = part["type"], part["data"]
+                        if part["ns"]:
+                            continue
+                        if kind == "tasks" and data["name"] in names:
+                            if "input" in data:
+                                yield {"type": "STEP_STARTED", "stepName": data["name"],
+                                       "canvas_node_id": names[data["name"]]}  # fmt: skip
+                            else:
+                                error = data.get("error")
+                                status = "error" if error else ("interrupted" if data.get("interrupts") else "ok")
+                                yield {"type": "STEP_FINISHED", "stepName": data["name"],
+                                       "canvas_node_id": names[data["name"]], "status": status}  # fmt: skip
+                        elif kind == "messages":
+                            chunk, meta = data
+                            text = getattr(chunk, "content", "")
+                            if text and isinstance(text, str) and getattr(chunk, "type", "") in ("ai", "AIMessageChunk"):
+                                node = meta.get("langgraph_node")
+                                yield {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": names.get(node), "delta": text}
+            except TimeoutError:
+                yield {"type": "RUN_ERROR", "code": "timeout", "runId": run_id, "threadId": thread_id,
+                       "message": f"the run took longer than {RUN_TIMEOUT_S:g} s (RUN_TIMEOUT_SECONDS)"}  # fmt: skip
+                return
+            except Exception as exc:  # noqa: BLE001 - every failure reaches the caller as RUN_ERROR
+                log.exception("run failed", extra={"run_id": run_id, "thread_id": thread_id})
+                yield {"type": "RUN_ERROR", "code": "error", "runId": run_id, "threadId": thread_id,
+                       "message": f"{type(exc).__name__}: {exc}"}  # fmt: skip
+                return
+            snap = await self.graph.aget_state({"configurable": {"thread_id": thread_id}})
+            interrupts = []
+            for task in snap.tasks:
+                for intr in task.interrupts:
+                    payload = jsonable(intr.value)
+                    node = (payload.get("canvas_node_id") if isinstance(payload, dict) else None) or names.get(
+                        task.name
+                    )
+                    interrupts.append(
+                        {"id": intr.id, "kind": interrupt_kind(payload), "canvas_node_id": node, "payload": payload}
+                    )
+            values = jsonable(snap.values or {})
+            output = {k: v for k, v in values.items() if k in KIT["output_channels"]}
+            yield {
+                "type": "RUN_FINISHED",
+                "runId": run_id,
+                "threadId": thread_id,
+                "status": "interrupted" if (interrupts or snap.next) else "success",
+                "output": output,
+                "interrupts": interrupts,
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+            }
+
+
+service = Service()
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
+    problems = checks.startup_problems()
+    if problems:
+        sys.stderr.write(checks.explain(problems, "The service cannot start yet"))
+        sys.stderr.flush()
+        os._exit(3)  # a plain message, not a traceback; the platform restarts it once the settings are fixed
+    await service.start()
+    log.info("%s %s is ready", KIT["name"], KIT["version"])
+    try:
+        yield
+    finally:
+        await service.stop()
+
+
+app = FastAPI(title=KIT["name"], version=KIT["version"], lifespan=lifespan)
+
+
+async def authorised(authorization: str | None = Header(None)) -> None:
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    keys = [k.strip() for k in os.environ.get("API_KEYS", "").split(",") if k.strip()]
+    if not token or not any(hmac.compare_digest(token, k) for k in keys):
+        raise HTTPException(401, "a valid API key is required (Authorization: Bearer <key>)")
+
+
+def run_context(body: RunIn) -> dict[str, Any]:
+    """Identity fields come from the caller's `user_id` and TENANT_ID, never from `context` (as on AgentCanvas)."""
+    ctx: dict[str, Any] = {}
+    for f in KIT["context_fields"]:
+        if f["source"] == "user":
+            ctx[f["name"]] = f"api:{body.user_id}" if body.user_id else "api"
+        elif f["source"] == "tenant":
+            ctx[f["name"]] = os.environ.get("TENANT_ID", "self-hosted")
+        elif f["name"] in body.context:
+            ctx[f["name"]] = body.context[f["name"]]
+        elif f.get("required"):
+            raise HTTPException(400, f"context field '{f['name']}' is required")
+    return ctx
+
+
+async def _start(body: RunIn) -> tuple[str, Any, dict[str, Any]]:
+    thread_id = body.thread_id or f"th_{uuid.uuid4().hex}"
+    if body.thread_id and not await service.exists(body.thread_id):
+        raise HTTPException(404, f"thread '{body.thread_id}' not found")
+    return thread_id, body.input, run_context(body)
+
+
+async def _result(events: AsyncIterator[dict[str, Any]]) -> Result:
+    res: Result | None = None
+    async for ev in events:
+        if ev["type"] == "RUN_STARTED":
+            res = Result(run_id=ev["runId"], thread_id=ev["threadId"], status="error")
+        elif ev["type"] == "RUN_FINISHED" and res:
+            res.status, res.output, res.interrupts = ev["status"], ev["output"], ev["interrupts"]
+        elif ev["type"] == "RUN_ERROR" and res:
+            res.status, res.error = "error", ev["message"]
+    assert res is not None
+    return res
+
+
+def _sse(events: AsyncIterator[dict[str, Any]]) -> AsyncIterator[str]:
+    async def gen() -> AsyncIterator[str]:
+        seq = 0
+        async for ev in events:
+            seq += 1
+            yield f"id: {seq}\ndata: {json.dumps({**ev, 'seq': seq}, default=str)}\n\n"
+
+    return gen()
+
+
+async def _first(events: AsyncIterator[dict[str, Any]]) -> tuple[dict[str, Any], AsyncIterator[dict[str, Any]]]:
+    """The first event (raising a 409 before the response starts), and the stream with it put back."""
+    first = await anext(events)
+
+    async def rest() -> AsyncIterator[dict[str, Any]]:
+        yield first
+        async for ev in events:
+            yield ev
+
+    return first, rest()
+
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz() -> dict[str, Any]:
+    return {"ok": service.graph is not None, "workflow": KIT["name"], "version": KIT["version"]}
+
+
+@app.post("/v1/deployments/{deployment}/runs/wait", response_model=Result, dependencies=[Depends(authorised)])
+async def run_wait(deployment: str, body: RunIn) -> Result:
+    """Run the workflow and return its final state (or its pending interrupts)."""
+    thread_id, graph_input, ctx = await _start(body)
+    return await _result(service.execute(thread_id, graph_input, ctx, body.metadata))
+
+
+@app.post("/v1/deployments/{deployment}/runs/stream", dependencies=[Depends(authorised)])
+async def run_stream(deployment: str, body: RunIn) -> Response:
+    """Run the workflow, streaming canonical events (Server-Sent Events)."""
+    thread_id, graph_input, ctx = await _start(body)
+    first, events = await _first(service.execute(thread_id, graph_input, ctx, body.metadata))
+    headers = {"x-run-id": first["runId"], "x-thread-id": thread_id, "cache-control": "no-cache"}
+    return StreamingResponse(_sse(events), media_type="text/event-stream", headers=headers)
+
+
+@app.post(
+    "/v1/deployments/{deployment}/threads/{thread_id}/resume", response_model=Result, dependencies=[Depends(authorised)]
+)
+async def resume(deployment: str, thread_id: str, body: ResumeIn) -> Result:
+    """Answer a pending interrupt (approval, input) of a conversation."""
+    snap = await service.graph.aget_state({"configurable": {"thread_id": thread_id}})
+    pending = [i for t in snap.tasks for i in t.interrupts]
+    if not pending:
+        raise HTTPException(409 if snap.values else 404, f"thread '{thread_id}' has no pending question")
+    if body.interrupt_id and body.interrupt_id not in {i.id for i in pending}:
+        raise HTTPException(409, f"interrupt '{body.interrupt_id}' was already answered")
+    value = {body.interrupt_id: body.value} if body.interrupt_id else body.value
+    return await _result(service.execute(thread_id, Command(resume=value), {}))
+
+
+@app.post("/v1/deployments/{deployment}/runs/{run_id}/feedback", status_code=204, dependencies=[Depends(authorised)])
+async def feedback(deployment: str, run_id: str, body: FeedbackIn) -> Response:
+    """Your end user's thumbs up or down on a run's answer: logged as one JSON line (and to FEEDBACK_FILE if set)."""
+    thread_id = service.runs.get(run_id)
+    if thread_id is None:
+        raise HTTPException(404, f"run '{run_id}' not found")
+    record = {"run_id": run_id, "thread_id": thread_id, "rating": body.rating, "comment": body.comment,
+              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}  # fmt: skip
+    log.info("feedback %s", json.dumps(record))
+    if path := os.environ.get("FEEDBACK_FILE"):
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    return Response(status_code=204)
+
+
+@app.exception_handler(HTTPException)
+async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)

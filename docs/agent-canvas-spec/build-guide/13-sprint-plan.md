@@ -390,6 +390,30 @@ item met its acceptance in `test_copilot_debug.py` and `e2e/copilot.spec.ts`. De
 - The debug eval suite has only been run with a scripted model here (no provider keys).
 - Test runs are dry runs only; the Copilot cannot run a workflow for real.
 
+### S16 — Export deploy kit → v0.8.0
+
+| # | Item | Days | Acceptance |
+|---|------|-----:|------------|
+| 1 | Service with the deployment API | 4 | `app.py`: runs/wait, runs/stream, threads/{id}/resume, runs/{id}/feedback, healthz, docs; API keys; same shapes as AgentCanvas deployments |
+| 2 | Startup checks and checkpointer by environment | 1 | Postgres with `DATABASE_URL`, else SQLite; the service stops at startup with a plain message naming missing settings |
+| 3 | Dockerfile and Compose | 2 | non-root, health check, pinned base images; service plus Postgres; Caddy with automatic HTTPS for servers |
+| 4 | Target packs | 4 | Helm chart (Deployment, Service, Ingress, HPA), Cloud Run, ECS Fargate, Azure Container Apps; only the chosen target in the zip |
+| 5 | Guide generator | 3 | 1-PREREQUISITES, 2-SETUP, 3-DEPLOY, 4-VERIFY-AND-OPERATE with this workflow's keys, hosts and settings |
+| 6 | `make doctor` and `make smoke` | 3 | tools, settings, database, hosts, port, `--live` model calls, each problem pointing at its guide section; smoke runs the example input and answers approvals |
+| 7 | Tests and gate in the export | 2 | saved test cases and the service's API tests (offline, `DEMO_MODE`); `make gate` |
+| 8 | Export dialog | 2 | version and target picker; what the target needs before download (`GET …/export/plan`) |
+| 9 | CI | 3 | every template to every target; deploy files linted; each export's own tests with its own pins; Compose and kind deployed for real with doctor and smoke |
+
+**Review (2026-10-07).** Before the sprint the whole codebase was reviewed (7 findings, fixed in the S15 PR: Copilot
+test runs refuse unaccepted code and secrets sent to a new address, late Copilot answers stay with their workflow,
+Accept is recorded only when the edit lands, one Copilot turn at a time with merged saves, the question model keeps
+its endpoint, policy codes treated as in the Run panel). Deviations from the plan:
+- `make gate` runs the saved test cases and the service's API tests; LLM-judged evaluations stay in AgentCanvas.
+- Feedback is logged (and written to `FEEDBACK_FILE`), not stored in a database.
+- Cloud targets (Cloud Run, AWS, Azure) are syntax-checked in CI only, since CI holds no cloud accounts; the parity
+  script against a live AgentCanvas deployment is replaced by the service's API tests using the same request and
+  response shapes.
+
 ### S20+ — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).
 

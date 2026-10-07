@@ -33,6 +33,7 @@ nav:
       - Memory: user-guide/memory.md
       - Evaluation Studio: user-guide/evaluation.md
       - Publish and integrate: user-guide/publish.md
+      - Export and deploy: user-guide/export.md
       - Organisations, roles and policies: user-guide/accounts.md
       - Deploy and operate: user-guide/deploy.md
       - FAQ: user-guide/faq.md

@@ -3026,6 +3026,52 @@
         "title": "ExperimentResultOut",
         "type": "object"
       },
+      "ExportPlanOut": {
+        "properties": {
+          "prerequisites": {
+            "additionalProperties": true,
+            "description": "what the chosen target needs: tools, keys, hosts, database",
+            "title": "Prerequisites",
+            "type": "object"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/ExportTargetOut"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets",
+          "prerequisites"
+        ],
+        "title": "ExportPlanOut",
+        "type": "object"
+      },
+      "ExportTargetOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "summary"
+        ],
+        "title": "ExportTargetOut",
+        "type": "object"
+      },
       "ExpressionCheck": {
         "properties": {
           "kind": {
@@ -7944,7 +7990,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.7.0"
+    "version": "0.8.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -17291,7 +17337,7 @@
     },
     "/v1/workflows/{wf_id}/export.zip": {
       "get": {
-        "description": "The workflow (draft, or `?version=`) as a standalone Python project (M6-T2/T3).",
+        "description": "The workflow (draft, or `?version=`) as a deployable Python project with the deploy kit for `target`\n(M6-T2/T3, S16).",
         "operationId": "export_zip_v1_workflows__wf_id__export_zip_get",
         "parameters": [
           {
@@ -17317,6 +17363,24 @@
                 }
               ],
               "title": "Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "default": "local",
+              "enum": [
+                "local",
+                "server",
+                "kubernetes",
+                "cloudrun",
+                "aws",
+                "azure"
+              ],
+              "title": "Target",
+              "type": "string"
             }
           },
           {
@@ -17359,6 +17423,106 @@
           }
         ],
         "summary": "Export Zip",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/export/plan": {
+      "get": {
+        "description": "What deploying the export to `target` will need, before downloading it (S16).",
+        "operationId": "export_plan_v1_workflows__wf_id__export_plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "default": "local",
+              "enum": [
+                "local",
+                "server",
+                "kubernetes",
+                "cloudrun",
+                "aws",
+                "azure"
+              ],
+              "title": "Target",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Plan",
         "tags": [
           "versions"
         ]

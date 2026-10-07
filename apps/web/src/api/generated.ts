@@ -562,6 +562,10 @@ export type ThreadId3 = string | null;
 export type TokensIn = number;
 export type TokensOut = number;
 export type Trajectory2 = string[] | null;
+export type Id24 = string;
+export type Label6 = string;
+export type Summary3 = string;
+export type Targets2 = ExportTargetOut[];
 export type Kind5 = "cel" | "template";
 export type Source4 = string;
 export type Error3 = string | null;
@@ -621,7 +625,7 @@ export type Environment1 = string;
  * the evaluators the gate measures with, as saved (null: a gate saved before they were kept)
  */
 export type Evaluators2 = string[] | null;
-export type Id24 = string;
+export type Id25 = string;
 /**
  * largest allowed drop in pass rate against the live version
  */
@@ -649,7 +653,7 @@ export type DecidedAt = string | null;
 export type Decision1 = {
   [k: string]: unknown;
 } | null;
-export type Id25 = string;
+export type Id26 = string;
 export type Kind6 = string;
 export type RunId3 = string;
 export type Status7 = string;
@@ -662,7 +666,7 @@ export type Role = string;
 export type Annotations = AnnotationOut[];
 export type CreatedAt12 = string;
 export type Error4 = string | null;
-export type Id26 = string;
+export type Id27 = string;
 export type Input6 = {
   [k: string]: unknown;
 } | null;
@@ -679,7 +683,7 @@ export type Comment4 = string;
 export type CreatedAt13 = string;
 export type CreatedBy1 = string | null;
 export type Evaluator4 = string;
-export type Id27 = string;
+export type Id28 = string;
 export type JudgeCostUsd1 = number;
 export type JudgeTokens = number;
 export type Passed2 = boolean;
@@ -694,7 +698,7 @@ export type Scores3 = ScoreOut[];
 export type Status8 = string;
 export type ThreadId6 = string;
 export type CreatedAt14 = string;
-export type Id28 = string;
+export type Id29 = string;
 export type QueueId1 = string;
 export type Reason1 = string;
 export type ReviewedByMe1 = boolean;
@@ -718,7 +722,7 @@ export type Destructive = boolean;
 export type Name25 = string;
 export type ReadOnly = boolean;
 export type Email = string;
-export type Id29 = string;
+export type Id30 = string;
 export type OrgId1 = string;
 export type Role1 = string;
 export type Email1 = string;
@@ -742,8 +746,8 @@ export type UpdatedAt4 = string | null;
 export type Mode2 = "build" | "ask";
 export type Text = string;
 export type ContextWindow = number | null;
-export type Id30 = string;
-export type Label6 = string;
+export type Id31 = string;
+export type Label7 = string;
 export type PriceInPerMtok = number | null;
 export type PriceOutPerMtok = number | null;
 export type Provider = string;
@@ -775,7 +779,7 @@ export type Type6 = string;
 export type Inputs = PortSpec[];
 export type Interrupts1 = boolean;
 export type Kind7 = "runtime" | "resource" | "middleware" | "trigger";
-export type Label7 = string;
+export type Label8 = string;
 export type ListReadFields = string[];
 export type ListWriteFields = string[];
 export type Outputs = PortSpec[];
@@ -825,7 +829,7 @@ export type CreatedAt16 = string;
 export type DeploymentId1 = string;
 export type Evaluator5 = string;
 export type EvaluatorId1 = string;
-export type Id31 = string;
+export type Id32 = string;
 /**
  * scored runs a window needs before rules apply
  */
@@ -885,7 +889,7 @@ export type Enabled4 = boolean;
  * enforce only when publishing to these (empty: always, also in the editor)
  */
 export type Environments1 = string[];
-export type Id32 = string;
+export type Id33 = string;
 /**
  * CEL: which elements the policy is about
  */
@@ -905,16 +909,16 @@ export type Pending1 = number;
 export type Total = number;
 export type Name30 = string;
 export type CreatedAt18 = string;
-export type Id33 = string;
+export type Id34 = string;
 export type Name31 = string;
 export type Status11 = "accepted" | "rejected";
 export type BaseUrl2 = string | null;
 export type BaseUrlRequired = boolean;
 export type Example1 = string;
-export type Id34 = string;
+export type Id35 = string;
 export type Installed = boolean;
 export type KeyEnv = string | null;
-export type Label8 = string;
+export type Label9 = string;
 export type Local = boolean;
 export type Module = string;
 export type Notes1 = string;
@@ -1136,7 +1140,7 @@ export type Failed = boolean;
  */
 export type ThumbsDown = boolean;
 export type CreatedAt19 = string;
-export type Id35 = string;
+export type Id36 = string;
 export type Instructions1 = string;
 export type Name33 = string;
 export type ReviewersPerItem1 = number;
@@ -1351,7 +1355,7 @@ export type Stream1 = boolean;
 export type CostUsd2 = number;
 export type EndedAt1 = string | null;
 export type Error6 = string | null;
-export type Id36 = string;
+export type Id37 = string;
 export type IrHash1 = string;
 export type Mode3 = string;
 export type StartedAt = string;
@@ -1440,7 +1444,7 @@ export type Name36 = string | null;
  */
 export type NodeIds = [string, ...string[]];
 export type Description13 = string;
-export type Id37 = string;
+export type Id38 = string;
 export type Name37 = string;
 export type NodeCount = number;
 export type Context6 = {
@@ -1451,7 +1455,7 @@ export type Context7 = {
   [k: string]: unknown;
 } | null;
 export type CreatedAt21 = string;
-export type Id38 = string;
+export type Id39 = string;
 export type Name39 = string;
 export type Error7 = string | null;
 export type Ok2 = boolean;
@@ -1468,7 +1472,7 @@ export type Failed1 = number;
 export type Passed3 = number;
 export type Results1 = CaseResult[];
 export type CreatedAt22 = string;
-export type Id39 = string;
+export type Id40 = string;
 export type Status14 = string;
 export type Title = string | null;
 export type UpdatedAt5 = string;
@@ -1478,7 +1482,7 @@ export type NextCursor = string | null;
 export type CreatedAt23 = string;
 export type DeploymentId2 = string | null;
 export type Enabled6 = boolean;
-export type Id40 = string;
+export type Id41 = string;
 export type Kind8 = string;
 export type Secret = string | null;
 export type Url1 = string | null;
@@ -1487,12 +1491,12 @@ export type Kind9 = "webhook" | "cron";
 export type CreatedAt24 = string;
 export type DeploymentId4 = string | null;
 export type Enabled7 = boolean;
-export type Id41 = string;
+export type Id42 = string;
 export type Kind10 = string;
 export type Url2 = string | null;
 export type CreatedAt25 = string;
 export type CreatedBy2 = string | null;
-export type Id42 = string;
+export type Id43 = string;
 export type IrHash2 = string;
 export type Message8 = string;
 export type Semver1 = string;
@@ -1501,20 +1505,20 @@ export type Bump = "major" | "minor" | "patch";
 export type Message9 = string;
 export type CreatedAt26 = string;
 export type CreatedBy3 = string | null;
-export type Id43 = string;
+export type Id44 = string;
 export type IrHash3 = string;
 export type Message10 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
 export type CreatedAt27 = string;
 export type Diagnostics3 = Diagnostic[];
-export type Id44 = string;
+export type Id45 = string;
 export type IrHash4 = string;
 export type Name40 = string;
 export type ProjectId1 = string;
 export type UpdatedAt6 = string;
 export type Version8 = number;
-export type Id45 = string;
+export type Id46 = string;
 export type Name41 = string;
 export type UpdatedAt7 = string;
 export type Version9 = number;
@@ -1582,6 +1586,8 @@ export interface ApiSchemas {
   ExperimentIn?: ExperimentIn;
   ExperimentOut?: ExperimentOut;
   ExperimentResultOut?: ExperimentResultOut;
+  ExportPlanOut?: ExportPlanOut;
+  ExportTargetOut?: ExportTargetOut;
   ExpressionCheck?: ExpressionCheck;
   ExpressionResult?: ExpressionResult;
   FeedbackIn?: FeedbackIn;
@@ -2821,6 +2827,29 @@ export interface Score {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ExportPlanOut".
+ */
+export interface ExportPlanOut {
+  prerequisites: Prerequisites;
+  targets: Targets2;
+}
+/**
+ * what the chosen target needs: tools, keys, hosts, database
+ */
+export interface Prerequisites {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ExportTargetOut".
+ */
+export interface ExportTargetOut {
+  id: Id24;
+  label: Label6;
+  summary: Summary3;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ExpressionCheck".
  */
 export interface ExpressionCheck {
@@ -2951,7 +2980,7 @@ export interface GateOut {
   dataset_version?: DatasetVersion3;
   environment: Environment1;
   evaluators: Evaluators2;
-  id: Id24;
+  id: Id25;
   max_regression?: MaxRegression1;
   min_scores?: MinScores1;
   updated_at: UpdatedAt3;
@@ -3038,7 +3067,7 @@ export interface InterruptOut {
   created_at: CreatedAt11;
   decided_at: DecidedAt;
   decision: Decision1;
-  id: Id25;
+  id: Id26;
   kind: Kind6;
   payload: Payload;
   run_id: RunId3;
@@ -3067,7 +3096,7 @@ export interface ItemDetail {
   annotations: Annotations;
   created_at: CreatedAt12;
   error: Error4;
-  id: Id26;
+  id: Id27;
   input: Input6;
   output: Output3;
   queue_id: QueueId;
@@ -3089,7 +3118,7 @@ export interface ScoreOut {
   created_at: CreatedAt13;
   created_by: CreatedBy1;
   evaluator: Evaluator4;
-  id: Id27;
+  id: Id28;
   judge_cost_usd: JudgeCostUsd1;
   judge_tokens: JudgeTokens;
   passed: Passed2;
@@ -3104,7 +3133,7 @@ export interface ScoreOut {
  */
 export interface ItemOut {
   created_at: CreatedAt14;
-  id: Id28;
+  id: Id29;
   queue_id: QueueId1;
   reason: Reason1;
   reviewed_by_me: ReviewedByMe1;
@@ -3167,7 +3196,7 @@ export interface McpToolInfo {
  */
 export interface MeOut {
   email: Email;
-  id: Id29;
+  id: Id30;
   memberships: Memberships;
   org_id: OrgId1;
   role: Role1;
@@ -3223,8 +3252,8 @@ export interface MessageIn {
  */
 export interface ModelInfo {
   context_window?: ContextWindow;
-  id: Id30;
-  label: Label6;
+  id: Id31;
+  label: Label7;
   price_in_per_mtok?: PriceInPerMtok;
   price_out_per_mtok?: PriceOutPerMtok;
   provider: Provider;
@@ -3270,7 +3299,7 @@ export interface NodeManifest {
   inputs?: Inputs;
   interrupts?: Interrupts1;
   kind: Kind7;
-  label: Label7;
+  label: Label8;
   list_read_fields?: ListReadFields;
   list_write_fields?: ListWriteFields;
   outputs?: Outputs;
@@ -3279,7 +3308,7 @@ export interface NodeManifest {
   reads?: Reads;
   side_effects?: SideEffects;
   stability?: Stability;
-  targets?: Targets2;
+  targets?: Targets3;
   template_fields?: TemplateFields;
   type: Type7;
   version?: Version5;
@@ -3303,7 +3332,7 @@ export interface PortSpec {
   required?: Required1;
   type: Type6;
 }
-export interface Targets2 {
+export interface Targets3 {
   [k: string]: "full" | "partial" | "none";
 }
 /**
@@ -3353,7 +3382,7 @@ export interface OnlineOut {
   evaluator: Evaluator5;
   evaluator_id: EvaluatorId1;
   filter?: FilterIn;
-  id: Id31;
+  id: Id32;
   min_samples?: MinSamples1;
   sampling?: Sampling1;
   window_minutes?: WindowMinutes1;
@@ -3408,7 +3437,7 @@ export interface PolicyOut {
   description?: Description12;
   enabled?: Enabled4;
   environments?: Environments1;
-  id: Id32;
+  id: Id33;
   match?: Match1;
   name: Name29;
   require: Require1;
@@ -3437,7 +3466,7 @@ export interface ProjectIn {
  */
 export interface ProjectOut {
   created_at: CreatedAt18;
-  id: Id33;
+  id: Id34;
   name: Name31;
 }
 /**
@@ -3457,10 +3486,10 @@ export interface ProviderInfo {
   base_url?: BaseUrl2;
   base_url_required?: BaseUrlRequired;
   example?: Example1;
-  id: Id34;
+  id: Id35;
   installed?: Installed;
   key_env?: KeyEnv;
-  label: Label8;
+  label: Label9;
   local?: Local;
   module: Module;
   notes?: Notes1;
@@ -3524,7 +3553,7 @@ export interface ScoresBelow {
 export interface QueueOut {
   agreement?: Agreement;
   created_at: CreatedAt19;
-  id: Id35;
+  id: Id36;
   instructions?: Instructions1;
   name: Name33;
   progress: Progress;
@@ -3591,7 +3620,7 @@ export interface RunOut {
   cost_usd?: CostUsd2;
   ended_at: EndedAt1;
   error: Error6;
-  id: Id36;
+  id: Id37;
   ir_hash: IrHash1;
   mode: Mode3;
   started_at: StartedAt;
@@ -3720,7 +3749,7 @@ export interface SubgraphRequest {
  */
 export interface TemplateInfo {
   description: Description13;
-  id: Id37;
+  id: Id38;
   name: Name37;
   node_count: NodeCount;
 }
@@ -3761,7 +3790,7 @@ export interface TestCaseOut {
   context?: Context7;
   created_at: CreatedAt21;
   expect?: Expect;
-  id: Id38;
+  id: Id39;
   input?: Input10;
   last_result?: CaseResult | null;
   mocks?: Mocks4;
@@ -3817,7 +3846,7 @@ export interface TestRunOut {
  */
 export interface ThreadOut {
   created_at: CreatedAt22;
-  id: Id39;
+  id: Id40;
   status: Status14;
   title: Title;
   updated_at: UpdatedAt5;
@@ -3840,7 +3869,7 @@ export interface TriggerCreated {
   created_at: CreatedAt23;
   deployment_id: DeploymentId2;
   enabled: Enabled6;
-  id: Id40;
+  id: Id41;
   kind: Kind8;
   secret?: Secret;
   url?: Url1;
@@ -3869,7 +3898,7 @@ export interface TriggerOut {
   created_at: CreatedAt24;
   deployment_id: DeploymentId4;
   enabled: Enabled7;
-  id: Id41;
+  id: Id42;
   kind: Kind10;
   url?: Url2;
 }
@@ -3883,7 +3912,7 @@ export interface Config8 {
 export interface VersionDetail {
   created_at: CreatedAt25;
   created_by: CreatedBy2;
-  id: Id42;
+  id: Id43;
   ir: Ir2;
   ir_hash: IrHash2;
   layout: Layout1;
@@ -3912,7 +3941,7 @@ export interface VersionIn {
 export interface VersionOut {
   created_at: CreatedAt26;
   created_by: CreatedBy3;
-  id: Id43;
+  id: Id44;
   ir_hash: IrHash3;
   message: Message10;
   semver: Semver2;
@@ -3925,7 +3954,7 @@ export interface VersionOut {
 export interface WorkflowOut {
   created_at: CreatedAt27;
   diagnostics: Diagnostics3;
-  id: Id44;
+  id: Id45;
   ir: Ir3;
   ir_hash: IrHash4;
   layout: Layout2;
@@ -3953,7 +3982,7 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id45;
+  id: Id46;
   name: Name41;
   updated_at: UpdatedAt7;
   version: Version9;

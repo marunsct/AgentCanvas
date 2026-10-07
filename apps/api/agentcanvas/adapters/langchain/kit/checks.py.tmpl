@@ -1,0 +1,250 @@
+"""Is this environment ready? `make doctor` runs every check; the service runs the environment checks at startup.
+
+    python3 src/__PKG__/checks.py            tools, settings, database, outside hosts, port
+    python3 src/__PKG__/checks.py --live     also one tiny call to each AI model (needs `uv sync` first)
+    python3 src/__PKG__/checks.py --init     create .env from .env.example with a fresh API key
+
+Each problem names the section of the guides in docs/ that fixes it. Only the standard library is used, so this
+runs before anything is installed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlparse
+
+KIT = json.loads(Path(__file__).with_name("kit.json").read_text(encoding="utf-8"))
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass
+class Check:
+    name: str
+    ok: bool
+    detail: str
+    guide: str = ""
+    warning: bool = False  # reported, but does not fail the doctor
+
+
+def load_env(path: Path = ROOT / ".env") -> None:
+    """KEY=VALUE lines of .env into the environment (values already set win, as with Docker Compose)."""
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.removeprefix("export ").partition("=")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        os.environ.setdefault(key.strip(), value)
+
+
+def database_url() -> str:
+    """DATABASE_URL, or "" when unset (platform secret stores cannot hold an empty value, so "unset" counts too)."""
+    url = os.environ.get("DATABASE_URL", "").strip()
+    return "" if url.lower() in ("", "unset", "none") else url
+
+
+def demo() -> bool:
+    return os.environ.get("DEMO_MODE", "").lower() in ("1", "true", "yes")
+
+
+def settings_checks(deploy: bool = True) -> list[Check]:
+    out = []
+    keys = [k for k in os.environ.get("API_KEYS", "").split(",") if k.strip()]
+    out.append(
+        Check("API_KEYS", bool(keys), "set" if keys else "missing: the key callers send (run `make setup`)",
+              "2-SETUP.md#1-fill-in-the-settings")  # fmt: skip
+    )
+    for v in KIT["env"]:
+        if v["kind"] == "deploy" and not deploy:
+            continue  # only the machine that deploys needs these
+        if v["kind"] == "model_key" and demo():
+            out.append(Check(v["name"], True, "not needed: DEMO_MODE answers with canned replies", warning=True))
+            continue
+        present = bool(os.environ.get(v["name"]))
+        out.append(
+            Check(v["name"], present or not v["required"], "set" if present else f"missing: {v['where']}",
+                  "2-SETUP.md#1-fill-in-the-settings", warning=not present and not v["required"])  # fmt: skip
+        )
+    return out
+
+
+def database_checks() -> list[Check]:
+    url = database_url()
+    if not url:
+        if KIT["needs_database"] and KIT["target"] not in ("local", "server"):
+            return [Check("DATABASE_URL", False, "missing: this workflow keeps conversations, and every copy of "
+                          "the service must share them", "1-PREREQUISITES.md#data")]  # fmt: skip
+        detail = "not set: conversations are kept in a SQLite file on this machine (SQLITE_PATH)"
+        return [Check("DATABASE_URL", True, detail, "1-PREREQUISITES.md#data", warning=KIT["needs_database"])]
+    u = urlparse(url.replace("postgresql+psycopg://", "postgresql://"))
+    if u.scheme not in ("postgres", "postgresql"):
+        return [Check("DATABASE_URL", False, f"not a Postgres URL ({u.scheme}://...)", "2-SETUP.md#2-database")]
+    reachable = _reach(u.hostname or "localhost", u.port or 5432)
+    if reachable:
+        return [Check("DATABASE_URL", False, f"{u.hostname}:{u.port or 5432} unreachable: {reachable}",
+                      "2-SETUP.md#2-database")]  # fmt: skip
+    try:
+        import psycopg  # installed with the service; the doctor can run without it
+    except ImportError:
+        return [Check("DATABASE_URL", True, f"{u.hostname} answers (sign-in not checked: run `uv sync` first)")]
+    try:
+        psycopg.connect(url.replace("postgresql+psycopg://", "postgresql://"), connect_timeout=5).close()
+    except Exception as exc:  # noqa: BLE001 - shown to the person
+        return [Check("DATABASE_URL", False, f"cannot sign in: {exc}".splitlines()[0], "2-SETUP.md#2-database")]
+    return [Check("DATABASE_URL", True, f"connected to {u.hostname}")]
+
+
+def _reach(host: str, port: int) -> str | None:
+    try:
+        socket.create_connection((host, port), timeout=5).close()
+    except OSError as exc:
+        return str(exc) or type(exc).__name__
+    return None
+
+
+def tool_checks() -> list[Check]:
+    out = []
+    for t in KIT["tools"]:
+        path = shutil.which(t["command"][0])
+        if not path:
+            out.append(Check(t["name"], t.get("optional", False), f"not installed: {t['why']}",
+                             "1-PREREQUISITES.md#tools", warning=t.get("optional", False)))  # fmt: skip
+            continue
+        try:
+            done = subprocess.run(t["command"], capture_output=True, text=True, timeout=20, check=False)
+            first = (done.stdout or done.stderr).strip().splitlines()
+            version = first[0][:80] if first else "installed"
+            ok = done.returncode == 0
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            version, ok = str(exc), False
+        out.append(Check(t["name"], ok, version, "1-PREREQUISITES.md#tools"))
+    return out
+
+
+def host_checks() -> list[Check]:
+    out = []
+    for h in KIT["hosts"]:
+        if h["kind"] == "model" and demo():
+            continue
+        problem = _reach(h["host"], h["port"])
+        out.append(Check(f"reach {h['host']}", problem is None, problem or h["why"], "1-PREREQUISITES.md#network",
+                         warning=h.get("optional", False) and problem is not None))  # fmt: skip
+    return out
+
+
+def port_check() -> list[Check]:
+    if KIT["target"] not in ("local", "server"):
+        return []
+    port = int(os.environ.get("PORT", "8000"))
+    with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("0.0.0.0", port))
+        except OSError:
+            return [Check(f"port {port}", False, "in use (stop what uses it, or set PORT in .env)",
+                          "3-DEPLOY.md", warning=True)]  # fmt: skip
+    return [Check(f"port {port}", True, "free")]
+
+
+def live_checks() -> list[Check]:
+    """One tiny call to every AI model the workflow uses, with the keys in the environment."""
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from __PKG__.server import make_resources
+    except ImportError as exc:
+        return [Check("models", False, f"install the service first (`uv sync`): {exc}", "2-SETUP.md")]
+    resources = make_resources()
+    out = []
+    for m in KIT["models"]:
+        try:
+            reply = resources.model(m["resource"], m["config"]).invoke("Reply with the single word OK.")
+            out.append(Check(f"model {m['model']}", True, f"answered: {str(reply.content)[:40]!r}"))
+        except Exception as exc:  # noqa: BLE001 - shown to the person
+            out.append(Check(f"model {m['model']}", False, f"{type(exc).__name__}: {exc}".splitlines()[0][:200],
+                             "2-SETUP.md#1-fill-in-the-settings"))  # fmt: skip
+    return out
+
+
+def startup_problems() -> list[Check]:
+    """What stops the service from starting: missing settings, an unreachable database."""
+    return [c for c in settings_checks(deploy=False) + database_checks() if not c.ok]
+
+
+def explain(problems: list[Check], title: str) -> str:
+    lines = [f"\n{title}:\n"]
+    for c in problems:
+        lines.append(f"  - {c.name}: {c.detail}" + (f"  (see docs/{c.guide})" if c.guide else ""))
+    return "\n".join(lines) + "\n\n"
+
+
+def approve(interrupt: dict) -> object:
+    """A "yes" for a pending interrupt, in the shape its step expects (used by make smoke and the tests)."""
+    if interrupt.get("kind") == "approval":
+        return {"approved": True}
+    if interrupt.get("kind") == "tool_approval":
+        requests = (interrupt.get("payload") or {}).get("action_requests") or []
+        return {"decisions": [{"type": "approve"} for _ in requests]}
+    return "yes"
+
+
+def init_env() -> int:
+    env, example = ROOT / ".env", ROOT / ".env.example"
+    if env.exists():
+        print(".env already exists; nothing changed")
+        return 0
+    text = example.read_text(encoding="utf-8")
+    text = text.replace("API_KEYS=\n", f"API_KEYS={secrets.token_urlsafe(32)}\n", 1)
+    text = text.replace("POSTGRES_PASSWORD=\n", f"POSTGRES_PASSWORD={secrets.token_urlsafe(24)}\n", 1)
+    env.write_text(text, encoding="utf-8")
+    env.chmod(0o600)
+    print("created .env with a fresh API key; now fill in the empty values (docs/2-SETUP.md)")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--live", action="store_true", help="also make one tiny call to each AI model")
+    p.add_argument("--init", action="store_true", help="create .env from .env.example with a fresh API key")
+    p.add_argument("--no-tools", action="store_true", help="skip the installed-tools checks (inside a container)")
+    args = p.parse_args(argv)
+    if args.init:
+        return init_env()
+    load_env()
+    sections = [
+        ("Tools", [] if args.no_tools else tool_checks()),
+        ("Settings", settings_checks()),
+        ("Database", database_checks()),
+        ("Network", host_checks() + port_check()),
+    ]
+    if args.live:
+        sections.append(("AI models", live_checks()))
+    failed = 0
+    for title, checks in sections:
+        if not checks:
+            continue
+        print(f"\n{title}")
+        for c in checks:
+            mark = "!" if c.warning else ("✓" if c.ok else "✗")
+            failed += not c.ok
+            print(f"  {mark} {c.name}: {c.detail}" + (f"  → docs/{c.guide}" if c.guide and not c.ok else ""))
+    print("\n" + ("Ready." if not failed else f"{failed} problem(s) to fix before deploying."))
+    if not failed and not args.live and KIT["models"] and not demo():
+        print("Tip: `make doctor ARGS=--live` also checks that each model key works (one tiny call each).")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
