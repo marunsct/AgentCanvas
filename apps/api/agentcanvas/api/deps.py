@@ -152,6 +152,8 @@ ROLE_EXCEPTIONS = {
     ("DELETE", "/workflows/{wf_id}/copilot"): "viewer",  # anyone starts their own chat over
     ("PUT", "/workflows/{wf_id}/gates/{environment}"): "admin",  # a builder must not lower the bar they publish over
     ("DELETE", "/workflows/{wf_id}/gates/{environment}"): "admin",
+    ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server
+    ("DELETE", "/projects/{project_id}/trace-export"): "admin",
 }
 
 

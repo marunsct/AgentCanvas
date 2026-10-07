@@ -82,6 +82,16 @@ label.row input { width: auto; margin: 0; }
   grid-template-areas: "top top top" "palette stage side" "palette dock side";
 }
 .editor > .topbar { grid-area: top; }
+@media (max-width: 700px) {
+  /* phones: stack palette, canvas, side panel and dock; the page scrolls */
+  .editor {
+    height: auto; min-height: 100vh; overflow: visible;
+    grid-template-columns: 1fr; grid-template-rows: 44px auto 60vh auto 170px;
+    grid-template-areas: "top" "palette" "stage" "side" "dock";
+  }
+  .palette { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  .side { border-left: 0; border-top: 1px solid var(--border); }
+}
 .palette { grid-area: palette; overflow: auto; border-right: 1px solid var(--border); background: var(--panel); padding: 8px; }
 .stage { grid-area: stage; position: relative; min-width: 0; }
 .side { grid-area: side; border-left: 1px solid var(--border); background: var(--panel); overflow: auto; }
@@ -308,7 +318,11 @@ td.status-handled { color: var(--ok); }
 .widget.diff-changed, .resource.diff-changed { outline: 3px solid #d97706; outline-offset: 2px; }
 .badge.ok { background: #dcfce7; color: #166534; }
 .case-list, .version-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
-.case-list > li, .version-list > li { border: 1px solid var(--border, #e2e8f0); border-radius: 6px; padding: 6px 8px; }
+.case-list > li, .version-list > li { border: 1px solid var(--border, #e2e8f0); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+.connect code { display: block; overflow-wrap: anywhere; }
+.connect pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.connect-label { margin: 8px 0 2px; font-weight: 600; }
+summary h4 { display: inline; }
 .failures { margin: 4px 0 0 16px; padding: 0; }
 .diff-box { border: 1px dashed #d97706; border-radius: 6px; padding: 6px 8px; margin: 8px 0; }
 .checklist { list-style: none; padding: 0; }

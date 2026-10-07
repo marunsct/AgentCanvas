@@ -12,7 +12,14 @@ from pydantic import BaseModel
 from agentcanvas.api.deps import get_settings_dep
 from agentcanvas.expr import ExpressionError, check_condition
 from agentcanvas.ir.models import Workflow
-from agentcanvas.registry import ModelInfo, NodeManifest, ProviderInfo, default_registry, installed_providers
+from agentcanvas.registry import (
+    ModelInfo,
+    NodeManifest,
+    ProviderInfo,
+    default_registry,
+    installed_providers,
+    load_gallery,
+)
 from agentcanvas.services.workflows import list_templates
 from agentcanvas.settings import Settings
 
@@ -45,6 +52,34 @@ class TemplateInfo(BaseModel):
     name: str
     description: str
     node_count: int
+
+
+class ConnectorSecret(BaseModel):
+    name: str
+    what: str = ""
+    where: str = ""
+
+
+class McpConnector(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: str
+    publisher: Literal["official", "vendor", "community"] = "community"
+    config: dict[str, Any]
+    secrets: list[ConnectorSecret] = []
+    setup: str = ""
+    auth: Literal["none", "key", "oauth"] = "none"
+    docs: str = ""
+    source: str = ""
+    verified: str = ""
+    local: bool = False  # starts a process on the server (stdio): local edition, enabled by an admin
+
+
+@router.get("/mcp-connectors", response_model=list[McpConnector])
+def mcp_connectors() -> list[McpConnector]:
+    """The one-click connector gallery (S15): curated MCP servers with their settings and the secrets they need."""
+    return [McpConnector(**c, local=c["config"].get("transport") == "stdio") for c in load_gallery()["connectors"]]
 
 
 @router.get("/templates", response_model=list[TemplateInfo])

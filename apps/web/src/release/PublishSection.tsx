@@ -5,11 +5,13 @@ import { ApiError, apiFetch } from "../api/client";
 import type { Check, DeploymentOut, PublishOut } from "../api/generated";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
+import { ConnectSection } from "./ConnectSection";
 
 export function PublishSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [key, setKey] = useState<{ deployment: string; key: string } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const deps = useQuery({ queryKey: ["deployments", wfId], queryFn: () => apiFetch<DeploymentOut[]>(`/workflows/${wfId}/deployments`) });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["deployments", wfId] });
@@ -30,13 +32,25 @@ export function PublishSection({ wfId }: { wfId: string }) {
   });
   const rotate = async (d: DeploymentOut) => {
     if (!window.confirm("Issue a new key? The current key stops working immediately.")) return;
-    const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST" });
-    setKey({ deployment: d.id, key: out.api_key });
+    setActionError(null);
+    try {
+      const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST" });
+      setKey({ deployment: d.id, key: out.api_key });
+      refresh();
+    } catch (e) {
+      setActionError(`Could not rotate the key: ${(e as Error).message}`);
+    }
   };
   const unpublish = async (d: DeploymentOut) => {
     if (!window.confirm(`Unpublish ${d.environment}? Calls with its key will be refused.`)) return;
-    await apiFetch(`/deployments/${d.id}`, { method: "DELETE" });
-    refresh();
+    setActionError(null);
+    try {
+      await apiFetch(`/deployments/${d.id}`, { method: "DELETE" });
+      setKey((k) => (k?.deployment === d.id ? null : k));
+      refresh();
+    } catch (e) {
+      setActionError(`Could not unpublish: ${(e as Error).message}`);
+    }
   };
   return (
     <section className="publish" aria-label="publish">
@@ -45,6 +59,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
         {publish.isPending ? "Checking…" : "Publish to prod"}
       </button>}
       {publish.error && <p className="error-text small" role="alert">{(publish.error as Error).message}</p>}
+      {actionError && <p className="error-text small" role="alert">{actionError}</p>}
       {publish.error && can("admin") && checks?.some((c) => c.name === "evaluation" && !c.ok) && checks.every((c) => c.ok || c.name === "evaluation") && (
         <button type="button" className="small danger" onClick={() => {
           const reason = window.prompt("Publish although the release gate fails? The reason goes to the audit log.");
@@ -78,6 +93,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
               {d.active && can("builder") && <button type="button" className="small" onClick={() => void rotate(d)}>Rotate key</button>}
               {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
+            {d.active && <ConnectSection deployment={d} apiKey={key?.deployment === d.id ? key.key : undefined} />}
           </li>
         ))}
       </ul>

@@ -70,6 +70,33 @@
           "type": "string"
         }
       },
+      "env": {
+        "type": "object",
+        "title": "Environment variables (stdio)",
+        "description": "For the server process, e.g. its API key; a value can be a secret",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string",
+              "title": "Value"
+            },
+            {
+              "type": "object",
+              "title": "Secret",
+              "required": [
+                "$secret"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "$secret": {
+                  "type": "string",
+                  "title": "Secret name"
+                }
+              }
+            }
+          ]
+        }
+      },
       "tool_filter": {
         "type": "array",
         "title": "Only these tools",

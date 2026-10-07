@@ -151,8 +151,17 @@ async def test_seeded_dev_user_has_no_rights_with_sign_in_on(client):
 
 
 # routes reachable without signing in (S15); deployment and webhook routes check their own credentials
-PUBLIC = {("GET", "/v1/auth/config"), ("GET", "/healthz"), ("GET", "/readyz")}
-OWN_CREDENTIALS = ("/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/")
+PUBLIC = {
+    ("GET", "/v1/auth/config"), ("GET", "/healthz"), ("GET", "/readyz"),
+    # S15: A2A clients read the card before they authenticate; the MCP GET only says "POST" (405)
+    ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json"),
+    ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent.json"),
+    ("GET", "/v1/deployments/{dep_id}/mcp"),
+}  # fmt: skip
+OWN_CREDENTIALS = (
+    "/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/",
+    "/v1/deployments/{dep_id}/mcp", "/v1/deployments/{dep_id}/a2a",
+)  # fmt: skip
 
 
 async def test_every_other_route_needs_sign_in(app, client):

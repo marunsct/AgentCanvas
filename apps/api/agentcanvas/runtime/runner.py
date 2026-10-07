@@ -60,6 +60,8 @@ class RunHandle:
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
+    trace_redact: list[str] = field(default_factory=list)  # the workflow's fields that never reach a trace
+    event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
@@ -273,6 +275,7 @@ class Runner:
         handle = RunHandle(
             run_id=run_id, thread_id=thread_id, workflow_id=wf.id, workflow_name=wf.name, origin=origin,
             deployment_id=deployment_id, version_id=version_id, labels=dict(labels or {}),
+            trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
@@ -307,6 +310,7 @@ class Runner:
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
         event = {**event, "seq": len(h.events) + 1}
         h.events.append(event)
+        h.event_times.append(time.time_ns())
         async with h.changed:
             h.changed.notify_all()
 
