@@ -116,17 +116,26 @@ class LangSmithBox:
 
     async def exchange(self, import_path: str, payload: bytes, policy: SandboxPolicy) -> tuple[str, str, int]:
         """Run the child for one call; returns (stdout, stderr, exit code)."""
-        from langsmith.sandbox import CommandTimeoutError
+        from langsmith.sandbox import CommandTimeoutError, ResourceNotFoundError, SandboxNotReadyError
 
-        box = await self._ensure(policy)
-        inp = f"/sandbox/in-{uuid.uuid4().hex}.json"
-        await box.write(inp, payload)
-        cmd = f"python3 -I /sandbox/child.py {shlex.quote(import_path)} < {inp}; rc=$?; rm -f {inp}; exit $rc"
-        try:
-            res = await box.run(cmd, timeout=math.ceil(policy.timeout_s), cwd="/ws")
-        except CommandTimeoutError:
-            raise TimeoutError(f"{import_path} ran longer than {policy.timeout_s:g} s") from None
-        return res.stdout, res.stderr, res.exit_code
+        for retry in (False, True):
+            box = self._box
+            try:
+                box = await self._ensure(policy)
+                inp = f"/sandbox/in-{uuid.uuid4().hex}.json"
+                await box.write(inp, payload)
+                cmd = f"python3 -I /sandbox/child.py {shlex.quote(import_path)} < {inp}; rc=$?; rm -f {inp}; exit $rc"
+                res = await box.run(cmd, timeout=math.ceil(policy.timeout_s), cwd="/ws")
+                return res.stdout, res.stderr, res.exit_code
+            except CommandTimeoutError:
+                raise TimeoutError(f"{import_path} ran longer than {policy.timeout_s:g} s") from None
+            except (ResourceNotFoundError, SandboxNotReadyError):
+                if retry:
+                    raise
+                async with self._lock:  # stopped after its idle TTL, or deleted: start a fresh one, once
+                    if self._box is box:  # unless another call already replaced it
+                        self._box, self._files_key = None, None
+        raise AssertionError("unreachable")
 
     async def _delete(self) -> None:
         box, self._box = self._box, None

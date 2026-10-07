@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 import pytest
-from langsmith.sandbox import CommandTimeoutError, ExecutionResult
+from langsmith.sandbox import CommandTimeoutError, ExecutionResult, ResourceNotFoundError
 
 from agentcanvas.sandbox.policy import PolicyError, check_policy, parse_policy, proxy_config
 from agentcanvas.sandbox.runners import SandboxRunner, ScriptError
@@ -80,17 +80,22 @@ class FakeBox:
     def __init__(self, name: str, root: Path):
         self.name, self.root = name, root
         self.writes: list[str] = []
+        self.gone = False  # stopped after its idle TTL and deleted
 
     def _local(self, text: str) -> str:
         return re.sub(r"(?<![\w/])/(sandbox|ws)\b", lambda m: f"{self.root}/{m.group(1)}", text)
 
     async def write(self, path: str, content: str | bytes) -> None:
+        if self.gone:
+            raise ResourceNotFoundError(f"sandbox '{self.name}' not found", resource_type="sandbox")
         self.writes.append(path)
         local = Path(self._local(path))
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_bytes(content.encode() if isinstance(content, str) else content)
 
     async def run(self, command: str, *, timeout: int = 60, cwd: str | None = None, **_: object) -> ExecutionResult:
+        if self.gone:
+            raise ResourceNotFoundError(f"sandbox '{self.name}' not found", resource_type="sandbox")
         (self.root / "ws").mkdir(parents=True, exist_ok=True)
         env = {"PATH": os.environ["PATH"], "HOME": str(self.root)}  # like the real sandbox: no host secrets
         proc = await asyncio.create_subprocess_exec(
@@ -186,6 +191,29 @@ async def test_langsmith_runner_uploads_once_and_follows_policy_changes(tmp_path
 
     await runner.aclose()
     assert fake_langsmith.closed and len(fake_langsmith.deleted) == 2
+
+
+async def test_langsmith_runner_replaces_an_expired_sandbox(tmp_path, fake_langsmith):
+    ws = Workspace(tmp_path / "prj").ensure()
+    ws.write("scripts/add.py", "def run(state):\n    return {'n': state['n'] + 1}\n")
+    runner = SandboxRunner(Settings(script_execution="langsmith"), ws.root, {})
+    assert (await runner("scripts.add:run")({"n": 1}))["n"] == 2
+    [first] = fake_langsmith.boxes.values()
+    first.gone = True  # idle TTL: the remote sandbox stopped and was deleted
+    assert (await runner("scripts.add:run")({"n": 2}))["n"] == 3
+    assert len(fake_langsmith.created) == 2
+    second = fake_langsmith.boxes[fake_langsmith.created[1]["name"]]
+    assert "/sandbox/child.py" in second.writes and "/sandbox/ws.tgz" in second.writes  # set up from scratch
+    second.gone = True
+    fake_langsmith.create_sandbox = lambda **kw: _gone(kw)  # type: ignore[method-assign]
+    with pytest.raises(ResourceNotFoundError):  # retried once, then the error surfaces
+        await runner("scripts.add:run")({"n": 3})
+
+
+async def _gone(kw: dict) -> FakeBox:
+    box = FakeBox(str(kw["name"]), Path("/nonexistent"))
+    box.gone = True
+    return box
 
 
 async def test_langsmith_mode_end_to_end(app, api_client, fake_langsmith):
