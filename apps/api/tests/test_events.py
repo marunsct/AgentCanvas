@@ -204,3 +204,27 @@ async def test_resume_only_reaches_threads_of_the_handlers_project(app, api_clie
         assert res["status"] == "error", res
         assert "not found" in res["handlers"][0]["error"]
     assert (await api_client.get("/v1/threads/th_theirs")).json()["values"].get("ok") is None
+
+
+async def test_resume_continues_a_published_conversation_on_its_version(app, api_client):
+    """`act.resume` on a deployment's thread runs the deployment's pinned version, not the draft."""
+    from agentcanvas.services.projects import PROJECT_OF
+
+    await setup(api_client)
+    ask = {"id": "n_a", "type": "core.approval", "name": "sign", "config": {"show": "out", "output": "ok"}}
+    signer = await make_wf(api_client, linear("Contract", [ask], ["out", "ok"]))
+    pub = (await api_client.post(f"/v1/workflows/{signer}/publish", json={})).json()
+    dep, key = pub["deployment"]["id"], pub["api_key"]
+    started = await api_client.post(
+        f"/v1/deployments/{dep}/runs/wait", json={"input": {}}, headers={"Authorization": f"Bearer {key}"}
+    )
+    thread = started.json()["thread_id"]
+    assert started.json()["status"] == "interrupted"
+    PROJECT_OF.pop(signer, None)  # a fresh server: nothing registered the workflow's project yet
+    res = (await api_client.post(f"{P}/events", json={"type": "contract.signed", "data": {"thread_id": thread}})).json()
+    assert res["status"] == "handled", res
+    await finished(app, res["handlers"][0]["runs"])
+    h = app.state.runner.handles[res["handlers"][0]["runs"][0]]
+    assert h.status == "success" and h.deployment_id == dep and h.version_id
+    assert PROJECT_OF[signer] == "prj_default"
+    assert (await api_client.get(f"/v1/threads/{thread}")).json()["values"]["ok"] is True
