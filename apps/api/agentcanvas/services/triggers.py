@@ -2,7 +2,8 @@
 
 - **Webhook** `POST /v1/hooks/{trigger_id}`: the delivery is signed with the trigger's secret —
   `X-AgentCanvas-Timestamp: <unix seconds>` and `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of
-  "<timestamp>." + raw body>`; deliveries more than 5 minutes old are refused (replays) — and mapped to the workflow
+  "<timestamp>." + raw body>`; deliveries more than 5 minutes old are refused, and a delivery seen before is a 409
+  (replays) — and mapped to the workflow
   input with templates over `body` (e.g. `{"ticket": "{{ body.issue.title }}"}`); without a mapping the body
   itself is the input.
 - **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process. Each
@@ -18,16 +19,17 @@ import asyncio
 import hashlib
 import hmac
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import structlog
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Deployment, Project, Trigger, WorkflowRow, WorkflowVersion
-from agentcanvas.errors import InvalidInput, NotFound, Unauthorized
+from agentcanvas.db.models import Deployment, EventDedup, Project, Trigger, WorkflowRow, WorkflowVersion
+from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unauthorized
 from agentcanvas.expr import render_template
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -206,6 +208,32 @@ class TriggerService:
         if age > TOLERANCE_S or not hmac.compare_digest(sign(secret, body, timestamp), signature.strip()):
             raise refused
         return trig
+
+    async def claim_delivery(self, trig: Trigger, signature: str) -> str:
+        """Refuse a replay within the tolerance window: each signed delivery (its signature covers the timestamp)
+        starts one run. Remembered in the events' dedup table, so every replica sees it; returns the claim's id."""
+        project_id, handler = await self.project_of(trig), f"webhook:{trig.id}"
+        cutoff = datetime.now(UTC) - timedelta(seconds=2 * TOLERANCE_S)  # older deliveries are refused as stale
+        await self.s.execute(
+            delete(EventDedup).where(
+                EventDedup.project_id == project_id, EventDedup.handler == handler, EventDedup.created_at < cutoff
+            )
+        )
+        claim = EventDedup(
+            id=new_id("dd"), project_id=project_id, handler=handler, value=signature.strip(), event_id=""
+        )
+        self.s.add(claim)
+        try:
+            await self.s.commit()
+        except IntegrityError:
+            await self.s.rollback()
+            raise Conflict("this webhook delivery was already received") from None
+        return claim.id
+
+    async def release_delivery(self, claim_id: str) -> None:
+        """Forget a claimed delivery whose run did not start, so the sender's retry is accepted."""
+        await self.s.execute(delete(EventDedup).where(EventDedup.id == claim_id))
+        await self.s.commit()
 
     async def project_of(self, trig: Trigger) -> str:
         """The project a trigger's workflow belongs to (the workflow id when it no longer exists)."""
