@@ -51,7 +51,7 @@ export function EditorPage() {
     if (!id) return;
     useEditor.getState().reset();
     useRun.getState().reset();
-    useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null });
+    useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null, busy: false, live: null });
     useEditor.getState().load(id).catch((e: Error) => setError(e.message));
     const thread = params.get("thread");  // "open this run's timeline", e.g. from an experiment's results
     if (thread) {

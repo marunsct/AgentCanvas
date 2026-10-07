@@ -45,6 +45,18 @@ def load(project_settings: dict[str, Any] | None) -> CopilotSettings:
     return CopilotSettings.model_validate((project_settings or {}).get("copilot") or {})
 
 
+def _endpoint_for(model: str, settings: CopilotSettings, project_settings: dict[str, Any] | None) -> dict[str, Any]:
+    """The base URL and key of the separate model or the project default when `model` is from the same provider
+    (a self-hosted server answers both), else none: the provider's own endpoint and key."""
+    provider = model.partition(":")[0]
+    if settings.model and settings.model.partition(":")[0] == provider:
+        return {k: v for k, v in (("base_url", settings.base_url), ("api_key", settings.api_key)) if v}
+    default = (project_settings or {}).get("default_model") or {}
+    if str(default.get("model", "")).partition(":")[0] == provider:
+        return {k: v for k, v in default.items() if k in ("base_url", "api_key")}
+    return {}
+
+
 def resolve(
     settings: CopilotSettings,
     project_settings: dict[str, Any] | None,
@@ -55,7 +67,11 @@ def resolve(
 ) -> ResolvedModel:
     """The Copilot's model for this workflow (and mode), or InvalidInput saying what to change."""
     if mode == "ask" and settings.ask_model:
-        chosen = ResolvedModel(model=settings.ask_model, origin="Copilot settings (questions)")
+        chosen = ResolvedModel(
+            model=settings.ask_model,
+            config=_endpoint_for(settings.ask_model, settings, project_settings),
+            origin="Copilot settings (questions)",
+        )
     elif settings.source == "separate":
         if not settings.model:
             raise InvalidInput("the Copilot is set to use a separate model, but none is chosen in Copilot settings")

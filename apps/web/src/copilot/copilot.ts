@@ -117,6 +117,8 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   askFor: (text, mode) => set({ request: { text, mode } }),
 
   load: async (workflowId) => {
+    const open = useEditor.getState().workflowId;
+    if (open && open !== workflowId) return; // a late answer about a workflow the editor has left
     set({ workflowId, error: null });
     const conversation = await apiFetch<Conversation>(`/workflows/${workflowId}/copilot`);
     if (get().workflowId !== workflowId) return;
@@ -133,6 +135,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
       conversation: conv && { ...conv, messages: [...conv.messages, { role: "user", content: text, mode }] },
     });
     const onEvent = (raw: unknown) => {
+      if (get().workflowId !== workflowId) return; // the editor moved to another workflow meanwhile
       const e = raw as Event;
       const live = get().live ?? { text: [], activity: [] };
       const c = get().conversation;
@@ -148,10 +151,12 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     try {
       await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode }, onEvent as never);
     } catch (e) {
-      set({ error: (e as Error).message });
+      if (get().workflowId === workflowId) set({ error: (e as Error).message });
     } finally {
-      set({ busy: false, live: null });
-      await get().load(workflowId).catch(() => undefined);
+      if (get().workflowId === workflowId) {
+        set({ busy: false, live: null });
+        await get().load(workflowId).catch(() => undefined);
+      }
     }
   },
 
@@ -161,10 +166,16 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     if (!p || !workflowId) return;
     if (p.commands?.length) {
       const editor = useEditor.getState();
+      if (editor.workflowId !== workflowId) return;
+      await editor.flush(); // earlier edits first, so the version below moves only with these commands
+      const before = useEditor.getState().version;
+      editor.setNotice(null);
       // edits made since the proposal are fine while the commands still apply; otherwise the edit is refused
       editor.dispatch(p.commands);
       await editor.flush();
-      if (useEditor.getState().notice?.kind === "error") return;
+      const after = useEditor.getState();
+      // refused (error), not allowed (view only) or lost to someone else's save (conflict): not accepted
+      if (after.notice || after.version === before) return;
     }
     set({ ghost: null });
     await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "accepted" } });

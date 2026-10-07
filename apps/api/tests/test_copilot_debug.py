@@ -162,3 +162,47 @@ async def test_debug_suite_plants_bugs_and_scores_a_fix():
     model = ResolvedModel(model="anthropic:claude-haiku-4-5", origin="test")
     result = await run_case(case, get_adapter(), resources, model, registry, settings)
     assert result.passed and result.turns == 1, result
+
+
+def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
+    """Review fix: a dry run stubs risky tools but not code; new code and re-pointed secrets wait for an accept."""
+    from agentcanvas.copilot.settings import CopilotSettings, _endpoint_for
+    from agentcanvas.copilot.tools import unaccepted_risks
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+
+    base = Workflow.model_validate(
+        {"id": "wf_x", "name": "x", "resources": [{"id": "r_m", "type": "model.chat", "name": "m",
+         "config": {"model": "openai:gpt-5", "api_key": {"$secret": "OPENAI_API_KEY"}}}]}
+    )  # fmt: skip
+    reg = default_registry()
+    assert unaccepted_risks(base, base, reg) == []
+    moved = base.model_copy(deep=True)
+    moved.resources[0].config["base_url"] = "https://elsewhere.example"
+    assert "sends a secret" in unaccepted_risks(base, moved, reg)[0]
+    renamed = base.model_copy(deep=True)
+    renamed.resources[0].config["temperature"] = 0.1  # same address: fine
+    assert unaccepted_risks(base, renamed, reg) == []
+    script_step = base.model_copy(deep=True)
+    script_step.nodes.append(_script_node())
+    assert "code step 's'" in unaccepted_risks(base, script_step, reg)[0]
+
+    # Ask mode on a self-hosted server keeps the separate model's address and key
+    cs = CopilotSettings(source="separate", model="vllm:big", base_url="http://gpu:8000/v1", ask_model="vllm:small")
+    assert _endpoint_for("vllm:small", cs, None) == {"base_url": "http://gpu:8000/v1"}
+    assert _endpoint_for("anthropic:claude-haiku-4-5", cs, None) == {}
+
+
+def _script_node():
+    from agentcanvas.ir.models import Node
+
+    return Node(id="n_s", type="core.script", name="s")
+
+
+def test_a_turn_keeps_decisions_taken_meanwhile():
+    from agentcanvas.api.v1.copilot import merge_proposals
+
+    stored = [{"id": "p1", "status": "accepted"}, {"id": "p0", "status": "rejected"}]
+    turn = [{"id": "p1", "status": "superseded"}, {"id": "p2", "status": "pending"}]
+    merged = merge_proposals(stored, turn)
+    assert {p["id"]: p["status"] for p in merged} == {"p0": "rejected", "p1": "accepted", "p2": "pending"}

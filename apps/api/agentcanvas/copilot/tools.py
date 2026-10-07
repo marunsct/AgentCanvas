@@ -8,6 +8,7 @@ and `set_brief` records what the workflow is for. Tools never raise to the model
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from agentcanvas.registry import Registry
 from agentcanvas.services.testcases import Expect
 from agentcanvas.validation import Diagnostic
 from agentcanvas.validation.help import diagnostic_help
+from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 MAX_COMMANDS = 80  # per proposal: a whole workflow fits, a runaway loop does not
 MAX_RESULT = 12_000  # characters of one tool result sent back to the model
@@ -200,8 +202,71 @@ async def get_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _runnable(ctx: ToolContext) -> str | None:
-    errors = [d for d in await ctx.validate(ctx.workflow) if d.severity == "error" and not d.code.endswith("95")]
-    return f"fix the {len(errors)} validation error(s) first: {errors[0].code} {errors[0].message}" if errors else None
+    # organisation policies are enforced at publish; like the Run panel, they do not stop a try-out
+    errors = [d for d in await ctx.validate(ctx.workflow) if d.severity == "error" and d.code not in POLICY_CODES]
+    if errors:
+        return f"fix the {len(errors)} validation error(s) first: {errors[0].code} {errors[0].message}"
+    if ctx.runs is not None and (risks := unaccepted_risks(ctx.runs.workflow, ctx.workflow, ctx.registry)):
+        return (
+            "a test run only runs what the person has accepted for "
+            + ", ".join(risks[:3])
+            + ": propose the change, and test it after it is accepted"
+        )
+    return None
+
+
+def _flat(wf: Workflow) -> tuple[list[Any], list[Any]]:
+    """Every node and resource, subgraphs included."""
+    nodes, resources = list(wf.nodes), list(wf.resources)
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            with contextlib.suppress(Exception):  # an invalid subgraph never runs
+                inner_nodes, inner_resources = _flat(wf.subworkflow(n))
+                nodes += inner_nodes
+                resources += inner_resources
+    return nodes, resources
+
+
+ENDPOINT_KEYS = ("base_url", "url", "headers", "endpoint", "azure_endpoint", "command", "args")
+
+
+def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[str]:
+    """What the working copy would run that the person has not accepted and a dry run does not stub: new or changed
+    code (script steps, Python tools, custom code steps), and secrets sent to a new or changed address."""
+    old_nodes = {n.id: n for n in _flat(saved)[0]}
+    old_resources = {r.name: r for r in _flat(saved)[1]}
+    out: list[str] = []
+    nodes, resources = _flat(working)
+    for n in nodes:
+        m = registry.get(n.type) if registry else None
+        runs_code = n.type == "core.script" or (m is not None and "code_exec" in (m.side_effects or []))
+        old = old_nodes.get(n.id)
+        if runs_code and (old is None or old.type != n.type or old.config != n.config):
+            out.append(f"the new or changed code step '{n.name}'")
+    for r in resources:
+        old = old_resources.get(r.name)
+        if old is not None and old.type == r.type and old.config == r.config:
+            continue
+        if r.type == "tool.python":
+            out.append(f"the new or changed Python tool '{r.name}'")
+        elif secret_refs(r.config) and _endpoint(r.config) != (_endpoint(old.config) if old else _endpoint({})):
+            out.append(f"'{r.name}', which sends a secret to a new address")
+    return out
+
+
+def secret_refs(value: Any) -> set[str]:
+    """The secret names a config refers to ({"$secret": NAME}), at any depth."""
+    if isinstance(value, dict):
+        if isinstance(value.get("$secret"), str):
+            return {value["$secret"]}
+        return set().union(*(secret_refs(v) for v in value.values())) if value else set()
+    if isinstance(value, list):
+        return set().union(*(secret_refs(v) for v in value)) if value else set()
+    return set()
+
+
+def _endpoint(config: dict[str, Any]) -> list[Any]:
+    return [config.get(k) for k in ENDPOINT_KEYS]
 
 
 async def run_test(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
