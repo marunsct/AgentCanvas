@@ -18,6 +18,9 @@ import { Timeline } from "../run/Timeline";
 import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
 import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
+import { runErrorHelp } from "../help/diagnostics";
+import { HelpText } from "../help/HelpText";
+import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
 import { can, ME } from "../api/session";
 import { type DockTab, useUi } from "./ui";
@@ -38,6 +41,7 @@ export function EditorPage() {
   const blast = useUi((s) => s.blast);
   const inbox = useInbox();
   const pendingDecisions = inbox.data?.length ?? 0;
+  useFirstVisitHelp();
 
   useEffect(() => {
     if (!id) return;
@@ -104,11 +108,14 @@ export function EditorPage() {
           title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
         <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
         <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+        <button type="button" onClick={() => useUi.getState().setHelp(!useUi.getState().help)} data-testid="help-button"
+          title="A short guide for beginners: what the blocks, dots and arrows mean">❓ Help</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
       </header>
       {notice && (
         <div className={`toast ${notice.kind}`} role="status">
-          {notice.text} <button type="button" className="link" onClick={() => useEditor.getState().setNotice(null)}>dismiss</button>
+          {notice.text}{notice.kind === "error" && <HelpText help={runErrorHelp(notice.text)} className="run-hint" />}
+          {" "}<button type="button" className="link" onClick={() => useEditor.getState().setNotice(null)}>dismiss</button>
         </div>
       )}
       <Palette />
@@ -147,6 +154,7 @@ export function EditorPage() {
       </footer>
       <CommandPalette onRun={() => setTab("run")} />
       <Tutor />
+      <HelpDrawer />
     </div>
   );
 }

@@ -1,11 +1,11 @@
 {
   "type": "mw.model_fallback",
   "kind": "resource",
-  "label": "Model fallback",
-  "category": "Middleware",
+  "label": "Backup models",
+  "category": "Agent add-ons",
   "icon": "life-buoy",
   "color": "#9333EA",
-  "description": "Tries the wired models in order when the agent's model fails (ModelFallbackMiddleware).",
+  "description": "If the agent's AI model fails (for example the service is down), tries these backup models in order. Technical: ModelFallbackMiddleware.",
   "inputs": [
     {
       "name": "models",
@@ -13,13 +13,14 @@
       "required": true,
       "multi": true,
       "ordered": true,
-      "description": "Fallback models, first to last"
+      "description": "The backup AI models, tried first to last. Plug in one or more \u201cAI model\u201d blocks."
     }
   ],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

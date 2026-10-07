@@ -1,15 +1,16 @@
 {
   "type": "core.memory_remember",
   "kind": "runtime",
-  "label": "Remember",
+  "label": "Save to memory",
   "category": "Memory",
   "icon": "database",
   "color": "#0F766E",
-  "description": "Saves a channel's value in long-term memory under a key.",
+  "description": "Saves a value so later runs can find it again (long-term memory), under a key (name) you choose.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after saving: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -48,8 +49,9 @@
       },
       "value": {
         "type": "string",
-        "title": "Value channel",
-        "format": "channel"
+        "title": "Value to save",
+        "format": "channel",
+        "description": "The data field whose value is remembered."
       }
     }
   },

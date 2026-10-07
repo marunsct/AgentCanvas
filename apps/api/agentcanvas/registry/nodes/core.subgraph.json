@@ -1,15 +1,16 @@
 {
   "type": "core.subgraph",
   "kind": "runtime",
-  "label": "Subgraph",
-  "category": "Logic",
+  "label": "Group of steps",
+  "category": "Flow control",
   "icon": "layers",
   "color": "#0E7490",
-  "description": "A group of steps with its own state, run as one step. Input channels are copied in; output channels are copied back (append channels get only the new items).",
+  "description": "A small workflow inside one block, with its own data. Chosen fields are copied in before it runs and copied back out after. Double-click it to look inside.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after the group has finished: connect the next step, or Finish."
     }
   ],
   "config_schema": {

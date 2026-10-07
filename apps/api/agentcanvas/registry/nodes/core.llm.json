@@ -1,23 +1,24 @@
 {
   "type": "core.llm",
   "kind": "runtime",
-  "label": "LLM call",
+  "label": "Ask AI",
   "category": "AI",
   "icon": "sparkles",
   "color": "#2563EB",
-  "description": "One chat-model call: renders the prompt from state and writes the answer text to a channel.",
+  "description": "Sends a question or instruction (the prompt) to an AI model and saves its reply. Use {{ state.<field> }} in the prompt to insert data from earlier steps.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
       "required": true,
-      "description": "Chat model to call"
+      "description": "The AI model that writes the reply. Plug in an \u201cAI model\u201d block."
     }
   ],
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after the reply is saved: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -30,15 +31,16 @@
     "properties": {
       "prompt": {
         "type": "string",
-        "title": "Prompt",
+        "title": "Instructions for the AI (prompt)",
         "format": "prompt",
         "minLength": 1,
-        "description": "Jinja template; use {{ state.<channel> }} to insert state values."
+        "description": "What you want the AI to do. Insert data with {{ state.<field> }}, e.g. Summarize this: {{ state.question }}"
       },
       "output": {
         "type": "string",
-        "title": "Output channel",
-        "format": "channel"
+        "title": "Save the reply in",
+        "format": "channel",
+        "description": "The data field that receives the AI's answer. Add fields in the Inspector (click empty canvas)."
       }
     }
   },

@@ -1,16 +1,17 @@
 {
   "type": "mw.model_retry",
   "kind": "resource",
-  "label": "Model retry",
-  "category": "Middleware",
+  "label": "Retry AI calls",
+  "category": "Agent add-ons",
   "icon": "rotate-cw",
   "color": "#9333EA",
-  "description": "Retries failed model calls with exponential backoff (ModelRetryMiddleware).",
+  "description": "Tries a failed AI model call again, waiting a little longer each time. Technical: ModelRetryMiddleware.",
   "inputs": [],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

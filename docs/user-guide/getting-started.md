@@ -51,11 +51,12 @@ examples, used in the smoke test.
 
 ## Make a change
 
-1. Drag an **Approval** widget from the palette (*Human-in-the-loop*) onto the canvas.
-2. Drag from the output handle of one step to the input of the Approval, and from the Approval onward. Connections
-   are checked as you draw; if one is refused, a message says why.
-3. In the Inspector, choose which channel the reviewer sees (*Channel to review*) and where the decision is
-   written (*Decision channel*).
+1. Drag an **Ask for approval** block from the palette (*People*) onto the canvas.
+2. Drag from the output handle of one step to the input of the Approval, and from it onward. Connections
+   are checked as you draw; if one is refused, a message says why. Tip: click a block's right-hand dot to see
+   what can come next and add it already connected.
+3. In the Inspector, choose which data field the reviewer sees (*What the person reviews*) and where the
+   decision is written (*Save the decision in*).
 4. Watch the **Problems** dock: it lists anything that would stop the workflow from running, and says
    *No problems — the workflow can run.* when it is ready.
 5. Run again. The run pauses with **Approval needed**; approve or reject in the Run tab, or from the **Inbox**.
@@ -64,6 +65,7 @@ Changes save automatically (the header shows *Saved*). Undo and redo with the �
 
 ## Next steps
 
+- New to AI? Read the [Beginner's guide](beginner-guide.md).
 - Learn the vocabulary in [Core concepts](concepts.md).
 - Add a tool to the Chat assistant: see [Widgets › Tools](widgets.md#tools).
 - Save the run as a test case and freeze a version: see [Publish and integrate](publish.md).

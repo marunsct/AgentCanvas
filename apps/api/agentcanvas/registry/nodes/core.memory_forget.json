@@ -1,15 +1,16 @@
 {
   "type": "core.memory_forget",
   "kind": "runtime",
-  "label": "Forget",
+  "label": "Forget memory",
   "category": "Memory",
   "icon": "database",
   "color": "#0F766E",
-  "description": "Deletes one memory by key.",
+  "description": "Deletes one saved memory by its key (name).",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after the memory is deleted: connect the next step, or Finish."
     }
   ],
   "config_schema": {

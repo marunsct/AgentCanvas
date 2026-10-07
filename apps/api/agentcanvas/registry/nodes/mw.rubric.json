@@ -1,35 +1,38 @@
 {
   "type": "mw.rubric",
   "kind": "resource",
-  "label": "Rubric",
-  "category": "Middleware",
+  "label": "Quality check",
+  "category": "Agent add-ons",
   "icon": "list-checks",
   "color": "#9333EA",
-  "description": "Self-grading: before the agent answers, a grader model checks the work against a rubric and sends it back with what is missing, up to a number of times (deepagents RubricMiddleware). Grading streams as ac.rubric events.",
+  "description": "Before the agent answers, a second AI checks the work against your checklist and sends it back with what is missing, up to a set number of times. Technical: deepagents RubricMiddleware; grading streams as ac.rubric events.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
       "required": true,
-      "description": "Grader model"
+      "description": "The AI model that checks the work. Plug in an \u201cAI model\u201d block."
     },
     {
       "name": "tools",
       "type": "Tool",
       "multi": true,
-      "description": "Tools the grader may use to check the work (run tests, read files)"
+      "description": "Optional. Tools the checker may use to verify the work (run tests, read files)."
     }
   ],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["rubric"],
+    "required": [
+      "rubric"
+    ],
     "properties": {
       "rubric": {
         "type": "string",

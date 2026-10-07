@@ -1,16 +1,17 @@
 {
   "type": "mw.todo",
   "kind": "resource",
-  "label": "Planning (to-dos)",
-  "category": "Middleware",
+  "label": "To-do list",
+  "category": "Agent add-ons",
   "icon": "list-checks",
   "color": "#9333EA",
-  "description": "Gives the agent a write_todos tool to plan multi-step work (TodoListMiddleware).",
+  "description": "Gives the agent a to-do list it can write, so it plans multi-step work before doing it. Technical: TodoListMiddleware.",
   "inputs": [],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

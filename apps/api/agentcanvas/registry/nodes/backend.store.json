@@ -1,15 +1,16 @@
 {
   "type": "backend.store",
   "kind": "resource",
-  "label": "Long-term files",
+  "label": "Saved files folder",
   "category": "Memory",
   "icon": "database",
   "color": "#0F766E",
-  "description": "Mounts a folder backed by the long-term store (StoreBackend), shared across threads for a user, the workflow or one thread.",
+  "description": "A folder where a Planning Agent's files are kept after the run ends, shared across runs for a user, the workflow or one conversation. Technical: StoreBackend.",
   "outputs": [
     {
       "name": "backend",
-      "type": "Backend"
+      "type": "Backend",
+      "description": "Plug this into a Planning Agent's \u201cbackend\u201d input."
     }
   ],
   "config_schema": {

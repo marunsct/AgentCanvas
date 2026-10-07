@@ -1,16 +1,17 @@
 {
   "type": "mw.tool_call_limit",
   "kind": "resource",
-  "label": "Tool call limit",
-  "category": "Middleware",
+  "label": "Limit tool use",
+  "category": "Agent add-ons",
   "icon": "gauge",
   "color": "#9333EA",
-  "description": "Limits tool calls per run or thread, for all tools or one tool (ToolCallLimitMiddleware).",
+  "description": "Limits how many times the agent may use its tools (all of them, or one), per run or per conversation. Technical: ToolCallLimitMiddleware.",
   "inputs": [],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

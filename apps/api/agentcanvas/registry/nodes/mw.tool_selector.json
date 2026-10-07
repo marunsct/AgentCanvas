@@ -1,22 +1,23 @@
 {
   "type": "mw.tool_selector",
   "kind": "resource",
-  "label": "Tool selector",
-  "category": "Middleware",
+  "label": "Pick tools first",
+  "category": "Agent add-ons",
   "icon": "filter",
   "color": "#9333EA",
-  "description": "Lets a (cheaper) model pick the relevant tools before each call (LLMToolSelectorMiddleware).",
+  "description": "When an agent has many tools, a (cheaper) AI model first picks the few that matter for each request. Technical: LLMToolSelectorMiddleware.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
-      "description": "Selector model (default: the agent's model)"
+      "description": "Optional. The AI model that picks the tools. Without one the agent's own model does it."
     }
   ],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

@@ -9,7 +9,10 @@ const KEY = "agentcanvas.tour"; // workflow id the tour runs on (per browser tab
 
 export function startTour(workflowId: string) {
   try { sessionStorage.setItem(KEY, workflowId); } catch { /* storage unavailable: the tour just won't persist */ }
+  window.dispatchEvent(new Event(TOUR_EVENT));
 }
+
+const TOUR_EVENT = "agentcanvas:tour"; // a tour started while the editor is open (from the beginner guide)
 
 function tourFor(): string | null {
   try { return sessionStorage.getItem(KEY); } catch { return null; }
@@ -23,6 +26,11 @@ export function Tutor() {
   const interrupts = useRun((s) => s.interrupts.length);
   const error = useRun((s) => s.error);
   const [seen, setSeen] = useState({ finished: false, interrupted: false });
+  useEffect(() => {
+    const on = () => setActive(tourFor());
+    window.addEventListener(TOUR_EVENT, on);
+    return () => window.removeEventListener(TOUR_EVENT, on);
+  }, []);
   useEffect(() => {
     if (finishedSeq > startSeq && !error) setSeen((s) => ({ ...s, finished: true }));
   }, [finishedSeq, startSeq, error]);

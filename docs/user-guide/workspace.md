@@ -7,7 +7,7 @@ Each project has a **workspace**: a git repository of Python code used by its wo
 
 | Folder | What goes there | Appears as |
 |---|---|---|
-| `scripts/` | Script functions `def run(state: dict) -> dict` (sync or async) | *Workspace scripts* in the palette; use with the **Python script** widget |
+| `scripts/` | Script functions `def run(state: dict) -> dict` (sync or async) | *Workspace scripts* in the palette; use with the **Run Python code** block |
 | `tools/` | LangChain `@tool` functions | *Python tool* resources for agents |
 | `nodes/` | Custom widgets declared with `@canvas_node(...)` | New widgets in the palette, in the category you choose |
 | `events/` | Event handlers declared with `@on("type")`; JSON schemas in `events/schemas/` | The **Events** page |
@@ -56,7 +56,7 @@ Store API keys and passwords on the Workspace page under **Secrets** (**Save sec
 `UPPER_SNAKE_CASE`. Secrets are encrypted at rest, can't be read back through the API, and are masked as `***` in
 run events and traces.
 
-- In widget settings: `{"$secret": "NAME"}`, e.g. an HTTP tool's header. A Chat model's **API key** field lets you
+- In widget settings: `{"$secret": "NAME"}`, e.g. an HTTP tool's header. A AI model block's **API key** field lets you
   pick a secret by name; a secret named after the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`…) is used by that
   provider's models automatically. See [Models and API keys](models.md).
 - In scripts and custom widgets: `from agentcanvas.sdk import secret` then `secret("NAME")`.

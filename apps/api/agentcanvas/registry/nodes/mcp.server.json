@@ -1,17 +1,17 @@
 {
   "type": "mcp.server",
   "kind": "resource",
-  "label": "MCP server",
+  "label": "App connector (MCP)",
   "category": "Tools",
   "icon": "plug",
   "color": "#4B5563",
   "stability": "beta",
-  "description": "All tools of a Model Context Protocol server (langchain.mcp). Use Browse tools to pick tools and see which are destructive.",
+  "description": "Connects an agent to all the tools of an app through the Model Context Protocol (MCP). Use \u201cBrowse tools\u201d to pick tools and see which ones change things.",
   "outputs": [
     {
       "name": "tools",
       "type": "Tool",
-      "description": "Every (selected) tool of the server"
+      "description": "Every tool you picked from the app. Plug this into an agent's \u201ctools\u201d input."
     }
   ],
   "config_schema": {

@@ -1,34 +1,37 @@
 {
   "type": "agent.subagent",
   "kind": "resource",
-  "label": "Subagent",
-  "category": "Agents",
+  "label": "Helper Agent",
+  "category": "AI",
   "icon": "bot",
   "color": "#6D28D9",
-  "description": "A specialist a Deep Agent can delegate to with its `task` tool. The resource name is the subagent name.",
+  "description": "A specialist a Planning Agent can hand a task to (for example \u201cresearcher\u201d or \u201creviewer\u201d). Its name is how the Planning Agent asks for it, and its description says when to use it.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
-      "description": "Optional: defaults to the Deep Agent's model"
+      "description": "Optional. The AI model this helper uses. Without one it uses the Planning Agent's model."
     },
     {
       "name": "tools",
       "type": "Tool",
       "multi": true,
-      "ordered": true
+      "ordered": true,
+      "description": "Optional. Tools only this helper may use."
     },
     {
       "name": "middleware",
       "type": "Middleware",
       "multi": true,
-      "ordered": true
+      "ordered": true,
+      "description": "Optional. Add-ons for this helper: limits, retries, safety checks."
     }
   ],
   "outputs": [
     {
       "name": "subagent",
-      "type": "Subagent"
+      "type": "Subagent",
+      "description": "Plug this into a Planning Agent's \u201csubagents\u201d input."
     }
   ],
   "config_schema": {
@@ -47,9 +50,10 @@
       },
       "system_prompt": {
         "type": "string",
-        "title": "System prompt",
+        "title": "Instructions for the agent",
         "format": "prompt",
-        "minLength": 1
+        "minLength": 1,
+        "description": "Tell the AI who it is and how to behave, in plain words, e.g. \u201cYou are a friendly support assistant. Answer briefly.\u201d"
       },
       "approve_tools": {
         "type": "array",

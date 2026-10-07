@@ -28,7 +28,7 @@ inputs and outputs of the whole workflow form its **contract**, which the API us
 
 ## Steps, resources and edges
 
-- **Steps** (nodes) do work in sequence: an LLM call, an agent, a router, a script, an approval.
+- **Steps** (nodes) do work in sequence: *Ask AI*, an *AI Agent*, *Choose a path*, a script, *Ask for approval*.
 - **Resources** are things steps use rather than steps themselves: a **chat model**, a **tool**, an **MCP
   server**, **middleware**, a memory backend. They sit on the canvas as dashed boxes and are wired into a step's
   typed ports (`model`, `tools`, `middleware`). Several steps can share one resource.

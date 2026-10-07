@@ -1,15 +1,16 @@
 {
   "type": "tool.http",
   "kind": "resource",
-  "label": "HTTP request tool",
+  "label": "Web API tool",
   "category": "Tools",
   "icon": "globe",
   "color": "#4B5563",
-  "description": "Calls an HTTP API. The resource name is the tool name; the URL is a template over the tool's arguments, e.g. https://api.example.com/orders/{{ args.order_id }}.",
+  "description": "Lets an agent call a web service (an HTTP API), for example to look up an order. Its name is the tool name the AI sees; the URL can use the tool's inputs, e.g. https://api.example.com/orders/{{ args.order_id }}.",
   "outputs": [
     {
       "name": "tool",
-      "type": "Tool"
+      "type": "Tool",
+      "description": "Plug this into an agent's \u201ctools\u201d input."
     }
   ],
   "config_schema": {

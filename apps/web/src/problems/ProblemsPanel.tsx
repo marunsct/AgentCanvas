@@ -1,6 +1,8 @@
 /** Problems panel (M2-T9): diagnostics from every save; click focuses the node. */
 import { useEditor } from "../editor/store";
 import { findElement } from "../ir/model";
+import { diagnosticHelp } from "../help/diagnostics";
+import { HelpText } from "../help/HelpText";
 
 const ICON = { error: "⛔", warning: "⚠", info: "ℹ" } as const;
 
@@ -28,6 +30,7 @@ export function ProblemsPanel() {
                   {ICON[d.severity]} <b>{d.code}</b> {el && <code>{el.name}</code>} {d.message}
                   {d.hint && <span className="muted"> — {d.hint}</span>}
                 </button>
+                <HelpText help={diagnosticHelp(d)} />
               </li>
             );
           })}

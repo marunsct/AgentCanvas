@@ -357,3 +357,50 @@ a.button.primary { background: var(--accent); color: var(--accent-fg); }
 .setup-form .row { margin-top: 12px; }
 .setup-form .row button.link { width: auto; color: var(--muted); }
 .secret-ref label { display: block; }
+
+/* ---------- beginner help: port hover cards, "what can connect here?" menu, guide ---------- */
+.port-tip {
+  display: none; position: absolute; top: 20px; z-index: 20; width: 220px; padding: 7px 9px; border-radius: 8px;
+  background: #1e293b; color: #f8fafc; font-size: 11.5px; line-height: 1.35; box-shadow: 0 4px 14px #0004;
+  flex-direction: column; gap: 3px; white-space: normal; pointer-events: none; text-align: left; font-weight: 400;
+}
+.port-tip b { font-size: 12px; }
+.port-tip small { color: #cbd5e1; font-style: italic; }
+.port-tip.in { left: -6px; }
+.port-tip.out { right: -6px; }
+.port-tip.flow-in { top: 30px; left: -10px; }
+.port-tip.resource-out { top: 30px; right: -10px; }
+.port-row:hover .port-tip, .react-flow__handle:hover + .port-tip { display: flex; }
+.react-flow__node:has(.port-row:hover), .react-flow__node:has(.react-flow__handle:hover) { z-index: 1000 !important; }
+.react-flow__handle { cursor: pointer; }
+.port-menu {
+  position: fixed; z-index: 50; width: 320px; max-height: 70vh; overflow: auto; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px #0003; padding: 10px; font-size: 13px;
+}
+.port-menu h4 { margin: 0 0 4px; }
+.port-menu p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.port-menu h5 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.port-menu button.choice {
+  display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; margin: 3px 0; gap: 1px;
+}
+.port-menu button.choice small { color: var(--muted); font-size: 11.5px; }
+.port-menu input { margin-bottom: 6px; }
+.palette-item small.blurb { white-space: normal; line-height: 1.3; }
+.palette .start-tip { font-size: 12px; color: var(--muted); margin: 4px 0 8px; line-height: 1.4; }
+.diag-help { display: block; margin: 2px 0 4px 22px; font-size: 12px; color: var(--text); }
+.diag-help b { color: var(--muted); font-weight: 600; }
+.run-hint { margin: 4px 0; padding: 6px 8px; border-left: 3px solid var(--accent); background: var(--bg); font-size: 12.5px; }
+/* floats over the right of the canvas: the palette, the Inspector and the Start dot it talks about stay usable */
+.help-drawer {
+  position: fixed; top: 56px; right: 392px; bottom: 182px; width: min(430px, calc(100vw - 640px)); min-width: 280px;
+  z-index: 40; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 8px 28px #0003; padding: 14px 18px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.help-drawer h3 { margin: 0; }
+.help-drawer h4 { margin: 16px 0 4px; }
+.help-drawer dl { margin: 4px 0; }
+.help-drawer dt { font-weight: 600; margin-top: 6px; }
+.help-drawer dd { margin: 0 0 0 12px; color: var(--muted); }
+.help-drawer ol, .help-drawer ul { padding-left: 20px; margin: 4px 0; }
+.help-drawer .help-close { margin-left: auto; }

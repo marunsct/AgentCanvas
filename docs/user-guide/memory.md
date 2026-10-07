@@ -26,7 +26,7 @@ Same space + same sharing = same memories, whichever widget reads or writes them
   returns the most recent memories.
 - **Forget** deletes one key.
 - **Memory tools** give an agent `search_memory` and `save_memory`, so the agent decides when to use memory.
-- **Long-term files** mount a Deep Agent folder (e.g. `/memories/`) on long-term memory, so files the agent writes
+- **Saved files folder** blocks mount a Planning Agent folder (e.g. `/memories/`) on long-term memory, so files the agent writes
   there survive the conversation. The *Research brief* template does this.
 
 The *RAG Q&A* template answers questions from the `knowledge` space: fill it first with a Remember step or from

@@ -1,4 +1,6 @@
 /** Test-run panel (M4-T1): JSON input or chat, debug runs with breakpoints, approvals, continue/stop. */
+import { runErrorHelp } from "../help/diagnostics";
+import { HelpText } from "../help/HelpText";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
@@ -84,7 +86,7 @@ export function RunPanel() {
         Dry run (stub risky tools)
       </label>
       {chat ? <ChatInput wf={wf} disabled={blocked} /> : <FormInput wf={wf} disabled={blocked || busyEditing} />}
-      {errors > 0 && <p className="muted">{errors} error(s) block running — see Problems.</p>}
+      {errors > 0 && <p className="muted">{errors} problem(s) must be fixed before you can run — see Problems at the bottom; each one says how to fix it.</p>}
       {!builder && <p className="muted small">Your role can look at runs but not start them.</p>}
       <div className="row gap">
         {run.running && builder && <button type="button" onClick={() => void cancelRun()}>■ Stop</button>}
@@ -120,6 +122,7 @@ export function RunPanel() {
         </ul>
       )}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}
+      {run.error && <HelpText help={runErrorHelp(run.error)} className="run-hint" />}
       {!run.running && run.interrupts.map((intr) => (
         <DecisionCard key={intr.id} intr={intr} busy={!can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
       ))}

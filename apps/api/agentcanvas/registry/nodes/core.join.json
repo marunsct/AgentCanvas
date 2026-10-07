@@ -1,15 +1,16 @@
 {
   "type": "core.join",
   "kind": "runtime",
-  "label": "Join (wait for all)",
-  "category": "Logic",
+  "label": "Wait for all",
+  "category": "Flow control",
   "icon": "merge",
   "color": "#0891B2",
-  "description": "Waits until every incoming branch has finished, then continues.",
+  "description": "Waits until every branch connected into it has finished, then continues. Use it to bring parallel branches back together.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go once every branch has arrived: connect the next step, or Finish."
     }
   ],
   "config_schema": {

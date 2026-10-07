@@ -1,15 +1,16 @@
 {
   "type": "core.approval",
   "kind": "runtime",
-  "label": "Approval",
-  "category": "Human-in-the-loop",
+  "label": "Ask for approval",
+  "category": "People",
   "icon": "user-check",
   "color": "#D97706",
-  "description": "Pauses for a human to approve or reject (optionally editing the shown value).",
+  "description": "Pauses the workflow until a person approves or rejects (they can also edit the value shown). Put it before anything risky, like sending an email.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go once the person has decided: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -22,13 +23,15 @@
     "properties": {
       "show": {
         "type": "string",
-        "title": "Channel to review",
-        "format": "channel"
+        "title": "What the person reviews",
+        "format": "channel",
+        "description": "The data field shown to the person (they may edit it)."
       },
       "output": {
         "type": "string",
-        "title": "Decision channel (bool)",
-        "format": "channel"
+        "title": "Save the decision in",
+        "format": "channel",
+        "description": "A data field that gets true (approved) or false (rejected)."
       }
     }
   },

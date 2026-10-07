@@ -1,16 +1,17 @@
 {
   "type": "mw.model_call_limit",
   "kind": "resource",
-  "label": "Model call limit",
-  "category": "Middleware",
+  "label": "Limit AI calls",
+  "category": "Agent add-ons",
   "icon": "gauge",
   "color": "#9333EA",
-  "description": "Stops the agent after N model calls per run or thread (ModelCallLimitMiddleware).",
+  "description": "Stops the agent after a set number of AI model calls, so it cannot loop forever or run up a big bill. Technical: ModelCallLimitMiddleware.",
   "inputs": [],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {
