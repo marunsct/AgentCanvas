@@ -1,46 +1,51 @@
 {
   "type": "agent.deep",
   "kind": "runtime",
-  "label": "Deep Agent",
-  "category": "Agents",
+  "label": "Planning Agent",
+  "category": "AI",
   "icon": "brain",
   "color": "#7C3AED",
-  "description": "A planning agent with a virtual filesystem, subagents and long-term memory (create_deep_agent). Reads and writes `messages`.",
+  "description": "A stronger AI agent for big, multi-step jobs: it writes a plan, keeps notes in files, and can hand parts of the work to helper agents. It reads and writes the conversation (`messages`). Technical: deepagents create_deep_agent.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
-      "required": true
+      "required": true,
+      "description": "The AI model that does the planning and thinking. Plug in an \u201cAI model\u201d block."
     },
     {
       "name": "tools",
       "type": "Tool",
       "multi": true,
-      "ordered": true
+      "ordered": true,
+      "description": "Optional. Things the agent may use, such as a web API or your own Python function."
     },
     {
       "name": "middleware",
       "type": "Middleware",
       "multi": true,
-      "ordered": true
+      "ordered": true,
+      "description": "Optional. Add-ons that change how the agent behaves: limits, retries, safety checks."
     },
     {
       "name": "subagents",
       "type": "Subagent",
       "multi": true,
-      "ordered": true
+      "ordered": true,
+      "description": "Optional. Helper agents it can hand tasks to. Plug in \u201cHelper Agent\u201d blocks."
     },
     {
       "name": "backend",
       "type": "Backend",
       "multi": true,
-      "description": "Default: state files. Long-term folders are mounted at their path."
+      "description": "Optional. Where the agent keeps its notes and files. Without one, files last only for this run."
     }
   ],
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go when the agent has finished: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -49,9 +54,10 @@
     "properties": {
       "system_prompt": {
         "type": "string",
-        "title": "System prompt",
+        "title": "Instructions for the agent",
         "format": "prompt",
-        "default": ""
+        "default": "",
+        "description": "Tell the AI who it is and how to behave, in plain words, e.g. \u201cYou are a friendly support assistant. Answer briefly.\u201d"
       },
       "planning": {
         "type": "boolean",

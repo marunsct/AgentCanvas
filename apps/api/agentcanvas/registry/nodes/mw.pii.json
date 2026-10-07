@@ -1,16 +1,17 @@
 {
   "type": "mw.pii",
   "kind": "resource",
-  "label": "PII guard",
-  "category": "Middleware",
+  "label": "Protect personal data",
+  "category": "Agent add-ons",
   "icon": "shield",
   "color": "#9333EA",
-  "description": "Detects PII in messages and blocks, redacts, masks or hashes it (PIIMiddleware).",
+  "description": "Finds personal data (emails, card numbers and so on) in the conversation and blocks, hides or masks it. Technical: PIIMiddleware.",
   "inputs": [],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

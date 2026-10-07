@@ -2,14 +2,15 @@
   "type": "tool.memory",
   "kind": "resource",
   "label": "Memory tools",
-  "category": "Memory",
+  "category": "Tools",
   "icon": "database",
   "color": "#0F766E",
-  "description": "Gives an agent search_memory and save_memory tools for one memory space.",
+  "description": "Lets an agent search and save its own memories (search_memory and save_memory tools) in one memory space.",
   "outputs": [
     {
       "name": "tools",
-      "type": "Tool"
+      "type": "Tool",
+      "description": "Plug this into an agent's \u201ctools\u201d input."
     }
   ],
   "config_schema": {

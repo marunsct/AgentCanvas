@@ -1,36 +1,38 @@
 {
   "type": "core.agent",
   "kind": "runtime",
-  "label": "Agent",
-  "category": "Agents",
+  "label": "AI Agent",
+  "category": "AI",
   "icon": "bot",
   "color": "#7C3AED",
-  "description": "A tool-using agent (LangChain create_agent). Reads and writes the `messages` channel.",
+  "description": "An AI that can use tools (search, APIs, your code) on its own, step by step, until the task is done. It reads and writes the conversation (the `messages` field). Technical: LangChain create_agent.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
-      "required": true
+      "required": true,
+      "description": "The AI model that does the thinking. Plug in an \u201cAI model\u201d block."
     },
     {
       "name": "tools",
       "type": "Tool",
       "multi": true,
       "ordered": true,
-      "description": "Tools the agent may call"
+      "description": "Optional. Things the agent may use, such as a web API or your own Python function. Plug in any number of tool blocks."
     },
     {
       "name": "middleware",
       "type": "Middleware",
       "multi": true,
       "ordered": true,
-      "description": "Middleware, applied in order (guardrails, limits, retries\u2026)"
+      "description": "Optional. Add-ons that change how the agent behaves: limits, retries, safety checks. They run in the order you connect them."
     }
   ],
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go when the agent has finished: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -39,9 +41,10 @@
     "properties": {
       "system_prompt": {
         "type": "string",
-        "title": "System prompt",
+        "title": "Instructions for the agent",
         "format": "prompt",
-        "default": ""
+        "default": "",
+        "description": "Tell the AI who it is and how to behave, in plain words, e.g. \u201cYou are a friendly support assistant. Answer briefly.\u201d"
       },
       "approve_tools": {
         "type": "array",

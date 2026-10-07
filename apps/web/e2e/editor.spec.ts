@@ -48,22 +48,22 @@ test("build, validate, run and reload a workflow from an empty canvas", async ({
 
   // widgets
   await dropWidget(page, "core.llm", 330, 180);
-  await expect(page.getByTestId("node-llm_call")).toBeVisible();
+  await expect(page.getByTestId("node-ask_ai")).toBeVisible();
   await page.locator("textarea[id^='cfg_']").fill("Answer briefly: {{ state.question }}");
   await page.locator("select[id$='_output']").selectOption("answer");
 
   await dropWidget(page, "model.chat", 150, 380);
-  await expect(page.getByTestId("node-chat_model")).toBeVisible();
+  await expect(page.getByTestId("node-ai_model")).toBeVisible();
   await page.locator("input[id$='_model']").fill("anthropic:claude-haiku-4-5");
 
   // a wrong wire is refused with an explanation: model -> nothing typed "Tool" here, so try START -> model port
-  await connect(page, handle(page, "chat_model", "model"), page.getByTestId("node-END"));
+  await connect(page, handle(page, "ai_model", "model"), page.getByTestId("node-END"));
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
 
   // wiring and flow
-  await connect(page, handle(page, "chat_model", "model"), handle(page, "llm_call", "model"));
-  await connect(page, handle(page, "START", "next"), handle(page, "llm_call", "in"));
-  await connect(page, handle(page, "llm_call", "next"), handle(page, "END", "in"));
+  await connect(page, handle(page, "ai_model", "model"), handle(page, "ask_ai", "model"));
+  await connect(page, handle(page, "START", "next"), handle(page, "ask_ai", "in"));
+  await connect(page, handle(page, "ask_ai", "next"), handle(page, "END", "in"));
   await expect(page.locator(".react-flow__edge")).toHaveCount(3);
   await expect(page.getByText("No problems — the workflow can run.")).toBeVisible({ timeout: 10_000 });
 
@@ -72,15 +72,15 @@ test("build, validate, run and reload a workflow from an empty canvas", async ({
   await page.getByLabel("run input").fill('{"question": "What is 2+2?"}');
   await page.getByRole("button", { name: "▶ Run" }).click();
   await expect(page.getByTestId("run-output")).toContainText("Demo reply", { timeout: 15_000 });
-  await expect(page.getByTestId("node-llm_call")).toHaveClass(/status-ok/);
+  await expect(page.getByTestId("node-ask_ai")).toHaveClass(/status-ok/);
 
   // generated code shows the node
   await page.getByRole("tab", { name: "Code" }).click();
-  await expect(page.locator(".code-view")).toContainText('"llm_call"');
+  await expect(page.locator(".code-view")).toContainText('"ask_ai"');
 
   // everything was autosaved
   await page.reload();
-  await expect(page.getByTestId("node-llm_call")).toBeVisible();
+  await expect(page.getByTestId("node-ask_ai")).toBeVisible();
   try {
     await expect(page.locator(".react-flow__edge")).toHaveCount(3);
   } catch (e) {

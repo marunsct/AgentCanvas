@@ -12,7 +12,7 @@ debug, test, evaluate, export and publish behind an API.
 | | |
 |---|---|
 | **Use any model** | Claude, GPT, Gemini, Mistral, Groq, DeepSeek, Grok, any OpenAI-compatible API, or models on your own computer (Ollama, LM Studio, vLLM, llama.cpp). Choose one on the first-run screen, with its API key. |
-| **Build** | Drag widgets onto a canvas, wire them up, and configure them in the Inspector. Start from one of seven templates or a guided six-step tutorial. Add your own Python scripts, tools and custom widgets in the project workspace. |
+| **Build** | Drag widgets onto a canvas, wire them up, and configure them in the Inspector. Start from one of seven templates, a guided six-step tutorial, or the [Beginner's guide](beginner-guide.md). Hover or click any dot on a block to see what it does and what can connect to it. Add your own Python scripts, tools and custom widgets in the project workspace. |
 | **Run and debug** | Run a workflow and watch each step light up. Pause for human approvals, set breakpoints, step back through the timeline, edit state and fork, and read a plain-language explanation of what happened. See tokens, cost and latency per step. |
 | **Test and evaluate** | Save runs as test cases, build datasets, score runs with evaluators (exact match, regex, schema, LLM judge, tool trajectory, your own code), compare versions in experiments, and block releases that score worse. |
 | **Ship** | Freeze versions, export a standalone Python project, or publish to an environment behind an API key. Start runs from webhooks, schedules or events, and keep scoring live traffic in production. |

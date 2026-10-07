@@ -1,11 +1,11 @@
 {
   "type": "core.router",
   "kind": "runtime",
-  "label": "Router",
-  "category": "Logic",
+  "label": "Choose a path",
+  "category": "Flow control",
   "icon": "split",
   "color": "#0891B2",
-  "description": "Chooses the next step: the first case whose CEL condition is true wins, otherwise `default`.",
+  "description": "Sends the workflow down different paths depending on the data, like \u201cif the ticket is urgent go here, otherwise go there\u201d. The first rule that matches wins; if none match it takes the default path.",
   "outputs": [],
   "dynamic_outputs": "routes",
   "config_schema": {
@@ -14,7 +14,7 @@
     "properties": {
       "cases": {
         "type": "array",
-        "title": "Cases",
+        "title": "Rules",
         "items": {
           "type": "object",
           "additionalProperties": false,
@@ -25,20 +25,23 @@
           "properties": {
             "when": {
               "type": "string",
-              "title": "Condition (CEL)",
-              "format": "cel"
+              "title": "Condition",
+              "format": "cel",
+              "description": "When this is true, take this path. Example: state.priority == \"high\" (CEL expression)."
             },
             "route": {
               "type": "string",
-              "title": "Route",
-              "pattern": "^[a-z][a-z0-9_]*$"
+              "title": "Path name",
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "description": "A short name in lowercase, e.g. urgent. It appears as an output on the block."
             }
           }
-        }
+        },
+        "description": "Checked top to bottom; the first rule whose condition is true picks the path."
       },
       "default": {
         "type": "string",
-        "title": "Default route",
+        "title": "Path when no rule matches",
         "default": "default",
         "pattern": "^[a-z][a-z0-9_]*$"
       }

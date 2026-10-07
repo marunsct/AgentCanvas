@@ -4,8 +4,8 @@ import { defaultsFromSchema, routesOf, uniqueName } from "./model";
 
 describe("model helpers", () => {
   it("uniqueName makes snake_case identifiers without collisions", () => {
-    expect(uniqueName("LLM call", [])).toBe("llm_call");
-    expect(uniqueName("LLM call", ["llm_call", "llm_call_2"])).toBe("llm_call_3");
+    expect(uniqueName("Ask AI", [])).toBe("ask_ai");
+    expect(uniqueName("Ask AI", ["ask_ai", "ask_ai_2"])).toBe("ask_ai_3");
     expect(uniqueName("2nd step", [])).toBe("n_2nd_step");
     expect(uniqueName("End", [])).toBe("end_2");
   });

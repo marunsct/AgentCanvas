@@ -1,15 +1,16 @@
 {
   "type": "backend.state",
   "kind": "resource",
-  "label": "State files",
+  "label": "Scratch files",
   "category": "Memory",
   "icon": "file",
   "color": "#0F766E",
-  "description": "Agent files live in the thread's state (StateBackend): they are checkpointed with the thread and vanish with it.",
+  "description": "A scratch space for a Planning Agent's files that lasts only for this run and conversation. Technical: StateBackend.",
   "outputs": [
     {
       "name": "backend",
-      "type": "Backend"
+      "type": "Backend",
+      "description": "Plug this into a Planning Agent's \u201cbackend\u201d input."
     }
   ],
   "config_schema": {

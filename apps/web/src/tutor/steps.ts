@@ -37,29 +37,29 @@ export const STEPS: TutorStep[] = [
   {
     id: "state",
     title: "Give the workflow a memory",
-    concept: "State is the data every step reads and writes. Each field is a channel; its reducer decides what happens when steps write to it (replace, append…).",
-    todo: "In the Inspector (click empty canvas) add a channel named question, then one named answer.",
+    concept: "Data fields are the workflow's notepad: named boxes every step can read and write. (Technically: state channels; a field's reducer decides whether a new value replaces the old one or is appended.)",
+    todo: "Click empty canvas, then in the right panel press “+ Channel” twice and name the fields question and answer.",
     done: (wf) => ["question", "answer"].every((c) => wf.state.channels.some((ch) => ch.name === c)),
   },
   {
     id: "llm",
     title: "Add a step that thinks",
-    concept: "Steps are the boxes. An LLM step fills a prompt template with state values and writes the model's reply into a channel.",
-    todo: "Drag “LLM” from the palette onto the canvas; set its prompt to {{ state.question }} and its output to answer.",
+    concept: "Steps are the blocks. An “Ask AI” step sends your instructions (the prompt) to an AI model and saves the reply in a data field.",
+    todo: "Click the dot on the right of ▶ Start and choose “Ask AI” (or drag it from the left). In the right panel set the instructions to {{ state.question }} and “Save the reply in” to answer.",
     done: (wf) => nodesOf(wf, "core.llm").some((n) => n.config?.output === "answer" && String(n.config?.prompt ?? "").includes("state.question")),
   },
   {
     id: "flow",
     title: "Connect the flow",
-    concept: "Flow edges decide what runs next. A run starts at START and finishes when it reaches END.",
-    todo: "Drag from START's handle to your LLM step, then from the LLM step to END.",
+    concept: "Arrows decide what runs next. A run begins at ▶ Start and is done when it reaches ■ Finish.",
+    todo: "Connect ▶ Start to your Ask AI step (if it isn't yet), then click the Ask AI step's right-hand dot and choose Finish.",
     done: (wf) => nodesOf(wf, "core.llm").some((n) => onRunPath(wf, n.id)),
   },
   {
     id: "model",
     title: "Plug in a model",
-    concept: "Resources (models, tools, memory) are pills you wire into steps. The same model can serve several steps.",
-    todo: "Drag “Chat model” onto the canvas and wire it into the LLM step's model port.",
+    concept: "Add-ons (AI models, tools, memory) plug into steps instead of running on their own. One AI model can power several steps.",
+    todo: "Click the coloured “model” square on the Ask AI step and choose “AI model”. It is added and plugged in for you.",
     done: (wf) => {
       const models = new Set(wf.resources.filter((r) => r.type === "model.chat").map((r) => r.id));
       const llms = new Set(nodesOf(wf, "core.llm").map((n) => n.id));
@@ -69,15 +69,15 @@ export const STEPS: TutorStep[] = [
   {
     id: "run",
     title: "Run it",
-    concept: "A run executes the graph on a thread. Every step is checkpointed, so you can inspect, edit and replay any point in the timeline.",
+    concept: "A run tries the workflow with real input. Every step is saved as it happens, so you can look back at (and replay) any point in the Timeline below.",
     todo: "Open the Run tab, enter {\"question\": \"What is a graph?\"} and press ▶ Run.",
     done: (_wf, run) => run.finished,
   },
   {
     id: "approval",
     title: "Put a human in the loop",
-    concept: "An Approval step pauses the run (an interrupt) until someone decides in the Run tab or the Inbox; the run then resumes exactly where it stopped.",
-    todo: "Add an “Approval” step between the LLM step and END showing answer, then run again and approve it.",
+    concept: "An “Ask for approval” step pauses the run until a person approves or rejects in the Run tab or the Inbox; the run then continues exactly where it stopped.",
+    todo: "Add an “Ask for approval” step between Ask AI and Finish (what the person reviews: answer), then run again and approve it.",
     done: (wf, run) => nodesOf(wf, "core.approval").some((n) => onRunPath(wf, n.id)) && run.interrupted,
   },
 ];

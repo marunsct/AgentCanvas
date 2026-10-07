@@ -1,15 +1,16 @@
 {
   "type": "core.script",
   "kind": "runtime",
-  "label": "Python script",
-  "category": "Code",
+  "label": "Run Python code",
+  "category": "Data",
   "icon": "code",
   "color": "#475569",
-  "description": "Runs a function from the Workspace: `def run(state) -> dict` (sync or async).",
+  "description": "Runs a Python function you wrote in the Workspace. It receives the current data and returns the fields to update: `def run(state) -> dict`.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after the code has run: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -27,7 +28,7 @@
       },
       "writes": {
         "type": "array",
-        "title": "Channels written",
+        "title": "Fields it updates",
         "items": {
           "type": "string",
           "format": "channel"

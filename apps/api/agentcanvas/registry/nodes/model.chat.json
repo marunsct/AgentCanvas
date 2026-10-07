@@ -1,15 +1,16 @@
 {
   "type": "model.chat",
   "kind": "resource",
-  "label": "Chat model",
-  "category": "Models",
+  "label": "AI model",
+  "category": "AI models",
   "icon": "cpu",
   "color": "#1D4ED8",
-  "description": "A chat model created with init_chat_model(\"provider:model\").",
+  "description": "The AI \u201cbrain\u201d (Claude, GPT, Gemini, a local model\u2026) that AI steps use to think and write. One model block can power several steps. Technical: init_chat_model(\"provider:model\").",
   "outputs": [
     {
       "name": "model",
-      "type": "ChatModel"
+      "type": "ChatModel",
+      "description": "Plug this into the \u201cmodel\u201d input of an Ask AI step, an agent, or an add-on that needs a model."
     }
   ],
   "config_schema": {

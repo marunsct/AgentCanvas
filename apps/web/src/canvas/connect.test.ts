@@ -9,7 +9,7 @@ describe("checkConnection (M2-T6)", () => {
   it("refuses a Chat Model on a tools port and explains why", () => {
     const v = checkConnection(triage(), manifests, c("r_fast", "model", "n_ag", "tools"));
     expect(v.ok).toBe(false);
-    expect(v.reason).toMatch(/expects Tool, but fast_model provides ChatModel/);
+    expect(v.reason).toMatch(/expects a tool \(Tool\), but fast_model is an AI model \(ChatModel\)/);
   });
 
   it("accepts a tool on a multi tools port and a model on an empty model port", () => {
@@ -20,7 +20,7 @@ describe("checkConnection (M2-T6)", () => {
   });
 
   it("single ports accept one connection", () => {
-    expect(checkConnection(triage(), manifests, c("r_fast", "model", "n_ag", "model")).reason).toMatch(/single ChatModel/);
+    expect(checkConnection(triage(), manifests, c("r_fast", "model", "n_ag", "model")).reason).toMatch(/single AI model \(ChatModel\)/);
   });
 
   it("flow rules: END has no outputs, START no inputs, routes have one target", () => {

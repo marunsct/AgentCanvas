@@ -23,6 +23,7 @@ import { tidyLayout } from "./layout";
 import { type CanvasData, irToFlow } from "./irToFlow";
 import { Frames, frameSelection } from "./Frames";
 import { NODE_TYPES } from "./nodes";
+import { PortMenu } from "./PortMenu";
 
 export const DND_MIME = "application/agentcanvas";
 let clip: Clip | null = null; // in-memory clipboard shared by all canvases in this tab
@@ -292,6 +293,7 @@ export function Canvas() {
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
+      <PortMenu />
       {hint && <div className="connect-hint" role="status">✋ {hint}</div>}
       {showBlast && !readOnly && (blastQuery.isLoading || blastQuery.isError) && (
         // a safety view: a failed request must not look like "no effects"
@@ -299,7 +301,10 @@ export function Canvas() {
       )}
       {readOnly && <SubgraphCrumbs />}
       {wf && wf.nodes.length === 0 && (
-        <div className="empty-hint">Drag a widget from the palette, or start from a template on the home page.</div>
+        <div className="empty-hint">
+          Click the dot on the right of <b>▶ Start</b> to pick your first step, or drag a block from the left.
+          <br />New to this? Open <b>❓ Help</b> at the top for a two-minute guide.
+        </div>
       )}
     </div>
   );
@@ -312,23 +317,33 @@ export interface Preset {
 }
 
 /** Create a node or resource of `type` at `position` (used by drag & drop and the palette's click-to-add). */
-export function addElement(type: string, position?: { x: number; y: number }, preset?: Preset) {
+export function addElement(
+  type: string, position?: { x: number; y: number }, preset?: Preset, link?: (id: string) => Command[],
+) {
   const { wf, dispatch, setPositions, select } = useEditor.getState();
   const m = manifestCache.get(type);
   if (!wf || !m) return;
   const name = uniqueName(preset?.name ?? m.label, allNames(wf));
-  const config = { ...defaultsFromSchema(m.config_schema as Record<string, unknown>), ...preset?.config };
+  const config = {
+    ...defaultsFromSchema(m.config_schema as Record<string, unknown>),
+    // a new AI model starts as the project's model from first-run setup, so it works without filling anything in
+    ...(type === "model.chat" && projectModel.current ? projectModel.current : {}),
+    ...preset?.config,
+  };
   const cmd: Command = m.kind === "resource"
     ? { op: "AddResource", resource: { id: `r_${ulid()}`, type, name, config } }
     : { op: "AddNode", node: { id: `n_${ulid()}`, type, name, label: m.label, config } };
   const id = cmd.op === "AddResource" ? cmd.resource.id : cmd.op === "AddNode" ? cmd.node.id : "";
-  dispatch([cmd]);
+  dispatch([cmd, ...(link?.(id) ?? [])]); // one undo step: the new element and its connection
   if (position) setPositions({ [id]: { x: Math.round(position.x), y: Math.round(position.y) } }, true);
   select(id);
 }
 
 /** Manifests by type, filled by the palette once node types are loaded. */
 export const manifestCache = new Map<string, NodeManifest>();
+
+/** The project's default model config ({model, base_url?, api_key?}), filled by the palette from first-run setup. */
+export const projectModel: { current: Record<string, unknown> | null } = { current: null };
 
 /** Breadcrumb of the drill-in view: Workflow › subgraph › … (click to go back up). */
 function SubgraphCrumbs() {

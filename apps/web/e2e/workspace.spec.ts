@@ -34,7 +34,7 @@ test("script node: scaffold its file, edit it with ruff feedback, run the new co
   await expect(page.locator(".save-state")).toHaveText("Saved");
 
   await page.getByTestId("palette-core.script").dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 330, y: 180 } });
-  await expect(page.getByTestId("node-python_script")).toBeVisible();
+  await expect(page.getByTestId("node-run_python_code")).toBeVisible();
   await page.locator("input[id$='_import_path']").fill("");
   await page.locator("input[id$='_import_path']").blur();
   // a unique node name keeps parallel runs of this journey apart (one shared workspace)

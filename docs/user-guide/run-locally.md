@@ -35,7 +35,7 @@ The first build takes a few minutes. Then open <http://localhost:7777>: Home sho
    Local servers: leave **Server address** empty to use the default port on your computer.
 5. Click **Test connection**: AgentCanvas sends one short message and shows the reply, or the error.
 6. Click **Save**. Templates you open from now on use this model. You can change it any time from **Model** in the
-   top bar, and pick a different model on any Chat model box on the canvas.
+   top bar, and pick a different model on any AI model block on the canvas.
 
 Models on your own computer are reached from inside Docker through `host.docker.internal`, so start Ollama
 (`ollama serve`, then `ollama pull llama3.3`) or LM Studio's local server before testing.

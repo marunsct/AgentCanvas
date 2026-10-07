@@ -1,15 +1,16 @@
 {
   "type": "core.memory_recall",
   "kind": "runtime",
-  "label": "Recall",
+  "label": "Look up memory",
   "category": "Memory",
   "icon": "database",
   "color": "#0F766E",
-  "description": "Searches long-term memory and writes the matches (list of {key, \u2026}) to a channel.",
+  "description": "Searches what the workflow remembered in earlier runs and saves the matches (a list) into a data field.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after the search: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -53,7 +54,7 @@
       },
       "output": {
         "type": "string",
-        "title": "Output channel",
+        "title": "Save the matches in",
         "format": "channel"
       }
     }

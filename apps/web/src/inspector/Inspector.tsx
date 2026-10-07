@@ -1,4 +1,6 @@
 /** Right-panel inspector: the selected node/resource, or the workflow when nothing is selected. */
+import { diagnosticHelp } from "../help/diagnostics";
+import { HelpText } from "../help/HelpText";
 import { useManifests } from "../api/queries";
 import { useEditor } from "../editor/store";
 import { findElement, isResource } from "../ir/model";
@@ -30,10 +32,10 @@ export function Inspector() {
 
   return (
     <div className="panel-body" key={el.id}>
-      <h3>{m?.label ?? el.type} <small className="muted">{el.type}</small></h3>
+      <h3>{m?.label ?? el.type} <small className="muted" title="internal type id">{el.type}</small></h3>
       {m?.description && <p className="muted">{m.description}</p>}
       <label>
-        Name (code identifier)
+        Name (letters, digits and _ only; used to refer to it)
         <input className="mono" defaultValue={el.name} aria-label="node name"
           onBlur={(e) => { const v = e.target.value; if (v !== el.name && NAME.test(v)) update({ name: v }); }} />
       </label>
@@ -46,7 +48,12 @@ export function Inspector() {
       )}
       {mine.length > 0 && (
         <ul className="diag-list">
-          {mine.map((d, i) => <li key={i} className={d.severity}><b>{d.code}</b> {d.message}{d.hint ? ` — ${d.hint}` : ""}</li>)}
+          {mine.map((d, i) => (
+            <li key={i} className={d.severity}>
+              <b>{d.code}</b> {d.message}{d.hint ? ` — ${d.hint}` : ""}
+              <HelpText help={diagnosticHelp(d)} />
+            </li>
+          ))}
         </ul>
       )}
       {res && el.type === "mcp.server" && <McpBrowser resource={el} />}

@@ -5,11 +5,12 @@
   "category": "Tools",
   "icon": "wrench",
   "color": "#4B5563",
-  "description": "A LangChain @tool function from the Workspace.",
+  "description": "A Python function from the Workspace that an agent can use as a tool (a LangChain @tool).",
   "outputs": [
     {
       "name": "tool",
-      "type": "Tool"
+      "type": "Tool",
+      "description": "Plug this into an agent's \u201ctools\u201d input."
     }
   ],
   "config_schema": {

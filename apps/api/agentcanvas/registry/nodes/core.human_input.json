@@ -1,15 +1,16 @@
 {
   "type": "core.human_input",
   "kind": "runtime",
-  "label": "Human input",
-  "category": "Human-in-the-loop",
+  "label": "Ask a person",
+  "category": "People",
   "icon": "message-square",
   "color": "#D97706",
-  "description": "Pauses and asks a person for input (a form when a response schema is set); the answer is written to a channel.",
+  "description": "Pauses the workflow and asks a person a question (or shows a form). Their answer is saved in a data field and the workflow continues.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go once the person has answered: connect the next step, or Finish."
     }
   ],
   "config_schema": {
@@ -22,7 +23,7 @@
     "properties": {
       "prompt": {
         "type": "string",
-        "title": "Question",
+        "title": "Question for the person",
         "format": "template",
         "minLength": 1,
         "description": "Jinja template, e.g. Which plan should we use for {{ state.customer }}?"
@@ -35,8 +36,9 @@
       },
       "output": {
         "type": "string",
-        "title": "Answer channel",
-        "format": "channel"
+        "title": "Save the answer in",
+        "format": "channel",
+        "description": "The data field that receives the person's answer."
       }
     }
   },

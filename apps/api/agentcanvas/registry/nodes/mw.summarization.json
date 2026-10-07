@@ -1,23 +1,24 @@
 {
   "type": "mw.summarization",
   "kind": "resource",
-  "label": "Summarization",
-  "category": "Middleware",
+  "label": "Shorten long chats",
+  "category": "Agent add-ons",
   "icon": "scroll",
   "color": "#9333EA",
-  "description": "Summarizes old messages when the conversation grows too long (SummarizationMiddleware).",
+  "description": "When the conversation gets too long, replaces old messages with a short summary so the AI keeps working. Technical: SummarizationMiddleware.",
   "inputs": [
     {
       "name": "model",
       "type": "ChatModel",
       "required": true,
-      "description": "Model that writes the summary"
+      "description": "The AI model that writes the summary. Plug in an \u201cAI model\u201d block."
     }
   ],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

@@ -5,11 +5,12 @@
   "category": "Data",
   "icon": "pencil",
   "color": "#059669",
-  "description": "Writes templated values into channels, e.g. summary = \"Ticket: {{ state.ticket }}\".",
+  "description": "Fills data fields with text you write, for example summary = \u201cTicket: {{ state.ticket }}\u201d. Handy for preparing text before an AI step.",
   "outputs": [
     {
       "name": "next",
-      "type": "Flow"
+      "type": "Flow",
+      "description": "Where to go after the values are set: connect the next step, or Finish."
     }
   ],
   "config_schema": {

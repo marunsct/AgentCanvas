@@ -17,7 +17,7 @@ catalog prices), and the final state as JSON.
 
 ## Human decisions
 
-When a run reaches an **Approval**, a **Human input** step, or an agent tool call that needs approval, it pauses
+When a run reaches an **Ask for approval** or **Ask a person** step, or an agent tool call that needs approval, it pauses
 and the Run tab shows **Approval needed** with the value under review.
 
 ![A run waiting for approval](img/approval.png)
@@ -49,7 +49,7 @@ doesn't read JSON.
 
 - **📌 Pin last output:** after a run, select a step and pin its last output. Debug runs then skip that step and replay
   the pinned output: handy for iterating on a later step without re-running an expensive one. **Unpin** to undo.
-- **Mock replies:** select a *Chat model* resource and enter **Mock replies for debug runs**. Debug runs use those
+- **Mock replies:** select a *AI model* block and enter **Mock replies for debug runs**. Debug runs use those
   replies instead of calling the model.
 
 Pins and mocks only affect runs started from the editor, never published deployments.

@@ -1,16 +1,17 @@
 {
   "type": "mw.tool_retry",
   "kind": "resource",
-  "label": "Tool retry",
-  "category": "Middleware",
+  "label": "Retry tools",
+  "category": "Agent add-ons",
   "icon": "rotate-cw",
   "color": "#9333EA",
-  "description": "Retries failed tool calls with exponential backoff (ToolRetryMiddleware).",
+  "description": "Tries a failed tool again, waiting a little longer each time. Technical: ToolRetryMiddleware.",
   "inputs": [],
   "outputs": [
     {
       "name": "middleware",
-      "type": "Middleware"
+      "type": "Middleware",
+      "description": "Plug this into an agent's \u201cmiddleware\u201d input."
     }
   ],
   "config_schema": {

@@ -180,7 +180,7 @@ async def test_catalog_endpoints(api_client):
         "required": True,
         "multi": False,
         "ordered": False,
-        "description": "Chat model to call",
+        "description": "The AI model that writes the reply. Plug in an \u201cAI model\u201d block.",
     }
     assert any(m["id"] == "anthropic:claude-sonnet-5-5" for m in (await api_client.get("/v1/models")).json())
     schema = (await api_client.get("/v1/ir-schema")).json()

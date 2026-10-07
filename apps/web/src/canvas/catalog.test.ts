@@ -43,7 +43,7 @@ describe("Sprint 5 canvas rules", () => {
     expect(checkConnection(wf, manifests, c("r_fast", "model", "r_fb", "models"))).toEqual({ ok: true, kind: "wiring" });
     expect(checkConnection(wf, manifests, c("r_fb", "middleware", "r_fb", "models")).ok).toBe(false);
     expect(checkConnection(wf, manifests, c("r_fb", "middleware", "n_ag", "middleware"))).toEqual({ ok: true, kind: "wiring" });
-    expect(checkConnection(wf, manifests, c("r_limit", "middleware", "n_ag", "tools")).reason).toMatch(/expects Tool/);
+    expect(checkConnection(wf, manifests, c("r_limit", "middleware", "n_ag", "tools")).reason).toMatch(/expects a tool \(Tool\)/);
   });
 
   it("new wiring into an ordered port goes last", () => {

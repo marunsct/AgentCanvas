@@ -25,7 +25,7 @@ Runs are durable. Paused runs (approvals, human input) wait indefinitely; runnin
 last checkpoint by another API instance.
 
 **How do I keep an agent from doing something irreversible?**
-Turn on **Blast radius** to see every step that can write, send, execute or spend. Put an **Approval** before it,
+Turn on **Blast radius** to see every step that can write, send, execute or spend. Put an **Ask for approval** step before it,
 or list the tool under the agent's *Pause for a human before these tools run*. Use **Dry run** to test safely,
 and an organisation policy such as *Writes need approval* to make it mandatory.
 

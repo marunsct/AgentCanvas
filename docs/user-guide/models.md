@@ -1,13 +1,13 @@
 # Models and API keys
 
 AgentCanvas works with any major model provider and with models running on your own computer. You choose a
-default model once on the first-run screen, and any **Chat model** box on the canvas can use a different one.
+default model once on the first-run screen, and any **AI model** block on the canvas can use a different one.
 
 ![Choosing a model](img/setup.png)
 
 ## Supported providers
 
-A model is written `provider:model`. Type it in a Chat model's **Model** field (suggestions are listed), or pick it
+A model is written `provider:model`. Type it in a AI model block's **Model** field (suggestions are listed), or pick it
 on the **Model** screen.
 
 | Provider | Example model id | API key (project secret or server variable) |
@@ -45,9 +45,9 @@ model is not in the catalog (`W010`).
 
 ## Where a model's API key comes from
 
-For each Chat model, the first of these that exists is used:
+For each AI model block, the first of these that exists is used:
 
-1. The **API key (secret reference)** field of that Chat model: pick any project secret by name.
+1. The **API key (secret reference)** field of that AI model block: pick any project secret by name.
 2. The **project secret named after the provider**, for example `OPENAI_API_KEY`. The first-run screen saves the key
    you enter under this name; you can also add it on the **Workspace** page under **Secrets**.
 3. The **server's environment variable** of the same name (set when the server was started).
