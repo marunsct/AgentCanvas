@@ -16,6 +16,7 @@ from agentcanvas.db.models import Project, Secret
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
+from agentcanvas.runtime.masking import mask_strings
 from agentcanvas.security.kms import Keyring
 
 log = get_logger(__name__)
@@ -106,13 +107,17 @@ async def migrate_legacy(session: AsyncSession, keyring: Keyring) -> int:
 def hide_secrets(payload: Any, secrets: dict[str, str]) -> Any:
     """`payload` with every secret value (6+ characters) masked: state a run wrote can hold a value a tool or
     script read, and thread state, history and explanations return it (S12)."""
-    hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
-    if not hidden:
+    return hide_values(payload, sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True))
+
+
+def hide_values(payload: Any, values: list[str]) -> Any:
+    """`payload` as JSON values with each of `values` (longest first) masked inside its strings. Masking the
+    strings, not the JSON text, also finds values with characters JSON escapes (quotes, backslashes, newlines)."""
+    if not values:
         return payload
-    text = json.dumps(payload, default=str)
-    if not any(v in text for v in hidden):
-        return payload
-    return json.loads(redact(text, hidden))
+    plain = json.loads(json.dumps(payload, default=str))
+    masked = mask_strings(plain, values)
+    return payload if masked == plain else masked
 
 
 def redact(text: str, values: list[str]) -> str:

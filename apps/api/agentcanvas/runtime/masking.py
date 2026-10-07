@@ -73,6 +73,11 @@ def _walk(value: Any, values: Sequence[str], mark: str = MASK) -> Any:
     return value
 
 
+def mask_strings(value: Any, values: Sequence[str], mark: str = MASK) -> Any:
+    """`value` with each of `values` masked inside every string (dict keys included), at any depth."""
+    return _walk(value, values, mark)
+
+
 def _texts(value: Any) -> Iterator[str]:
     if isinstance(value, str):
         yield value
