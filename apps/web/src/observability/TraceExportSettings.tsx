@@ -52,6 +52,8 @@ export function TraceExportSettings() {
   const test = useMutation({ mutationFn: () => apiFetch<{ ok: boolean; detail: string }>(`/projects/${PROJECT_ID}/trace-export/test`, { method: "POST" }) });
   if (!q.data) return null;
   const admin = can("admin");
+  const savedKind = q.data.config?.kind;
+  const pickKind = (k: Kind | "") => { setKind(k); save.reset(); test.reset(); };
 
   return (
     <section className="setup-form" aria-label="Trace export" data-testid="trace-export">
@@ -62,7 +64,7 @@ export function TraceExportSettings() {
         traces" are redacted.
       </p>
       <label htmlFor="trace-kind">Destination</label>
-      <select id="trace-kind" value={kind} disabled={!admin} onChange={(e) => setKind(e.target.value as Kind | "")}>
+      <select id="trace-kind" value={kind} disabled={!admin} onChange={(e) => pickKind(e.target.value as Kind | "")}>
         <option value="">Off</option>
         {(Object.keys(LABELS) as Kind[]).map((k) => <option key={k} value={k}>{LABELS[k]}</option>)}
       </select>
@@ -96,14 +98,14 @@ export function TraceExportSettings() {
             {" "}Include inputs, outputs and model replies</label>
         </>
       )}
-      {q.data.missing_secrets.length > 0 && (
+      {kind === savedKind && q.data.missing_secrets.length > 0 && (
         <p className="error-text small">Add these under Secrets: {q.data.missing_secrets.join(", ")}</p>
       )}
       {admin ? (
         <div className="row gap">
           {kind && <button type="button" className="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</button>}
           {!kind && q.data.config && <button type="button" disabled={off.isPending} onClick={() => off.mutate()}>Turn off</button>}
-          {q.data.config && kind && <button type="button" disabled={test.isPending} onClick={() => test.mutate()}>Send a test trace</button>}
+          {kind && kind === savedKind && <button type="button" disabled={test.isPending} onClick={() => test.mutate()}>Send a test trace</button>}
           {save.isSuccess && <span className="ok-text small">Saved</span>}
         </div>
       ) : <p className="small muted">Only an admin can change where traces go.</p>}
