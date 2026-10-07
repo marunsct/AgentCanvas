@@ -12,6 +12,7 @@ from agentcanvas.api.v1 import (
     annotation,
     auth,
     catalog,
+    copilot,
     datasets,
     deployments,
     evaluators,
@@ -38,6 +39,7 @@ signed_in.include_router(catalog.router)
 signed_in.include_router(org.router)
 signed_in.include_router(projects.router)
 signed_in.include_router(workflows.router)
+signed_in.include_router(copilot.router)
 signed_in.include_router(runs.router)
 signed_in.include_router(tools.router)
 signed_in.include_router(memory.router)

@@ -579,3 +579,21 @@ class EventDedup(Base):
     value: Mapped[str] = mapped_column(Text)
     event_id: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
+
+
+class CopilotConversation(Base):
+    """A person's Copilot chat about one workflow (S14): one per (workflow, user); "New chat" starts it over."""
+
+    __tablename__ = "copilot_conversation"
+    __table_args__ = (UniqueConstraint("workflow_id", "user_id"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(Text)
+    messages: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    brief: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    proposals: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    usage: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )

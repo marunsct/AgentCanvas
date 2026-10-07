@@ -1245,6 +1245,165 @@
         "title": "ContractOut",
         "type": "object"
       },
+      "ConversationOut": {
+        "properties": {
+          "brief": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelInfoOut"
+          },
+          "pack_tokens": {
+            "title": "Pack Tokens",
+            "type": "integer"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the open proposal with its diff and preview",
+            "title": "Pending"
+          },
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "token_cap": {
+            "title": "Token Cap",
+            "type": "integer"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "messages",
+          "brief",
+          "proposals",
+          "usage",
+          "token_cap",
+          "model",
+          "pack_tokens"
+        ],
+        "title": "ConversationOut",
+        "type": "object"
+      },
+      "CopilotSettings": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "{\"$secret\": NAME}",
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "provider:model when separate",
+            "title": "Model"
+          },
+          "source": {
+            "default": "workflow",
+            "enum": [
+              "workflow",
+              "separate"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "token_cap": {
+            "default": 400000,
+            "description": "per conversation, in + out",
+            "maximum": 10000000.0,
+            "minimum": 1000.0,
+            "title": "Token Cap",
+            "type": "integer"
+          }
+        },
+        "title": "CopilotSettings",
+        "type": "object"
+      },
       "CreateWorkflow": {
         "properties": {
           "name": {
@@ -4016,6 +4175,30 @@
         "title": "MemoryItem",
         "type": "object"
       },
+      "MessageIn": {
+        "properties": {
+          "mode": {
+            "default": "build",
+            "enum": [
+              "build",
+              "ask"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "MessageIn",
+        "type": "object"
+      },
       "ModelInfo": {
         "additionalProperties": false,
         "properties": {
@@ -4091,6 +4274,46 @@
           "provider"
         ],
         "title": "ModelInfo",
+        "type": "object"
+      },
+      "ModelInfoOut": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "why the Copilot cannot answer yet, in plain words",
+            "title": "Problem"
+          }
+        },
+        "title": "ModelInfoOut",
         "type": "object"
       },
       "NamespaceOut": {
@@ -5123,6 +5346,23 @@
           "created_at"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "ProposalDecision": {
+        "properties": {
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ProposalDecision",
         "type": "object"
       },
       "ProviderInfo": {
@@ -6226,6 +6466,84 @@
           "fields"
         ],
         "title": "SetContext",
+        "type": "object"
+      },
+      "SettingsOut": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "{\"$secret\": NAME}",
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "provider:model when separate",
+            "title": "Model"
+          },
+          "resolved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelInfoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "default": "workflow",
+            "enum": [
+              "workflow",
+              "separate"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "token_cap": {
+            "default": 400000,
+            "description": "per conversation, in + out",
+            "maximum": 10000000.0,
+            "minimum": 1000.0,
+            "title": "Token Cap",
+            "type": "integer"
+          }
+        },
+        "title": "SettingsOut",
         "type": "object"
       },
       "SetupIn": {
@@ -12520,6 +12838,145 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/copilot-settings": {
+      "get": {
+        "operationId": "get_copilot_settings_v1_projects__project_id__copilot_settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Copilot Settings",
+        "tags": [
+          "copilot"
+        ]
+      },
+      "put": {
+        "description": "Turn the Copilot on or off, pick its model (the workflow's own or a separate one) and its token limit.",
+        "operationId": "put_copilot_settings_v1_projects__project_id__copilot_settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopilotSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Copilot Settings",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/events": {
       "get": {
         "operationId": "event_log_v1_projects__project_id__events_get",
@@ -16004,6 +16461,275 @@
         "summary": "Get Contract",
         "tags": [
           "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot": {
+      "delete": {
+        "description": "Forget this conversation (brief, messages and proposals) and start over.",
+        "operationId": "new_chat_v1_workflows__wf_id__copilot_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Chat",
+        "tags": [
+          "copilot"
+        ]
+      },
+      "get": {
+        "operationId": "get_conversation_v1_workflows__wf_id__copilot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Conversation",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot/messages": {
+      "post": {
+        "description": "Ask the Copilot (`ask`: questions only, any role) or have it build (`build`: builders) \u2014 an SSE stream.",
+        "operationId": "send_message_v1_workflows__wf_id__copilot_messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Message",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot/proposals/{proposal_id}": {
+      "post": {
+        "description": "Record what the person did with a proposal (the editor applies accepted commands itself).",
+        "operationId": "decide_proposal_v1_workflows__wf_id__copilot_proposals__proposal_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Proposal",
+        "tags": [
+          "copilot"
         ]
       }
     },
