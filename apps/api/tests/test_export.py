@@ -43,6 +43,32 @@ def test_package_metadata(triage):
     assert "OPENAI_API_KEY=" in env and "ANTHROPIC_API_KEY=" in env and "CRM_TOKEN=" in env
 
 
+def test_names_and_labels_cannot_inject_code(triage):
+    """Free text lands in comments and docstrings of generated code: a line break must not end them."""
+    import ast
+
+    from agentcanvas.adapters.langchain.codegen import generate
+    from agentcanvas.adapters.langchain.packager import package
+
+    evil = "x\nimport os; os.system('id')\r\n#"
+    rid = triage.resources[0].id
+    ir = json.loads(triage.model_dump_json().replace(json.dumps(rid), json.dumps(f"r_{evil}")))  # and its wiring
+    ir["name"], ir["id"] = f'Triage """{evil}', f"wf_{evil}"
+    ir["nodes"][0]["label"] = evil
+    wf = Workflow.model_validate(ir)
+    code = generate(wf, format_code=False)
+    tree = ast.parse(code)
+    assert not [n for n in ast.walk(tree) if isinstance(n, ast.Import) and n.names[0].name == "os"]
+    assert "x import os; os.system('id')  #" in code  # kept, on one comment line
+    _, data = package(wf, code)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        init = next(n for n in z.namelist() if n.endswith("/__init__.py") and "/agentcanvas/" not in n)
+        doc = ast.get_docstring(ast.parse(z.read(init).decode()))
+        readme = z.read(next(n for n in z.namelist() if n.endswith("README.md"))).decode()
+    assert doc == 'Triage """x import os; os.system(\'id\')  # (exported from AgentCanvas).'
+    assert readme.splitlines()[0] == '# Triage """x import os; os.system(\'id\')  #'
+
+
 async def test_export_zip_runs_its_own_tests(app, api_client, tmp_path):
     """M6-T2 AC: unzip → pytest passes (with this environment's packages instead of `uv sync`)."""
     await api_client.put(f"{P}/files/tools/support.py", json={"content": TOOL})
