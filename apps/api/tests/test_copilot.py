@@ -271,3 +271,18 @@ def test_a_turn_keeps_decisions_taken_meanwhile():
     turn = [{"id": "p1", "status": "superseded"}, {"id": "p2", "status": "pending"}]
     merged = merge_proposals(stored, turn)
     assert {p["id"]: p["status"] for p in merged} == {"p0": "rejected", "p1": "accepted", "p2": "pending"}
+
+
+def test_overlapping_turns_leave_one_open_proposal_and_models_follow_their_config():
+    from agentcanvas.adapters.langchain.nodes import Resources
+    from agentcanvas.api.v1.copilot import merge_proposals
+
+    stored = [{"id": "p1", "status": "pending"}]  # saved by a turn on another API process
+    merged = merge_proposals(stored, [{"id": "p2", "status": "pending"}])
+    assert [p["status"] for p in merged] == ["superseded", "pending"]
+
+    r = Resources()
+    a = r.model("copilot", {"model": "openai:gpt-4o-mini", "api_key": "k", "base_url": "http://a.example/v1"})
+    b = r.model("copilot", {"model": "openai:gpt-4o-mini", "api_key": "k", "base_url": "http://b.example/v1"})
+    assert a is not b  # a changed address (or model, or key) is a new client, not the first one cached
+    assert r.model("copilot", {"model": "openai:gpt-4o-mini", "api_key": "k", "base_url": "http://b.example/v1"}) is b

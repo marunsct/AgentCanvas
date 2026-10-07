@@ -28,10 +28,9 @@ Live status of the project. Update it with every commit that finishes or changes
 | S12 Evaluation Studio → v0.4.0 | ✅ done (merged in #5; tag `v0.4.0` pending) |
 | S13 Evaluation in production → v0.5.0 | ✅ done (merged in #8; tag `v0.5.0` pending) |
 | **User guide, any-provider and local models, first-run setup, Docker app** | ✅ **done** (#9) |
-| S14 AI Copilot I → v0.6.0 | ✅ done |
-| S15 AI Copilot II → v0.7.0 | ⬜ next |
-| S16–S19 (export deploy kit, MCP server, beginners) | ⬜ planned |
-| S20+ GA backlog | ⬜ pending |
+| S14 AI Copilot I → v0.6.0 | ✅ done (merged in #15; tag `v0.6.0` pending) |
+| S15 Open doors → v0.7.0 | ✅ done (MCP and A2A per deployment, connector gallery, trace export) |
+| S16–S32 (value-first order: any framework as a node, ship to users, Copilot II, deploy kit, …) | ⏸ paused by the owner after S15 |
 
 **Test totals** at the end of S13:
 
@@ -208,6 +207,19 @@ to know before deploying:
 - Migrations add the online-evaluator, alert, annotation, simulation and LangSmith tables and columns; run them first.
 - Online scoring runs inside the API pods after the response. An LLM judge uses the project's model keys.
 - LangSmith sync needs `LANGSMITH_API_KEY` as a project secret or server variable.
+
+### S15 — Open doors (v0.7.0)
+Order changed on 2026-10-07 to the value-first roadmap: S15 is Open doors; Copilot II moves to S18, the deploy kit to
+S19. The owner asked to stop after S15 and its end-to-end review.
+- [x] Every deployment is an MCP server (`/v1/deployments/{id}/mcp`, Streamable HTTP, a tool per workflow plus `answer`)
+  and an A2A agent (card at `/a2a/.well-known/agent-card.json`, `message/send`, `tasks/get`, input-required for pauses).
+- [x] One-click MCP connector gallery (`registry/mcp_gallery.json`, `GET /v1/mcp-connectors`, palette section);
+  `apps/api/scripts/smoke_mcp_gallery.py` checks every entry; stdio connectors gain `env` (values can be secrets).
+- [x] Trace export per project to Langfuse, Phoenix, Datadog (Agent OTLP) or any OTLP/HTTP endpoint, with GenAI and
+  OpenInference attributes, secret masking and `trace_redact` (`/v1/projects/{id}/trace-export`, admin only).
+- [x] Review fixes before the sprint: chat models cached per config (an edited model, key or address took effect
+  only after a restart), overlapping Copilot turns leave one open proposal, a webhook for a deleted workflow gets
+  404 instead of "already received".
 
 ### S14+ — GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.

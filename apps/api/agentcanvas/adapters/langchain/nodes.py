@@ -364,11 +364,12 @@ class Resources:
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
             return tag_model(self._overrides[name], config.get("model"), name)
-        if name not in self._cache:
+        key = f"{name}:{_config_key(config)}"  # an edited model, key or address is a new client
+        if key not in self._cache:
             params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
             model_id, params = chat_model_args(config["model"], params, self._secrets)
-            self._cache[name] = tag_model(init_chat_model(model_id, **params), config["model"], name)
-        return self._cache[name]
+            self._cache[key] = tag_model(init_chat_model(model_id, **params), config["model"], name)
+        return self._cache[key]
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:
         """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`), tagged with its resource name so
@@ -591,7 +592,8 @@ def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v:
     from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
     if config.get("transport", "http") == "stdio":
-        return StdioTransport(command=config["command"], args=list(config.get("args") or []))
+        env = {k: str(resolve(v)) for k, v in (config.get("env") or {}).items()}
+        return StdioTransport(command=config["command"], args=list(config.get("args") or []), env=env or None)
     headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
     return StreamableHttpTransport(config["url"], headers=headers or None)
 

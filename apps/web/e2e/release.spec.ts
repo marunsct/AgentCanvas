@@ -81,6 +81,16 @@ test("publish from the Versions tab, then call the endpoint with the key", async
     data: { input: { who: "Ada" } }, headers: { Authorization: `Bearer ${key}` },
   });
   expect((await res.json()).output.out).toBe("Hi Ada");
+  // S15: the same deployment as an MCP server, with a Claude Desktop setting to paste
+  await page.getByTestId("connect-prod").locator("summary").click();
+  await expect(page.getByTestId("connect-mcp")).toContainText(`/v1/deployments/${deps[0].id}/mcp`);
+  await expect(page.getByTestId("connect-claude")).toContainText(key);
+  const mcpUrl = (await page.getByTestId("connect-mcp").textContent())!.trim();
+  const tools = await api.post(mcpUrl, {
+    data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: wf.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "_"), arguments: { who: "Lin" } } },
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  expect((await tools.json()).result.structuredContent.output.out).toBe("Hi Lin");
 });
 
 test("add a webhook and a cron trigger", async ({ page }) => {

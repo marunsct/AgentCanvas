@@ -1110,6 +1110,29 @@
         "title": "Connect",
         "type": "object"
       },
+      "ConnectorSecret": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "what": {
+            "default": "",
+            "title": "What",
+            "type": "string"
+          },
+          "where": {
+            "default": "",
+            "title": "Where",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ConnectorSecret",
+        "type": "object"
+      },
       "ContextField": {
         "additionalProperties": false,
         "description": "Run-scoped, immutable value (LangGraph ``Runtime.context``), e.g. user_id, tenant_id.\n\n``source=\"user\"`` means the runner fills it from the authenticated identity \u2014 never from\nmodel output or client input (spec doc 08 rule 2).",
@@ -3961,6 +3984,93 @@
           }
         },
         "title": "Mapping",
+        "type": "object"
+      },
+      "McpConnector": {
+        "properties": {
+          "auth": {
+            "default": "none",
+            "enum": [
+              "none",
+              "key",
+              "oauth"
+            ],
+            "title": "Auth",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "docs": {
+            "default": "",
+            "title": "Docs",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "local": {
+            "default": false,
+            "title": "Local",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "publisher": {
+            "default": "community",
+            "enum": [
+              "official",
+              "vendor",
+              "community"
+            ],
+            "title": "Publisher",
+            "type": "string"
+          },
+          "secrets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConnectorSecret"
+            },
+            "title": "Secrets",
+            "type": "array"
+          },
+          "setup": {
+            "default": "",
+            "title": "Setup",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "verified": {
+            "default": "",
+            "title": "Verified",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "description",
+          "config"
+        ],
+        "title": "McpConnector",
         "type": "object"
       },
       "McpInspectRequest": {
@@ -7070,41 +7180,6 @@
         "title": "TestCaseOut",
         "type": "object"
       },
-      "TestOut": {
-        "properties": {
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "reply": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reply"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "TestOut",
-        "type": "object"
-      },
       "TestRunIn": {
         "properties": {
           "ids": {
@@ -7277,6 +7352,150 @@
           }
         },
         "title": "TimeoutPolicySpec",
+        "type": "object"
+      },
+      "TraceExport": {
+        "description": "A project's trace destination (stored in the project's settings under `trace_export`).",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Phoenix API key, as a secret (optional)",
+            "title": "Api Key"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "default": "",
+            "description": "base URL (the full traces URL for otlp); empty = default",
+            "maxLength": 500,
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "headers": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              ]
+            },
+            "description": "otlp: extra headers",
+            "title": "Headers",
+            "type": "object"
+          },
+          "include_content": {
+            "default": true,
+            "description": "send inputs, outputs and model replies (masked)",
+            "title": "Include Content",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "langfuse",
+              "phoenix",
+              "datadog",
+              "otlp"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "public_key": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Langfuse public key, as a secret",
+            "title": "Public Key"
+          },
+          "secret_key": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Langfuse secret key, as a secret",
+            "title": "Secret Key"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "TraceExport",
+        "type": "object"
+      },
+      "TraceExportOut": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceExport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaults": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Defaults",
+            "type": "object"
+          },
+          "guides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Guides",
+            "type": "object"
+          },
+          "missing_secrets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Secrets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "config",
+          "guides",
+          "defaults",
+          "missing_secrets"
+        ],
+        "title": "TraceExportOut",
         "type": "object"
       },
       "TriggerCreated": {
@@ -7872,6 +8091,59 @@
         ],
         "title": "WorkflowSummary",
         "type": "object"
+      },
+      "agentcanvas__api__v1__setup__TestOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "TestOut",
+        "type": "object"
+      },
+      "agentcanvas__api__v1__traces__TestOut": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "detail"
+        ],
+        "title": "TestOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -7884,7 +8156,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.6.0"
+    "version": "0.7.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9543,6 +9815,249 @@
         ]
       }
     },
+    "/v1/deployments/{dep_id}/a2a": {
+      "post": {
+        "description": "The deployment as an A2A agent (JSON-RPC).",
+        "operationId": "a2a_endpoint_v1_deployments__dep_id__a2a_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A2A Endpoint",
+        "tags": [
+          "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json": {
+      "get": {
+        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key.",
+        "operationId": "a2a_card_v1_deployments__dep_id__a2a__well_known_agent_card_json_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response A2A Card V1 Deployments  Dep Id  A2A  Well Known Agent Card Json Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A2A Card",
+        "tags": [
+          "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/a2a/.well-known/agent.json": {
+      "get": {
+        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key.",
+        "operationId": "a2a_card_v1_deployments__dep_id__a2a__well_known_agent_json_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response A2A Card V1 Deployments  Dep Id  A2A  Well Known Agent Json Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A2A Card",
+        "tags": [
+          "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/mcp": {
+      "get": {
+        "description": "No server-initiated stream: every answer comes back on its POST.",
+        "operationId": "mcp_no_stream_v1_deployments__dep_id__mcp_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp No Stream",
+        "tags": [
+          "agent protocols"
+        ]
+      },
+      "post": {
+        "description": "The deployment as a remote MCP server (Streamable HTTP; every response is a single JSON message).",
+        "operationId": "mcp_endpoint_v1_deployments__dep_id__mcp_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp Endpoint",
+        "tags": [
+          "agent protocols"
+        ]
+      }
+    },
     "/v1/deployments/{dep_id}/online-evaluators": {
       "get": {
         "operationId": "list_online_v1_deployments__dep_id__online_evaluators_get",
@@ -11062,6 +11577,67 @@
           }
         ],
         "summary": "Ir Schema",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/v1/mcp-connectors": {
+      "get": {
+        "description": "The one-click connector gallery (S15): curated MCP servers with their settings and the secrets they need.",
+        "operationId": "mcp_connectors_v1_mcp_connectors_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/McpConnector"
+                  },
+                  "title": "Response Mcp Connectors V1 Mcp Connectors Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mcp Connectors",
         "tags": [
           "catalog"
         ]
@@ -14044,7 +14620,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TestOut"
+                  "$ref": "#/components/schemas/agentcanvas__api__v1__setup__TestOut"
                 }
               }
             },
@@ -14069,6 +14645,274 @@
         "summary": "Test Model",
         "tags": [
           "setup"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/trace-export": {
+      "delete": {
+        "operationId": "delete_trace_export_v1_projects__project_id__trace_export_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Trace Export",
+        "tags": [
+          "trace export"
+        ]
+      },
+      "get": {
+        "operationId": "get_trace_export_v1_projects__project_id__trace_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Trace Export",
+        "tags": [
+          "trace export"
+        ]
+      },
+      "put": {
+        "description": "Send this project's runs to Langfuse, Phoenix, Datadog or an OTLP endpoint (admins: traces leave the\nserver, with inputs and outputs unless `include_content` is off).",
+        "operationId": "put_trace_export_v1_projects__project_id__trace_export_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TraceExport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Trace Export",
+        "tags": [
+          "trace export"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/trace-export/test": {
+      "post": {
+        "description": "Send one test span to the saved destination now.",
+        "operationId": "test_trace_export_v1_projects__project_id__trace_export_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentcanvas__api__v1__traces__TestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Trace Export",
+        "tags": [
+          "trace export"
         ]
       }
     },

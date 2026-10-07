@@ -168,3 +168,10 @@ def installed_providers() -> list[ProviderInfo]:
         return p.model_copy(update={"installed": provider_installed(p), "base_url": base_url})
 
     return [effective(p) for p in default_registry().providers()]
+
+
+@cache
+def load_gallery() -> dict[str, Any]:
+    """The curated MCP connector gallery (S15): `{"version": 1, "connectors": [...]}`."""
+    path = HERE / "mcp_gallery.json"
+    return json.loads(path.read_text()) if path.exists() else {"version": 1, "connectors": []}

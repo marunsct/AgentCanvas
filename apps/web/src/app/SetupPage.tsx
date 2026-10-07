@@ -8,6 +8,7 @@ import { can } from "../api/session";
 import type { SetupOut } from "../api/types";
 import { QueryStatus } from "../ui/QueryStatus";
 import { CopilotSettings } from "../copilot/CopilotSettings";
+import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { providerHint } from "../inspector/widgets";
 
 interface TestResult { ok: boolean; reply?: string | null; error?: string | null }
@@ -113,6 +114,7 @@ export function SetupPage() {
         </form>
       )}
       <CopilotSettings />
+      <TraceExportSettings />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 /** Node palette (M2-T4): categories from the registry, search, drag onto the canvas (or click to add). */
 import { useMemo, useState } from "react";
-import { useNodeTypes, useSetup, useWorkspaceCatalog } from "../api/queries";
+import { useMcpConnectors, useNodeTypes, useSetup, useWorkspaceCatalog } from "../api/queries";
+import type { McpConnector } from "../api/generated";
 import type { NodeManifest } from "../api/types";
 import { addElement, DND_MIME, manifestCache, type Preset, projectModel } from "./Canvas";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -18,6 +19,7 @@ export function Palette() {
   const nodeTypes = useNodeTypes();
   const { data } = nodeTypes;
   const catalog = useWorkspaceCatalog();
+  const connectors = useMcpConnectors();
   const [q, setQ] = useState("");
   for (const m of data ?? []) manifestCache.set(m.type, m);
   const dm = useSetup().data?.default_model;
@@ -47,6 +49,15 @@ export function Palette() {
     ];
     return items.filter((i) => !needle || `${i.label} ${i.hint}`.toLowerCase().includes(needle));
   }, [catalog.data, q]);
+
+  // the connector gallery: each one is an App connector (MCP) block, filled in (S15)
+  const connectorItems = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return (connectors.data ?? []).filter(
+      (c) => !needle || `${c.name} ${c.category} ${c.description} mcp connector`.toLowerCase().includes(needle),
+    );
+  }, [connectors.data, q]);
+  const connectorPreset = (c: McpConnector): Preset => ({ name: c.id.replace(/[^a-z0-9_]/gi, "_"), config: c.config });
 
   return (
     <aside className="palette" aria-label="Node palette">
@@ -78,6 +89,32 @@ export function Palette() {
             </div>
           ))}
         </section>
+      )}
+      {connectorItems.length > 0 && (
+        <details className="palette-connectors" open={!!q.trim()} data-testid="palette-connectors">
+          <summary><h4>App connectors ({connectorItems.length})</h4></summary>
+          {connectorItems.map((c) => (
+            <div
+              key={c.id} className="palette-item kind-resource" draggable role="button" tabIndex={0}
+              title={`${c.description}${c.setup ? `\n${c.setup}` : ""}`} data-testid={`palette-connector-${c.id}`}
+              aria-label={`${c.name} connector`}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DND_MIME, `mcp.server\n${JSON.stringify(connectorPreset(c))}`);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDoubleClick={() => addElement("mcp.server", undefined, connectorPreset(c))}
+              onKeyDown={(e) => { if (e.key === "Enter") addElement("mcp.server", undefined, connectorPreset(c)); }}
+            >
+              <b>{c.name}</b>
+              <small className="blurb">
+                {c.description}
+                {(c.secrets ?? []).length > 0 && ` · needs ${(c.secrets ?? []).map((x) => x.name).join(", ")}`}
+                {c.local && " · local edition"}
+                {c.auth === "oauth" && " · sign-in not supported yet"}
+              </small>
+            </div>
+          ))}
+        </details>
       )}
       {groups.map(([cat, items]) => (
         <section key={cat}>

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { apiFetch } from "./client";
 import { can } from "./session";
 import type { ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
+import type { McpConnector } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
@@ -48,6 +49,15 @@ export function useWorkspaceCatalog() {
     queryKey: ["workspace-catalog", PROJECT_ID],
     queryFn: () => apiFetch<WorkspaceCatalog>(`/projects/${PROJECT_ID}/workspace/catalog`),
     staleTime: 2_000,
+  });
+}
+
+/** The one-click MCP connector gallery (S15). */
+export function useMcpConnectors() {
+  return useQuery({
+    queryKey: ["mcp-connectors"],
+    queryFn: () => apiFetch<McpConnector[]>("/mcp-connectors"),
+    staleTime: Infinity,
   });
 }
 

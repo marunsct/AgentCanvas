@@ -41,6 +41,7 @@ from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.secrets import SecretService
+from agentcanvas.services.trace_export import TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
 
@@ -86,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # tests check drift after every score; servers at most every few seconds per evaluator
             app.state.online = OnlineScorer(db, runner, drift_every_s=0 if settings.env == "test" else 10.0)
             runner.finish_hooks.append(app.state.online.on_run_finished)
+            app.state.trace_export = TraceExportHook(db, app.state.projects)
+            runner.finish_hooks.append(app.state.trace_export.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
@@ -122,12 +125,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 await app.state.online.stop()  # after the drain: runs finishing in it are scored too
                 await runner.shutdown()
+                await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()
                 await db.dispose()
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.6.0", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.7.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

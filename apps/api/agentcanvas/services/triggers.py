@@ -212,7 +212,10 @@ class TriggerService:
     async def claim_delivery(self, trig: Trigger, signature: str) -> str:
         """Refuse a replay within the tolerance window: each signed delivery (its signature covers the timestamp)
         starts one run. Remembered in the events' dedup table, so every replica sees it; returns the claim's id."""
-        project_id, handler = await self.project_of(trig), f"webhook:{trig.id}"
+        project_id = await self.s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == trig.workflow_id))
+        if project_id is None:  # not a replay: there is nothing left to run
+            raise NotFound("the workflow of this webhook no longer exists")
+        handler = f"webhook:{trig.id}"
         cutoff = datetime.now(UTC) - timedelta(seconds=2 * TOLERANCE_S)  # older deliveries are refused as stale
         await self.s.execute(
             delete(EventDedup).where(

@@ -159,7 +159,10 @@ def merge_proposals(stored: list[dict[str, Any]], turn: list[dict[str, Any]]) ->
     for p in turn:
         old = by_id.pop(p.get("id"), None)
         out.append(old if old is not None and old.get("status") in DECIDED else p)
-    return [*by_id.values(), *out]
+    merged = [*by_id.values(), *out]
+    # two turns that overlapped (another API process) each left one pending: only the newest stays open
+    pending = [p for p in merged if p.get("status") == "pending"]
+    return [{**p, "status": "superseded"} if p in pending[:-1] else p for p in merged]
 
 
 @router.post("/workflows/{wf_id}/copilot/messages", response_class=StreamingResponse)
