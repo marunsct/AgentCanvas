@@ -2,9 +2,13 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
-## Unreleased
+## v0.6.0 — AI Copilot (not tagged yet)
 
 ### Added
+- **AI Copilot in the editor.** Open **✦ Copilot**, describe the workflow you want, and the Copilot writes a brief (goal, inputs, outputs, steps, tools, success criteria, open questions), says its plan, and builds it with edit commands, fixing its own validation errors. Its changes are previewed on the canvas (new in green, changed in amber) and applied only when you **Accept**, as one undoable edit. **Ask** mode answers questions without changing anything and is open to viewers. See `docs/user-guide/copilot.md`.
+- **The Copilot knows the product.** A knowledge pack generated from the running product (guide, every block's ports and settings including workspace blocks, starter templates, edit commands) is sent with each message and cached by providers that support prompt caching; tools look up block details, templates and the workflow with its problems.
+- **Copilot model choice.** The workflow's own model (project default, else the workflow's first AI model) or a separate model, with a token limit per conversation; organisation model policies apply to it. `GET/PUT /v1/projects/{id}/copilot-settings`; conversations at `/v1/workflows/{id}/copilot` (`POST …/messages` streams Server-Sent Events).
+- **Copilot eval harness.** `python -m agentcanvas.copilot.evals --model …` builds ten workflows from plain requests and checks each validates and uses the expected blocks.
 - **Any model provider, including local models.** Chat models can use Anthropic, OpenAI, Azure OpenAI, Google Gemini, Mistral, Groq, DeepSeek, xAI, any OpenAI-compatible API (`openai_compatible:` with a Base URL), and models on your own computer: Ollama (`ollama:`), LM Studio (`lmstudio:`), vLLM (`vllm:`) and llama.cpp (`llamacpp:`). Every integration is installed with the API. `GET /v1/model-providers` lists them, with each one's key variable, default address and whether it is installed.
 - **API keys per provider, from the canvas.** A project secret named after the provider (e.g. `MISTRAL_API_KEY`) is used by that provider's models when their config names no key; the Chat model's **API key** field picks any project secret by name. The model field shows where the key comes from.
 - **First-run setup.** Home asks for the model to use: pick a provider and model, enter the key or a local server's address, **Test connection**, and **Save**. The key becomes a project secret and the model the project's default, which new workflows from templates use. `GET/PUT /v1/projects/{id}/setup`, `POST …/setup/test`, `POST …/setup/skip`.
