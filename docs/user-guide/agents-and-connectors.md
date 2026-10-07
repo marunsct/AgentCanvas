@@ -51,7 +51,7 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 | | |
 |---|---|
 | Agent card | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a/.well-known/agent-card.json` (no key needed to read it) |
-| Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC, A2A 0.3; v1.0 method names also work) |
+| Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC, A2A 0.3) |
 | Sign-in | `Authorization: Bearer <deployment key>` |
 
 - `message/send` runs the workflow. A **data** part gives the input fields; a **text** part goes to the workflow's

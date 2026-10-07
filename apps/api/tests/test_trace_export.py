@@ -23,11 +23,14 @@ class Captured:
         self.provider.add_span_processor(SimpleSpanProcessor(self.memory))
         self.sent: list[tuple[str, dict]] = []
 
-    def send(self, url, headers, records):
+    def send(self, project_id, url, headers, records):
         from agentcanvas.services.trace_export import emit
 
         self.sent.append((url, headers))
         emit(self.provider, records)
+
+    def forget(self, project_id) -> None:
+        pass
 
     def shutdown(self) -> None:
         self.provider.shutdown()
@@ -108,3 +111,16 @@ def test_spans_redact_and_can_leave_content_out():
     assert llm["attrs"]["gen_ai.request.model"] == "gpt-5" and llm["attrs"]["gen_ai.usage.input_tokens"] == 10
     bare = spans(h, "success", None, content=False)
     assert not any("input.value" in r["attrs"] or "output.value" in r["attrs"] for r in bare)
+
+
+def test_new_credentials_replace_the_old_pipeline():
+    from agentcanvas.services.trace_export import Exporter
+
+    ex = Exporter()
+    first = ex._provider("prj_a", "https://x.example/v1/traces", {"Authorization": "Basic old"})
+    assert ex._provider("prj_a", "https://x.example/v1/traces", {"Authorization": "Basic old"}) is first
+    second = ex._provider("prj_a", "https://x.example/v1/traces", {"Authorization": "Basic new"})
+    assert second is not first and len(ex._providers) == 1  # the old key is not kept
+    ex.forget("prj_a")
+    assert ex._providers == {}
+    ex.shutdown()

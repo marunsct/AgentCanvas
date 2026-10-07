@@ -59,3 +59,19 @@ async def test_sync_script_can_interrupt_inside_worker_thread():
     assert (await graph.aget_state(cfg)).interrupts[0].value == {"question": "q"}
     final = await graph.ainvoke(Command(resume="yes"), cfg)
     assert final["out"] == "yes"
+
+
+async def test_a_typed_no_is_not_an_approval():
+    class S(TypedDict, total=False):
+        text: str
+        ok: bool
+
+    g = StateGraph(S)
+    g.add_node("a", ac.approval_node(node_id="n1", show="text", output="ok"))
+    g.set_entry_point("a")
+    app = g.compile(checkpointer=InMemorySaver())
+    for answer, expected in (("no", False), ("false", False), ("Yes", True), ({"approved": "no"}, False)):
+        cfg = {"configurable": {"thread_id": f"t-{answer}"}}
+        await app.ainvoke({"text": "hi"}, cfg)
+        out = await app.ainvoke(Command(resume=answer), cfg)
+        assert out["ok"] is expected, answer

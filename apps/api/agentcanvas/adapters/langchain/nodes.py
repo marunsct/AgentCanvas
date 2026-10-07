@@ -20,6 +20,7 @@ import operator
 import os
 import re
 import warnings
+from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,9 @@ from typing_extensions import TypedDict
 
 from agentcanvas.expr import eval_condition, render_template
 from agentcanvas.workspace.loader import load_attr
+
+MODEL_CACHE_SIZE = 64  # model clients kept per Resources
+YES_WORDS = ("yes", "y", "approve", "approved", "ok", "okay", "true")  # a typed approval
 
 
 def safe_import(import_path: str, workspace: Path | None = None) -> Any:
@@ -357,7 +361,7 @@ class Resources:
         self.script_runner = script_runner  # sandboxed execution of workspace scripts (M5-T4); None = in-process
         self.registry = registry  # the project's node registry (built-ins + workspace custom nodes)
         self.dry_run: set[str] | None = None  # tool names replaced by recorders (FR-X-02 dry run)
-        self._cache: dict[str, Any] = {}
+        self._cache: OrderedDict[str, Any] = OrderedDict()  # model clients, least recently used first
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
 
@@ -365,11 +369,15 @@ class Resources:
         if name in self._overrides:
             return tag_model(self._overrides[name], config.get("model"), name)
         key = f"{name}:{_config_key(config)}"  # an edited model, key or address is a new client
-        if key not in self._cache:
-            params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
-            model_id, params = chat_model_args(config["model"], params, self._secrets)
-            self._cache[key] = tag_model(init_chat_model(model_id, **params), config["model"], name)
-        return self._cache[key]
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
+        model_id, params = chat_model_args(config["model"], params, self._secrets)
+        model = self._cache[key] = tag_model(init_chat_model(model_id, **params), config["model"], name)
+        while len(self._cache) > MODEL_CACHE_SIZE:
+            self._cache.popitem(last=False)  # edited configs would otherwise keep old clients (and keys) forever
+        return model
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:
         """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`), tagged with its resource name so
@@ -1090,7 +1098,9 @@ def approval_node(*, node_id: str, show: str, output: str) -> Callable:
 
     async def run(state: Any) -> dict:
         decision = interrupt({"kind": "approval", "canvas_node_id": node_id, "value": state.get(show)})
-        decision = decision if isinstance(decision, dict) else {"approved": bool(decision)}
+        decision = decision if isinstance(decision, dict) else {"approved": decision}
+        if isinstance(decision.get("approved"), str):  # "no" / "false" must not read as approval
+            decision = {**decision, "approved": decision["approved"].strip().lower() in YES_WORDS}
         result: dict[str, Any] = {output: bool(decision.get("approved"))}
         if decision.get("value") is not None:
             result[show] = decision["value"]

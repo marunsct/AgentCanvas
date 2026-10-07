@@ -236,13 +236,14 @@ def spans(h: RunHandle, status: str, error: str | None, content: bool) -> list[d
 
 
 class Exporter:
-    """One OpenTelemetry pipeline per destination (batched, background thread), reused across runs."""
+    """One OpenTelemetry pipeline per project (batched, background thread), reused across runs. A project whose
+    destination or credentials change gets a new pipeline; the old one is flushed and shut down."""
 
     def __init__(self) -> None:
-        self._providers: dict[str, TracerProvider] = {}
+        self._providers: dict[str, tuple[str, TracerProvider]] = {}
         self._lock = threading.Lock()
 
-    def _provider(self, url: str, headers: dict[str, str]) -> TracerProvider:
+    def _provider(self, project_id: str, url: str, headers: dict[str, str]) -> TracerProvider:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
@@ -252,21 +253,33 @@ class Exporter:
 
         key = json.dumps([url, sorted(headers.items())])
         with self._lock:
-            if key not in self._providers:
-                provider = TracerProvider(resource=Resource.create({"service.name": "agentcanvas"}))
-                exporter = MaskingExporter(OTLPSpanExporter(endpoint=url, headers=headers))
-                provider.add_span_processor(BatchSpanProcessor(exporter))
-                self._providers[key] = provider
-            return self._providers[key]
+            current = self._providers.get(project_id)
+            if current is not None and current[0] == key:
+                return current[1]
+            provider = TracerProvider(resource=Resource.create({"service.name": "agentcanvas"}))
+            exporter = MaskingExporter(OTLPSpanExporter(endpoint=url, headers=headers))
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+            self._providers[project_id] = (key, provider)
+        if current is not None:  # flush the old pipeline off the event loop, then drop it (and its credentials)
+            threading.Thread(target=current[1].shutdown, daemon=True).start()
+        return provider
 
-    def send(self, url: str, headers: dict[str, str], records: list[dict[str, Any]]) -> None:
-        emit(self._provider(url, headers), records)
+    def send(self, project_id: str, url: str, headers: dict[str, str], records: list[dict[str, Any]]) -> None:
+        emit(self._provider(project_id, url, headers), records)
+
+    def forget(self, project_id: str) -> None:
+        """Drop a project's pipeline (its settings changed or were removed)."""
+        with self._lock:
+            current = self._providers.pop(project_id, None)
+        if current is not None:
+            threading.Thread(target=current[1].shutdown, daemon=True).start()
 
     def shutdown(self) -> None:
         with self._lock:
-            for p in self._providers.values():
-                p.shutdown()
+            providers = [p for _, p in self._providers.values()]
             self._providers.clear()
+        for p in providers:
+            p.shutdown()
 
 
 def emit(provider: Any, records: list[dict[str, Any]]) -> None:
@@ -326,8 +339,9 @@ class TraceExportHook:
         self._config: dict[str, tuple[float, TraceExport | None]] = {}  # project id -> (loaded at, config)
 
     def forget(self, project_id: str) -> None:
-        """Settings changed: read them again on the next run."""
+        """Settings changed: read them again on the next run, and drop the old pipeline."""
         self._config.pop(project_id, None)
+        self.exporter.forget(project_id)
 
     async def config(self, project_id: str) -> TraceExport | None:
         import time
@@ -359,4 +373,4 @@ class TraceExportHook:
             return
         records = spans(h, status, error, cfg.include_content)
         if records:
-            self.exporter.send(url, headers, records)
+            self.exporter.send(project_id, url, headers, records)

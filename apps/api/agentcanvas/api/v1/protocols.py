@@ -8,7 +8,7 @@ deployment API, with the same rate limits:
   connect to it like to any remote MCP server.
 - **A2A** (`POST /v1/deployments/{id}/a2a`, JSON-RPC; card at `.../a2a/.well-known/agent-card.json`):
   `message/send` runs the workflow (a pause becomes `input-required`, answered by sending to the same task),
-  `tasks/get` reads a task. A2A v1.0 method names (`SendMessage`, `GetTask`) work too.
+  `tasks/get` reads a task.
 
 Runs started here are ordinary deployment runs: they show in Runs, count for online evaluators and keep their
 conversation (`thread_id` / A2A `contextId`).
@@ -23,14 +23,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session
 from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start
 from agentcanvas.api.v1.runs import _thread
-from agentcanvas.db.models import Deployment, Run, Thread, WorkflowVersion
-from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound
+from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
+from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.types import ResumeSpec
@@ -64,6 +65,8 @@ async def _rpc(request: Request) -> dict[str, Any]:
         raise RpcError(-32600, "batches are not supported; send one message per request")
     if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
         raise RpcError(-32600, "invalid request: expected a JSON-RPC 2.0 message with a method")
+    if not isinstance(msg.get("params") or {}, dict):
+        raise RpcError(-32602, "params must be an object")
     return msg
 
 
@@ -103,11 +106,22 @@ def answer_value(interrupt: dict[str, Any] | None, approve: bool | None, text: s
         requests = ((interrupt or {}).get("payload") or {}).get("action_requests") or [{}]
         decision = {"type": "approve"} if approve is not False else {"type": "reject", "message": text or "rejected"}
         return {"decisions": [decision for _ in requests]}
-    return text if text is not None else ("yes" if approve is not False else "no")
+    if approve is not None:  # the pause is not known here: an explicit decision, never a truthy "no"
+        return {"approved": approve, **({"comment": text} if text else {})}
+    return text if text is not None else "yes"
 
 
-async def _pending(request: Request, thread_id: str, interrupt_id: str | None) -> dict[str, Any] | None:
-    """The pending interrupt of a thread's latest run in this process (to shape a simple answer)."""
+async def _pending(
+    request: Request, session: AsyncSession, thread_id: str, interrupt_id: str | None
+) -> dict[str, Any] | None:
+    """The thread's pending interrupt (to shape a simple answer): from the inbox table, which every API replica
+    shares, else from a recent run in this process."""
+    q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+    if interrupt_id:
+        q = q.where(InterruptTask.id == interrupt_id)
+    row = await session.scalar(q.order_by(InterruptTask.created_at.desc()).limit(1))
+    if row is not None:
+        return {"id": row.id, "kind": row.kind, "payload": row.payload}
     for h in reversed(list(request.app.state.runner.handles.values())):
         if h.thread_id != thread_id:
             continue
@@ -120,14 +134,26 @@ async def _pending(request: Request, thread_id: str, interrupt_id: str | None) -
 
 
 async def _resume(
-    request: Request, session: AsyncSession, dep: Deployment, wf: Workflow, thread_id: str, value: Any, iid: str | None
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    thread_id: str,
+    value: Any,
+    iid: str | None,
+    labels: dict[str, str] | None = None,
 ) -> ApiResult:
     t = await _thread(session, thread_id)
     if t.deployment_id != dep.id:
         raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
-        wf, thread_id=thread_id, resume=ResumeSpec(value, iid), deployment_id=dep.id, version_id=version_id
+        wf,
+        thread_id=thread_id,
+        resume=ResumeSpec(value, iid),
+        deployment_id=dep.id,
+        version_id=version_id,
+        labels=labels,
     )
     await session.close()
     return await _result(h)
@@ -202,15 +228,18 @@ async def _mcp_call(
     try:
         if name == tool_name(wf):
             fields = {k: v for k, v in args.items() if k not in ("thread_id", "context")}
-            body = ApiRunIn(
-                input=fields, thread_id=args.get("thread_id"), context=args.get("context") or {}, user_id=None
-            )
-            h = await _start(request, session, dep.id, body, auth)
+            try:
+                body = ApiRunIn(
+                    input=fields, thread_id=args.get("thread_id"), context=args.get("context") or {}, user_id=None
+                )
+            except ValidationError as exc:
+                raise RpcError(-32602, f"invalid arguments: {exc.errors()[0]['msg']}") from None
+            h = await _start(request, session, dep.id, body, auth, caller=(dep, wf))
             await session.close()
             return _tool_result(await _result(h))
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
-            pending = await _pending(request, thread_id, iid)
+            pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             return _tool_result(await _resume(request, session, dep, wf, thread_id, value, iid))
     except (InvalidInput, NotFound, Conflict) as exc:  # the caller's mistake: tell the model, it can correct it
@@ -314,17 +343,25 @@ async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depend
     return agent_card(wf, semver, str(request.url_for("a2a_endpoint", dep_id=dep_id)))
 
 
-def _input_from(message: dict[str, Any], c: Contract) -> tuple[dict[str, Any], str | None]:
-    """The run input from an A2A message: data parts are fields; text goes to the workflow's text field."""
+def _parts(message: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """The data fields and the text of an A2A message (parts that are not objects are ignored)."""
     fields: dict[str, Any] = {}
     texts: list[str] = []
-    for part in message.get("parts") or []:
+    parts = message.get("parts")
+    for part in parts if isinstance(parts, list) else []:
+        if not isinstance(part, dict):
+            continue
         kind = part.get("kind") or part.get("type") or ("data" if "data" in part else "text")
         if kind == "data" and isinstance(part.get("data"), dict):
             fields.update(part["data"])
         elif kind == "text" and isinstance(part.get("text"), str):
             texts.append(part["text"])
-    text = "\n".join(texts) if texts else None
+    return fields, ("\n".join(texts) if texts else None)
+
+
+def _input_from(message: dict[str, Any], c: Contract) -> dict[str, Any]:
+    """The run input from an A2A message: data parts are fields; text goes to the workflow's text field."""
+    fields, text = _parts(message)
     if text is not None:
         strings = [k for k, v in c.input.items() if v.get("type") in (None, "string") and k not in fields]
         only_in = [k for k in strings if k not in c.output]  # fields that are both in and out are rarely the question
@@ -335,7 +372,7 @@ def _input_from(message: dict[str, Any], c: Contract) -> tuple[dict[str, Any], s
             fields[target] = text
         elif not fields:
             raise RpcError(-32602, f"send the input as a data part with the fields: {', '.join(c.input) or 'none'}")
-    return fields, text
+    return fields
 
 
 def _task(res: ApiResult, task_id: str) -> dict[str, Any]:
@@ -366,13 +403,16 @@ def _agent_message(task_id: str, context_id: str, text: str, data: dict[str, Any
             "contextId": context_id, "parts": parts}  # fmt: skip
 
 
-async def _task_thread(session: AsyncSession, dep: Deployment, task_id: str) -> str:
+async def _task_thread(session: AsyncSession, dep: Deployment, task_id: str) -> Thread:
     """The conversation of a task (a task is named after the run that started it)."""
-    q = select(Run.thread_id).join(Thread, Thread.id == Run.thread_id)
-    thread_id = await session.scalar(q.where(Run.id == task_id, Thread.deployment_id == dep.id))
-    if thread_id is None:
+    q = select(Thread).join(Run, Thread.id == Run.thread_id)
+    thread = await session.scalar(q.where(Run.id == task_id, Thread.deployment_id == dep.id))
+    if thread is None:
         raise RpcError(-32001, f"task '{task_id}' not found")
-    return thread_id
+    return thread
+
+
+YES = ("yes", "y", "approve", "approved", "ok", "okay", "true")
 
 
 async def _a2a_send(
@@ -381,46 +421,47 @@ async def _a2a_send(
     message = params.get("message")
     if not isinstance(message, dict):
         raise RpcError(-32602, "params.message is required")
-    c = contract(wf)
     task_id = message.get("taskId")
     if task_id:  # the answer to a paused task
-        thread_id = await _task_thread(session, dep, str(task_id))
-        fields, text = _input_from(message, c) if c.input else ({}, None)
-        if text is None:
-            texts = [p.get("text") for p in message.get("parts") or [] if isinstance(p.get("text"), str)]
-            text = "\n".join(texts) or None
-        pending = await _pending(request, thread_id, None)
-        data = next((p["data"] for p in message.get("parts") or [] if isinstance(p.get("data"), dict)), None)
-        approve = data.get("approve") if isinstance(data, dict) else None
-        raw = data.get("value") if isinstance(data, dict) else None
-        if approve is None and text is not None and (pending or {}).get("kind") in ("approval", "tool_approval"):
-            approve = text.strip().lower() in ("yes", "y", "approve", "approved", "ok", "true")
-        res = await _resume(request, session, dep, wf, thread_id, answer_value(pending, approve, text, raw), None)
-        return _task(res, str(task_id))
-    fields, _ = _input_from(message, c)
+        task_id = str(task_id)
+        thread = await _task_thread(session, dep, task_id)
+        pending = await _pending(request, session, thread.id, None)
+        if thread.status != "interrupted" or pending is None:
+            raise RpcError(-32602, f"task '{task_id}' is not waiting for input; send a new message (with contextId "
+                           f"'{thread.id}' to continue the conversation)")  # fmt: skip
+        data, text = _parts(message)
+        approve = data.get("approve") if isinstance(data.get("approve"), bool) else None
+        if approve is None and text is not None and pending.get("kind") in ("approval", "tool_approval"):
+            approve = text.strip().lower() in YES
+        value = answer_value(pending, approve, text, data.get("value"))
+        res = await _resume(request, session, dep, wf, thread.id, value, None, labels={"a2a_task": task_id})
+        return _task(res, task_id)
+    fields = _input_from(message, contract(wf))
+    context_id = message.get("contextId")
     try:
-        h = await _start(
-            request, session, dep.id, ApiRunIn(input=fields, thread_id=message.get("contextId"), user_id=None), auth
-        )
+        body = ApiRunIn(input=fields, thread_id=context_id if context_id is None else str(context_id), user_id=None)
+        h = await _start(request, session, dep.id, body, auth, caller=(dep, wf))
+    except ValidationError as exc:
+        raise RpcError(-32602, f"invalid message: {exc.errors()[0]['msg']}") from None
     except NotFound:
-        raise RpcError(-32001, f"context '{message.get('contextId')}' not found") from None
+        raise RpcError(-32001, f"context '{context_id}' not found") from None
     await session.close()
     res = await _result(h)
     return _task(res, res.run_id)
 
 
 async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]) -> dict[str, Any]:
+    """A task's state: the run that started it, or the latest run that answered it (labelled with the task)."""
     task_id = str(params.get("id") or "")
-    thread_id = await _task_thread(session, dep, task_id)
-    latest = await session.scalar(
-        select(Run).where(Run.thread_id == thread_id).order_by(Run.started_at.desc()).limit(1)
-    )
+    thread = await _task_thread(session, dep, task_id)
+    runs = (await session.scalars(select(Run).where(Run.thread_id == thread.id).order_by(Run.started_at.desc()))).all()
+    latest = next((r for r in runs if r.id == task_id or (r.labels or {}).get("a2a_task") == task_id), None)
     handle = request.app.state.runner.handles.get(latest.id) if latest else None
     if handle is not None and handle.done.is_set():
         res = await _result(handle)
     else:
         status = latest.status if latest else "error"
-        res = ApiResult(run_id=latest.id if latest else task_id, thread_id=thread_id, status=status,  # type: ignore[arg-type]
+        res = ApiResult(run_id=latest.id if latest else task_id, thread_id=thread.id, status=status,  # type: ignore[arg-type]
                         error=latest.error if latest else None)  # fmt: skip
     return _task(res, task_id)
 
@@ -432,24 +473,28 @@ async def a2a_endpoint(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """The deployment as an A2A agent (JSON-RPC)."""
+    """The deployment as an A2A agent (JSON-RPC, A2A 0.3)."""
     dep, wf = await _caller(request, session, dep_id, authorization)
     id_: Any = None
     try:
         msg = await _rpc(request)
         method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
-        if method in ("message/send", "SendMessage"):
+        if "id" not in msg:  # a notification: nothing runs and nothing is answered
+            return Response(status_code=204)
+        if method == "message/send":
             result = await _a2a_send(request, session, dep, wf, params, authorization)
-        elif method in ("tasks/get", "GetTask"):
+        elif method == "tasks/get":
             result = await _a2a_get(request, session, dep, params)
-        elif method in ("tasks/cancel", "CancelTask"):
+        elif method == "tasks/cancel":
             raise RpcError(-32002, "tasks cannot be cancelled through A2A; a paused task simply waits")
-        elif method in ("message/stream", "SendStreamingMessage", "tasks/resubscribe"):
+        elif method in ("message/stream", "tasks/resubscribe"):
             raise RpcError(-32004, "streaming is not supported (the agent card says so); use message/send")
         else:
             raise RpcError(-32601, f"method '{method}' is not supported")
     except RpcError as e:
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
+    except (TooManyRequests, Unauthorized):
+        raise  # HTTP 429 / 401, so clients back off or fix their key
     except DomainError as e:
         return JSONResponse(_rpc_error(id_, -32602, e.detail))
     return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})

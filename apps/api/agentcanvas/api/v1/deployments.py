@@ -245,8 +245,18 @@ async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, bod
     return _context(wf, body.context, user)
 
 
-async def _start(request: Request, session: AsyncSession, dep_id: str, body: ApiRunIn, auth: str | None) -> RunHandle:
-    dep, wf = await _caller(request, session, dep_id, auth)
+async def _start(
+    request: Request,
+    session: AsyncSession,
+    dep_id: str,
+    body: ApiRunIn,
+    auth: str | None,
+    caller: tuple[Deployment, Workflow] | None = None,
+    labels: dict[str, str] | None = None,
+) -> RunHandle:
+    """Start a run of the deployment. `caller`: the deployment and workflow its key already unlocked (and counted
+    against the rate limits) in this request."""
+    dep, wf = caller or await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
     if body.thread_id:
         t = await _thread(session, body.thread_id)
@@ -255,7 +265,7 @@ async def _start(request: Request, session: AsyncSession, dep_id: str, body: Api
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
     return await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
-        deployment_id=dep.id, version_id=version_id, labels=body.metadata,
+        deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
     )  # fmt: skip
 
 

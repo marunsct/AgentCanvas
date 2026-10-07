@@ -100,9 +100,14 @@ async def test_a2a_card_send_and_get(api_client):
     assert task["artifacts"][0]["parts"][0]["data"]["out"] == "Hello Grace"
     again = (await api_client.post(url, json=rpc("tasks/get", {"id": task["id"]}), headers=auth)).json()["result"]
     assert again["status"]["state"] == "completed" and again["contextId"] == task["contextId"]
-    v1 = {"message": {"role": "user", "messageId": "m2", "parts": [{"kind": "data", "data": {"who": "Alan"}}]}}
-    named = (await api_client.post(url, json=rpc("SendMessage", v1), headers=auth)).json()["result"]
-    assert named["artifacts"][0]["parts"][0]["data"]["out"] == "Hello Alan"
+    m2 = {"message": {"role": "user", "messageId": "m2", "parts": [{"kind": "data", "data": {"who": "Alan"}}]}}
+    other = (await api_client.post(url, json=rpc("message/send", m2), headers=auth)).json()["result"]
+    assert other["artifacts"][0]["parts"][0]["data"]["out"] == "Hello Alan"
+    first = (await api_client.post(url, json=rpc("tasks/get", {"id": task["id"]}), headers=auth)).json()["result"]
+    assert first["artifacts"][0]["parts"][0]["data"]["out"] == "Hello Grace"  # each task keeps its own result
+    late = {"message": {**m2["message"], "messageId": "m3", "taskId": task["id"], "contextId": task["contextId"]}}
+    refused = (await api_client.post(url, json=rpc("message/send", late), headers=auth)).json()
+    assert refused["error"]["code"] == -32602  # a finished task takes no more messages
     missing = (await api_client.post(url, json=rpc("tasks/get", {"id": "run_nope"}), headers=auth)).json()
     assert missing["error"]["code"] == -32001
     assert (await api_client.post(url, json=rpc("message/stream", msg), headers=auth)).json()["error"]["code"] == -32004
@@ -123,3 +128,38 @@ async def test_a2a_input_required_then_answer(app, api_client):
     done = (await api_client.post(url, json=rpc("message/send", reply), headers=auth)).json()["result"]
     assert done["id"] == task["id"] and done["status"]["state"] == "completed"
     assert done["artifacts"][0]["parts"][0]["data"]["approved"] is True
+
+
+async def test_a2a_no_rejects_even_without_a_cached_run(app, api_client):
+    from agentcanvas.testing import DemoResources
+
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(HIGH_CASE["mocks"])
+    wf = await new_triage(api_client)
+    dep, key = await _publish(api_client, wf["id"])
+    url, auth = f"/v1/deployments/{dep}/a2a", bearer(key)
+    msg = {"message": {"role": "user", "messageId": "m1", "parts": [{"kind": "text", "text": "down"}]}}
+    task = (await api_client.post(url, json=rpc("message/send", msg), headers=auth)).json()["result"]
+    assert task["status"]["state"] == "input-required"
+    app.state.runner.handles.clear()  # as if another API replica took the answer
+    reply = {"message": {"role": "user", "messageId": "m2", "taskId": task["id"], "contextId": task["contextId"],
+                         "parts": [{"kind": "text", "text": "no"}]}}  # fmt: skip
+    done = (await api_client.post(url, json=rpc("message/send", reply), headers=auth)).json()["result"]
+    assert done["status"]["state"] == "completed"
+    assert done["artifacts"][0]["parts"][0]["data"]["approved"] is False
+
+
+async def test_wrong_typed_requests_are_errors_not_crashes(api_client):
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    auth = bearer(key)
+    a2a, mcp = f"/v1/deployments/{dep}/a2a", f"/v1/deployments/{dep}/mcp"
+    for url in (a2a, mcp):
+        bad = {"jsonrpc": "2.0", "id": 1, "method": "tasks/get" if url == a2a else "tools/list", "params": [1]}
+        res = await api_client.post(url, json=bad, headers=auth)
+        assert res.status_code in (200, 400) and res.json()["error"]["code"] == -32602
+    odd = {"message": {"role": "user", "messageId": "m1", "parts": ["x", {"kind": "data", "data": {"who": "Bo"}}]}}
+    task = (await api_client.post(a2a, json=rpc("message/send", odd), headers=auth)).json()["result"]
+    assert task["artifacts"][0]["parts"][0]["data"]["out"] == "Hello Bo"
+    call = rpc("tools/call", {"name": "greeter", "arguments": {"who": "Al"}, "_meta": 5})
+    assert (await api_client.post(mcp, json=call, headers=auth)).status_code == 200
+    note = await api_client.post(a2a, json=rpc("tasks/get", {"id": "x"}, id_=None), headers=auth)
+    assert note.status_code == 204
