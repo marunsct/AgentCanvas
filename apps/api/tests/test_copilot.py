@@ -255,3 +255,10 @@ async def test_eval_harness_scores_a_case():
     model = ResolvedModel(model="anthropic:claude-haiku-4-5", origin="test")
     result = await run_case(case, get_adapter(), resources, model, default_registry(), Settings(env="test"))
     assert result.passed and result.turns == 2 and result.applied, result
+
+
+def test_the_copilot_knows_the_target_framework():
+    from agentcanvas.copilot.service import framework_note
+
+    assert "LangGraph" in framework_note("langchain")
+    assert "no adapter" in framework_note("crewai")

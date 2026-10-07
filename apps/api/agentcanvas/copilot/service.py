@@ -49,6 +49,20 @@ tools, but you cannot change the workflow in this mode: if a change would help, 
 to Build. Keep replies short and plain."""
 
 
+FRAMEWORKS = {
+    "langchain": "LangChain and LangGraph: the canvas compiles to a LangGraph graph, and exports are LangGraph code",
+}
+
+
+def framework_note(framework: str) -> str:
+    """Which framework the workflow targets, so the Copilot's advice and changes fit what that framework runs."""
+    what = FRAMEWORKS.get(framework, f"'{framework}', which this AgentCanvas has no adapter for")
+    return (
+        f"Target framework: {what}. Only use blocks and settings the registry offers for it, and when the person "
+        "asks about code, exports or deployment, answer for this framework."
+    )
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -94,7 +108,7 @@ class CopilotTurn:
 
     def _context(self, mode: Mode) -> str:
         """Per-turn facts: the workflow as data, its problems, the brief and the earlier proposals' outcomes."""
-        parts = [BUILD if mode == "build" else ASK]
+        parts = [BUILD if mode == "build" else ASK, framework_note(self.before.framework)]
         if self.ctx.brief:
             parts.append("Current brief (confirmed or proposed earlier):\n" + json.dumps(self.ctx.brief))
         decided = [f"- {p['summary']}: {p['status']}" for p in self.proposals[-6:]]
