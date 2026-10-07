@@ -163,6 +163,9 @@ jobs:
       - run: cd apps/api && uv sync --frozen
       - run: cd apps/web && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
       - run: cd apps/web && pnpm e2e
+      - name: Print the page state of failed tests
+        if: failure()
+        run: for f in apps/web/test-results/*/error-context.md; do [ -f "$f" ] && { echo "::group::$f"; cat "$f"; echo "::endgroup::"; }; done; true
       - name: Upload Playwright traces and screenshots
         if: failure()
         uses: actions/upload-artifact@v7
