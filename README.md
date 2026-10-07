@@ -27,10 +27,10 @@ docs/            specification, build guide, ADRs
 ## Quick start with Docker
 
 ```bash
-make docker-up    # Postgres + API + web app on http://localhost:8080
+make docker-up    # Postgres + API + web app on http://localhost:7777
 ```
 
-Open http://localhost:8080 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
+Open http://localhost:7777 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
 DeepSeek, Grok, any OpenAI-compatible API, or a local model with Ollama, LM Studio, vLLM or llama.cpp. See
 [Models and API keys](docs/user-guide/models.md).
 

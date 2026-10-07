@@ -19,7 +19,7 @@ cd AgentCanvas
 make docker-up        # or: docker compose -f infra/compose.local.yml up -d --build --wait
 ```
 
-The first build takes a few minutes. Then open <http://localhost:8080>: Home shows **Set up your model**.
+The first build takes a few minutes. Then open <http://localhost:7777>: Home shows **Set up your model**.
 
 1. Click **Choose a model**.
 2. Pick a **provider**: hosted (Anthropic, OpenAI, Azure OpenAI, Google Gemini, Mistral, Groq, DeepSeek, xAI, or
@@ -42,7 +42,7 @@ Models on your own computer are reached from inside Docker through `host.docker.
 | `make docker-down` | stop; your workflows and keys stay in Docker volumes |
 | `docker compose -f infra/compose.local.yml down -v` | stop and delete all data |
 
-Optional settings (another port, server-wide provider keys) go in `infra/.env.local`: copy
+Optional settings (another port with `WEB_PORT`, server-wide provider keys) go in `infra/.env.local`: copy
 `infra/.env.local.example` and fill it in; `make docker-up` picks it up. The Docker setup has no sign-in (you are
 the local admin): don't expose it to other people. For a shared server follow [Deploy and operate](deploy.md).
 
@@ -234,7 +234,7 @@ Local mode makes you an admin with no sign-in. To try real sign-in with
     ```
 
 The web app now redirects to Keycloak; the bootstrap email becomes an admin on first sign-in and can invite others
-from **Members**. (Keycloak and the container setup both use port 8080: run one at a time.)
+from **Members**.
 
 ## Stop, reset and update
 
@@ -254,7 +254,7 @@ from **Members**. (Keycloak and the container setup both use port 8080: run one 
 | A run fails with an authentication error from the provider | The key is missing or wrong: enter it again under **Model**, or check the project secret named after the provider on the **Workspace** page. |
 | **Test connection** to Ollama / LM Studio fails with a connection error | The local server is not running, or listens on another port: start it, or enter its address under *Server address*. In Docker, the address must use `host.docker.internal`, not `localhost`. |
 | A model shows *integration is not installed on this server* | Run `make setup` again (it installs every provider), or `docker compose … up --build`. |
-| `make docker-up` fails with *port is already allocated* | Something else uses 8080: set `WEB_PORT=8090` in `infra/.env.local`. |
+| `make docker-up` fails with *port is already allocated* | Something else uses 7777: set `WEB_PORT=7778` in `infra/.env.local`. |
 | `git` errors when the API starts or saves a workspace file | Install Git and make sure it is on `PATH`. |
 | Startup says *AGENTCANVAS_AUTH_MODE=dev gives every request admin rights* | You set `AGENTCANVAS_ENV` to `staging`/`prod`; use `dev` locally or configure OIDC. |
 | Startup says *oidc needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE* | Set both, or leave `AGENTCANVAS_AUTH_MODE` unset for local mode. |

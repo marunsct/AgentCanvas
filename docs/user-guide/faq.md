@@ -5,7 +5,7 @@ No. Use a local model (Ollama, LM Studio…), or run from source with `make dev-
 demo models so every feature works offline and free. See [Run AgentCanvas on your computer](run-locally.md).
 
 **What is the quickest way to run it?**
-`make docker-up` with Docker installed, then open <http://localhost:8080> and choose your model.
+`make docker-up` with Docker installed, then open <http://localhost:7777> and choose your model.
 
 **Which models are supported?**
 Anthropic, OpenAI, Azure OpenAI, Google Gemini, Mistral, Groq, DeepSeek, xAI, any OpenAI-compatible API, and models

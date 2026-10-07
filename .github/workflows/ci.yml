@@ -136,11 +136,11 @@ jobs:
           set -eux
           docker compose -f infra/compose.prod.yml down
           docker compose -f infra/compose.local.yml up -d --no-build --wait --wait-timeout 180
-          curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"dev"'
-          curl -fsS http://localhost:8080/api/v1/projects/prj_default/setup | grep -q '"done":false'
-          curl -fsS http://localhost:8080/api/v1/model-providers | grep -q '"id":"ollama"'
+          curl -fsS http://localhost:7777/api/v1/auth/config | grep -q '"mode":"dev"'
+          curl -fsS http://localhost:7777/api/v1/projects/prj_default/setup | grep -q '"done":false'
+          curl -fsS http://localhost:7777/api/v1/model-providers | grep -q '"id":"ollama"'
           curl -fsS -X PUT -H 'content-type: application/json' -d '{"model": "ollama:llama3.3"}' \
-            http://localhost:8080/api/v1/projects/prj_default/setup | grep -q '"done":true'
+            http://localhost:7777/api/v1/projects/prj_default/setup | grep -q '"done":true'
       - name: Local stack logs
         if: failure()
         run: docker compose -f infra/compose.local.yml logs --no-color
