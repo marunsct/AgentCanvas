@@ -29,8 +29,9 @@ Live status of the project. Update it with every commit that finishes or changes
 | S13 Evaluation in production → v0.5.0 | ✅ done (merged in #8; tag `v0.5.0` pending) |
 | **User guide, any-provider and local models, first-run setup, Docker app** | ✅ **done** (#9) |
 | S14 AI Copilot I → v0.6.0 | ✅ done (merged in #15; tag `v0.6.0` pending) |
-| S15 Open doors → v0.7.0 | ✅ done (MCP and A2A per deployment, connector gallery, trace export) |
-| S16–S32 (value-first order: any framework as a node, ship to users, Copilot II, deploy kit, …) | ⏸ paused by the owner after S15 |
+| S15 Open doors (MCP/A2A endpoints, connectors, trace export) → v0.7.0 | ✅ done |
+| S16–S32 (any framework as a node, ship to users, Copilot II, deploy kit, Knowledge Studio, framework adapters) | ⏸ paused by the owner after S15, see [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| Later: GA backlog | ⬜ pending |
 
 **Test totals** at the end of S13:
 
@@ -221,8 +222,8 @@ S19. The owner asked to stop after S15 and its end-to-end review.
   only after a restart), overlapping Copilot turns leave one open proposal, a webhook for a deleted workflow gets
   404 instead of "already received".
 
-### S14+ — GA backlog
-- [ ] Multiplayer editing, Data Studio, learning loops, MCP/A2A/AG-UI exposure, Copilot.
+### GA backlog
+- [ ] Multiplayer editing, Data Studio, learning loops, AG-UI exposure, Git sync, hosted trial (MCP/A2A exposure moved to S15, Copilot shipped in S14).
 - [ ] The remaining FR-X items: 03, 04, 05, 06, 09, 11, 12, 16, 20, 21, 23.
 
 ### Open items carried forward

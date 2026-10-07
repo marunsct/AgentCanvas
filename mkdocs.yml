@@ -48,6 +48,7 @@ nav:
       - Persistence & memory: agent-canvas-spec/08-persistence-memory-data-modeling.md
       - Self-improving agents: agent-canvas-spec/09-self-improving-agents.md
       - Concept & new features: agent-canvas-spec/15-concept-evolution-and-new-features.md
+      - Competitive roadmap: agent-canvas-spec/16-competitive-roadmap.md
       - Deep review v0.6: agent-canvas-spec/14-deep-review-v0.6.md
       - History:
           - Improvement plan: agent-canvas-spec/10-improvement-plan.md
