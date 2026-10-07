@@ -47,3 +47,17 @@ test("Ask mode answers without changing anything", async ({ page }) => {
   await expect(page.getByTestId("copilot-panel")).toContainText("demo Copilot");
   await expect(page.getByTestId("copilot-proposal")).toHaveCount(0);
 });
+
+test("the Problems list hands its errors to the Copilot", async ({ page }) => {
+  await page.request.put("/api/v1/projects/prj_default/copilot-settings", {
+    data: { source: "separate", model: "anthropic:claude-haiku-4-5" },
+  });
+  await page.goto("/");
+  await page.getByLabel("workflow name").fill(`Copilot fix ${Date.now()}`);
+  await page.getByRole("button", { name: "Create empty" }).click();
+  await page.locator('[data-testid="node-START"] .react-flow__handle').click();
+  await page.getByTestId("port-add-core.llm").click(); // an Ask AI step without a model: a problem
+  await page.getByTestId("ask-copilot-fix").click();
+  await expect(page.getByTestId("copilot-panel")).toContainText("Find and fix the problems");
+  await expect(page.getByTestId("copilot-panel")).toContainText("demo Copilot");
+});

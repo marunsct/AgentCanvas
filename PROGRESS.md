@@ -29,8 +29,9 @@ Live status of the project. Update it with every commit that finishes or changes
 | S13 Evaluation in production → v0.5.0 | ✅ done (merged in #8; tag `v0.5.0` pending) |
 | **User guide, any-provider and local models, first-run setup, Docker app** | ✅ **done** (#9) |
 | S14 AI Copilot I → v0.6.0 | ✅ done |
-| S15 AI Copilot II → v0.7.0 | ⬜ next |
-| S16–S19 (export deploy kit, MCP server, beginners) | ⬜ planned |
+| S15 AI Copilot II → v0.7.0 | ✅ done |
+| S16 Export deploy kit → v0.8.0 | ⬜ next |
+| S17–S19 (MCP server, beginners) | ⬜ planned |
 | S20+ GA backlog | ⬜ pending |
 
 **Test totals** at the end of S13:

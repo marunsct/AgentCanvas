@@ -19,17 +19,26 @@ export function CopilotSettings() {
   const [source, setSource] = useState<"workflow" | "separate">("workflow");
   const [model, setModel] = useState("");
   const [cap, setCap] = useState(400_000);
+  const [askModel, setAskModel] = useState("");
+  const [localOnly, setLocalOnly] = useState(false);
+  const [notes, setNotes] = useState("");
   useEffect(() => {
     if (!q.data) return;
     setEnabled(q.data.enabled ?? true);
     setSource((q.data.source as "workflow" | "separate") ?? "workflow");
     setModel(q.data.model ?? "");
     setCap(q.data.token_cap ?? 400_000);
+    setAskModel(q.data.ask_model ?? "");
+    setLocalOnly(q.data.privacy === "local_only");
+    setNotes(q.data.notes ?? "");
   }, [q.data]);
   const save = useMutation({
     mutationFn: () => apiFetch<Settings>(`/projects/${PROJECT_ID}/copilot-settings`, {
       method: "PUT",
-      json: { enabled, source, model: source === "separate" ? model.trim() || null : null, token_cap: cap },
+      json: {
+        enabled, source, model: source === "separate" ? model.trim() || null : null, token_cap: cap,
+        ask_model: askModel.trim() || null, privacy: localOnly ? "local_only" : "standard", notes,
+      },
     }),
     onSuccess: (out) => qc.setQueryData(["copilot-settings", PROJECT_ID], out),
   });
@@ -52,6 +61,14 @@ export function CopilotSettings() {
           value={model} onChange={(e) => setModel(e.target.value)} />
       )}
       <datalist id="copilot-models">{(models.data ?? []).filter((m) => m.tools !== false).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
+      <label htmlFor="copilot-ask-model">Model for questions (optional, e.g. a cheaper one)</label>
+      <input id="copilot-ask-model" className="mono" list="copilot-models" value={askModel}
+        placeholder="same as above" onChange={(e) => setAskModel(e.target.value)} />
+      <label><input type="checkbox" checked={localOnly} onChange={(e) => setLocalOnly(e.target.checked)} />
+        {" "}Private: only use AI running on our own machines (Ollama, LM Studio, vLLM, llama.cpp)</label>
+      <label htmlFor="copilot-notes">Project notes the Copilot always reads (conventions, preferences)</label>
+      <textarea id="copilot-notes" rows={4} maxLength={4000} value={notes} onChange={(e) => setNotes(e.target.value)}
+        placeholder="e.g. Use ollama:llama3.3 for drafts. Every workflow that emails customers needs an approval step." />
       <label htmlFor="copilot-cap">Token limit per chat</label>
       <input id="copilot-cap" type="number" min={1000} step={1000} value={cap} onChange={(e) => setCap(Number(e.target.value))} />
       <div className="row gap">

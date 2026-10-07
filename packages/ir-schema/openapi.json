@@ -1353,6 +1353,19 @@
             "description": "{\"$secret\": NAME}",
             "title": "Api Key"
           },
+          "ask_model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "split mode: a cheaper model for Ask-mode questions",
+            "title": "Ask Model"
+          },
           "base_url": {
             "anyOf": [
               {
@@ -1382,6 +1395,23 @@
             ],
             "description": "provider:model when separate",
             "title": "Model"
+          },
+          "notes": {
+            "default": "",
+            "description": "project conventions the Copilot always reads",
+            "maxLength": 4000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "privacy": {
+            "default": "standard",
+            "description": "local_only: the Copilot may only use models running on your own machines",
+            "enum": [
+              "standard",
+              "local_only"
+            ],
+            "title": "Privacy",
+            "type": "string"
           },
           "source": {
             "default": "workflow",
@@ -6485,6 +6515,19 @@
             "description": "{\"$secret\": NAME}",
             "title": "Api Key"
           },
+          "ask_model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "split mode: a cheaper model for Ask-mode questions",
+            "title": "Ask Model"
+          },
           "base_url": {
             "anyOf": [
               {
@@ -6514,6 +6557,23 @@
             ],
             "description": "provider:model when separate",
             "title": "Model"
+          },
+          "notes": {
+            "default": "",
+            "description": "project conventions the Copilot always reads",
+            "maxLength": 4000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "privacy": {
+            "default": "standard",
+            "description": "local_only: the Copilot may only use models running on your own machines",
+            "enum": [
+              "standard",
+              "local_only"
+            ],
+            "title": "Privacy",
+            "type": "string"
           },
           "resolved": {
             "anyOf": [
@@ -7884,7 +7944,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.6.0"
+    "version": "0.7.0"
   },
   "openapi": "3.1.0",
   "paths": {

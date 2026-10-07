@@ -19,19 +19,22 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.api.v1.runs import _context as run_context
 from agentcanvas.copilot import settings as copilot_settings
 from agentcanvas.copilot.pack import Pack, build_pack
+from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.copilot.service import CopilotTurn, diff
 from agentcanvas.copilot.settings import CopilotSettings, ResolvedModel
 from agentcanvas.copilot.tools import ToolContext
 from agentcanvas.db.models import CopilotConversation
-from agentcanvas.db.repositories import ProjectRepo
+from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, TooManyRequests
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.registry import Registry, default_registry
+from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
 
@@ -93,11 +96,11 @@ async def _conversation(session: AsyncSession, wf_id: str, user_id: str) -> Copi
 
 
 async def _model(
-    svc: WorkflowService, view: WorkflowView, project_settings: dict[str, Any], cs: CopilotSettings
+    svc: WorkflowService, view: WorkflowView, project_settings: dict[str, Any], cs: CopilotSettings, mode: str = "build"
 ) -> ResolvedModel:
     registry = svc.registry(view.row.project_id) or default_registry()
     policies = await svc.policies(view.row.project_id)
-    return copilot_settings.resolve(cs, project_settings, view.workflow, registry, policies)
+    return copilot_settings.resolve(cs, project_settings, view.workflow, registry, policies, mode)
 
 
 def _pending(conv: CopilotConversation | None, view: WorkflowView) -> dict[str, Any] | None:
@@ -165,7 +168,7 @@ async def send_message(
     cs = copilot_settings.load(project.settings)
     if not cs.enabled:
         raise Forbidden("the Copilot is switched off for this project")
-    model = await _model(svc, view, project.settings or {}, cs)
+    model = await _model(svc, view, project.settings or {}, cs, body.mode)
     conv = await _conversation(session, wf_id, user.id)
     if conv is None:
         conv = CopilotConversation(id=new_id("cpc"), workflow_id=wf_id, user_id=user.id, messages=[], proposals=[])
@@ -183,9 +186,14 @@ async def send_message(
     async def validate(wf: Workflow) -> list[Any]:
         return await svc._validate(wf, project_id)
 
+    runs = RunAccess(
+        request.app.state.runner, request.app.state.db.sessionmaker, view.workflow,
+        lambda wf, given: run_context(wf, given, user), user.id,
+    )  # fmt: skip
     ctx = ToolContext(
-        workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief
-    )
+        workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
+        runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
+    )  # fmt: skip
     factory = getattr(request.app.state, "resources_factory", None)
     resources = (
         factory(f"copilot:{conv.id}", view.workflow)
@@ -195,7 +203,7 @@ async def send_message(
     turn = CopilotTurn(
         request.app.state.projects.adapter, resources, model, _pack(registry, templates), ctx,
         history=list(conv.messages or []), proposals=[dict(p) for p in conv.proposals or []], usage=usage,
-        token_cap=cs.token_cap, base_version=view.row.version,
+        token_cap=cs.token_cap, base_version=view.row.version, project_notes=cs.notes,
     )  # fmt: skip
     conv_id = conv.id
     await session.commit()  # the stream outlives this request's session (it is closed when the response starts)
@@ -246,6 +254,22 @@ async def decide_proposal(
         raise Conflict(f"proposal '{proposal_id}' is already {match['status']}")
     match["status"] = body.status
     conv.proposals = proposals
+    if body.status == "accepted":  # the editor applied the commands; tests and notes are saved here
+        tests = TestCaseService(session)
+        for t in match.get("tests") or []:
+            await tests.add(
+                wf_id, name=t["name"], input=t["input"], expect=Expect.model_validate(t.get("expect") or {}),
+                mocks=t.get("mocks") or {}, created_by=user.id,
+            )  # fmt: skip
+        if notes := match.get("notes"):
+            row = await WorkflowRepo(session).require(wf_id)
+            project = await ProjectRepo(session).require(row.project_id)
+            cs = copilot_settings.load(project.settings)
+            merged = "\n".join([cs.notes, *(f"- {n}" for n in notes)]).strip()[-4000:]
+            project.settings = {
+                **(project.settings or {}),
+                "copilot": {**cs.model_dump(exclude_none=True), "notes": merged},
+            }
     await session.commit()
     return Response(status_code=204)
 

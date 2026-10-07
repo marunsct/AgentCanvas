@@ -37,7 +37,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S12** | 2 | Evaluation Studio → v0.4.0 | FR-EVAL-02…05 + S11 follow-ups | — | 23 | Datasets, evaluators, experiments, results grid, release gate |
 | **S13** | 2 | Evaluation in production → v0.5.0 | FR-EVAL-06…08, FR-EVAL-03 rest + S12 follow-ups | — | 22 | Online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users |
 | **S14** | 2 | AI Copilot I → v0.6.0 | Copilot plan (Claude Doc "Copilot, export and beginner features", plan v2) | — | 24 | Copilot briefs, plans and builds workflows as proposals you accept on the canvas |
-| **S15** | 2 | AI Copilot II → v0.7.0 | configure, test, debug and fix | — | 23 | The Copilot tests, debugs and fixes workflows |
+| **S15** | 2 | AI Copilot II → v0.7.0 | configure, test, debug and fix | — | 23 | The Copilot tests, debugs and fixes workflows (done) |
 | **S16** | 2 | Export deploy kit → v0.8.0 | export as a service | — | 24 | Exports are deployable codebases with prerequisites, setup and deploy guides |
 | **S17** | 2 | MCP server & Copilot extras → v0.9.0 | — | — | — | AgentCanvas as an MCP server; Copilot after launch |
 | **S18–S19** | 4 | Beginners I–II → v0.10.0/v0.11.0 | — | — | — | Playground, Simple mode, galleries, knowledge block, Push to GitHub |
@@ -367,6 +367,28 @@ Deviations and gaps:
 - Answers arrive per model turn, not token by token.
 - "One turn at a time per conversation" is enforced per API instance; two replicas could each take one message.
 - Removed elements are listed on the proposal card, not drawn as ghosts on the canvas.
+
+### S15 — AI Copilot II → v0.7.0
+
+| # | Item | Days | Acceptance |
+|---|------|-----:|------------|
+| 1 | Configurator | 3 | build prompt fills required settings; `list_models` (models, providers, secret names only) |
+| 2 | Tester and fix loop | 3 | `run_test` runs the working copy as a dry run, optional scripted model replies and expectations |
+| 3 | Brief to tests | 2 | `propose_tests`; tests are saved as test cases when the proposal is accepted |
+| 4 | Debug assistant | 6 | `get_problems` (explained), `list_runs`, `get_run` (Explain-mode steps), `reproduce_run` replays a run's recorded model and tool I/O on the working copy; Ask-the-Copilot buttons in Problems and run errors |
+| 5 | Error catalog | 1 | one catalog (`validation/help.json`) for the editor and the Copilot's pack |
+| 6 | Debug eval set | 2 | `--suite debug`: 27 planted bugs across the starter templates |
+| 7 | Docs search | 2 | BM25 over the user guide, packaged with the API |
+| 8 | Project Copilot notes | 2 | notes in Copilot settings, read every turn; `save_note` proposals |
+| 9 | Split/privacy modes | 1 | `ask_model` for questions; `privacy: local_only` refuses non-local models |
+| 10 | Docs | 1 | user guide Testing, Debugging, Project notes sections |
+
+**Review (2026-10-07).** Before the sprint the codebase was re-checked (all gates green after S14's merge). Every
+item met its acceptance in `test_copilot_debug.py` and `e2e/copilot.spec.ts`. Deviations:
+- Reproductions use the *current draft* to explain past runs; a deployment thread pinned to an older version is
+  explained against the draft.
+- The debug eval suite has only been run with a scripted model here (no provider keys).
+- Test runs are dry runs only; the Copilot cannot run a workflow for real.
 
 ### S20+ — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).

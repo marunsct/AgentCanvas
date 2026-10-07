@@ -271,12 +271,24 @@ export type TokenCap = number;
 export type ApiKey = {
   [k: string]: string;
 } | null;
+/**
+ * split mode: a cheaper model for Ask-mode questions
+ */
+export type AskModel = string | null;
 export type BaseUrl = string | null;
 export type Enabled1 = boolean;
 /**
  * provider:model when separate
  */
 export type Model1 = string | null;
+/**
+ * project conventions the Copilot always reads
+ */
+export type Notes = string;
+/**
+ * local_only: the Copilot may only use models running on your own machines
+ */
+export type Privacy = "standard" | "local_only";
 export type Source2 = "workflow" | "separate";
 /**
  * per conversation, in + out
@@ -905,7 +917,7 @@ export type KeyEnv = string | null;
 export type Label8 = string;
 export type Local = boolean;
 export type Module = string;
-export type Notes = string;
+export type Notes1 = string;
 export type Package = string;
 export type Environment2 = string;
 export type Message7 = string;
@@ -1379,12 +1391,24 @@ export type Name35 = string;
 export type ApiKey4 = {
   [k: string]: string;
 } | null;
+/**
+ * split mode: a cheaper model for Ask-mode questions
+ */
+export type AskModel1 = string | null;
 export type BaseUrl3 = string | null;
 export type Enabled5 = boolean;
 /**
  * provider:model when separate
  */
 export type Model4 = string | null;
+/**
+ * project conventions the Copilot always reads
+ */
+export type Notes2 = string;
+/**
+ * local_only: the Copilot may only use models running on your own machines
+ */
+export type Privacy1 = "standard" | "local_only";
 export type Source6 = "workflow" | "separate";
 /**
  * per conversation, in + out
@@ -2311,9 +2335,12 @@ export interface Usage {
  */
 export interface CopilotSettings {
   api_key?: ApiKey;
+  ask_model?: AskModel;
   base_url?: BaseUrl;
   enabled?: Enabled1;
   model?: Model1;
+  notes?: Notes;
+  privacy?: Privacy;
   source?: Source2;
   token_cap?: TokenCap1;
 }
@@ -3436,7 +3463,7 @@ export interface ProviderInfo {
   label: Label8;
   local?: Local;
   module: Module;
-  notes?: Notes;
+  notes?: Notes1;
   package: Package;
 }
 /**
@@ -3638,9 +3665,12 @@ export interface SecretOut {
  */
 export interface SettingsOut {
   api_key?: ApiKey4;
+  ask_model?: AskModel1;
   base_url?: BaseUrl3;
   enabled?: Enabled5;
   model?: Model4;
+  notes?: Notes2;
+  privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
   source?: Source6;
   token_cap?: TokenCap2;

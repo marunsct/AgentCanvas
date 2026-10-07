@@ -35,18 +35,27 @@ BUILD = """Work in this order:
 1. Brief. For a new workflow, or a big change whose goal, inputs or outputs are unclear, call `set_brief` with \
 your best understanding (goal, inputs, outputs, steps, tools, success criteria, open questions), then ask the \
 person to confirm or answer the open questions in one short message, and stop. Skip the brief for small, clear \
-requests (rename, change a prompt, add one step) and when the person has confirmed the brief.
+requests (rename, change a prompt, add one step), for debugging, and when the person has confirmed the brief.
 2. Plan. When building, first say in two to five short lines which blocks you will use, in which order.
-3. Build. Send all the edit commands with `propose_changes` (one or more calls). Read the errors it returns and \
-fix every error with more `propose_changes` calls before you finish. Never stop with errors you could fix.
-4. Finish with two or three plain sentences: what the proposal does, and anything the person must do themselves \
+3. Build and configure. Send all the edit commands with `propose_changes` (one or more calls), with every \
+required setting filled in sensibly (prompts, output fields, models from `list_models`). Read the errors it returns \
+and fix every error with more `propose_changes` calls before you finish. Never stop with errors you could fix.
+4. Test when the person asks, or after building from a brief with success criteria: turn the criteria into \
+`propose_tests`, try the workflow with `run_test` (use `mocks` when no model key is set), and fix what fails.
+5. Finish with two or three plain sentences: what the proposal does, and anything the person must do themselves \
 (add a secret, fill a memory space, pick a model). The person sees your changes on the canvas and accepts or \
 rejects them; nothing is saved until they accept.
+
+Debugging. When the person asks why something fails or to find a problem: look at `get_problems`, `list_runs` and \
+`get_run`; find the cause and explain it in plain words (which step, what went wrong, why). When they ask you to fix \
+it, propose the change and check it with `reproduce_run` on the failed run (or `run_test`), then say whether the \
+fix worked. When asked only to explain, do not change anything.
 Keep replies short and friendly; no JSON or ids in your text."""
 
-ASK = """Answer the person's question about this workflow or about AgentCanvas. You can look things up with your \
-tools, but you cannot change the workflow in this mode: if a change would help, describe it and suggest switching \
-to Build. Keep replies short and plain."""
+ASK = """Answer the person's question about this workflow or about AgentCanvas. Look things up with your tools \
+(`get_problems`, `list_runs` and `get_run` for errors and failed runs, `search_guide` for how the product works). You \
+cannot change or run the workflow in this mode: if a change would help, describe it and suggest switching to Build. \
+Keep replies short and plain."""
 
 
 def _now() -> str:
@@ -180,6 +189,8 @@ class CopilotTurn:
             "id": new_id("prop"),
             "summary": "; ".join(self.ctx.proposal.summary) or "Changes to the workflow",
             "commands": self.ctx.proposal.commands,
+            "tests": self.ctx.proposal.tests,
+            "notes": self.ctx.proposal.notes,
             "base_version": self.base_version,
             "status": "pending",
             "errors": sum(1 for d in diags if d.severity == "error"),

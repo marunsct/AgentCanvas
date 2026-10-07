@@ -21,7 +21,7 @@ jobs:
       - run: uv run ruff check . && uv run ruff format --check .
       - run: uv run pyright
       - run: uv run lint-imports
-      - run: uv run python scripts/export_ir_schema.py && git diff --exit-code ../../packages/ir-schema
+      - run: uv run python scripts/export_ir_schema.py && git diff --exit-code ../../packages/ir-schema agentcanvas/copilot/knowledge/user-guide
       - run: uv run pytest -q
         env:
           AGENTCANVAS_ENV: test
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm gen && git diff --exit-code src/ir/generated.ts src/api/generated.ts
+      - run: pnpm gen && git diff --exit-code src/ir/generated.ts src/api/generated.ts src/help/diagnostics.generated.json
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

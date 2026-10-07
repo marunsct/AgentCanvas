@@ -1,5 +1,6 @@
 /** Test-run panel (M4-T1): JSON input or chat, debug runs with breakpoints, approvals, continue/stop. */
 import { runErrorHelp } from "../help/diagnostics";
+import { useCopilot } from "../copilot/copilot";
 import { HelpText } from "../help/HelpText";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -123,6 +124,12 @@ export function RunPanel() {
       )}
       {run.error && <p className="error-text" role="alert">{run.error}</p>}
       {run.error && <HelpText help={runErrorHelp(run.error)} className="run-hint" />}
+      {run.error && (
+        <button type="button" className="link small" data-testid="ask-copilot-why"
+          onClick={() => useCopilot.getState().askFor(`Why did the last run fail? The error was: ${run.error}`, "ask")}>
+          ✦ Ask the Copilot why
+        </button>
+      )}
       {!run.running && run.interrupts.map((intr) => (
         <DecisionCard key={intr.id} intr={intr} busy={!can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
       ))}
