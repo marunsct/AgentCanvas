@@ -46,7 +46,9 @@ export function CopilotPanel() {
     setMode(request.mode === "build" && !can("builder") ? "ask" : request.mode);
     void useCopilot.getState().send(request.text, request.mode === "build" && !can("builder") ? "ask" : request.mode);
   }, [request, conversation, busy]);
-  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [conversation?.messages.length, live?.text.length, live?.activity.length]);
+  useEffect(() => { // newer browsers return a promise here: an effect must not return it as its cleanup
+    end.current?.scrollIntoView?.({ block: "end" });
+  }, [conversation?.messages.length, live?.text.length, live?.activity.length]);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
