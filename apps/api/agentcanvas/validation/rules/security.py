@@ -9,6 +9,8 @@ from agentcanvas.validation.analysis import node_side_effects
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule
 
 WRITE_EFFECTS = {"external_write", "message_send"}
+# pause before they act (approval first), or remember what they sent so a resumed step does not send it again
+REPLAY_SAFE = {"core.agent", "agent.framework", "agent.a2a", "agent.mcp"}
 
 
 @rule
@@ -60,7 +62,7 @@ def side_effects_before_interrupt(ctx: ValidationContext) -> Iterator[Diagnostic
     """E070: a node that may pause must not also write externally — code before interrupt() re-runs on resume."""
     for n in ctx.wf.nodes:
         m = ctx.manifest(n)
-        if m and m.interrupts and n.type != "core.agent" and node_side_effects(n, m) & WRITE_EFFECTS:
+        if m and m.interrupts and n.type not in REPLAY_SAFE and node_side_effects(n, m) & WRITE_EFFECTS:
             yield error(
                 "E070",
                 f"'{n.name}' can pause for a human and also writes externally; the write would repeat on resume",

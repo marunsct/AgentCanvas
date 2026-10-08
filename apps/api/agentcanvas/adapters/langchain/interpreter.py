@@ -11,6 +11,7 @@ from typing import Any
 from langgraph.cache.base import BaseCache
 from langgraph.graph import END, START, StateGraph
 
+from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.plan import Plan, PlannedResource, lower
 from agentcanvas.ir.models import Workflow
@@ -175,6 +176,41 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             fn = ac.set_node(values=cfg["values"])
         elif n.type == "core.script":
             fn = ac.script_node(import_path=cfg["import_path"], resources=resources)
+        elif n.type == "agent.framework":
+            fn = interop.framework_agent_node(
+                node_id=n.id,
+                name=n.name,
+                framework=cfg["framework"],
+                import_path=cfg["import_path"],
+                workspace=resources.workspace,
+                prompt=cfg.get("prompt", ""),
+                output=cfg["output"],
+                approve=cfg.get("approve", False),
+            )
+        elif n.type == "agent.a2a":
+            fn = interop.a2a_agent_node(
+                node_id=n.id,
+                name=n.name,
+                url=cfg["url"],
+                prompt=cfg.get("prompt", ""),
+                output=cfg["output"],
+                headers=cfg.get("headers"),
+                approve=cfg.get("approve", False),
+                allow_private_network=cfg.get("allow_private_network", False),
+                timeout=cfg.get("timeout", 120),
+                resolve=resources.resolve,
+                transport=resources.http_transport,
+            )
+        elif n.type == "agent.mcp":
+            fn = interop.mcp_agent_node(
+                node_id=n.id,
+                name=n.name,
+                tools=wired("tools"),
+                tool=cfg["tool"],
+                arguments=cfg.get("arguments") or {},
+                output=cfg["output"],
+                approve=cfg.get("approve", False),
+            )
         else:  # pragma: no cover - the validator rejects unknown types first
             raise ValueError(f"unsupported node type {n.type}")
         builder.add_node(n.name, fn, metadata={"canvas_node_id": n.id}, **ac.node_options(**p.options))

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
+from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain import nodes as ac
 
 {%- macro graph_function(plan, prefix, fn, path) %}
@@ -72,6 +73,12 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
     builder.add_node({{ n.name | py }}, ac.set_node(values={{ n.config["values"] | pp }}), {{ meta }})
 {%- elif n.type == "core.script" %}
     builder.add_node({{ n.name | py }}, ac.script_node(import_path={{ n.config.import_path | py }}), {{ meta }})
+{%- elif n.type == "agent.framework" %}
+    builder.add_node({{ n.name | py }}, interop.framework_agent_node(node_id={{ n.id | py }}, name={{ n.name | py }}, framework={{ n.config.framework | py }}, import_path={{ n.config.import_path | py }}, prompt={{ n.config.get("prompt", "") | py }}, output={{ n.config.output | py }}, approve={{ n.config.get("approve", False) | py }}), {{ meta }})
+{%- elif n.type == "agent.a2a" %}
+    builder.add_node({{ n.name | py }}, interop.a2a_agent_node(node_id={{ n.id | py }}, name={{ n.name | py }}, url={{ n.config.url | py }}, prompt={{ n.config.get("prompt", "") | py }}, output={{ n.config.output | py }}, headers={{ n.config.get("headers") | pp }}, approve={{ n.config.get("approve", False) | py }}, allow_private_network={{ n.config.get("allow_private_network", False) | py }}, timeout={{ n.config.get("timeout", 120) | py }}, resolve=resources.resolve, transport=resources.http_transport), {{ meta }})
+{%- elif n.type == "agent.mcp" %}
+    builder.add_node({{ n.name | py }}, interop.mcp_agent_node(node_id={{ n.id | py }}, name={{ n.name | py }}, tools=[{{ refs(p.wired.get("tools", []), plan.many) }}], tool={{ n.config.tool | py }}, arguments={{ (n.config.get("arguments") or {}) | pp }}, output={{ n.config.output | py }}, approve={{ n.config.get("approve", False) | py }}), {{ meta }})
 {%- endif %}
 {% endfor %}
     # ── flow edges ──

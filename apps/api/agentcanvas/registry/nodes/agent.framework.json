@@ -1,0 +1,98 @@
+{
+  "type": "agent.framework",
+  "kind": "runtime",
+  "label": "Agent from another framework",
+  "category": "AI",
+  "icon": "bot",
+  "color": "#0EA5E9",
+  "description": "Runs an agent you built with another framework (OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands, LlamaIndex, Microsoft Agent Framework, Claude Agent SDK) as one step. Point it at the agent in your Workspace. It is a black box on the canvas: one step, with its input and answer in the trace. Runs inside this server, so the hosted edition does not offer it.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go when the agent has answered: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "framework",
+      "import_path",
+      "output"
+    ],
+    "properties": {
+      "framework": {
+        "enum": [
+          "openai_agents",
+          "crewai",
+          "google_adk",
+          "pydantic_ai",
+          "agno",
+          "strands",
+          "llamaindex",
+          "microsoft_agent_framework",
+          "claude_agent_sdk",
+          "callable"
+        ],
+        "title": "Framework",
+        "default": "openai_agents",
+        "description": "Which framework built the agent. Its package must be installed (exports add it)."
+      },
+      "import_path": {
+        "type": "string",
+        "title": "Agent",
+        "format": "import_path",
+        "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$",
+        "description": "Where the agent is in your Workspace, e.g. tools.agents:support_agent. A function with no arguments that returns the agent also works (a fresh agent per run)."
+      },
+      "prompt": {
+        "type": "string",
+        "title": "What to send the agent",
+        "format": "prompt",
+        "default": "",
+        "description": "The agent's input. Insert data with {{ state.<field> }}. Leave empty to send the latest chat message."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save the answer in",
+        "format": "channel",
+        "description": "The data field that receives the agent's answer. Choose `messages` to add it to the chat."
+      },
+      "approve": {
+        "type": "boolean",
+        "title": "Ask a person before it runs",
+        "default": false,
+        "description": "Pause with an approval card showing what will be sent; a rejection skips the agent."
+      },
+      "side_effects": {
+        "type": "array",
+        "title": "Side effects",
+        "items": {
+          "enum": [
+            "external_write",
+            "message_send",
+            "code_exec",
+            "spend",
+            "pii_read"
+          ]
+        },
+        "uniqueItems": true,
+        "description": "What the agent's own tools can do, for the blast-radius view and dry runs."
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "template_fields": [
+    "prompt"
+  ],
+  "interrupts": true,
+  "side_effects": [
+    "spend",
+    "code_exec"
+  ],
+  "stability": "beta",
+  "hosted_forbidden": true
+}
