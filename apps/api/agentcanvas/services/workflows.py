@@ -122,6 +122,29 @@ class WorkflowService:
         )
         return await self._view(await self.repo.create(row))
 
+    async def create_from_ir(
+        self, project_id: str, raw_ir: dict[str, Any], layout: dict[str, Any], created_by: str | None
+    ) -> WorkflowView:
+        """A new workflow from an IR document built elsewhere (an Agent Spec import, S16)."""
+        await self.projects.require(project_id)
+        try:
+            wf = Workflow.model_validate(raw_ir)
+        except ValidationError as exc:
+            raise InvalidInput("the imported workflow is not valid", errors=_pydantic_errors(exc)) from exc
+        ir = wf.model_dump(mode="json")
+        known = {n.id for n in wf.nodes} | {r.id for r in wf.resources} | {"START", "END"}
+        row = WorkflowRow(
+            id=wf.id,
+            project_id=project_id,
+            name=wf.name,
+            draft_ir=ir,
+            layout={k: v for k, v in layout.items() if k in known},
+            version=1,
+            ir_hash=ir_hash(ir),
+            created_by=created_by,
+        )
+        return await self._view(await self.repo.create(row))
+
     async def get(self, wf_id: str) -> WorkflowView:
         return await self._view(await self.repo.require(wf_id))
 
