@@ -101,7 +101,39 @@ def test_export_models_and_remote_agents():
     assert remote["agent"]["component_type"] == "A2AAgent"
     assert remote["agent"]["agent_url"] == "https://a.example/.well-known/agent-card.json"
     assert "TOKEN" not in json.dumps(remote["agent"])  # a secret reference stays in our metadata only
-    assert any("headers are not exported" in r for r in report)
+    assert any("headers are not in the Agent Spec" in r for r in report)
+
+
+def test_typed_in_keys_never_reach_the_file():
+    wf = _template("chat_assistant").model_copy(deep=True)
+    wf.nodes.append(wf.nodes[0].model_copy(update={
+        "id": "n_remote", "type": "agent.a2a", "name": "remote",
+        "config": {"url": "https://a.example/a2a", "output": "messages",
+                   "headers": {"Authorization": "Bearer sk-live-123", "X-Key": {"$secret": "KEY"}}},
+    }))  # fmt: skip
+    doc, report = export_flow(wf)
+    text = json.dumps(doc)
+    assert "sk-live-123" not in text and '"$secret": "KEY"' in text
+    assert any("typed in directly are left out" in r for r in report)
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"component_type": "Flow", "nodes": ["x"]},
+        {"component_type": "Flow", "nodes": [{"component_type": "LlmNode", "name": "a", "outputs": ["o"]}]},
+        {"component_type": "Flow", "data_flow_connections": [{"source_node": "x", "destination_node": 3}]},
+        {"component_type": "Agent", "name": "a", "metadata": {"agentcanvas": "oops"}},
+        {"component_type": "Flow", "metadata": "oops"},
+    ],
+)
+def test_a_malformed_file_is_refused_with_a_message(doc):
+    try:
+        ir, _, _ = import_flow(doc, wf_id="wf_new")
+    except AgentSpecError as exc:
+        assert str(exc)
+    else:
+        Workflow.model_validate(ir)  # or it is read as far as it makes sense
 
 
 def test_import_a_flow_written_by_pyagentspec():
@@ -159,11 +191,27 @@ def test_import_unknown_steps_become_placeholders():
         ({"name": "x"}, "no component_type"),
         ({"component_type": "LlmNode", "id": "x"}, "cannot import a LlmNode"),
         ({"component_type": "Flow", "start_node": {"$component_ref": "nope"}}, "not defined"),
+        (
+            {
+                "component_type": "Flow",
+                "start_node": {"$component_ref": "a"},
+                "$referenced_components": {"a": {"$component_ref": "b"}, "b": {"$component_ref": "a"}},
+            },
+            "circle",
+        ),
     ],
 )
 def test_import_refuses_what_it_cannot_read(doc, message):
     with pytest.raises(AgentSpecError, match=message):
         import_flow(doc, wf_id="wf_new")
+
+
+def test_import_keeps_only_sane_layout_and_names():
+    doc, _ = export_flow(_template("chat_assistant"), {"n_agent": {"x": 1, "y": 2.5}, "bad": {"x": "1"}, "n": 3})
+    doc["metadata"]["agentcanvas"]["ir"]["name"] = "x" * 500
+    ir, _, layout = import_flow(doc, wf_id="wf_new")
+    assert layout == {"n_agent": {"x": 1.0, "y": 2.5}}
+    assert len(ir["name"]) == 200
 
 
 def test_ident():

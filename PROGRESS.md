@@ -5,7 +5,8 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 
 - **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-08. Sprints 18 (AI Copilot II and debug assistant → v0.8.0) and 19 (Export deploy kit → v0.9.0) are done in #19, ahead of S16–S17 at the owner's request: the Copilot tests and debugs workflows, and an export is a deployable service for the target you pick with four generated guides, `make doctor`, `make smoke` and `make gate`.
+- **Last updated:** 2026-10-08. Sprint 16 (Any framework as a node → v0.10.0) is done: agents from nine frameworks, remote A2A agents and MCP tools run as canvas steps with approvals and traces, workflows move in and out as Open Agent Spec files, and a CI job runs a real agent from each framework. The UI refresh with light, medium and dark themes was merged in #20.
+- **Before that:** 2026-10-08. Sprints 18 (AI Copilot II and debug assistant → v0.8.0) and 19 (Export deploy kit → v0.9.0) are done in #19, ahead of S16–S17 at the owner's request: the Copilot tests and debugs workflows, and an export is a deployable service for the target you pick with four generated guides, `make doctor`, `make smoke` and `make gate`.
 - **Previously:** 2026-10-06. Sprint 13 is merged (#8; tag `v0.5.0` is the maintainer's call). #9 adds the user guide, models from any provider (local ones included) with per-provider keys, a first-run model setup screen, and `make docker-up`.
 
 ## At a glance
@@ -33,7 +34,9 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 | S15 Open doors (MCP/A2A endpoints, connectors, trace export) → v0.7.0 | ✅ done (merged in #17; tag `v0.7.0` pending) |
 | S18 AI Copilot II and debug assistant → v0.8.0 | ✅ done (built ahead of S16–S17 at the owner's request) |
 | S19 Export deploy kit → v0.9.0 | ✅ done (built ahead of S16–S17 at the owner's request) |
-| S16–S17, S20–S32 (any framework as a node, ship to users, Knowledge Studio, framework adapters) | ⏸ paused by the owner, see [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| UI refresh: light, medium and dark themes, modern restyle, Copilot chat layout | ✅ done (merged in #20) |
+| S16 Any framework as a node → v0.10.0 | ✅ done |
+| S17, S20–S32 (ship to users, Knowledge Studio, framework adapters) | ⏸ next sprints need the owner's go-ahead, see [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
 | Later: GA backlog | ⬜ pending |
 
 **Test totals** at the end of S13:
@@ -248,6 +251,22 @@ Built before the roadmap reorder (as "S16"), finished on 2026-10-08 at the owner
 - [x] Review against S15 (2026-10-08), fixed: a resume keeps the run's context (user-scoped memory and `context.*`
   prompts failed after an approval); feedback finds runs from other replicas and after restarts; `make smoke` and
   the export's tests send the required context; the docs say the MCP and A2A addresses are not exported.
+
+### S16 — Any framework as a node (v0.10.0)
+- [x] **Agent from another framework** block: OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands,
+  LlamaIndex Workflows, Microsoft Agent Framework, Claude Agent SDK and plain Python functions, from the Workspace,
+  in the interpreter and in generated code (`adapters/langchain/interop.py`, vendored into exports, which add the
+  pinned framework package). Approval before it runs; `ac.agent` trace events; E041 hosted, E070 exempt.
+- [x] **Remote agent (A2A)** (`message/send`, `input-required` becomes an interrupt, no re-send on resume, private
+  addresses refused unless allowed) and **Remote agent (MCP)** (one tool of a wired MCP server).
+- [x] Framework badge on these blocks.
+- [x] Open Agent Spec export and import (`agentcanvas/agentspec.py`, `GET /v1/workflows/{id}/agent-spec`,
+  `POST /v1/projects/{id}/workflows/agent-spec`), exact round trip through flow metadata, report of what was
+  approximated; Versions tab download and home-page import.
+- [x] CI `frameworks` job (`scripts/smoke_frameworks.py`): a real agent of each framework runs as a step against a
+  fake OpenAI/Anthropic server; template exports load in pyagentspec 26.3.1.
+- [x] Deploy kit review fixes: Azure refuses empty settings, Cloud Run grants secret access, placeholder keys
+  never count.
 
 ### GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, AG-UI exposure, Git sync, hosted trial (MCP/A2A exposure moved to S15, Copilot shipped in S14).

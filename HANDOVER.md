@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-08, after Sprints 18 and 19 ([#19](https://github.com/marunsct/AgentCanvas/pull/19)), built ahead of S16–S17 at the owner's request.
+- **Last updated:** 2026-10-08, after Sprint 16 (Any framework as a node → v0.10.0) and the UI refresh ([#20](https://github.com/marunsct/AgentCanvas/pull/20)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,22 +14,23 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprints done | **S18 AI Copilot II and debug assistant → v0.8.0** and **S19 Export deploy kit → v0.9.0** (#19). Their drafts predated the roadmap reorder; the owner asked on 2026-10-08 to finish them. They were merged onto main after S15, reviewed against S15 (8 findings fixed) and tested |
-| Before that | S15 Open doors → v0.7.0 (#17): MCP and A2A per deployment, 30-connector MCP gallery, OpenTelemetry trace export |
-| Version in code | API `0.9.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.9.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.9.0 are all left to the owner (see §2) |
-| Next sprint | **S16 Any framework as a node → v0.10.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)); then S17 Ship to users → v0.11.0, then S20 onward |
-| Work status | **Paused.** Do not start S16 or later until the owner says so in the project chat |
-| Open PRs | the UI refresh (themes) PR; S16 is in progress |
-| CI | green on main after #19 (api, web, e2e, docs, connectors, export, audit, images) |
+| Last sprint done | **S16 Any framework as a node → v0.10.0** (the S16 PR, on branch `claude/project-thread-m3m03g`): agents from nine frameworks, remote A2A agents and MCP tools as canvas steps; framework badges; Open Agent Spec import and export; a CI job that runs a real agent of each framework |
+| Before that | UI refresh with light, medium and dark themes (#20, merged `24a63fe`); S18 AI Copilot II → v0.8.0 and S19 Export deploy kit → v0.9.0 (#19) |
+| Version in code | API `0.10.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.10.0 (includes the UI refresh) |
+| Git tags | **none pushed.** v0.1.0 … v0.10.0 are all left to the owner (see §2) |
+| Next sprint | **S17 Ship to users → v0.11.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)), then S20 onward. Ask the owner before starting it |
+| Work status | S16 PR open, waiting for the owner to merge (no merge grant for S16) |
+| Open PRs | the S16 PR |
+| CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S18/S19** (all green):
+**Test totals at the end of S16** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 406 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
-| Web unit (vitest) | 70 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 39 | see §5 |
+| API (pytest, Postgres) | 464 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| Web unit (vitest) | 76 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 41 | see §5 |
+| Real frameworks (S16) | 9 frameworks + Agent Spec check | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
@@ -50,6 +51,9 @@ These come from the owner in the project chat; they override defaults.
 - **Before each sprint:** review the whole codebase for errors and fix them first. **After each sprint:** an
   end-to-end review (API and browser flows), fix, then merge.
 - **Handover** (2026-10-08): keep this file updated at the end of every sprint.
+- **UI refresh and S16** (2026-10-08): the owner asked for a modern UI with light, medium and dark themes (done in
+  #20), then "merge the pr and start the next sprint" (S16). #20 was merged on local checks while Actions had no
+  runners, on the owner's explicit choice. Beyond S16, ask before starting the next sprint and before merging.
 - **Node versions:** stay on Node LTS. Node 25 dropped corepack, which `infra/Dockerfile.web` uses (Dependabot #10 was closed for this).
 - **Dependabot:** `@dependabot` commands must be typed by the owner; ones posted by an agent are ignored.
 - **Merged branches** are deleted by the owner from the PR page (the cloud git proxy refuses remote branch deletion).
@@ -69,15 +73,18 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   runtime/                 framework-neutral runner, run handles, finish hooks, masking
   copilot/                 AI Copilot (S14) + tests, debugging, guide search, notes, debug evals (S18)
   adapters/langchain/deploykit.py, kit/   export deploy kit: service template, guides, doctor/smoke/gate (S19)
+  adapters/langchain/interop.py   agents from other frameworks, remote A2A and MCP agents as steps (S16; vendored into exports)
+  agentspec.py             Open Agent Spec export/import (S16), pure dict mapping, no pyagentspec at runtime
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
   ir/, validation/         Graph IR v1.1 and the validator
   db/                      SQLAlchemy models; migrations in apps/api/migrations (Alembic)
 apps/api/tests/            pytest; test_auth.py lists public/own-credential routes (update it for new routes)
-apps/api/scripts/          export_ir_schema.py, smoke_mcp_gallery.py, ...
+apps/api/scripts/          export_ir_schema.py, smoke_mcp_gallery.py, smoke_frameworks.py (S16), ...
 apps/web/src/              React 19 + TS, React Flow, Zustand, TanStack Query
   api/generated.ts         generated from OpenAPI (`pnpm gen`), never edit by hand
-  release/                 publish, deployments, ConnectSection (MCP/A2A snippets)
+  release/                 publish, deployments, ConnectSection (MCP/A2A snippets), AgentSpec.tsx (S16)
+  theme/                   light / medium / dark / system themes (#20); colours are CSS tokens in styles.css
   observability/           TraceExportSettings (Setup page)
 apps/web/e2e/              Playwright journeys
 packages/ir-schema/        generated ir.schema.json, node-types.json, openapi.json (CI fails on drift)
@@ -124,7 +131,8 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via
 `vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (pip-audit, pnpm audit),
 `export` (S19: every template to every target, deploy files linted, each export's own tests, Docker Compose and
-kind deployed for real), `images` (Docker builds, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
+kind deployed for real), `frameworks` (S16: a real agent of each framework as a step against a fake model server;
+Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
 
 ## 7. Conventions
 
@@ -151,7 +159,15 @@ kind deployed for real), `images` (Docker builds, Trivy, prod and local compose 
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.9.0 not created (owner).
+- **Release tags** v0.1.0 to v0.10.0 not created (owner).
+- **GitHub Actions** had no runners from 2026-10-08 05:51Z (billing or spending limit, owner to fix); #20 and the
+  S16 work were verified locally only.
+- **S16 limits:** a wrapped agent is a black box (its own tools are not gated one by one; declare its side effects);
+  Agent Spec files are JSON only; routers export as branches only for `state.x == "v"` rules on one field; agents'
+  tools and middleware are not exported to Agent Spec; the framework CI job uses a fake model server. The A2A step
+  remembers remote replies in the server process only: after a restart, a step paused on a remote question stops
+  with a clear error instead of re-sending (it reads LangGraph's private `__pregel_scratchpad` to notice; the
+  `test_a2a_stops_instead_of_resending_after_a_restart` test catches an upstream change).
 - **S9 exit criterion** (10 design partners finish J1 unaided) needs real users.
 - **MCP endpoint nits left as is:** no `Origin` header validation (the endpoint needs a bearer key anyway) and the
   `MCP-Protocol-Version` header is not checked. A2A supports 0.3 method names only (`message/send`, `tasks/get`); no streaming.
@@ -182,7 +198,9 @@ kind deployed for real), `images` (Docker builds, Trivy, prod and local compose 
 | S14 AI Copilot I | #15 | `958f9cd` | v0.6.0 |
 | S15 Open doors + end-to-end review fixes | #17 | `19de2dc` | v0.7.0 |
 | Handover document | #18 | `9c9ef6e` | — |
-| S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | 7cca0c6 | v0.8.0, v0.9.0 |
+| S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | `7cca0c6` | v0.8.0, v0.9.0 |
+| UI refresh: themes, restyle, Copilot chat layout | #20 | `24a63fe` | (in v0.10.0) |
+| S16 Any framework as a node | the S16 PR | (after merge) | v0.10.0 |
 
 ## 11. Sprint-end checklist
 

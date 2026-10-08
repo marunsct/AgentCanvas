@@ -91,7 +91,7 @@ async def _openai_agents(agent: Any, text: str, state: dict[str, Any]) -> Any:
 
 
 async def _crewai(obj: Any, text: str, state: dict[str, Any]) -> Any:
-    inputs = {"input": text, **_scalars(state)}
+    inputs = {**_scalars(state), "input": text}  # the step's input wins over a field that is also called "input"
     if hasattr(obj, "tasks") and hasattr(obj, "agents"):  # a Crew: its task texts use {input} and {field} names
         return await obj.kickoff_async(inputs=inputs)
     if hasattr(obj, "role") and hasattr(obj, "goal"):  # a single Agent
@@ -125,8 +125,12 @@ async def _strands(agent: Any, text: str, state: dict[str, Any]) -> Any:
     return str(await agent.invoke_async(text))
 
 
+_LLAMA_RESERVED = {"input", "ctx", "stepwise", "start_event", "checkpoint_callback"}  # Workflow.run's own arguments
+
+
 async def _llamaindex(workflow: Any, text: str, state: dict[str, Any]) -> Any:
-    return await workflow.run(input=text, **_scalars(state))
+    extra = {k: v for k, v in _scalars(state).items() if k not in _LLAMA_RESERVED}
+    return await workflow.run(input=text, **extra)
 
 
 async def _microsoft(agent: Any, text: str, state: dict[str, Any]) -> Any:
@@ -309,9 +313,23 @@ def _step_key(node_id: str) -> str | None:
     return f"{thread}|{cfg.get('checkpoint_ns', '')}|{node_id}" if thread else None
 
 
-async def _rpc(client: Any, url: str, method: str, params: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+def _answers_given() -> int:
+    """How many answers this step has been resumed with (LangGraph replays them to `interrupt()` in order)."""
+    from langgraph.config import get_config
+
+    try:
+        pad = get_config().get("configurable", {}).get("__pregel_scratchpad")  # LangGraph's CONFIG_KEY_SCRATCHPAD
+    except RuntimeError:
+        return 0
+    if pad is None:
+        return 0
+    pending = pad.get_null_resume(False) if callable(getattr(pad, "get_null_resume", None)) else None
+    return len(getattr(pad, "resume", None) or []) + (pending is not None)
+
+
+async def _rpc(client: Any, target: _Target, method: str, params: dict[str, Any]) -> dict[str, Any]:
     body = {"jsonrpc": "2.0", "id": uuid.uuid4().hex, "method": method, "params": params}
-    r = await client.post(url, json=body, headers=headers)
+    r = await client.post(target.url, json=body, headers=target.headers, extensions=target.extensions)
     if r.status_code >= 400:
         raise AgentError(f"the remote agent answered HTTP {r.status_code}: {r.text[:300]}")
     reply = r.json()
@@ -350,6 +368,13 @@ def a2a_agent_node(
             message_text = text
             key = _step_key(node_id)
             done = list(_SENT.get(key, [])) if key else []  # answers received before this step paused
+            if len(done) < _answers_given():
+                # the remote replies are kept in this process only: after a restart, carrying on would send the
+                # first message again and start a second remote task, so stop with a clear message instead
+                raise AgentError(
+                    f"AgentCanvas restarted while the remote agent '{name}' was waiting for an answer, so that "
+                    "conversation cannot be continued without sending its first message again. Run it again."
+                )
             for turn in range(20):  # an agent asking more than 20 questions in one step is stuck
                 message: dict[str, Any] = {"kind": "message", "role": "user", "messageId": uuid.uuid4().hex,
                                            "parts": [{"kind": "text", "text": message_text}]}  # fmt: skip
@@ -360,7 +385,7 @@ def a2a_agent_node(
                 if turn < len(done):
                     result = done[turn]
                 else:
-                    result = await _rpc(client, endpoint, "message/send", {"message": message}, sent)
+                    result = await _rpc(client, endpoint, "message/send", {"message": message})
                     if key:
                         _SENT.setdefault(key, []).append(result)
                         _SENT.move_to_end(key)
@@ -383,31 +408,47 @@ def a2a_agent_node(
     return run
 
 
-async def _a2a_endpoint(client: Any, url: str, headers: dict[str, str], private_ok: bool) -> str:
-    """The JSON-RPC address: `url` itself, or the `url` its Agent Card names when `url` is a card."""
+@dataclass(frozen=True)
+class _Target:
+    url: str  # with the checked IP in place of the host name unless private addresses are allowed
+    headers: dict[str, str]
+    extensions: dict[str, Any] | None  # TLS still checks the certificate of the name
+
+
+async def _pinned(url: str, headers: dict[str, str], private_ok: bool) -> _Target:
+    """`url`, checked to be public and pinned to the address that was checked, so a second DNS answer cannot send
+    the request to a private network (as the HTTP tool does)."""
     from urllib.parse import urlsplit
 
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise AgentError(f"'{url}' is not an http(s) address")
-    if not private_ok:
-        from agentcanvas.adapters.langchain.nodes import _public_address
+    if private_ok:
+        return _Target(url, headers, None)
+    from agentcanvas.adapters.langchain.nodes import _public_address
 
-        await _public_address(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80))
-    if not parts.path.endswith(".json"):
-        return url
-    r = await client.get(url, headers=headers)
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    ip = await _public_address(parts.hostname, port)
+    netloc = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
+    return _Target(
+        parts._replace(netloc=netloc).geturl(),
+        {**headers, "Host": parts.netloc.rsplit("@", 1)[-1]},
+        {"sni_hostname": parts.hostname},
+    )
+
+
+async def _a2a_endpoint(client: Any, url: str, headers: dict[str, str], private_ok: bool) -> _Target:
+    """The JSON-RPC address: `url` itself, or the `url` its Agent Card names when `url` is a card."""
+    card = await _pinned(url, headers, private_ok)
+    if not url.split("?", 1)[0].endswith(".json"):
+        return card
+    r = await client.get(card.url, headers=card.headers, extensions=card.extensions)
     if r.status_code >= 400:
         raise AgentError(f"could not read the agent card at {url}: HTTP {r.status_code}")
     endpoint = str((r.json() or {}).get("url") or "")
     if not endpoint:
         raise AgentError(f"the agent card at {url} names no address")
-    target = urlsplit(endpoint)
-    if not private_ok and target.hostname != parts.hostname:
-        from agentcanvas.adapters.langchain.nodes import _public_address
-
-        await _public_address(target.hostname or "", target.port or (443 if target.scheme == "https" else 80))
-    return endpoint
+    return await _pinned(endpoint, headers, private_ok)
 
 
 # ------------------------------------------------------------- remote: MCP ----

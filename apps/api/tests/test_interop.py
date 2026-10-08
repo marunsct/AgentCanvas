@@ -199,6 +199,46 @@ async def test_a_remote_a2a_agent_asks_and_answers(ws):
     assert sent == [("refund me", None), ("ACME-9", "task1")]  # the first message is not sent again on resume
 
 
+async def test_a2a_stops_instead_of_resending_after_a_restart():
+    wf = workflow(
+        channels=[MESSAGES],
+        nodes=[("billing", "agent.a2a", {"url": "https://agents.example.com/a2a", "output": "messages"})],
+        flow=[("START", "billing"), ("billing", "END")],
+    )
+    log: list[dict] = []
+    graph = build_graph(wf, Resources(http_transport=a2a_server(log)), checkpointer=InMemorySaver())
+    await graph.ainvoke({"messages": [("user", "refund me")]}, cfg())
+    interop._SENT.clear()  # what a restart loses
+    with pytest.raises(Exception, match="restarted while the remote agent 'billing' was waiting"):
+        await graph.ainvoke(Command(resume="ACME-9"), cfg())
+    assert [m["parts"][0]["text"] for m in log] == ["refund me"]  # nothing was sent twice
+
+
+async def test_a2a_connects_to_the_address_it_checked(monkeypatch):
+    from agentcanvas.adapters.langchain import nodes
+
+    async def public(host, port):
+        assert (host, port) == ("agents.example.com", 443)
+        return "93.184.216.34"
+
+    monkeypatch.setattr(nodes, "_public_address", public)
+    t = await interop._pinned("https://agents.example.com/a2a?x=1", {"Authorization": "k"}, private_ok=False)
+    assert t.url == "https://93.184.216.34:443/a2a?x=1"  # a second DNS answer cannot redirect the request
+    assert t.headers == {"Authorization": "k", "Host": "agents.example.com"}
+    assert t.extensions == {"sni_hostname": "agents.example.com"}
+    assert (await interop._pinned("http://10.0.0.5/a2a", {}, private_ok=True)).url == "http://10.0.0.5/a2a"
+
+
+async def test_a_field_called_input_does_not_clash_with_the_agent_input(ws):
+    for framework, target in (("llamaindex", TARGETS["llamaindex"]), ("crewai", TARGETS["crewai"])):
+        wf = agent_wf({"framework": framework, "import_path": target, "prompt": "{{ state.question }}"},
+                      channels=[MESSAGES, ch("question"), ch("input")])  # fmt: skip
+        out = await build_graph(wf, Resources(workspace=ws), checkpointer=InMemorySaver()).ainvoke(
+            {"question": "q1", "input": "something else"}, cfg()
+        )
+        assert out["messages"][-1].content == f"{framework}: q1"
+
+
 async def test_an_a2a_step_calls_a_published_agentcanvas_workflow(app, api_client):
     """End to end: one workflow asks another (published, with an approval inside) over A2A."""
     from agentcanvas.testing import DemoResources

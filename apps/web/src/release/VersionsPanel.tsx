@@ -7,6 +7,7 @@ import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import { ContractSection } from "./ContractSection";
+import { AgentSpecExport } from "./AgentSpec";
 import { ExportSection } from "./ExportSection";
 import { PublishSection } from "./PublishSection";
 import { TriggersSection } from "./TriggersSection";
@@ -59,6 +60,7 @@ export function VersionsPanel() {
       </form>}
       {save.error && <p className="error-text small">{(save.error as Error).message}</p>}
       <ExportSection wfId={wf.id} versions={versions.data ?? []} />
+      <AgentSpecExport wfId={wf.id} name={wf.name} />
       {downloadError && <p className="error-text small" role="alert">{downloadError}</p>}
       {diff && (
         <div className="diff-box" data-testid="diff-summary">

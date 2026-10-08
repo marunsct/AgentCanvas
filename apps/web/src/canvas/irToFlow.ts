@@ -3,6 +3,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { Diagnostic, Layout, NodeManifest } from "../api/types";
 import { outputPort, routesOf, type IRNode, type IRResource, type WF } from "../ir/model";
 import { formatMetrics, type NodeMetrics, type NodeStatus } from "../run/runStore";
+import { type FrameworkBadge, frameworkBadge } from "./frameworks";
 
 export type ElementKind = "node" | "resource" | "terminal";
 
@@ -24,6 +25,7 @@ export interface CanvasData extends Record<string, unknown> {
   pinned?: boolean; // debug runs replay a pinned output (M4-T9)
   diff?: "added" | "changed"; // compared with a saved version (M6-T1)
   blast?: { effects: string[]; ungated: boolean }; // blast-radius overlay (FR-X-02)
+  framework?: FrameworkBadge; // agents from other frameworks, remote (A2A) and MCP agents (S16)
 }
 
 export interface FlowExtras {
@@ -121,6 +123,7 @@ export function irToFlow(
         metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
         diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : undefined,
         blast: extras.blast?.[el.id],
+        framework: kind === "node" ? frameworkBadge(el.type, (el as IRNode).config) : undefined,
       },
     };
   };

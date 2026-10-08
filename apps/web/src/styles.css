@@ -622,6 +622,7 @@ summary h4 { display: inline; }
 .export-needs ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .widget.blast-ungated { box-shadow: 0 0 0 3px var(--err), var(--shadow-lg); }
 .badge.blast { background: var(--tint-warn); color: var(--warn); letter-spacing: 1px; }
+.badge.framework { background: var(--tint-run); color: var(--run); border-color: transparent; font-weight: 600; }
 .badge.blast.err { background: var(--tint-err); color: var(--err); }
 
 /* states */
@@ -663,12 +664,17 @@ summary h4 { display: inline; }
 .dataset-view, .results { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
 
 /* first-run setup (model, key, local server) */
-a.button {
+a.button, label.button {
   display: inline-flex; align-items: center; padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--accent);
   text-decoration: none; font-weight: 600;
 }
 a.button.primary { background: var(--gradient); color: var(--accent-fg); border-color: transparent; box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent); }
 a.button:hover { text-decoration: none; filter: brightness(1.06); }
+label.button { cursor: pointer; color: var(--accent); background: var(--panel); width: auto; flex: none; margin: 0; }
+label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.notes { margin-top: 6px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel-2); }
+.notes ul { margin: 4px 0 10px; padding-left: 18px; }
 .setup-form { display: flex; flex-direction: column; gap: 8px; max-width: 560px; }
 .setup-form label { font-weight: 600; margin-top: 8px; }
 .setup-form .row { margin-top: 12px; }

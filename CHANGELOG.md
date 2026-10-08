@@ -2,9 +2,22 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
-## Unreleased — UI refresh
+## v0.10.0 — Any framework as a node, and a UI refresh (not tagged yet)
 
-### Changed
+### Added
+- **Agents from nine other frameworks as steps.** The **Agent from another framework** block runs an agent from your Workspace built with the OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands Agents, LlamaIndex Workflows, Microsoft Agent Framework or the Claude Agent SDK (or a plain Python function) as one step: prompt from workflow fields, answer into a field or the chat, optional approval before it runs, input and answer in the trace. A factory function gives a fresh agent per run. Exports vendor the step and add the framework's pinned package.
+- **Remote agents.** **Remote agent (A2A)** calls any Agent2Agent agent by its Agent Card address; when it asks for more information the run pauses for a person and the answer goes back to the same task (no message is sent twice on resume). Private addresses are refused unless allowed. **Remote agent (MCP)** calls one tool of a connected MCP server as a step.
+- **Safety for remote agents:** the A2A step connects to the address it checked (no DNS rebinding to private networks), and after a server restart a step paused on a remote question stops with a message instead of sending its first message again.
+- **Framework badges** on these blocks name the framework (or A2A, MCP).
+- **Open Agent Spec import and export.** **Versions → Download as an Agent Spec file** writes the workflow as an Agent Spec flow (`LlmNode`, `AgentNode`, `A2AAgent`, `BranchingNode`, `InputMessageNode`, tools) and lists what Agent Spec cannot express; **Import an Agent Spec file** on the home page builds a workflow from any Agent Spec flow or agent and lists what it approximated. Files AgentCanvas wrote import back exactly, layout included; header values typed in directly are never written to the file. `GET /v1/workflows/{id}/agent-spec`, `POST /v1/projects/{id}/workflows/agent-spec`.
+- **CI `frameworks` job:** a real agent from each of the nine frameworks, at the pinned version, runs as a canvas step against a fake model server (OpenAI and Anthropic APIs), and every template's Agent Spec export loads in pyagentspec.
+
+### Fixed (review of the v0.9.0 deploy kit)
+- Azure Container Apps deployed the literal text "unset" for empty settings; the deploy script now stops and names the missing ones.
+- Cloud Run's service account could not read its secrets; the script grants it access (and `GCP_SERVICE_ACCOUNT` picks another account).
+- Placeholder API keys ("unset", "none", "changeme") no longer count as configured in `make doctor` or the exported service.
+
+### Changed (UI refresh, #20)
 - **A new look.** A redesigned interface across every page: a frosted top bar with grouped canvas tools, softer cards and panels, clearer tabs, rounder canvas blocks with status glows, and themed minimap, controls and tooltips.
 - **Light, Medium and Dark themes**, plus System (follows your computer), from the switch in the top bar; remembered in this browser.
 - **Copilot chat** has a proper chat layout: avatars, chat bubbles, a typing indicator, a welcome screen with suggestions, and a composer with the Build/Ask switch and Send inside it.

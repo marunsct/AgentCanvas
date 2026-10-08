@@ -47,8 +47,8 @@ def export_flow(wf: Workflow, layout: dict[str, Any] | None = None) -> tuple[dic
 
 class _Exporter:
     def __init__(self, wf: Workflow):
-        self.wf = wf
         self.report: list[str] = []
+        self.wf = Workflow.model_validate(_scrub(wf.model_dump(mode="json"), self.report))
         self.refs: dict[str, dict[str, Any]] = {}
         self.outputs: dict[str, list[str]] = {}  # IR node id (or the start's spec id) -> channels it writes
         self.writers: dict[str, list[str]] = {}  # channel -> spec node ids that write it
@@ -147,7 +147,8 @@ class _Exporter:
                              timeout=float(cfg.get("timeout", 120)), headers=None, verify=True,
                              key_file=None, cert_file=None, ssl_ca_cert=None)  # fmt: skip
             if cfg.get("headers"):
-                self.report.append(f"Remote agent '{n.name}': headers are not exported (they may hold secrets).")
+                self.report.append(f"Remote agent '{n.name}': its headers are not in the Agent Spec connection "
+                                   "settings; add them in the other runtime.")  # fmt: skip
             agent = self.comp(
                 "A2AAgent", f"{n.id}/agent", n.name, inputs=[], outputs=[], agent_url=str(cfg.get("url", "")),
                 connection_config=conn, session_parameters={"timeout": 60.0, "poll_interval": 2.0, "max_retries": 5},
@@ -277,6 +278,31 @@ class _Exporter:
         return flow, list(dict.fromkeys(self.report))
 
 
+_PLAIN_VALUES = {"headers", "env"}  # config maps whose values may be keys typed in directly (not secret references)
+
+
+def _scrub(x: Any, report: list[str], where: str = "") -> Any:
+    """`x` without header or environment values typed in as plain text: the file is meant to be shared. Secret
+    references (`{"$secret": NAME}`) name a secret without holding it and stay."""
+    if isinstance(x, list):
+        return [_scrub(v, report, where) for v in x]
+    if not isinstance(x, dict):
+        return x
+    if where == "" and isinstance(x.get("name"), str) and "config" in x:
+        where = x["name"]
+    out: dict[str, Any] = {}
+    for k, v in x.items():
+        if k in _PLAIN_VALUES and isinstance(v, dict):
+            kept = {h: val if isinstance(val, dict) and "$secret" in val else "" for h, val in v.items()}
+            if kept != v:
+                report.append(f"'{where}': values of {k} typed in directly are left out of the file (they may be "
+                              "keys); secret references are kept.")  # fmt: skip
+            out[k] = kept
+        else:
+            out[k] = _scrub(v, report, where)
+    return out
+
+
 def _writes(n: Any) -> list[str]:
     cfg = n.config
     if n.type == "core.set":
@@ -297,28 +323,41 @@ def import_flow(
     _collect(doc, refs)
 
     def deref(x: Any) -> Any:
-        while isinstance(x, dict) and "$component_ref" in x:
+        for _ in range(len(refs) + 1):  # a reference chain longer than the references is a cycle
+            if not (isinstance(x, dict) and "$component_ref" in x):
+                return x
             if x["$component_ref"] not in refs:
                 raise AgentSpecError(f"reference {x['$component_ref']} is not defined in the document")
             x = refs[x["$component_ref"]]
-        return x
+        raise AgentSpecError("the document's references go round in a circle")
 
-    ours = (doc.get("metadata") or {}).get("agentcanvas") or {}
+    meta = doc.get("metadata")
+    ours = meta.get("agentcanvas") if isinstance(meta, dict) else None
     kept = ours.get("ir") if isinstance(ours, dict) else None
-    if doc["component_type"] == "Flow" and isinstance(kept, dict):
-        ir = {**kept, "id": wf_id, "name": name or kept.get("name") or doc.get("name") or "Imported flow"}
+    if doc["component_type"] == "Flow" and isinstance(ours, dict) and isinstance(kept, dict):
+        ir = {**kept, "id": wf_id, "name": _title(name or kept.get("name") or doc.get("name"))}
         layout = ours.get("layout")
-        return (
-            ir,
-            ["Restored exactly from the AgentCanvas data inside the file."],
-            layout if isinstance(layout, dict) else {},
-        )
+        positions = {
+            str(k): {"x": float(v["x"]), "y": float(v["y"])}
+            for k, v in (layout.items() if isinstance(layout, dict) else [])
+            if isinstance(v, dict) and all(isinstance(v.get(c), int | float) for c in ("x", "y"))
+        }
+        return ir, ["Restored exactly from the AgentCanvas data inside the file."], positions
     if doc["component_type"] in ("Agent", "A2AAgent"):
         doc = _wrap_agent(doc)
     if doc["component_type"] != "Flow":
         raise AgentSpecError(f"cannot import a {doc['component_type']}: expected a Flow or an Agent")
-    ir, report = _Importer(doc, deref, wf_id, name).run()
+    try:
+        ir, report = _Importer(doc, deref, wf_id, name).run()
+    except AgentSpecError:
+        raise
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:  # a list where an object belongs, and so on
+        raise AgentSpecError(f"the file is not a valid Agent Spec document ({type(exc).__name__}: {exc})") from exc
     return ir, report, {}
+
+
+def _title(name: Any) -> str:
+    return (str(name or "").strip() or "Imported flow")[:200]
 
 
 def _collect(x: Any, refs: dict[str, Any]) -> None:
@@ -472,7 +511,7 @@ class _Importer:
         ir = {
             "ir_version": "1.1",
             "id": self.wf_id,
-            "name": self.name or flow.get("name") or "Imported flow",
+            "name": _title(self.name or flow.get("name")),
             "description": flow.get("description") or "",
             "state": {"channels": channels},
             "resources": self.resources,

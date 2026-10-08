@@ -92,6 +92,8 @@ Python project, publish behind an API key, webhooks and cron). Details in the [c
 - **v0.8.0, Copilot II:** the Copilot tests, debugs and fixes workflows.
 - **v0.9.0, export deploy kit:** an export is a deployable service for your computer, a server, Kubernetes, Cloud
   Run, AWS or Azure, with guides and `make doctor` / `make smoke`.
+- **v0.10.0, any framework as a node:** agents built with nine other frameworks, remote A2A agents and MCP tools run
+  as canvas steps; Open Agent Spec import and export; light, medium and dark themes.
 
 See the [changelog](CHANGELOG.md) for details.
 
@@ -111,4 +113,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S15: Open doors (v0.7.0) | ✅ done (merged in #17): every deployment is an MCP server and an A2A agent, 30-connector gallery, trace export |
 | S18: AI Copilot II and debug assistant (v0.8.0) | ✅ done (#19, built ahead of S16–S17) |
 | S19: Export deploy kit (v0.9.0) | ✅ done (#19, built ahead of S16–S17) |
-| S16–S17, S20–S32: any framework as a node, ship to users, Knowledge Studio, framework adapters | ⏸ paused by the owner; value-first order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| UI refresh: light, medium and dark themes | ✅ done (#20) |
+| S16: Any framework as a node (v0.10.0) | ✅ done |
+| S17, S20–S32: ship to users, Knowledge Studio, framework adapters | ⏸ next; value-first order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

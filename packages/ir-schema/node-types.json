@@ -105,6 +105,124 @@
     "docs": null
   },
   {
+    "type": "agent.framework",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Agent from another framework",
+    "category": "AI",
+    "icon": "bot",
+    "color": "#0EA5E9",
+    "description": "Runs an agent you built with another framework (OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands, LlamaIndex, Microsoft Agent Framework, Claude Agent SDK) as one step. Point it at the agent in your Workspace. It is a black box on the canvas: one step, with its input and answer in the trace. Runs inside this server, so the hosted edition does not offer it.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go when the agent has answered: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "framework",
+        "import_path",
+        "output"
+      ],
+      "properties": {
+        "framework": {
+          "enum": [
+            "openai_agents",
+            "crewai",
+            "google_adk",
+            "pydantic_ai",
+            "agno",
+            "strands",
+            "llamaindex",
+            "microsoft_agent_framework",
+            "claude_agent_sdk",
+            "callable"
+          ],
+          "title": "Framework",
+          "default": "openai_agents",
+          "description": "Which framework built the agent. Its package must be installed (exports add it)."
+        },
+        "import_path": {
+          "type": "string",
+          "title": "Agent",
+          "format": "import_path",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Where the agent is in your Workspace, e.g. tools.agents:support_agent. A function with no arguments that returns the agent also works (a fresh agent per run)."
+        },
+        "prompt": {
+          "type": "string",
+          "title": "What to send the agent",
+          "format": "prompt",
+          "default": "",
+          "description": "The agent's input. Insert data with {{ state.<field> }}. Leave empty to send the latest chat message."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the answer in",
+          "format": "channel",
+          "description": "The data field that receives the agent's answer. Choose `messages` to add it to the chat."
+        },
+        "approve": {
+          "type": "boolean",
+          "title": "Ask a person before it runs",
+          "default": false,
+          "description": "Pause with an approval card showing what will be sent; a rejection skips the agent."
+        },
+        "side_effects": {
+          "type": "array",
+          "title": "Side effects",
+          "items": {
+            "enum": [
+              "external_write",
+              "message_send",
+              "code_exec",
+              "spend",
+              "pii_read"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "What the agent's own tools can do, for the blast-radius view and dry runs."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "prompt"
+    ],
+    "builtin_tools": [],
+    "interrupts": true,
+    "side_effects": [
+      "spend",
+      "code_exec"
+    ],
+    "hosted_forbidden": true,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "core.llm",
     "version": "1.0.0",
     "kind": "runtime",
@@ -453,6 +571,224 @@
     "interrupts": true,
     "side_effects": [
       "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
+    "type": "agent.a2a",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Remote agent (A2A)",
+    "category": "AI",
+    "icon": "globe",
+    "color": "#0891B2",
+    "description": "Asks an agent running elsewhere over the Agent2Agent protocol (A2A), whatever framework it uses. Paste its Agent Card address. When the remote agent needs more information, the run pauses and asks a person.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go when the agent has answered: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "output"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "title": "Agent address",
+          "format": "uri",
+          "pattern": "^https?://",
+          "description": "The Agent Card URL (\u2026/.well-known/agent-card.json) or the agent's A2A endpoint."
+        },
+        "prompt": {
+          "type": "string",
+          "title": "What to send the agent",
+          "format": "prompt",
+          "default": "",
+          "description": "The agent's input. Insert data with {{ state.<field> }}. Leave empty to send the latest chat message."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the answer in",
+          "format": "channel",
+          "description": "The data field that receives the agent's answer. Choose `messages` to add it to the chat."
+        },
+        "headers": {
+          "type": "object",
+          "title": "Headers",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Value"
+              },
+              {
+                "type": "object",
+                "title": "Secret",
+                "required": [
+                  "$secret"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "$secret": {
+                    "type": "string",
+                    "title": "Secret name"
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Sent with every request, e.g. Authorization. Use a secret for keys."
+        },
+        "approve": {
+          "type": "boolean",
+          "title": "Ask a person before it runs",
+          "default": false,
+          "description": "Pause with an approval card showing what will be sent; a rejection skips the agent."
+        },
+        "allow_private_network": {
+          "type": "boolean",
+          "title": "Allow private network",
+          "default": false,
+          "description": "Allow addresses on a private or local network (an agent inside your company). Off: such addresses are refused."
+        },
+        "timeout": {
+          "type": "number",
+          "title": "Time limit (seconds)",
+          "default": 120,
+          "minimum": 1,
+          "maximum": 3600
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "prompt"
+    ],
+    "builtin_tools": [],
+    "interrupts": true,
+    "side_effects": [
+      "spend",
+      "external_write"
+    ],
+    "hosted_forbidden": false,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
+    "type": "agent.mcp",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Remote agent (MCP)",
+    "category": "AI",
+    "icon": "plug",
+    "color": "#4B5563",
+    "description": "Calls one tool of an MCP server as a step, for example an agent published as an MCP tool. Plug an \u201cApp connector (MCP)\u201d block into its tools input and name the tool.",
+    "inputs": [
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": true,
+        "multi": true,
+        "ordered": false,
+        "description": "The MCP server (App connector) whose tool this step calls."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go when the agent has answered: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "output"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "title": "Tool",
+          "minLength": 1,
+          "description": "The tool's name, as \u201cBrowse tools\u201d on the connector lists it."
+        },
+        "arguments": {
+          "type": "object",
+          "title": "Arguments",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "The tool's arguments; each value may insert data with {{ state.<field> }}."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the answer in",
+          "format": "channel",
+          "description": "The data field that receives the agent's answer. Choose `messages` to add it to the chat."
+        },
+        "approve": {
+          "type": "boolean",
+          "title": "Ask a person before it runs",
+          "default": false,
+          "description": "Pause with an approval card showing what will be sent; a rejection skips the agent."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": true,
+    "side_effects": [
+      "spend",
+      "external_write"
     ],
     "hosted_forbidden": false,
     "stability": "beta",
