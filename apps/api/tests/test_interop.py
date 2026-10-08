@@ -11,7 +11,7 @@ from fake_frameworks import TARGETS, WORKSPACE_AGENTS, install
 from fastmcp import FastMCP
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-from test_catalog import MESSAGES, ch, cfg, codes, compiled, errors, workflow
+from test_catalog import MESSAGES, cfg, ch, codes, compiled, errors, workflow
 from test_protocols import _publish
 from test_publish import bearer
 from test_versions import HIGH_CASE, new_triage
@@ -257,7 +257,8 @@ async def test_an_mcp_agent_is_called_once_as_a_step(ws):
     outs = []
     for build in (abuild_graph, None):
         res = Resources(overrides={"research_srv": research_server()})
-        graph = await (build(wf, res, checkpointer=InMemorySaver()) if build else mod.abuild_graph(res, checkpointer=InMemorySaver()))
+        saver = InMemorySaver()
+        graph = await (build(wf, res, checkpointer=saver) if build else mod.abuild_graph(res, checkpointer=saver))
         outs.append((await graph.ainvoke({"question": "why is the sky blue?"}, cfg()))["answer"])
     assert outs[0] == outs[1] == "deep answer to: why is the sky blue?"
 

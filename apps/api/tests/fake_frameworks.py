@@ -175,9 +175,13 @@ def install(monkeypatch: Any) -> None:
         "workflows": _module("workflows", Workflow=LlamaWorkflow),
         "agent_framework": _module("agent_framework", Agent=MafAgent),
         "claude_agent_sdk": _module(
-            "claude_agent_sdk", query=query, AssistantMessage=AssistantMessage, ResultMessage=ResultMessage,
-            TextBlock=TextBlock, ClaudeAgentOptions=ClaudeAgentOptions,
-        ),  # fmt: skip
+            "claude_agent_sdk",
+            query=query,
+            AssistantMessage=AssistantMessage,
+            ResultMessage=ResultMessage,
+            TextBlock=TextBlock,
+            ClaudeAgentOptions=ClaudeAgentOptions,
+        ),
     }
     for name, mod in mods.items():
         monkeypatch.setitem(sys.modules, name, mod)

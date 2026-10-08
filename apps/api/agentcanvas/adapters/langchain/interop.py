@@ -85,7 +85,7 @@ def _require(framework: str) -> None:
 
 # ------------------------------------------------------------------ runners ----
 async def _openai_agents(agent: Any, text: str, state: dict[str, Any]) -> Any:
-    from agents import Runner
+    from agents import Runner  # pyright: ignore[reportMissingImports]
 
     return (await Runner.run(agent, text)).final_output
 
@@ -100,7 +100,7 @@ async def _crewai(obj: Any, text: str, state: dict[str, Any]) -> Any:
 
 
 async def _google_adk(agent: Any, text: str, state: dict[str, Any]) -> Any:
-    from google.adk.runners import InMemoryRunner
+    from google.adk.runners import InMemoryRunner  # pyright: ignore[reportMissingImports]
     from google.genai import types
 
     runner = InMemoryRunner(agent=agent, app_name="agentcanvas")
@@ -134,7 +134,12 @@ async def _microsoft(agent: Any, text: str, state: dict[str, Any]) -> Any:
 
 
 async def _claude(options: Any, text: str, state: dict[str, Any]) -> Any:
-    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
+    from claude_agent_sdk import (  # pyright: ignore[reportMissingImports]
+        AssistantMessage,
+        ResultMessage,
+        TextBlock,
+        query,
+    )
 
     said: list[str] = []
     result: str | None = None

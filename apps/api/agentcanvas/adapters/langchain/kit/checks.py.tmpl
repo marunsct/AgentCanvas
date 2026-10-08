@@ -56,13 +56,16 @@ def database_url() -> str:
     return "" if url.lower() in ("", "unset", "none") else url
 
 
+PLACEHOLDERS = ("unset", "none", "changeme")  # never accepted as an API key
+
+
 def demo() -> bool:
     return os.environ.get("DEMO_MODE", "").lower() in ("1", "true", "yes")
 
 
 def settings_checks(deploy: bool = True) -> list[Check]:
     out = []
-    keys = [k for k in os.environ.get("API_KEYS", "").split(",") if k.strip()]
+    keys = [k for k in os.environ.get("API_KEYS", "").split(",") if k.strip() and k.strip().lower() not in PLACEHOLDERS]
     out.append(
         Check("API_KEYS", bool(keys), "set" if keys else "missing: the key callers send (run `make setup`)",
               "2-SETUP.md#1-fill-in-the-settings")  # fmt: skip
