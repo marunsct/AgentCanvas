@@ -38,7 +38,7 @@ export interface FlowExtras {
 
 export const PORT_COLORS: Record<string, string> = {
   ChatModel: "#2563eb", Tool: "#6b7280", Middleware: "#db2777", Backend: "#0d9488", Subagent: "#7c3aed",
-  Schema: "#ca8a04", Store: "#0891b2", Retriever: "#16a34a", Embeddings: "#9333ea", Flow: "#334155",
+  Schema: "#ca8a04", Store: "#0891b2", Retriever: "#16a34a", Embeddings: "#9333ea", Flow: "var(--flow)",
 };
 
 const COL_W = 260;
