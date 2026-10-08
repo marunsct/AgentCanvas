@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, useWorkspaceCatalog } from "../api/queries";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface HandlerResult {
   handler: string;
@@ -57,7 +58,7 @@ export function EventsPage() {
 
   return (
     <div className="page events-page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Events</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Events</span><span className="spacer" /><ThemeSwitcher /></header>
       <h2>Event map</h2>
       <p className="muted">Generated from <code>events/*.py</code> in the <Link to="/workspace">workspace</Link>:
         which events start or resume which workflows.</p>

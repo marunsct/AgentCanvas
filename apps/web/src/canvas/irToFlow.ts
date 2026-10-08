@@ -149,7 +149,7 @@ export function irToFlow(
     return {
       id: e.id, source: e.source.node, target: e.target.node, sourceHandle: e.source.port ?? "next", targetHandle: "in",
       label: route, className: "edge-flow", animated: active, data: { kind: e.kind },
-      style: { strokeWidth: 2, stroke: active ? "#22c55e" : "#475569" },
+      style: { strokeWidth: 2, stroke: active ? "#22c55e" : "var(--flow)" },
     };
   });
   return { nodes, edges };

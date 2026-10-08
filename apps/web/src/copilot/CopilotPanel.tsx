@@ -1,7 +1,7 @@
 /** The Copilot panel (S14): chat about the open workflow; its changes appear on the canvas to accept or reject. */
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { can } from "../api/session";
+import { can, ME } from "../api/session";
 import { useEditor } from "../editor/store";
 import { type Brief, type Mode, toolLabel, useCopilot } from "./copilot";
 
@@ -65,9 +65,10 @@ export function CopilotPanel() {
 
   return (
     <div className="panel copilot" data-testid="copilot-panel">
-      <div className="copilot-head row gap">
-        <span className="small muted" title={conversation.model.origin ?? undefined}>
-          {conversation.model.model ? <>Model: <code>{conversation.model.model}</code></> : "No model yet"}
+      <div className="copilot-head row">
+        <span className="copilot-title"><span className="copilot-mark" aria-hidden="true">✦</span>Copilot</span>
+        <span className="model-chip" title={conversation.model.origin ? `${conversation.model.model} (${conversation.model.origin})` : undefined}>
+          {conversation.model.model ?? "No model yet"}
         </span>
         <span className="spacer" />
         <button type="button" className="link small" onClick={() => void useCopilot.getState().newChat()} disabled={busy}>New chat</button>
@@ -82,24 +83,38 @@ export function CopilotPanel() {
       <div className="copilot-log" aria-live="polite">
         {conversation.messages.length === 0 && !live && (
           <div className="copilot-empty">
-            <p className="muted small">Describe the workflow you want, or ask about this one. Changes show up on the canvas for you to accept.</p>
+            <div className="copilot-hero">
+              <div className="copilot-mark" aria-hidden="true">✦</div>
+              <h3>What are we building?</h3>
+              <p className="muted small">Describe the workflow you want, or ask about this one. Changes show up on the canvas for you to accept.</p>
+            </div>
             {STARTERS.map((s) => (
               <button type="button" key={s} className="chip" onClick={() => setText(s)}>{s}</button>
             ))}
           </div>
         )}
         {conversation.messages.map((m, i) => (
-          <div key={i} className={`copilot-msg ${m.role}`}>{m.content || (m.proposal_id ? "Proposed changes." : "")}</div>
+          <div key={i} className={`copilot-turn ${m.role}`}>
+            <span className="copilot-avatar" aria-hidden="true">{m.role === "user" ? (ME.email?.[0] ?? "Y").toUpperCase() : "✦"}</span>
+            <div className={`copilot-msg ${m.role}`}>{m.content || (m.proposal_id ? "Proposed changes." : "")}</div>
+          </div>
         ))}
         {live && (
-          <div className="copilot-msg assistant live" data-testid="copilot-live">
-            {live.activity.map((a, i) => (
-              <div key={i} className={`small ${a.ok ? "muted" : "warn-text"}`}>
-                {a.ok ? "✓" : "↻"} {toolLabel(a.name)}{a.summary ? `: ${a.summary}` : ""}{!a.ok && a.error ? ` (fixing: ${a.error.slice(0, 120)})` : ""}
-              </div>
-            ))}
-            {live.text.map((t, i) => <p key={i}>{t}</p>)}
-            <span className="muted small">Thinking…</span>
+          <div className="copilot-turn assistant">
+            <span className="copilot-avatar" aria-hidden="true">✦</span>
+            <div className="copilot-msg assistant live" data-testid="copilot-live">
+              {live.activity.length > 0 && (
+                <div className="copilot-activity">
+                  {live.activity.map((a, i) => (
+                    <div key={i} className={`small ${a.ok ? "muted" : "warn-text"}`}>
+                      {a.ok ? "✓" : "↻"} {toolLabel(a.name)}{a.summary ? `: ${a.summary}` : ""}{!a.ok && a.error ? ` (fixing: ${a.error.slice(0, 120)})` : ""}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {live.text.map((t, i) => <p key={i}>{t}</p>)}
+              <span className="typing" aria-label="Thinking"><i /><i /><i /> Thinking…</span>
+            </div>
           </div>
         )}
         <div ref={end} />
@@ -132,7 +147,7 @@ export function CopilotPanel() {
       {error && <p className="error-text small" role="alert">{error}</p>}
 
       <form className="copilot-input" onSubmit={submit}>
-        <textarea aria-label="Message the Copilot" rows={3} value={text} disabled={busy}
+        <textarea aria-label="Message the Copilot" rows={2} value={text} disabled={busy}
           placeholder={mode === "build" ? "What should this workflow do?" : "Ask about this workflow"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) submit(e); }} />
@@ -148,7 +163,7 @@ export function CopilotPanel() {
           </div>
           <span className="spacer" />
           <span className="small muted" title="tokens used in this conversation">{Math.round((used / conversation.token_cap) * 100)}% used</span>
-          <button type="submit" className="primary" disabled={busy || !text.trim()}>{busy ? "…" : "Send"}</button>
+          <button type="submit" className="primary" disabled={busy || !text.trim()}>{busy ? "…" : <>Send <span aria-hidden="true">↑</span></>}</button>
         </div>
       </form>
     </div>

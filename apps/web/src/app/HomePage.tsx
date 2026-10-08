@@ -8,6 +8,7 @@ import { PROJECT_ID, useSetup, useTemplates, useWorkflows } from "../api/queries
 import { can, ME } from "../api/session";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 export function HomePage() {
   const workflows = useWorkflows();
@@ -45,8 +46,9 @@ export function HomePage() {
         {can("admin") && <Link to="/members" data-testid="members-link">Members</Link>}
         {can("admin") && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
         <Link to="/policies" data-testid="policies-link">Policies</Link>
-        <span className="muted small" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
+        <span className="me-chip" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
         {signInEnabled() && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
+        <ThemeSwitcher />
       </header>
       <Invitations />
       {!can("builder") && (

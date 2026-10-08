@@ -7,6 +7,7 @@ import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type LintItem } from "./CodeEditor";
 import { SecretsPanel } from "./SecretsPanel";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface FileOut {
   path: string;
@@ -70,7 +71,7 @@ export function WorkspacePage() {
 
   return (
     <div className="page workspace-page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Workspace</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Workspace</span><span className="spacer" /><ThemeSwitcher /></header>
       <div className="workspace-layout">
         <aside aria-label="workspace files">
           <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) create.mutate({ path: newPath.trim() }); }}>

@@ -2,6 +2,13 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## Unreleased — UI refresh
+
+### Changed
+- **A new look.** A redesigned interface across every page: a frosted top bar with grouped canvas tools, softer cards and panels, clearer tabs, rounder canvas blocks with status glows, and themed minimap, controls and tooltips.
+- **Light, Medium and Dark themes**, plus System (follows your computer), from the switch in the top bar; remembered in this browser.
+- **Copilot chat** has a proper chat layout: avatars, chat bubbles, a typing indicator, a welcome screen with suggestions, and a composer with the Build/Ask switch and Send inside it.
+
 ## v0.9.0 — Export deploy kit (not tagged yet)
 
 ### Added
