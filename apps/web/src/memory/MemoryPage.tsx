@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface Namespace {
   namespace: string;
@@ -42,7 +43,7 @@ export function MemoryPage() {
 
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Memory</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Memory</span><span className="spacer" /><ThemeSwitcher /></header>
       <h2>Long-term memory</h2>
       <p className="muted">What agents and memory nodes remember across conversations, per space and owner.</p>
       <QueryStatus q={spaces} what="memory spaces" />

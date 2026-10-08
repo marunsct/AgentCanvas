@@ -26,6 +26,7 @@ import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
 import { can, ME } from "../api/session";
 import { type DockTab, useUi } from "./ui";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
 
@@ -103,21 +104,26 @@ export function EditorPage() {
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}
         </Link>
-        <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
-        <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
-        <button type="button" className={blast ? "active" : ""} aria-pressed={blast} onClick={() => useUi.getState().toggleBlast()}
-          title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
-        <button type="button" onClick={() => void useEditor.getState().group?.()}
-          title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
-        <button type="button" onClick={() => useEditor.getState().frame?.()}
-          title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
-        <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
-        <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+        <div className="toolbar-group" role="group" aria-label="Canvas tools">
+          <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
+          <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
+          <button type="button" className={blast ? "active" : ""} aria-pressed={blast} onClick={() => useUi.getState().toggleBlast()}
+            title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
+          <button type="button" onClick={() => void useEditor.getState().group?.()}
+            title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
+          <button type="button" onClick={() => useEditor.getState().frame?.()}
+            title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
+        </div>
+        <div className="toolbar-group" role="group" aria-label="History">
+          <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
+          <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+        </div>
         <button type="button" onClick={() => useUi.getState().setHelp(!useUi.getState().help)} data-testid="help-button"
           title="A short guide for beginners: what the blocks, dots and arrows mean">❓ Help</button>
         <button type="button" onClick={() => setTab("copilot")} data-testid="copilot-button"
           title="Chat with the AI Copilot: describe a workflow, ask questions, get changes to review">✦ Copilot</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
+        <ThemeSwitcher />
       </header>
       {notice && (
         <div className={`toast ${notice.kind}`} role="status">

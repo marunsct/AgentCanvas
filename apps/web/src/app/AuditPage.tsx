@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface Entry {
   id: number;
@@ -36,7 +37,7 @@ export function AuditPage() {
   const rows = log.data?.pages.flat() ?? [];
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Audit log</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Audit log</span><span className="spacer" /><ThemeSwitcher /></header>
       <div className="row gap">
         <input placeholder="action, e.g. publish" value={action} onChange={(e) => setAction(e.target.value)} aria-label="action" />
         <input placeholder="target contains, e.g. a workflow id" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="target" />

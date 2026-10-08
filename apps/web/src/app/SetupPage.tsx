@@ -10,6 +10,7 @@ import { QueryStatus } from "../ui/QueryStatus";
 import { CopilotSettings } from "../copilot/CopilotSettings";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { providerHint } from "../inspector/widgets";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface TestResult { ok: boolean; reply?: string | null; error?: string | null }
 
@@ -65,7 +66,7 @@ export function SetupPage() {
 
   return (
     <div className="page setup">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Set up your model</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Set up your model</span><span className="spacer" /><ThemeSwitcher /></header>
       <h2>Choose the model your workflows use</h2>
       <p className="muted">
         Pick any hosted provider or a model running on your own machine. New workflows from templates will use it, and you can

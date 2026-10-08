@@ -2,10 +2,15 @@
 import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
 import { type Diagnostic, lintGutter, setDiagnostics } from "@codemirror/lint";
-import { EditorState, type Text } from "@codemirror/state";
+import { Compartment, EditorState, type Text } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap } from "@codemirror/view";
 import { basicSetup, EditorView } from "codemirror";
 import { useEffect, useRef } from "react";
+import { resolved, useTheme } from "../theme/theme";
+
+/** One Dark in the medium and dark themes, the default (light) look otherwise. */
+const look = (dark: boolean) => (dark ? oneDark : []);
 
 export interface LintItem {
   line: number;
@@ -35,6 +40,8 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave }: {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const handlers = useRef({ onChange, onSave });
+  const theme = useRef(new Compartment());
+  const dark = resolved(useTheme((s) => s.theme)) !== "light";
   handlers.current = { onChange, onSave };
 
   useEffect(() => {
@@ -45,7 +52,7 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave }: {
       state: EditorState.create({
         doc: value,
         extensions: [
-          basicSetup, ...lang, lintGutter(),
+          basicSetup, ...lang, lintGutter(), theme.current.of(look(dark)),
           keymap.of([{ key: "Mod-s", preventDefault: true, run: () => { handlers.current.onSave(); return true; } }]),
           EditorView.updateListener.of((u) => { if (u.docChanged) handlers.current.onChange(u.state.doc.toString()); }),
         ],
@@ -54,6 +61,10 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave }: {
     return () => view.current?.destroy();
     // a new editor per file; `value` is only the initial text
   }, [path]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: theme.current.reconfigure(look(dark)) });
+  }, [dark]);
 
   useEffect(() => {
     const v = view.current;

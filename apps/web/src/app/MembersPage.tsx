@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { can, ME, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface Member { user_id: string; email: string; display_name: string | null; role: Role; invited: boolean; accepted: boolean }
 
@@ -33,7 +34,7 @@ export function MembersPage() {
   const error = (set.error ?? remove.error) as Error | null;
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Members</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Members</span><span className="spacer" /><ThemeSwitcher /></header>
       <ul className="small muted">{ROLES.map((r) => <li key={r.role}><b>{r.role}</b> {r.what}</li>)}</ul>
       {admin && (
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); set.mutate({ email: email.trim(), role }); }}>

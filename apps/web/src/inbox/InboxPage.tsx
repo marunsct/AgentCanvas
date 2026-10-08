@@ -5,6 +5,7 @@ import { apiFetch } from "../api/client";
 import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 export interface InboxItem {
   id: string;
@@ -31,7 +32,7 @@ export function InboxPage() {
   });
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Inbox</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Inbox</span><span className="spacer" /><ThemeSwitcher /></header>
       <h2>Pending decisions</h2>
       <QueryStatus q={inbox} what="the inbox" />
       {inbox.data?.length === 0 && <p className="muted" data-testid="inbox-empty">Nothing is waiting for you.</p>}

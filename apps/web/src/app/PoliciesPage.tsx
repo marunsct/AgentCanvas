@@ -6,6 +6,7 @@ import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { can } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 type Scope = "node" | "resource" | "workflow";
 interface PolicyIn {
@@ -52,7 +53,7 @@ export function PoliciesPage() {
   const edit = (patch: Partial<PolicyIn>) => setDraft((d) => ({ ...d, ...patch }));
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Policies</span></header>
+      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Policies</span><span className="spacer" /><ThemeSwitcher /></header>
       <p className="small muted">
         Each policy checks every step, resource or workflow its <b>match</b> picks and requires <b>require</b> to hold.
         Policies for named environments block publishing there and show as warnings in the editor.

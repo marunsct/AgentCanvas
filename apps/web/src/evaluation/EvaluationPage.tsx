@@ -13,6 +13,7 @@ import { KIND_CONFIG, compare, fmt, grid, passed, pct } from "./compare";
 import { Production } from "./Production";
 import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
+import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
 
@@ -39,6 +40,8 @@ export function EvaluationPage() {
       <header className="topbar">
         <Link to="/" className="brand">AgentCanvas</Link>
         <span className="crumb">/ <Link to={`/workflows/${id}`}>{wf.data?.name ?? id}</Link> / Evaluation</span>
+        <span className="spacer" />
+        <ThemeSwitcher />
       </header>
       <nav className="tabs" role="tablist">
         {(["datasets", "evaluators", "experiments", "gates", "production", "queues"] as Tab[]).map((t) => (

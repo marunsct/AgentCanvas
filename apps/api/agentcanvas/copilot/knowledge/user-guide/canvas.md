@@ -12,6 +12,8 @@
 | **Side panel** (right) | **Inspector** (settings of the selection, or the Workflow panel when nothing is selected), **Run**, **Tests**, **Versions**, **Code**. |
 | **Dock** (bottom) | **Problems**, **Timeline**, **Explain**. |
 
+**Themes.** The switch at the right of the top bar on every page picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is remembered in this browser.
+
 ## Add and connect steps
 
 - **Add:** drag a widget from the palette onto the canvas, or use the **⌘K** palette.
