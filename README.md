@@ -14,6 +14,7 @@
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
 | Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) merged, tag pending |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
+| Handover (continue in a new session or as a new person) | [HANDOVER.md](HANDOVER.md) |
 
 ## Repository layout
 

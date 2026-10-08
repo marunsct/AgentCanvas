@@ -12,7 +12,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | Estimates | ticket estimates from build-guide/04 (ideal days for one developer) |
 | Repository | this repository (ADR 0012): `apps/api`, `apps/web`, `packages/ir-schema`, `infra/`, `docs/` |
 | Branching | trunk-based, short-lived branches, Conventional Commits, CI green before merge (02 §7) |
-| Definition of Done | build-guide/README §4 + "docs updated in the same PR" + "execution log below updated at sprint end" |
+| Definition of Done | build-guide/README §4 + "docs updated in the same PR" + "execution log below updated at sprint end" + "[HANDOVER.md](../../../HANDOVER.md) updated at sprint end" |
 
 **Ceremonies:** planning (day 1, 2 h), daily 15-min sync, backlog refinement (mid-sprint, 1 h), demo + retro (last day). Demo = the sprint's *demo script* below, run live against `main`.
 
