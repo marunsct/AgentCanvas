@@ -138,6 +138,26 @@ def _literal_secrets(commands: list[Command]) -> list[str]:
     return found
 
 
+def carry_pending(ctx: ToolContext, proposals: list[dict[str, Any]]) -> None:
+    """Start the turn from the latest open proposal: its changes are in the working copy (so tests and reproductions
+    see the fix) and in this turn's proposal (so the new one, which replaces it, does not drop them). A proposal whose
+    changes no longer apply to the saved draft is left out."""
+    pending = next((p for p in reversed(proposals) if p.get("status") == "pending"), None)
+    if pending is None:
+        return
+    commands = list(pending.get("commands") or [])
+    if commands:
+        try:
+            ctx.workflow, _ = apply_batch(ctx.workflow, parse_commands(commands))
+        except (CommandError, ValidationError):
+            return
+    ctx.proposal.commands.extend(commands)
+    ctx.proposal.tests.extend(pending.get("tests") or [])
+    ctx.proposal.notes.extend(pending.get("notes") or [])
+    if summary := str(pending.get("summary") or "").strip():
+        ctx.proposal.summary.append(summary)
+
+
 async def propose_changes(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     raw = args.get("commands")
     if not isinstance(raw, list) or not raw:
@@ -232,7 +252,8 @@ ENDPOINT_KEYS = ("base_url", "url", "headers", "endpoint", "azure_endpoint", "co
 
 def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[str]:
     """What the working copy would run that the person has not accepted and a dry run does not stub: new or changed
-    code (script steps, Python tools, custom code steps), and secrets sent to a new or changed address."""
+    code (script steps, Python tools, custom code steps, local MCP server commands), and secrets sent to a new or
+    changed address."""
     old_nodes = {n.id: n for n in _flat(saved)[0]}
     old_resources = {r.name: r for r in _flat(saved)[1]}
     out: list[str] = []
@@ -249,6 +270,8 @@ def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[
             continue
         if r.type == "tool.python":
             out.append(f"the new or changed Python tool '{r.name}'")
+        elif r.type == "mcp.server" and r.config.get("transport") == "stdio":
+            out.append(f"the new or changed local app connector '{r.name}', which starts a program")
         elif secret_refs(r.config) and _endpoint(r.config) != (_endpoint(old.config) if old else _endpoint({})):
             out.append(f"'{r.name}', which sends a secret to a new address")
     return out

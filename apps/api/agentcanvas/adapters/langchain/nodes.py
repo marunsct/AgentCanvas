@@ -394,7 +394,7 @@ class Resources:
             found = [tagged(t, name, in_place=True) for t in found]
         else:
             found = tagged(as_tool(found), name)
-        if self.dry_run is None:
+        if self.dry_run is None or name in self._replays:  # a replay never runs the real tool: keep its recorded output
             return found
         if isinstance(found, list):  # MCP: also the live `destructive_hint`, in case "Browse tools" is stale or unused
             return [dry_run_tool(t) if t.name in self.dry_run or mcp_tool_info(t)["destructive"] else t for t in found]

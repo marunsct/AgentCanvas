@@ -174,6 +174,7 @@ class Facts:
     memory: bool = False
     chat: bool = False
     example_input: dict[str, Any] = field(default_factory=dict)
+    example_context: dict[str, Any] = field(default_factory=dict)
 
     @property
     def needs_database(self) -> bool:
@@ -208,6 +209,28 @@ def _host(url: str) -> tuple[str, int] | None:
     if not u.hostname or "{" in u.hostname:
         return None
     return u.hostname, u.port or (80 if u.scheme == "http" else 443)
+
+
+def _request_body(f: Facts) -> str:
+    body: dict[str, Any] = {"input": f.example_input}
+    if f.example_context:
+        body["context"] = f.example_context
+    return json.dumps(body, ensure_ascii=False)
+
+
+def _example_context(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
+    """Context for `make smoke` and the service tests: the first test case's, else a value per required input field
+    (a required one missing makes the service answer 400)."""
+    fields = [c for c in wf.context.fields if c.source == "input"]
+    for c in cases:
+        if isinstance(c.get("context"), dict) and c["context"]:
+            return {k: v for k, v in c["context"].items() if any(f.name == k for f in fields)}
+    out: dict[str, Any] = {}
+    for f in fields:
+        if f.required:
+            kind = (f.type or {}).get("type", "string")
+            out[f.name] = 1 if kind in ("number", "integer") else True if kind == "boolean" else f"example-{f.name}"
+    return out
 
 
 def _example(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -282,6 +305,7 @@ def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | No
     f.chat = any(c.reducer == "add_messages" and c.io in ("in", "inout") for c in wf.state.channels)
     f.env, f.hosts = list(env.values()), list(hosts.values())
     f.example_input = _example(wf, cases or [])
+    f.example_context = _example_context(wf, cases or [])
     return f
 
 
@@ -297,6 +321,7 @@ def kit_json(wf: Workflow, f: Facts, target: Target) -> str:
             "env": env, "hosts": f.hosts, "tools": tools,
             "models": [{"resource": m["resource"], "model": m["model"], "config": m["config"]} for m in f.models],
             "needs_database": f.needs_database, "example_input": f.example_input,
+            "example_context": f.example_context,
             "node_ids": {n.name: n.id for n in wf.nodes}, "output_channels": outputs,
             "context_fields": [{"name": c.name, "source": c.source, "required": c.required}
                                for c in wf.context.fields],
@@ -878,12 +903,12 @@ make test           # the graph builds and the saved test cases pass (needs uv)
 `make deploy` runs `deploy/{target.id}/deploy.sh`; read it first, every step is a plain command you can also run by
 hand. Re-running it deploys a new version (a new image tag) with no downtime{"" if target.shared_database else " beyond a restart"}.
 
-The service answers the same API as an AgentCanvas deployment, so an existing client only changes its base URL and
-key:
+The service answers the same API as an AgentCanvas deployment (runs, resume, feedback; not its MCP and A2A
+addresses), so an existing client only changes its base URL and key:
 
 ```bash
 curl -s $URL/v1/deployments/{f.slug}/runs/wait -H "Authorization: Bearer $KEY" \\
-  -H 'Content-Type: application/json' -d '{json.dumps({"input": f.example_input}, ensure_ascii=False)}'
+  -H 'Content-Type: application/json' -d '{_request_body(f)}'
 ```
 
 `/runs/stream` streams the same run as Server-Sent Events, `/threads/{{id}}/resume` answers an approval or a

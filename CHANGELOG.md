@@ -12,6 +12,15 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **`make doctor`** checks tools, settings, database, outside services and the port (and with `--live`, each model key), pointing each problem at the guide section that fixes it; **`make smoke`** calls the deployed service once; **`make gate`** runs the saved test cases and the service's API tests. `DEMO_MODE=true` answers with canned replies for a first try without keys.
 - **CI** exports every template to every target, lints the deploy files, runs each export's own tests with its own pinned packages, and deploys exports for real with Docker Compose and on Kubernetes (kind).
 
+### Notes
+- The exported service has the deployment API (runs, resume, feedback), not the MCP and A2A addresses added in v0.7.0.
+- Built ahead of S16–S17: release numbers follow merge order.
+
+### Fixed (review against v0.7.0)
+- A resume in the exported service ran without the paused run's context, so user-scoped memory failed and `context.*` prompts were empty after an approval.
+- Feedback in the exported service only found runs answered by the same process (404 on another replica or after a restart).
+- `make smoke` and the export's own tests failed for workflows with a required input context field.
+
 ## v0.8.0 — AI Copilot II and debug assistant (not tagged yet)
 
 ### Added
@@ -21,6 +30,13 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **Guide search.** The Copilot searches the user guide (shipped inside the API package).
 - **Project Copilot notes**, a **model for questions** (split mode) and **Private** mode (local models only) in Copilot settings.
 - **Debug eval suite.** `python -m agentcanvas.copilot.evals --suite debug` plants about 30 bugs in the starter templates and checks the Copilot's fixes.
+
+### Fixed (review against v0.7.0)
+- A follow-up Copilot turn started from the saved draft: a tests-only or notes-only proposal replaced an open proposal and dropped its changes, and test runs did not see the open fix. A turn now starts from the open proposal.
+- A new or changed local (stdio) app connector could start its program during a Copilot test run before the person accepted it.
+- Reproductions replaced recorded tool output with the dry-run stub for risky tools.
+- Past runs of a deployment were explained against the draft instead of their version.
+- A question model that is not allowed (policies, local-only mode, no tool calling) was accepted in settings and then failed on every question.
 
 ## v0.7.0 — Open doors (not tagged yet)
 

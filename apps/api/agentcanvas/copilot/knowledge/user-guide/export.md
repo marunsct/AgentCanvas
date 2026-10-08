@@ -76,7 +76,8 @@ only the base URL and the key:
 | `GET /healthz`, `GET /docs` | Health and the interactive API page |
 
 Every call except `/healthz` and `/docs` needs `Authorization: Bearer <key>`, one of the comma-separated
-`API_KEYS`. `<name>` can be anything.
+`API_KEYS`. `<name>` can be anything. The MCP and A2A addresses of an AgentCanvas deployment
+([Connect to other agents and tools](agents-and-connectors.md)) are not part of the exported service.
 
 ## Keys and secrets
 

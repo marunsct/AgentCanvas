@@ -7,7 +7,8 @@
     GET  /healthz   GET /docs
 
 `{deployment}` can be any name: it is kept so a client moves from AgentCanvas by changing only the base URL and the
-key. Every call except /healthz and /docs needs `Authorization: Bearer <one of API_KEYS>`.
+key. The MCP and A2A addresses of an AgentCanvas deployment (`/mcp`, `/a2a`) are not part of this service. Every call
+except /healthz and /docs needs `Authorization: Bearer <one of API_KEYS>`.
 
 Conversations (approvals, chat history) are kept in DATABASE_URL (Postgres) when it is set, otherwise in the SQLite
 file SQLITE_PATH (one machine only). Run `make doctor` to check the environment; the service runs the same checks
@@ -105,9 +106,11 @@ class Service:
         self.locks: dict[str, asyncio.Lock] = {}
         self.runs: OrderedDict[str, str] = OrderedDict()  # run id -> thread id (recent runs, for feedback)
         self.exits = contextlib.AsyncExitStack()
+        self.saver: Any = None
 
     async def start(self) -> None:
         checkpointer, store = await self._persistence()
+        self.saver = checkpointer
         build = getattr(generated, "abuild_graph", None)
         resources = make_resources()
         if build:
@@ -140,13 +143,34 @@ class Service:
     async def stop(self) -> None:
         await self.exits.aclose()
 
-    def config(self, thread_id: str, run_id: str, metadata: dict[str, str] | None = None) -> dict[str, Any]:
+    def config(
+        self, thread_id: str, run_id: str, metadata: dict[str, str] | None = None, context: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         return {
             "configurable": {"thread_id": thread_id, ORG_KEY: os.environ.get("TENANT_ID", "self-hosted")},
             "recursion_limit": KIT["recursion_limit"],
             "run_id": uuid.UUID(run_id.removeprefix("run_")),
-            "metadata": {**(metadata or {}), "workflow": KIT["name"], "version": KIT["version"]},
+            # kept in the checkpoint: a resume (any replica, after a restart) runs with the same context, and
+            # feedback finds the run's thread
+            "metadata": {**(metadata or {}), "workflow": KIT["name"], "version": KIT["version"], "ac_run": run_id,
+                         "ac_context": json.dumps(context or {}, default=str)},
         }
+
+    async def last_context(self, thread_id: str) -> dict[str, Any]:
+        """The context of the thread's latest run (LangGraph does not keep it across invocations)."""
+        snap = await self.graph.aget_state({"configurable": {"thread_id": thread_id}})
+        try:
+            return json.loads((snap.metadata or {}).get("ac_context") or "{}")
+        except ValueError:
+            return {}
+
+    async def thread_of_run(self, run_id: str) -> str | None:
+        """The thread a run belongs to: this process's recent runs, else the checkpoints (other replicas)."""
+        if run_id in self.runs:
+            return self.runs[run_id]
+        async for item in self.saver.alist(None, filter={"ac_run": run_id}, limit=1):
+            return item.config["configurable"]["thread_id"]
+        return None
 
     async def exists(self, thread_id: str) -> bool:
         snap = await self.graph.aget_state({"configurable": {"thread_id": thread_id}})
@@ -165,7 +189,7 @@ class Service:
             while len(self.runs) > 10_000:
                 self.runs.popitem(last=False)
             yield {"type": "RUN_STARTED", "runId": run_id, "threadId": thread_id}
-            cfg = self.config(thread_id, run_id, metadata)
+            cfg = self.config(thread_id, run_id, metadata, context)
             started = time.perf_counter()
             names = KIT["node_ids"]
             try:
@@ -343,13 +367,14 @@ async def resume(deployment: str, thread_id: str, body: ResumeIn) -> Result:
     if body.interrupt_id and body.interrupt_id not in {i.id for i in pending}:
         raise HTTPException(409, f"interrupt '{body.interrupt_id}' was already answered")
     value = {body.interrupt_id: body.value} if body.interrupt_id else body.value
-    return await _result(service.execute(thread_id, Command(resume=value), {}))
+    context = await service.last_context(thread_id)  # the run that paused had it; the resume needs it too
+    return await _result(service.execute(thread_id, Command(resume=value), context))
 
 
 @app.post("/v1/deployments/{deployment}/runs/{run_id}/feedback", status_code=204, dependencies=[Depends(authorised)])
 async def feedback(deployment: str, run_id: str, body: FeedbackIn) -> Response:
     """Your end user's thumbs up or down on a run's answer: logged as one JSON line (and to FEEDBACK_FILE if set)."""
-    thread_id = service.runs.get(run_id)
+    thread_id = await service.thread_of_run(run_id)
     if thread_id is None:
         raise HTTPException(404, f"run '{run_id}' not found")
     record = {"run_id": run_id, "thread_id": thread_id, "rating": body.rating, "comment": body.comment,

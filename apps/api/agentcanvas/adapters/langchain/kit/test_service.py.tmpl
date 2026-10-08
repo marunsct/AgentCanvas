@@ -13,6 +13,7 @@ KIT = checks.KIT
 KEY = "test-key"
 BASE = f"/v1/deployments/{KIT['slug']}"
 AUTH = {"Authorization": f"Bearer {KEY}"}
+BODY = {"input": KIT["example_input"], "context": KIT.get("example_context", {})}
 
 pytestmark = pytest.mark.skipif(
     any(h["kind"] == "tool" for h in KIT["hosts"]), reason="the workflow calls outside tools; see make smoke"
@@ -31,6 +32,7 @@ def client(tmp_path, monkeypatch):
     from __PKG__.app import app, service
 
     service.locks.clear()
+    service.runs.clear()
     with TestClient(app) as c:
         yield c
 
@@ -50,16 +52,21 @@ def _finish(client: TestClient, out: dict) -> dict:
 
 def test_health_and_auth(client):
     assert client.get("/healthz").json()["ok"] is True
-    assert client.post(f"{BASE}/runs/wait", json={"input": KIT["example_input"]}).status_code == 401
+    assert client.post(f"{BASE}/runs/wait", json=BODY).status_code == 401
     assert client.post(f"{BASE}/runs/wait", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
 
 
 def test_run_wait_resume_and_feedback(client):
-    r = client.post(f"{BASE}/runs/wait", json={"input": KIT["example_input"]}, headers=AUTH)
+    r = client.post(f"{BASE}/runs/wait", json=BODY, headers=AUTH)
     assert r.status_code == 200, r.text
     out = _finish(client, r.json())
     assert out["status"] in ("success", "interrupted"), out
     r = client.post(f"{BASE}/runs/{out['run_id']}/feedback", json={"rating": "up"}, headers=AUTH)
+    assert r.status_code == 204
+    from __PKG__.app import service
+
+    service.runs.clear()  # as on another replica or after a restart: the run is found in the checkpoints
+    r = client.post(f"{BASE}/runs/{out['run_id']}/feedback", json={"rating": "down"}, headers=AUTH)
     assert r.status_code == 204
     assert client.post(f"{BASE}/runs/run_unknown/feedback", json={"rating": "up"}, headers=AUTH).status_code == 404
     unknown = client.post(f"{BASE}/runs/wait", json={"input": {}, "thread_id": "th_nope"}, headers=AUTH)
@@ -67,7 +74,7 @@ def test_run_wait_resume_and_feedback(client):
 
 
 def test_run_stream(client):
-    with client.stream("POST", f"{BASE}/runs/stream", json={"input": KIT["example_input"]}, headers=AUTH) as r:
+    with client.stream("POST", f"{BASE}/runs/stream", json=BODY, headers=AUTH) as r:
         assert r.status_code == 200
         events = [json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")]
     assert events[0]["type"] == "RUN_STARTED"

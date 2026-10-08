@@ -16,7 +16,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from agentcanvas.db.models import Run, Thread
+from agentcanvas.db.models import Run, Thread, WorkflowVersion
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.explain import explain
@@ -70,6 +70,15 @@ class RunAccess:
             )
             return await s.scalar(q)
 
+    async def _ran(self, run: Run) -> Workflow:
+        """What the run ran: a deployment's pinned version, else the draft."""
+        if run.workflow_version_id:
+            async with self.sessionmaker() as s:
+                ver = await s.get(WorkflowVersion, run.workflow_version_id)
+            if ver is not None:
+                return Workflow.model_validate(ver.ir)
+        return self.workflow
+
     async def describe(self, run_id: str) -> dict[str, Any]:
         """A past run of this workflow: status, error with plain help, input, and what each step did."""
         run = await self._run(run_id)
@@ -78,9 +87,10 @@ class RunAccess:
         rec = run.recording or {}
         steps: list[dict[str, Any]] = []
         try:
-            res = self.runner.resources(run.thread_id, self.workflow)
-            history = await self.runner.adapter.history(self.workflow, run.thread_id, res, 60, include_values=True)
-            steps = [{"step": s["step"], "text": s["text"]} for s in explain(self.workflow, history)]
+            wf = await self._ran(run)
+            res = self.runner.resources(run.thread_id, wf)
+            history = await self.runner.adapter.history(wf, run.thread_id, res, 60, include_values=True)
+            steps = [{"step": s["step"], "text": s["text"]} for s in explain(wf, history)]
         except Exception as exc:  # noqa: BLE001 - e.g. checkpoints removed by retention; the rest still helps
             steps = [{"step": 0, "text": f"step history unavailable: {type(exc).__name__}"}]
         out = {

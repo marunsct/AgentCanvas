@@ -129,8 +129,10 @@ async def test_split_and_privacy_settings(app, api_client):
 
     r = await api_client.put(SETTINGS, json={"source": "separate", "model": "anthropic:claude-haiku-4-5",
                                              "privacy": "local_only"})  # fmt: skip
-    assert r.status_code == 200
-    r = await api_client.post(f"/v1/workflows/{wf}/copilot/messages", json={"text": "hi"})
+    assert r.status_code == 422 and "local models only" in r.json()["detail"]  # refused when saved
+    bad_ask = {"source": "separate", "model": "ollama:llama3.3", "privacy": "local_only",
+               "ask_model": "anthropic:claude-haiku-4-5"}  # fmt: skip
+    r = await api_client.put(SETTINGS, json=bad_ask)  # refused when saved, not on every later question
     assert r.status_code == 422 and "local models only" in r.json()["detail"]
     await api_client.put(SETTINGS, json={"source": "separate", "model": "ollama:llama3.3", "privacy": "local_only"})
     script(app, "ok")
@@ -168,7 +170,7 @@ def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
     """Review fix: a dry run stubs risky tools but not code; new code and re-pointed secrets wait for an accept."""
     from agentcanvas.copilot.settings import CopilotSettings, _endpoint_for
     from agentcanvas.copilot.tools import unaccepted_risks
-    from agentcanvas.ir.models import Workflow
+    from agentcanvas.ir.models import Resource, Workflow
     from agentcanvas.registry import default_registry
 
     base = Workflow.model_validate(
@@ -186,6 +188,10 @@ def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
     script_step = base.model_copy(deep=True)
     script_step.nodes.append(_script_node())
     assert "code step 's'" in unaccepted_risks(base, script_step, reg)[0]
+    local = base.model_copy(deep=True)  # a local app connector starts a program when the graph is built
+    stdio = {"transport": "stdio", "command": "npx", "args": ["-y", "pkg"]}
+    local.resources.append(Resource(id="r_x", type="mcp.server", name="x", config=stdio))
+    assert "starts a program" in unaccepted_risks(base, local, reg)[0]
 
     # Ask mode on a self-hosted server keeps the separate model's address and key
     cs = CopilotSettings(source="separate", model="vllm:big", base_url="http://gpu:8000/v1", ask_model="vllm:small")
@@ -206,3 +212,37 @@ def test_a_turn_keeps_decisions_taken_meanwhile():
     turn = [{"id": "p1", "status": "superseded"}, {"id": "p2", "status": "pending"}]
     merged = merge_proposals(stored, turn)
     assert {p["id"]: p["status"] for p in merged} == {"p0": "rejected", "p1": "accepted", "p2": "pending"}
+
+
+def test_the_open_proposal_carries_into_the_next_turn():
+    """Review fix: a follow-up turn tests the open proposal's fix and keeps its changes in the new proposal."""
+    from agentcanvas.copilot.tools import ToolContext, carry_pending
+    from agentcanvas.ir.models import Node, Workflow
+    from agentcanvas.registry import default_registry
+
+    async def validate(_wf):
+        return []
+
+    wf = Workflow(id="wf_x", name="x", nodes=[Node(id="n_a", type="core.set", name="a")])
+    fix = [{"op": "UpdateNode", "id": "n_a", "patch": {"name": "renamed"}}]
+    open_one = {"id": "p1", "status": "pending", "summary": "Rename", "commands": fix, "tests": [{"name": "t"}]}
+    stored = [{"id": "p0", "status": "rejected", "commands": []}, open_one]
+    ctx = ToolContext(workflow=wf, registry=default_registry(), templates={}, validate=validate)
+    carry_pending(ctx, stored)
+    assert ctx.workflow.nodes[0].name == "renamed" and ctx.proposal.commands == fix
+    assert ctx.proposal.tests == [{"name": "t"}] and ctx.proposal.summary == ["Rename"]
+    stale = [{"id": "p1", "status": "pending", "commands": [{"op": "UpdateNode", "id": "n_gone", "patch": {}}]}]
+    ctx = ToolContext(workflow=wf, registry=default_registry(), templates={}, validate=validate)
+    carry_pending(ctx, stale)  # no longer applies: left out
+    assert ctx.workflow is wf and not ctx.proposal
+
+
+async def test_a_reproduction_replays_risky_tools_instead_of_stubbing_them():
+    """Review fix: in a dry-run reproduction, recorded tool output is replayed, not replaced by the dry-run stub."""
+    from agentcanvas.adapters.langchain.nodes import Resources
+
+    rec = [{"tool": "send_email", "args": {"to": "a@b.c"}, "output": "sent #42"}]
+    res = Resources().with_mocks({"mail": rec})
+    res.dry_run = {"send_email"}
+    tools = res.tool("mail", {"transport": "http", "url": "https://mail.example/mcp"}, "mcp.server")
+    assert await tools[0].ainvoke({"to": "a@b.c"}) == "sent #42"

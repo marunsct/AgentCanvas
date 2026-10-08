@@ -5,7 +5,7 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 
 - **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-07. Sprint 16 (Export deploy kit → v0.8.0) is done: an export is a deployable service for the target you pick (your computer, a Linux server, Kubernetes, Cloud Run, AWS, Azure) with four generated guides, `make doctor` and `make smoke`.
+- **Last updated:** 2026-10-08. Sprints 18 (AI Copilot II and debug assistant → v0.8.0) and 19 (Export deploy kit → v0.9.0) are done in #19, ahead of S16–S17 at the owner's request: the Copilot tests and debugs workflows, and an export is a deployable service for the target you pick with four generated guides, `make doctor`, `make smoke` and `make gate`.
 - **Previously:** 2026-10-06. Sprint 13 is merged (#8; tag `v0.5.0` is the maintainer's call). #9 adds the user guide, models from any provider (local ones included) with per-provider keys, a first-run model setup screen, and `make docker-up`.
 
 ## At a glance
@@ -224,6 +224,30 @@ S19. The owner asked to stop after S15 and its end-to-end review.
 - [x] Review fixes before the sprint: chat models cached per config (an edited model, key or address took effect
   only after a restart), overlapping Copilot turns leave one open proposal, a webhook for a deleted workflow gets
   404 instead of "already received".
+
+### S18 — AI Copilot II and debug assistant (v0.8.0)
+Built before the roadmap reorder (as "S15"), finished on 2026-10-08 at the owner's request.
+- [x] The Copilot fills required settings, turns a brief's success criteria into tests, runs the working copy as a
+  dry run and fixes what fails; tests are saved when the proposal is accepted.
+- [x] Debug assistant: explained Problems, recent runs with what each step did, reproductions with recorded model and
+  tool I/O; **Ask the Copilot** buttons in Problems and run errors.
+- [x] One error catalog (`validation/help.json`), guide search, project Copilot notes, a model for questions and a
+  local-only mode, a debug eval suite of planted bugs.
+- [x] Review against S15 (2026-10-08), fixed: a follow-up turn starts from the open proposal (its fix is tested and
+  kept instead of being dropped by a tests-only proposal); a new or changed local app connector counts as unaccepted
+  code in test runs; reproductions replay recorded tool output instead of the dry-run stub; past deployment runs are
+  explained against their own version; the question model is checked when settings are saved.
+
+### S19 — Export deploy kit (v0.9.0)
+Built before the roadmap reorder (as "S16"), finished on 2026-10-08 at the owner's request.
+- [x] An export is a service with the deployment API (runs/wait, runs/stream, resume, feedback, healthz, docs) behind
+  API keys, with conversations in Postgres or SQLite and startup checks.
+- [x] Deploy files for the chosen target (your computer, a Linux server, Kubernetes, Cloud Run, AWS ECS, Azure),
+  four guides written for the workflow, `make doctor`, `make smoke`, `make gate`; export dialog with what the target
+  needs; CI exports every template to every target and deploys two for real.
+- [x] Review against S15 (2026-10-08), fixed: a resume keeps the run's context (user-scoped memory and `context.*`
+  prompts failed after an approval); feedback finds runs from other replicas and after restarts; `make smoke` and
+  the export's tests send the required context; the docs say the MCP and A2A addresses are not exported.
 
 ### GA backlog
 - [ ] Multiplayer editing, Data Studio, learning loops, AG-UI exposure, Git sync, hosted trial (MCP/A2A exposure moved to S15, Copilot shipped in S14).

@@ -403,6 +403,12 @@ item met its acceptance in `test_copilot_debug.py` and `e2e/copilot.spec.ts`. De
 - The debug eval suite has only been run with a scripted model here (no provider keys).
 - Test runs are dry runs only; the Copilot cannot run a workflow for real.
 
+**Finished 2026-10-08** (owner's request) after S15, in #19. Review against S15, fixed: a follow-up turn starts from
+the open proposal, so a tests-only proposal no longer drops its changes and test runs see the fix; a new or changed
+local (stdio) app connector counts as unaccepted code; reproductions replay recorded tool output instead of the
+dry-run stub; deployment runs are explained against their pinned version (the first deviation above no longer
+applies); the question model is checked when settings are saved.
+
 ### S19 — Export deploy kit → v0.9.0
 
 | # | Item | Days | Acceptance |
@@ -426,6 +432,12 @@ its endpoint, policy codes treated as in the Run panel). Deviations from the pla
 - Cloud targets (Cloud Run, AWS, Azure) are syntax-checked in CI only, since CI holds no cloud accounts; the parity
   script against a live AgentCanvas deployment is replaced by the service's API tests using the same request and
   response shapes.
+
+**Finished 2026-10-08** (owner's request) after S15, in #19. Review against S15, fixed: a resume runs with the
+context of the run that paused (kept in the checkpoint metadata; user-scoped memory failed after an approval);
+feedback finds a run's thread in the checkpoints, so it works across replicas and restarts; `make smoke`, `make gate`
+and the generated curl send the required context fields; the MCP and A2A addresses (S15) are documented as not part
+of the exported service.
 
 ### S20+ — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).

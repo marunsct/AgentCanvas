@@ -26,7 +26,7 @@ from agentcanvas.copilot.pack import Pack, build_pack
 from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.copilot.service import CopilotTurn, diff
 from agentcanvas.copilot.settings import CopilotSettings, ResolvedModel
-from agentcanvas.copilot.tools import ToolContext
+from agentcanvas.copilot.tools import ToolContext, carry_pending
 from agentcanvas.db.models import CopilotConversation
 from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, TooManyRequests
@@ -234,6 +234,7 @@ async def _start_turn(
         workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
         runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
     )  # fmt: skip
+    carry_pending(ctx, list(conv.proposals or []))
     factory = getattr(request.app.state, "resources_factory", None)
     resources = (
         factory(f"copilot:{conv.id}", view.workflow)
@@ -243,7 +244,7 @@ async def _start_turn(
     turn = CopilotTurn(
         request.app.state.projects.adapter, resources, model, _pack(registry, templates), ctx,
         history=list(conv.messages or []), proposals=[dict(p) for p in conv.proposals or []], usage=usage,
-        token_cap=cs.token_cap, base_version=view.row.version, project_notes=cs.notes,
+        token_cap=cs.token_cap, base_version=view.row.version, project_notes=cs.notes, saved=view.workflow,
     )  # fmt: skip
     conv_id = conv.id
     seen_messages = len(turn.history)
@@ -357,15 +358,14 @@ async def put_copilot_settings(
 ) -> SettingsOut:
     """Turn the Copilot on or off, pick its model (the workflow's own or a separate one) and its token limit."""
     project = await ProjectRepo(session).require(project_id)
-    if body.source == "separate":
-        if not body.model:
-            raise InvalidInput("choose the Copilot's model, or use the workflow's model")
+    if body.source == "separate" and not body.model:
+        raise InvalidInput("choose the Copilot's model, or use the workflow's model")
+    chosen = [m for m in (body.model if body.source == "separate" else None, body.ask_model) if m]
+    if chosen:  # the question model too: a bad one would only fail later, on every question
         registry = request.app.state.projects.registry(project_id) or default_registry()
         policies = await WorkflowService(session, settings).policies(project_id)
-        copilot_settings.check_model_policies(body.model, policies, registry)
-        info = registry.model(body.model)
-        if info is not None and not info.tools:
-            raise InvalidInput(f"{body.model} cannot call tools, which the Copilot needs; choose another model")
+        for m in chosen:
+            copilot_settings.check_model(m, body, policies, registry)
     project.settings = {**(project.settings or {}), "copilot": body.model_dump(exclude_none=True)}
     await session.commit()
     return await get_copilot_settings(project_id, session)

@@ -89,18 +89,23 @@ def resolve(
             )
         config = {k: v for k, v in res.config.items() if k in ("base_url", "api_key")}
         chosen = ResolvedModel(model=str(res.config["model"]), config=config, origin=f"workflow model '{res.name}'")
+    check_model(chosen.model, settings, policies, registry)
+    return chosen
+
+
+def check_model(model: str, settings: CopilotSettings, policies: list[Policy], registry: Registry) -> None:
+    """A model the Copilot may use: local when the settings say so, able to call tools, allowed by policies."""
     if settings.privacy == "local_only":
-        provider = registry.provider(chosen.model.partition(":")[0])
+        provider = registry.provider(model.partition(":")[0])
         if provider is None or not provider.local:
             raise InvalidInput(
-                f"the Copilot is set to local models only, but {chosen.model} is not a local model; "
+                f"the Copilot is set to local models only, but {model} is not a local model; "
                 "choose a local model (Ollama, LM Studio, vLLM, llama.cpp) in Copilot settings"
             )
-    info = registry.model(chosen.model)
+    info = registry.model(model)
     if info is not None and not info.tools:
-        raise InvalidInput(f"{chosen.model} cannot call tools, which the Copilot needs; choose another model")
-    check_model_policies(chosen.model, policies, registry)
-    return chosen
+        raise InvalidInput(f"{model} cannot call tools, which the Copilot needs; choose another model")
+    check_model_policies(model, policies, registry)
 
 
 def check_model_policies(model: str, policies: list[Policy], registry: Registry) -> None:
