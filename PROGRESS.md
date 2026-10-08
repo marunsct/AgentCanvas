@@ -1,6 +1,7 @@
 # AgentCanvas — progress summary
 
 Live status of the project. Update it with every commit that finishes or changes a piece of work.
+To continue the work in a new session or as a new person, start with [HANDOVER.md](HANDOVER.md).
 
 - **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
@@ -29,7 +30,7 @@ Live status of the project. Update it with every commit that finishes or changes
 | S13 Evaluation in production → v0.5.0 | ✅ done (merged in #8; tag `v0.5.0` pending) |
 | **User guide, any-provider and local models, first-run setup, Docker app** | ✅ **done** (#9) |
 | S14 AI Copilot I → v0.6.0 | ✅ done (merged in #15; tag `v0.6.0` pending) |
-| S15 Open doors (MCP/A2A endpoints, connectors, trace export) → v0.7.0 | ✅ done |
+| S15 Open doors (MCP/A2A endpoints, connectors, trace export) → v0.7.0 | ✅ done (merged in #17; tag `v0.7.0` pending) |
 | S16–S32 (any framework as a node, ship to users, Copilot II, deploy kit, Knowledge Studio, framework adapters) | ⏸ paused by the owner after S15, see [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
 | Later: GA backlog | ⬜ pending |
 
