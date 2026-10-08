@@ -183,6 +183,7 @@ jobs:
           for d in "$EXPORTS"/local/*/* "$EXPORTS"/server/*/*; do
             touch "$d/.env"
             DOMAIN=a.example.com POSTGRES_PASSWORD=x docker compose -f "$d"/deploy/*/docker-compose.yml config -q
+            rm "$d/.env"  # make setup creates the real one below
           done
           for t in "$EXPORTS"/aws/*/*/deploy/aws/task-definition.json; do python3 -m json.tool "$t" >/dev/null; done
       - name: Each export passes its own tests (uv sync with the exported pins)
