@@ -21,10 +21,14 @@ export interface Brief {
 
 export interface ProposalDiff { added: string[]; changed: string[]; removed: string[] }
 
+export interface ProposedTest { name: string; input: Record<string, unknown>; expect?: Record<string, unknown> }
+
 export interface Proposal {
   id: string;
   summary: string;
   commands?: Command[];
+  tests?: ProposedTest[];
+  notes?: string[];
   base_version: number;
   status: "pending" | "accepted" | "rejected" | "superseded";
   errors: number;
@@ -69,6 +73,8 @@ interface CopilotState {
   live: { text: string[]; activity: Activity[] } | null; // the answer being streamed
   error: string | null;
   ghost: Ghost | null;
+  request: { text: string; mode: Mode } | null; // "Ask the Copilot" from elsewhere in the editor (S15)
+  askFor: (text: string, mode: Mode) => void;
   load: (workflowId: string) => Promise<void>;
   send: (text: string, mode: Mode) => Promise<void>;
   accept: () => Promise<void>;
@@ -83,6 +89,15 @@ const TOOL_LABELS: Record<string, string> = {
   get_template: "Read a template",
   set_brief: "Wrote the brief",
   propose_changes: "Proposed changes",
+  get_problems: "Checked the problems",
+  list_runs: "Looked at recent runs",
+  get_run: "Read a run",
+  search_guide: "Searched the guide",
+  list_models: "Looked at the models",
+  run_test: "Ran a test",
+  reproduce_run: "Reran a past run",
+  propose_tests: "Proposed tests",
+  save_note: "Proposed a note",
 };
 export const toolLabel = (name: string) => TOOL_LABELS[name] ?? name;
 
@@ -98,6 +113,8 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   live: null,
   error: null,
   ghost: null,
+  request: null,
+  askFor: (text, mode) => set({ request: { text, mode } }),
 
   load: async (workflowId) => {
     const open = useEditor.getState().workflowId;
@@ -146,18 +163,20 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   accept: async () => {
     const { conversation, workflowId } = get();
     const p = conversation?.pending;
-    if (!p?.commands || !workflowId) return;
-    const editor = useEditor.getState();
-    if (editor.workflowId !== workflowId) return;
-    await editor.flush(); // earlier edits first, so the version below moves only with these commands
-    const before = useEditor.getState().version;
-    editor.setNotice(null);
-    // edits made since the proposal are fine while the commands still apply; otherwise the edit is refused
-    editor.dispatch(p.commands);
-    await editor.flush();
-    const after = useEditor.getState();
-    // refused (error), not allowed (view only) or lost to someone else's save (conflict): not accepted
-    if (after.notice || after.version === before) return;
+    if (!p || !workflowId) return;
+    if (p.commands?.length) {
+      const editor = useEditor.getState();
+      if (editor.workflowId !== workflowId) return;
+      await editor.flush(); // earlier edits first, so the version below moves only with these commands
+      const before = useEditor.getState().version;
+      editor.setNotice(null);
+      // edits made since the proposal are fine while the commands still apply; otherwise the edit is refused
+      editor.dispatch(p.commands);
+      await editor.flush();
+      const after = useEditor.getState();
+      // refused (error), not allowed (view only) or lost to someone else's save (conflict): not accepted
+      if (after.notice || after.version === before) return;
+    }
     set({ ghost: null });
     await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "accepted" } });
     await get().load(workflowId);

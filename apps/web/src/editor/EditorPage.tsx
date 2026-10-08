@@ -44,6 +44,8 @@ export function EditorPage() {
   const inbox = useInbox();
   const pendingDecisions = inbox.data?.length ?? 0;
   useFirstVisitHelp();
+  const copilotRequest = useCopilot((s) => s.request);
+  useEffect(() => { if (copilotRequest) setTab("copilot"); }, [copilotRequest]);
 
   useEffect(() => {
     if (!id) return;

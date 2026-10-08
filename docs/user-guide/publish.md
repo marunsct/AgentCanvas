@@ -17,12 +17,11 @@ Pick two versions to see a field-level diff drawn on the canvas, and **Restore**
 The **Contract** panel shows the workflow's API: input and output fields and where it may pause. Publishing
 reports breaking contract changes (a removed input, a changed type) against the version currently live.
 
-## Export as a Python project
+## Export
 
-**⬇ Export draft as a Python project** (or `GET /v1/workflows/{id}/export.zip`) downloads a standalone project:
-the generated LangGraph graph, the node library it calls, your workspace code, pinned dependencies, a Dockerfile
-and `langgraph.json`. Its own tests pass with `uv run pytest` and it serves with `langgraph dev`. You can run it
-without AgentCanvas.
+**⬇ Export to run in your own environment…** downloads a project you deploy yourself (your computer, a Linux
+server, Kubernetes, Cloud Run, AWS or Azure), with a service that answers the same API as a deployment and guides
+written for the workflow. See [Export and deploy](export.md).
 
 ## Publish
 

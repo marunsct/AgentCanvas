@@ -20,19 +20,22 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.api.v1.runs import _context as run_context
 from agentcanvas.copilot import settings as copilot_settings
 from agentcanvas.copilot.pack import Pack, build_pack
+from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.copilot.service import CopilotTurn, diff
 from agentcanvas.copilot.settings import CopilotSettings, ResolvedModel
-from agentcanvas.copilot.tools import ToolContext
+from agentcanvas.copilot.tools import ToolContext, carry_pending
 from agentcanvas.db.models import CopilotConversation
-from agentcanvas.db.repositories import ProjectRepo
+from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, TooManyRequests
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.registry import Registry, default_registry
+from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
 
@@ -96,11 +99,11 @@ async def _conversation(
 
 
 async def _model(
-    svc: WorkflowService, view: WorkflowView, project_settings: dict[str, Any], cs: CopilotSettings
+    svc: WorkflowService, view: WorkflowView, project_settings: dict[str, Any], cs: CopilotSettings, mode: str = "build"
 ) -> ResolvedModel:
     registry = svc.registry(view.row.project_id) or default_registry()
     policies = await svc.policies(view.row.project_id)
-    return copilot_settings.resolve(cs, project_settings, view.workflow, registry, policies)
+    return copilot_settings.resolve(cs, project_settings, view.workflow, registry, policies, mode)
 
 
 def _pending(conv: CopilotConversation | None, view: WorkflowView) -> dict[str, Any] | None:
@@ -204,7 +207,7 @@ async def _start_turn(
     cs = copilot_settings.load(project.settings)
     if not cs.enabled:
         raise Forbidden("the Copilot is switched off for this project")
-    model = await _model(svc, view, project.settings or {}, cs)
+    model = await _model(svc, view, project.settings or {}, cs, body.mode)
     conv = await _conversation(session, wf_id, user.id)
     if conv is None:
         conv = CopilotConversation(id=new_id("cpc"), workflow_id=wf_id, user_id=user.id, messages=[], proposals=[])
@@ -223,9 +226,15 @@ async def _start_turn(
     async def validate(wf: Workflow) -> list[Any]:
         return await svc._validate(wf, project_id)
 
+    runs = RunAccess(
+        request.app.state.runner, request.app.state.db.sessionmaker, view.workflow,
+        lambda wf, given: run_context(wf, given, user), user.id,
+    )  # fmt: skip
     ctx = ToolContext(
-        workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief
-    )
+        workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
+        runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
+    )  # fmt: skip
+    carry_pending(ctx, list(conv.proposals or []))
     factory = getattr(request.app.state, "resources_factory", None)
     resources = (
         factory(f"copilot:{conv.id}", view.workflow)
@@ -235,7 +244,7 @@ async def _start_turn(
     turn = CopilotTurn(
         request.app.state.projects.adapter, resources, model, _pack(registry, templates), ctx,
         history=list(conv.messages or []), proposals=[dict(p) for p in conv.proposals or []], usage=usage,
-        token_cap=cs.token_cap, base_version=view.row.version,
+        token_cap=cs.token_cap, base_version=view.row.version, project_notes=cs.notes, saved=view.workflow,
     )  # fmt: skip
     conv_id = conv.id
     seen_messages = len(turn.history)
@@ -293,6 +302,22 @@ async def decide_proposal(
         raise Conflict(f"proposal '{proposal_id}' is already {match['status']}")
     match["status"] = body.status
     conv.proposals = proposals
+    if body.status == "accepted":  # the editor applied the commands; tests and notes are saved here
+        tests = TestCaseService(session)
+        for t in match.get("tests") or []:
+            await tests.add(
+                wf_id, name=t["name"], input=t["input"], expect=Expect.model_validate(t.get("expect") or {}),
+                mocks=t.get("mocks") or {}, created_by=user.id,
+            )  # fmt: skip
+        if notes := match.get("notes"):
+            row = await WorkflowRepo(session).require(wf_id)
+            project = await ProjectRepo(session).require(row.project_id)
+            cs = copilot_settings.load(project.settings)
+            merged = "\n".join([cs.notes, *(f"- {n}" for n in notes)]).strip()[-4000:]
+            project.settings = {
+                **(project.settings or {}),
+                "copilot": {**cs.model_dump(exclude_none=True), "notes": merged},
+            }
     await session.commit()
     return Response(status_code=204)
 
@@ -333,15 +358,14 @@ async def put_copilot_settings(
 ) -> SettingsOut:
     """Turn the Copilot on or off, pick its model (the workflow's own or a separate one) and its token limit."""
     project = await ProjectRepo(session).require(project_id)
-    if body.source == "separate":
-        if not body.model:
-            raise InvalidInput("choose the Copilot's model, or use the workflow's model")
+    if body.source == "separate" and not body.model:
+        raise InvalidInput("choose the Copilot's model, or use the workflow's model")
+    chosen = [m for m in (body.model if body.source == "separate" else None, body.ask_model) if m]
+    if chosen:  # the question model too: a bad one would only fail later, on every question
         registry = request.app.state.projects.registry(project_id) or default_registry()
         policies = await WorkflowService(session, settings).policies(project_id)
-        copilot_settings.check_model_policies(body.model, policies, registry)
-        info = registry.model(body.model)
-        if info is not None and not info.tools:
-            raise InvalidInput(f"{body.model} cannot call tools, which the Copilot needs; choose another model")
+        for m in chosen:
+            copilot_settings.check_model(m, body, policies, registry)
     project.settings = {**(project.settings or {}), "copilot": body.model_dump(exclude_none=True)}
     await session.commit()
     return await get_copilot_settings(project_id, session)

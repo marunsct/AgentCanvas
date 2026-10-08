@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
@@ -115,21 +115,61 @@ async def restore_version(
     return _out(await svc.get(wf_id), response)
 
 
+ExportTarget = Literal["local", "server", "kubernetes", "cloudrun", "aws", "azure"]
+
+
+async def _export_source(
+    session: AsyncSession, svc: WorkflowService, wf_id: str, version: str | None
+) -> tuple[Any, Workflow, str]:
+    view = await svc.get(wf_id)
+    if version is None:
+        return view, view.workflow, "0.0.0"
+    v = await VersionService(session).get(wf_id, version)
+    return view, Workflow.model_validate(v.ir), v.semver
+
+
+class ExportTargetOut(BaseModel):
+    id: str
+    label: str
+    summary: str
+
+
+class ExportPlanOut(BaseModel):
+    targets: list[ExportTargetOut]
+    prerequisites: dict[str, Any] = Field(description="what the chosen target needs: tools, keys, hosts, database")
+
+
+@router.get("/workflows/{wf_id}/export/plan", response_model=ExportPlanOut)
+async def export_plan(
+    wf_id: str,
+    target: ExportTarget = "local",
+    version: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    svc: WorkflowService = Depends(service),
+) -> ExportPlanOut:
+    """What deploying the export to `target` will need, before downloading it (S16)."""
+    from agentcanvas.adapters.langchain import deploykit
+
+    _, wf, semver = await _export_source(session, svc, wf_id, version)
+    facts = deploykit.facts(wf, "workflow", semver)
+    return ExportPlanOut(
+        targets=[ExportTargetOut(id=t.id, label=t.label, summary=t.summary) for t in deploykit.TARGETS.values()],
+        prerequisites=deploykit.prerequisites(facts, deploykit.TARGETS[target]),
+    )
+
+
 @router.get("/workflows/{wf_id}/export.zip", response_class=Response)
 async def export_zip(
     wf_id: str,
     request: Request,
     version: str | None = None,
+    target: ExportTarget = "local",
     session: AsyncSession = Depends(get_session),
     svc: WorkflowService = Depends(service),
 ) -> Response:
-    """The workflow (draft, or `?version=`) as a standalone Python project (M6-T2/T3)."""
-    view = await svc.get(wf_id)
-    semver = "0.0.0"
-    wf = view.workflow
-    if version is not None:
-        v = await VersionService(session).get(wf_id, version)
-        wf, semver = Workflow.model_validate(v.ir), v.semver
+    """The workflow (draft, or `?version=`) as a deployable Python project with the deploy kit for `target`
+    (M6-T2/T3, S16)."""
+    view, wf, semver = await _export_source(session, svc, wf_id, version)
     cases = [
         {"name": c.name, "input": c.input, "context": c.context, "mocks": c.mocks, "pins": c.pins, "expect": c.expect}
         for c in await TestCaseService(session).list(wf_id)
@@ -140,6 +180,7 @@ async def export_zip(
         workspace=request.app.state.projects.workspace(view.row.project_id).root,
         test_cases=cases,
         version=semver,
+        target=target,
     )
     return Response(
         data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}

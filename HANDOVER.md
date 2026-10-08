@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-08, after Sprint 15 (merged in [#17](https://github.com/marunsct/AgentCanvas/pull/17), merge commit `19de2dc`).
+- **Last updated:** 2026-10-08, after Sprints 18 and 19 ([#19](https://github.com/marunsct/AgentCanvas/pull/19)), built ahead of S16–S17 at the owner's request.
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,21 +14,23 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S15 Open doors → v0.7.0**: deployments as MCP servers and A2A agents, 30-connector MCP gallery, OpenTelemetry trace export (Langfuse, Phoenix, Datadog, any OTLP), plus the post-sprint end-to-end review fixes |
-| Version in code | API `0.7.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.7.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.7.0 are all left to the owner (see §2) |
-| Next sprint | **S16 Any framework as a node → v0.8.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
-| Work status | **STOPPED by the owner after S15.** Do not start S16 or later until the owner says so in the project chat |
-| Open PRs | none from this workstream |
-| CI on `main` | green at `19de2dc` (api, web, e2e, docs, connectors, audit, images) |
+| Last sprints done | **S18 AI Copilot II and debug assistant → v0.8.0** and **S19 Export deploy kit → v0.9.0** (#19). Their drafts predated the roadmap reorder; the owner asked on 2026-10-08 to finish them. They were merged onto main after S15, reviewed against S15 (8 findings fixed) and tested |
+| Before that | S15 Open doors → v0.7.0 (#17): MCP and A2A per deployment, 30-connector MCP gallery, OpenTelemetry trace export |
+| Version in code | API `0.9.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.9.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.9.0 are all left to the owner (see §2) |
+| Next sprint | **S16 Any framework as a node → v0.10.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)); then S17 Ship to users → v0.11.0, then S20 onward |
+| Work status | **Paused.** Do not start S16 or later until the owner says so in the project chat |
+| Open PRs | #19 until it is merged |
+| CI | green on #19 before merge (api, web, e2e, docs, connectors, export, audit, images) |
 
-**Test totals at the end of S15** (all green):
+**Test totals at the end of S18/S19** (all green):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 396 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| API (pytest, Postgres) | 406 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
 | Web unit (vitest) | 70 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 38 | see §5 |
+| Browser journeys (Playwright, prod build under the prod CSP) | 39 | see §5 |
+| Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -37,8 +39,11 @@ These come from the owner in the project chat; they override defaults.
 
 - **Merging.** The owner normally wants to be asked before any merge. A standing grant let sprint PRs be merged
   without asking (with a whole-codebase review before each sprint) **only through S15**. That grant is used up.
-  For S16+, ask before merging unless the owner renews the grant.
+  For later sprints, ask before merging unless the owner renews the grant.
 - **Stop after S15** (2026-10-07): finish S15, run an end-to-end review, fix what it finds, then stop. Done.
+- **Finish the S18/S19 drafts** (2026-10-08): the owner asked to finish the already-built Copilot II and deploy kit
+  and mark them done in the docs. Done in #19. Release numbers follow merge order (S18 v0.8.0, S19 v0.9.0,
+  so S16 becomes v0.10.0 and S17 v0.11.0).
 - **Release tags** (`v0.x.0`) are always the owner's call. Never push tags.
 - **Sprint order** is the approved value-first roadmap: [docs/agent-canvas-spec/16-competitive-roadmap.md §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan).
   Multi-framework support (not just LangGraph) is the core promise of the product.
@@ -49,24 +54,11 @@ These come from the owner in the project chat; they override defaults.
 - **Dependabot:** `@dependabot` commands must be typed by the owner; ones posted by an agent are ignored.
 - **Merged branches** are deleted by the owner from the PR page (the cloud git proxy refuses remote branch deletion).
 
-## 3. Unmerged work you can reuse (S18 and S19 drafts)
+## 3. Unmerged work
 
-Under the old sprint order, Copilot II and the deploy kit were built **before** the roadmap was reordered. They now
-belong to **S18** and **S19**. The code was never pushed or reviewed against S15. It is saved as a git bundle in
-the project's shared files:
-
-`/mnt/project-files/agentcanvas-handover/unmerged-sprint-work.bundle`
-
-| Bundle branch | Contents | Base |
-|---|---|---|
-| `wip/s18-copilot-ii` | Copilot II: tests, debugging, error catalog, guide search, notes, split/private model modes, debug evals, plus review fixes (3 commits, 50 files) | `531a7ba` on `main` (before S15) |
-| `wip/s19-deploy-kit` | the above + export deploy kit: service with the deployment API, deploy files for six targets, four generated guides, `make doctor`/`make smoke`, tests in the export, export dialog, CI (4 commits, 70 files) | same |
-
-Restore: `git fetch /mnt/project-files/agentcanvas-handover/unmerged-sprint-work.bundle 'refs/heads/wip/*:refs/heads/wip/*'`,
-then merge `main` into the branch when its sprint starts. Expect conflicts in `copilot/`, `api/v1/copilot.py`,
-CHANGELOG, PROGRESS and the version numbers (they say v0.7.0/v0.8.0; under the new order they become v0.10.0/v0.11.0).
-Re-run the pre-sprint review on it; it was written before S15's changes to `adapters/langchain/nodes.py` and the
-Copilot service.
+None. The S18/S19 drafts that used to live only in a git bundle
+(`/mnt/project-files/agentcanvas-handover/unmerged-sprint-work.bundle`) were finished and merged in #19; the bundle
+is kept only as a record.
 
 ## 4. Repository map
 
@@ -75,7 +67,8 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   api/v1/                  REST routes; protocols.py = MCP + A2A per deployment, traces.py = trace export settings
   adapters/langchain/      the only place LangChain/LangGraph may be imported (import-linter contract, ADR 0011)
   runtime/                 framework-neutral runner, run handles, finish hooks, masking
-  copilot/                 AI Copilot (S14)
+  copilot/                 AI Copilot (S14) + tests, debugging, guide search, notes, debug evals (S18)
+  adapters/langchain/deploykit.py, kit/   export deploy kit: service template, guides, doctor/smoke/gate (S19)
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
   ir/, validation/         Graph IR v1.1 and the validator
@@ -130,7 +123,8 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 `.github/workflows/ci.yml` jobs: `api` (lint, pyright, import contract, schema drift, pytest on Postgres+pgvector),
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via
 `vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (pip-audit, pnpm audit),
-`images` (Docker builds, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
+`export` (S19: every template to every target, deploy files linted, each export's own tests, Docker Compose and
+kind deployed for real), `images` (Docker builds, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
 
 ## 7. Conventions
 
@@ -157,10 +151,16 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.7.0 not created (owner).
+- **Release tags** v0.1.0 to v0.9.0 not created (owner).
 - **S9 exit criterion** (10 design partners finish J1 unaided) needs real users.
 - **MCP endpoint nits left as is:** no `Origin` header validation (the endpoint needs a bearer key anyway) and the
   `MCP-Protocol-Version` header is not checked. A2A supports 0.3 method names only (`message/send`, `tasks/get`); no streaming.
+- **S18 limits:** Copilot test runs are dry runs only; the debug eval suite has only run with a scripted model
+  (no provider keys here); explanations of past runs use the run's pinned version.
+- **S19 limits:** the exported service has the deployment API (runs, resume, feedback) but not the MCP and A2A
+  addresses; feedback is logged (and written to `FEEDBACK_FILE`), not stored; a run stops at `RUN_TIMEOUT_SECONDS`
+  (default 300) where AgentCanvas keeps it running; cloud targets (Cloud Run, AWS, Azure) are syntax-checked in CI
+  only, since CI has no cloud accounts.
 - **Phone layout:** the editor stacks into one column below 700px (S15 review); it is usable but not designed.
 - **MCP gallery:** key-request and some docs links were not opened from the sandbox; Google Drive needs a browser
   sign-in on first run.
@@ -181,6 +181,8 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 | Competitive roadmap (sprint order S15–S32) | #16 | `6df2886` | — |
 | S14 AI Copilot I | #15 | `958f9cd` | v0.6.0 |
 | S15 Open doors + end-to-end review fixes | #17 | `19de2dc` | v0.7.0 |
+| Handover document | #18 | `9c9ef6e` | — |
+| S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | (fill after merge) | v0.8.0, v0.9.0 |
 
 ## 11. Sprint-end checklist
 

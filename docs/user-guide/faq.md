@@ -18,7 +18,8 @@ on your machine unless you turn on LangSmith tracing.
 
 **Is the generated code mine? Can I run it without AgentCanvas?**
 Yes. **Export** gives you a plain Python project (LangGraph graph, node library, your workspace code, pinned
-dependencies, Dockerfile, `langgraph.json`) that runs and serves on its own.
+dependencies) with a service that answers the same API as a deployment, deploy files for where you run it, and
+guides; see [Export and deploy](export.md).
 
 **What happens if the server restarts during a run?**
 Runs are durable. Paused runs (approvals, human input) wait indefinitely; running runs are resumed from their

@@ -294,11 +294,12 @@ class LangChainAdapter:
         workspace: Any = None,
         test_cases: list[dict[str, Any]] | None = None,
         version: str = "0.0.0",
+        target: str = "local",
     ) -> tuple[str, bytes]:
         from agentcanvas.adapters.langchain.packager import package
 
         source = generate(wf, registry=registry)
-        return package(wf, source, workspace=workspace, test_cases=test_cases, version=version)
+        return package(wf, source, workspace=workspace, test_cases=test_cases, version=version, target=target)
 
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:

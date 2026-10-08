@@ -48,14 +48,18 @@ test("saved test case turns red after an edit; the diff shows the edited step", 
   await expect(page.getByTestId("contract-diff")).toContainText("Compatible with v1.0.0");
 });
 
-test("export the draft as a zip", async ({ page }) => {
+test("export the draft for Kubernetes, seeing what it needs first", async ({ page }) => {
   const api = page.request;
   const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Export ${Date.now()}` } })).json();
   await page.goto(`/workflows/${wf.id}`);
   await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByTestId("export-open").click();
+  await page.getByLabel("Where it will run").selectOption("kubernetes");
+  await expect(page.getByTestId("export-needs")).toContainText("kubectl");
+  await expect(page.getByTestId("export-needs")).toContainText("IMAGE_REPOSITORY");
   const download = page.waitForEvent("download");
-  await page.getByTestId("export-draft").click();
-  expect((await download).suggestedFilename()).toMatch(/^export-\d+\.zip$/);
+  await page.getByTestId("export-download").click();
+  expect((await download).suggestedFilename()).toMatch(/\.zip$/);
 });
 
 test("publish from the Versions tab, then call the endpoint with the key", async ({ page }) => {
