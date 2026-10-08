@@ -1,18 +1,23 @@
-"""Project packager (M6-T2): a workflow as a standalone Python project, zipped.
+"""Project packager (M6-T2, deploy kit S16): a workflow as a standalone, deployable Python project, zipped.
 
     <project>/
+      README.md  Makefile       `make doctor | setup | test | gate | run | deploy | smoke | logs`
       pyproject.toml            pinned stack (uv), pytest config
-      README.md  .env.example   provider keys + the project secrets the workflow references
-      Dockerfile  langgraph.json
+      .env.example              every setting, with where to get it
+      Dockerfile  langgraph.json  workflow.ir.json (re-import into AgentCanvas)
+      docs/1-PREREQUISITES.md 2-SETUP.md 3-DEPLOY.md 4-VERIFY-AND-OPERATE.md   for the chosen target
+      deploy/<target>/          Compose (+ Caddy), a Helm chart, or a Cloud Run / ECS / Container Apps script
       src/<pkg>/graph.py        generated code (the same file as the Code tab)
+      src/<pkg>/app.py          HTTP service with the same API as an AgentCanvas deployment
+      src/<pkg>/checks.py smoke.py kit.json   `make doctor` / `make smoke` and the facts they check
       src/<pkg>/server.py       `make_graph` (ServerRuntime factory) for LangGraph Server / `langgraph dev`
       src/<pkg>/__main__.py     `python -m <pkg> '{"input": ...}'`
       src/agentcanvas/...       the node library the generated code calls (vendored, Apache-2.0)
       src/scripts|tools|nodes/  the workspace code at export time
       tests/test_smoke.py       builds the graph; replays saved test cases that use mock models
-      tests/test_cases.json
+      tests/test_service.py     the service answers the deployment API (offline)
 
-Nothing in the package talks to AgentCanvas: it runs anywhere LangGraph runs.
+Nothing in the package talks to AgentCanvas: it runs anywhere Python and LangGraph run.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from agentcanvas.adapters.langchain import deploykit
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.ir.models import Workflow
 
@@ -44,6 +50,10 @@ RUNTIME_FILES = [
 ]
 WORKSPACE_DIRS = ("scripts", "tools", "nodes", "events")
 PINNED = ["langgraph", "langchain", "langchain-core", "deepagents", "jsonschema", "cel-python", "jinja2", "httpx"]
+SERVICE = [  # the HTTP service and where it keeps conversations (S16)
+    "fastapi", "uvicorn", "langgraph-checkpoint-sqlite", "aiosqlite", "langgraph-checkpoint-postgres", "psycopg",
+    "psycopg-pool",
+]  # fmt: skip
 PROVIDERS = {  # model id prefix -> (integration package, API key variable)
     "openai": ("langchain-openai", "OPENAI_API_KEY"),
     "azure_openai": ("langchain-openai", "AZURE_OPENAI_API_KEY"),
@@ -96,9 +106,9 @@ def _version(dist: str) -> str | None:
 
 def dependencies(wf: Workflow) -> list[str]:
     deps = []
-    for dist in PINNED:
+    for dist in PINNED + SERVICE:
         v = _version(dist)
-        extra = "[mcp]" if dist == "langchain" else ""
+        extra = {"langchain": "[mcp]", "psycopg": "[binary]", "uvicorn": "[standard]"}.get(dist, "")
         deps.append(f"{dist}{extra}=={v}" if v else f"{dist}{extra}")
     for _, model in _models(wf):
         pkg = PROVIDERS.get(model.partition(":")[0], (None, None))[0]
@@ -106,17 +116,6 @@ def dependencies(wf: Workflow) -> list[str]:
             v = _version(pkg)
             deps.append(f"{pkg}=={v}" if v else pkg)
     return deps
-
-
-def _env_example(wf: Workflow) -> str:
-    lines = ["# Model provider keys"]
-    keys = {PROVIDERS.get(m.partition(":")[0], (None, None))[1] for _, m in _models(wf)} - {None}
-    lines += [f"{k}=" for k in sorted(k for k in keys if k)] or ["# (no hosted models)"]
-    secrets = sorted(_secret_names(wf.model_dump(mode="json")))
-    if secrets:
-        lines += ["", '# Project secrets referenced by the workflow ({"$secret": NAME})'] + [f"{s}=" for s in secrets]
-    lines += ["", "# Optional: LangSmith tracing", "LANGSMITH_TRACING=false", "LANGSMITH_API_KEY="]
-    return "\n".join(lines) + "\n"
 
 
 def _pyproject(wf: Workflow, pkg: str, version: str) -> str:
@@ -141,23 +140,27 @@ asyncio_mode = "auto"
 '''
 
 
-def _readme(wf: Workflow, pkg: str) -> str:
+def _readme(wf: Workflow, pkg: str, targets: str) -> str:
     return f"""# {one_line(wf.name)}
 
-Exported from AgentCanvas. `src/{pkg}/graph.py` is generated from the canvas; `src/agentcanvas/` is the node
-library it calls; `src/scripts|tools|nodes/` is the project's workspace code.
+Exported from AgentCanvas as a service you run in your own environment. {targets}
 
 ```bash
-uv sync
-cp .env.example .env               # fill in the keys
-uv run pytest                      # builds the graph, replays saved test cases that use mock models
-uv run --env-file .env python -m {pkg} '{{"input": {{}}}}'
-uv run --env-file .env langgraph dev   # LangGraph Server + Studio (pip install "langgraph-cli[inmem]")
-docker build -t {pkg.replace("_", "-")} .
+make doctor      # is this machine ready? lists what is missing and where the guide explains it
+make setup       # .env with a fresh API key; fill in the empty values
+make test        # the graph builds and the saved test cases pass, offline
+make deploy      # see docs/3-DEPLOY.md
+make smoke URL=https://...   # call the deployed service once
 ```
 
-`python -m {pkg}` runs one turn with an in-memory checkpointer and prints the final state (or the pending
-interrupts). In your own code: `from {pkg}.graph import build_graph` and pass your checkpointer and store.
+The service (`src/{pkg}/app.py`) answers the same API as an AgentCanvas deployment: `POST
+/v1/deployments/<name>/runs/wait`, `/runs/stream`, `/threads/<id>/resume` and `/runs/<id>/feedback`, with
+`Authorization: Bearer <one of API_KEYS>`. `make run` starts it here without Docker (needs uv).
+
+`src/{pkg}/graph.py` is generated from the canvas; `src/agentcanvas/` is the node library it calls;
+`src/scripts|tools|nodes/` is the project's workspace code. In your own code: `from {pkg}.graph import build_graph`
+and pass your checkpointer and store. `python -m {pkg} '{{"input": {{}}}}'` runs one turn from the command line, and
+`langgraph dev` serves it with LangGraph Studio (`pip install "langgraph-cli[inmem]"`).
 """
 
 
@@ -185,7 +188,12 @@ SECRETS = {secrets}
 
 
 def make_resources() -> Resources:
-    return Resources(secrets={{k: os.environ[k] for k in SECRETS if k in os.environ}})
+    secrets = {{k: os.environ[k] for k in SECRETS if k in os.environ}}
+    if os.environ.get("DEMO_MODE", "").lower() in ("1", "true", "yes"):  # canned replies, no model keys needed
+        from agentcanvas.adapters.langchain.testing import DemoResources
+
+        return DemoResources(secrets=secrets)
+    return Resources(secrets=secrets)
 
 
 async def _build():
@@ -280,16 +288,6 @@ async def test_saved_case(case):
         assert out.get(name) == value, name
 '''
 
-DOCKERFILE = """FROM python:3.12-slim
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-WORKDIR /app
-COPY pyproject.toml ./
-RUN uv sync --no-dev
-COPY . .
-ENV PYTHONPATH=/app/src
-ENTRYPOINT ["uv", "run", "--no-dev", "python", "-m", "{pkg}"]
-"""
-
 
 def _exportable_cases(wf: Workflow, cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Cases that run offline: every chat model mocked, no pinned outputs (the export has no debug pins)."""
@@ -308,17 +306,20 @@ def package(
     workspace: Path | None = None,
     test_cases: list[dict[str, Any]] | None = None,
     version: str = "0.0.0",
+    target: str = "local",
 ) -> tuple[str, bytes]:
-    """(file name, zip bytes) of the standalone project for `wf`, whose generated code is `source`."""
+    """(file name, zip bytes) of the standalone project for `wf`, whose generated code is `source`, with the
+    deploy kit for `target` (one of deploykit.TARGETS)."""
     pkg = package_name(wf.name)
     root = pkg.replace("_", "-")
     secrets = sorted(_secret_names(wf.model_dump(mode="json")))
+    cases = _exportable_cases(wf, test_cases or [])
+    kit = deploykit.files(wf, deploykit.facts(wf, pkg, version, cases), deploykit.TARGETS[target])
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, pkg, version),
-        "README.md": _readme(wf, pkg),
-        ".env.example": _env_example(wf),
-        ".gitignore": ".venv/\n__pycache__/\n.env\n",
-        "Dockerfile": DOCKERFILE.format(pkg=pkg),
+        "README.md": _readme(wf, pkg, kit.pop("_readme_targets")),
+        ".gitignore": ".venv/\n__pycache__/\n.env\ndata/\n",
+        **kit,
         "langgraph.json": json.dumps(
             {"dependencies": ["."], "graphs": {pkg: f"./src/{pkg}/server.py:make_graph"}, "env": ".env"}, indent=2
         )
@@ -330,7 +331,7 @@ def package(
         f"src/{pkg}/__main__.py": MAIN.format(pkg=pkg),
         "src/agentcanvas/NOTICE.md": "The AgentCanvas node library (Apache-2.0), vendored so the project runs alone.\n",
         "tests/test_smoke.py": SMOKE.format(pkg=pkg, models=json.dumps(sorted({n for n, _ in _models(wf)}))),
-        "tests/test_cases.json": json.dumps(_exportable_cases(wf, test_cases or []), indent=2) + "\n",
+        "tests/test_cases.json": json.dumps(cases, indent=2) + "\n",
     }
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
@@ -344,5 +345,8 @@ def package(
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, content in sorted(files.items()):
-            z.writestr(f"{root}/{rel}", content)
+            info = zipfile.ZipInfo(f"{root}/{rel}", date_time=(2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = (0o755 if rel.endswith(".sh") else 0o644) << 16  # deploy scripts run as ./deploy.sh
+            z.writestr(info, content)
     return f"{root}.zip", buf.getvalue()

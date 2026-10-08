@@ -32,6 +32,7 @@ class FrameworkAdapter(Protocol):
         workspace: Any = None,
         test_cases: list[dict[str, Any]] | None = None,
         version: str = "0.0.0",
+        target: str = "local",
     ) -> tuple[str, bytes]:
         """(file name, zip) of a standalone project running the workflow (M6-T2)."""
         ...

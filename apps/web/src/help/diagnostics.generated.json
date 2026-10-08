@@ -1,0 +1,244 @@
+{
+  "diagnostics": {
+    "E000": {
+      "what": "Two things have the same name (or a name is reserved).",
+      "fix": "Rename one of them: select it and change its name in the Inspector."
+    },
+    "E001": {
+      "what": "A block is missing something it needs plugged in, usually an AI model.",
+      "fix": "Click the coloured square on the block's left (the input named in the message) and pick what to plug in, e.g. an AI model."
+    },
+    "E002": {
+      "what": "An arrow points at an input or output that does not exist (any more).",
+      "fix": "Click the arrow, press Delete, and draw it again from the right dot."
+    },
+    "E003": {
+      "what": "Something refers to a block that was deleted.",
+      "fix": "Delete the dangling arrow, or pick another block in the setting the message names."
+    },
+    "E004": {
+      "what": "A setting of this block is missing or not valid.",
+      "fix": "Select the block and fill in the setting marked in red in the Inspector."
+    },
+    "E005": {
+      "what": "This block type is not known on this server (or was put in the wrong place).",
+      "fix": "Delete the block and add it again from the palette."
+    },
+    "E006": {
+      "what": "An arrow connects two things that cannot be connected that way.",
+      "fix": "Steps connect with grey arrows (right dot → left dot). Add-ons such as AI models plug into a step's coloured inputs. Delete the arrow and redraw it."
+    },
+    "E010": {
+      "what": "There is no path from Start to Finish, so a run could never finish.",
+      "fix": "Connect Start to your first step, and your last step to Finish. Tip: click a step's right-hand dot to pick what comes next."
+    },
+    "E011": {
+      "what": "This step can never run: nothing leads to it from Start.",
+      "fix": "Connect an earlier step (or Start) to it, or delete it if you don't need it."
+    },
+    "E012": {
+      "what": "A path of this “Choose a path” block goes nowhere (or goes to two places).",
+      "fix": "Connect each path (the dots on its right) to exactly one step, or to Finish."
+    },
+    "E013": {
+      "what": "A condition (rule) is not written correctly.",
+      "fix": "Check the rule in the Inspector. Example of a valid rule: state.priority == \"high\"."
+    },
+    "E014": {
+      "what": "The text template has a typo, usually unbalanced {{ }} brackets.",
+      "fix": "Every {{ needs a matching }}. Example: Hello {{ state.name }}."
+    },
+    "E015": {
+      "what": "This step is a dead end: nothing comes after it.",
+      "fix": "Click its right-hand dot and choose the next step, or Finish."
+    },
+    "E016": {
+      "what": "“Wait for all” is waiting for a branch that may never arrive, so the run would hang.",
+      "fix": "Only connect branches into it that always run (not ones after a “Choose a path”)."
+    },
+    "E017": {
+      "what": "This AI model needs the server address of its provider.",
+      "fix": "Select the AI model block and fill in Base URL (for local models, e.g. http://localhost:11434 for Ollama)."
+    },
+    "E018": {
+      "what": "Something inside this group of steps is broken.",
+      "fix": "Double-click the group to look inside; the message says what is wrong there."
+    },
+    "E019": {
+      "what": "The group of steps uses a block with the same name as one outside, but set up differently.",
+      "fix": "Rename one of them."
+    },
+    "E020": {
+      "what": "Two steps run at the same time and both overwrite the same data field, so one answer would be lost.",
+      "fix": "Make them write different fields, or set the field to “append” (keep a list) in the data fields list."
+    },
+    "E021": {
+      "what": "A step uses a data field that does not exist yet.",
+      "fix": "Click empty canvas, then add the field (“+ Channel”) with the exact name from the message, or pick an existing field in the step's settings."
+    },
+    "E022": {
+      "what": "“Repeat for each item” runs copies at the same time, and they overwrite the same field.",
+      "fix": "Set that field to “append” (keep a list) so every copy's result is kept."
+    },
+    "E023": {
+      "what": "A step reads a data field that does not exist.",
+      "fix": "Add the field (click empty canvas, “+ Channel”) or correct its name in the step."
+    },
+    "E030": {
+      "what": "The chosen AI model cannot do what this step asks (use tools or give structured answers).",
+      "fix": "Pick a more capable model in the AI model block, or remove the tools / structured output."
+    },
+    "E031": {
+      "what": "The same tool is plugged in twice.",
+      "fix": "Delete one of the two arrows."
+    },
+    "E032": {
+      "what": "A helper agent is set up incompletely (it needs a description) or is plugged in twice.",
+      "fix": "Select the helper agent and fill in “When to use it”, or delete the duplicate arrow."
+    },
+    "E033": {
+      "what": "The approval list names a tool that is not plugged into this agent.",
+      "fix": "Plug the tool in, or remove it from “Tools that need approval”."
+    },
+    "E034": {
+      "what": "A file permission path is not allowed.",
+      "fix": "Use a full path starting with / and without .. or ~."
+    },
+    "E035": {
+      "what": "The same add-on is plugged in twice (or the Planning Agent already has it built in).",
+      "fix": "Delete the duplicate arrow."
+    },
+    "E036": {
+      "what": "Two file storages are set up for the same place.",
+      "fix": "Remove one, or give them different folders."
+    },
+    "E041": {
+      "what": "This block runs code on the server, which is only allowed when you run AgentCanvas yourself.",
+      "fix": "Use it in a local install, or replace it with a Web API tool."
+    },
+    "E042": {
+      "what": "This app connector starts a program on the server, which an admin must allow first.",
+      "fix": "Ask an admin to enable local MCP, or use a connector with a URL."
+    },
+    "E050": {
+      "what": "A password or API key is typed straight into a setting, where others could see it.",
+      "fix": "Store it as a project secret (Workspace → Secrets) and pick it from the list instead."
+    },
+    "E070": {
+      "what": "This block both pauses for a person and changes something outside, which would happen twice when the run resumes.",
+      "fix": "Move the outside change into a separate step after the approval."
+    },
+    "E071": {
+      "what": "This memory is kept per user, but the workflow does not know who the user is.",
+      "fix": "In the workflow settings (click empty canvas), add a context field such as user_id with source “user”, or share the memory per workflow instead."
+    },
+    "E080": {
+      "what": "The Python function is not in your Workspace.",
+      "fix": "Pick a function from the Workspace (scripts., tools. or nodes.)."
+    },
+    "E095": {
+      "what": "Your organisation's rules do not allow this.",
+      "fix": "Read the rule in the message and change the workflow to follow it, or ask an admin."
+    },
+    "E096": {
+      "what": "An organisation rule could not be checked.",
+      "fix": "Ask an admin to look at the rule; the message says which one."
+    },
+    "I010": {
+      "what": "This block uses a feature that may still change upstream.",
+      "fix": "Nothing to do; just be aware it may change in a future version."
+    },
+    "W001": {
+      "what": "These steps form a loop with no way out, so it would only stop at the safety limit.",
+      "fix": "Add a “Choose a path” step in the loop with a path that leaves it."
+    },
+    "W002": {
+      "what": "An agent can use a tool that changes or deletes things, without asking a person first.",
+      "fix": "Select the agent and add the tool to “Tools that need approval”."
+    },
+    "W003": {
+      "what": "A private data field is filled but never used.",
+      "fix": "Use it in a later step, or delete it."
+    },
+    "W010": {
+      "what": "This AI model name is not in the built-in list, so its abilities cannot be checked.",
+      "fix": "Double-check the spelling (provider:model, e.g. openai:gpt-5.5) or pick one from the list."
+    },
+    "W011": {
+      "what": "Support for this AI provider is not installed on the server.",
+      "fix": "Ask whoever runs the server to install the package named in the message, or pick another provider."
+    },
+    "W012": {
+      "what": "An arrow leaves a path that the “Choose a path” block does not have any more.",
+      "fix": "Delete that arrow, or add a rule with that path name."
+    },
+    "W013": {
+      "what": "“Wait for all” has fewer than two branches coming in, so it has nothing to wait for.",
+      "fix": "Connect at least two branches into it, or delete it."
+    },
+    "W015": {
+      "what": "The cost limit cannot count this model, because its price is unknown.",
+      "fix": "Use a token limit instead, or a model with a known price."
+    },
+    "W018": {
+      "what": "Something inside this group of steps needs attention.",
+      "fix": "Double-click the group to look inside."
+    },
+    "W095": {
+      "what": "This goes against a recommended organisation rule.",
+      "fix": "Read the rule in the message; consider changing the workflow."
+    }
+  },
+  "run_errors": [
+    {
+      "pattern": "api[_ ]?key|authentication|unauthori[sz]ed|\\b401\\b|invalid x-api-key|credentials",
+      "what": "The AI provider refused the API key (missing or wrong).",
+      "fix": "Open Model (home page) or the AI model block and check the key. Keys are stored as project secrets named after the provider, e.g. ANTHROPIC_API_KEY."
+    },
+    {
+      "pattern": "rate.?limit|\\b429\\b|quota|insufficient_quota|too many requests",
+      "what": "The AI provider says you are sending too many requests, or your credit has run out.",
+      "fix": "Wait a minute and run again, or check your plan and billing with the provider."
+    },
+    {
+      "pattern": "connection refused|ECONNREFUSED|failed to establish|connect(ion)? error|name or service not known|getaddrinfo",
+      "what": "Could not reach the AI model's server.",
+      "fix": "If you use a local model (Ollama, LM Studio…), make sure it is running and the Base URL is right. Otherwise check your internet connection."
+    },
+    {
+      "pattern": "model.*not.?found|not_found_error|does not exist|unknown model|\\b404\\b",
+      "what": "The AI provider does not know this model name.",
+      "fix": "Check the model name in the AI model block (e.g. anthropic:claude-sonnet-5-5), or pick one from the list."
+    },
+    {
+      "pattern": "timed? ?out|timeout",
+      "what": "A step took too long and was stopped.",
+      "fix": "Run again; if it keeps happening, raise Timeout on the AI model block or simplify the prompt."
+    },
+    {
+      "pattern": "recursion limit|GraphRecursionError",
+      "what": "The workflow went round a loop too many times.",
+      "fix": "Add a “Choose a path” step with a way out of the loop, or a limit add-on on the agent."
+    },
+    {
+      "pattern": "undefined|UndefinedError|KeyError|has no attribute",
+      "what": "A step used a data field that had no value yet.",
+      "fix": "Check the {{ state.<field> }} names in your prompts match your data fields, and that the run input fills them, e.g. {\"question\": \"…\"}."
+    },
+    {
+      "pattern": "expecting value|invalid json|not valid json|JSONDecodeError",
+      "what": "Some input was not in the expected format.",
+      "fix": "Run input must be JSON, e.g. {\"question\": \"What is AI?\"}: curly braces, field names in double quotes."
+    },
+    {
+      "pattern": "workflow has errors|validation",
+      "what": "The workflow still has problems, so it cannot run.",
+      "fix": "Open Problems at the bottom; each one says how to fix it."
+    },
+    {
+      "pattern": "forbidden|\\b403\\b",
+      "what": "You (or the workflow) are not allowed to do this.",
+      "fix": "Ask a project admin for the builder role, or for access to the resource named in the message."
+    }
+  ]
+}

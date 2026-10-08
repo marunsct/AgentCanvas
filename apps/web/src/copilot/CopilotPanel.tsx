@@ -8,7 +8,9 @@ import { type Brief, type Mode, toolLabel, useCopilot } from "./copilot";
 const STARTERS = [
   "Build a workflow that classifies support emails and drafts a reply",
   "Explain what this workflow does",
-  "Why does this workflow have errors?",
+  "Why did the last run fail?",
+  "Fix the problems in this workflow",
+  "Write tests for this workflow and run them",
 ];
 
 function BriefCard({ brief }: { brief: Brief }) {
@@ -37,6 +39,13 @@ export function CopilotPanel() {
   useEffect(() => {
     if (workflowId) void useCopilot.getState().load(workflowId).catch((e: Error) => useCopilot.setState({ error: e.message }));
   }, [workflowId]);
+  const request = useCopilot((s) => s.request);
+  useEffect(() => { // "Ask the Copilot" buttons elsewhere in the editor
+    if (!request || !conversation || busy) return;
+    useCopilot.setState({ request: null });
+    setMode(request.mode === "build" && !can("builder") ? "ask" : request.mode);
+    void useCopilot.getState().send(request.text, request.mode === "build" && !can("builder") ? "ask" : request.mode);
+  }, [request, conversation, busy]);
   useEffect(() => { // newer browsers return a promise here: an effect must not return it as its cleanup
     end.current?.scrollIntoView?.({ block: "end" });
   }, [conversation?.messages.length, live?.text.length, live?.activity.length]);
@@ -106,6 +115,12 @@ export function CopilotPanel() {
                 {pending.diff?.removed.length ? `, ${pending.diff.removed.length} removed` : ""}.
                 {pending.errors > 0 && ` It still has ${pending.errors} problem${pending.errors > 1 ? "s" : ""}.`}
               </p>}
+          {Boolean(pending.tests?.length) && (
+            <p className="small" data-testid="copilot-proposal-tests">
+              Saves {pending.tests!.length} test{pending.tests!.length > 1 ? "s" : ""}: {pending.tests!.map((t) => t.name).join(", ")}
+            </p>
+          )}
+          {Boolean(pending.notes?.length) && <p className="small">Adds to project notes: {pending.notes!.join("; ")}</p>}
           <div className="row gap">
             <button type="button" className="primary" disabled={busy || pending.stale || !can("builder")}
               onClick={() => void useCopilot.getState().accept()}>Accept</button>

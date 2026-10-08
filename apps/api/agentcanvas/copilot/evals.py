@@ -1,6 +1,6 @@
 """Copilot eval harness (S14): build workflows from plain requests with a real model and check the results.
 
-    uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5 [--case greeter] [--out r.json]
+    uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5 [--suite debug] [--case greeter]
 
 Each case starts from an empty workflow, sends the request in Build mode, answers a brief with "Yes, build it",
 then checks the proposal: it applies, has no validation errors, and uses the expected blocks. The model's key comes
@@ -71,7 +71,7 @@ async def run_case(
     started = time.monotonic()
     templates = list_templates(settings)
     pack = build_pack(registry, templates)
-    empty = Workflow(id="wf_eval", name=case["id"])
+    empty = case.get("start") or Workflow(id="wf_eval", name=case["id"])
 
     async def check(wf: Workflow) -> list[Any]:
         return validate(wf, registry)
@@ -107,29 +107,77 @@ async def run_case(
     result.applied = True
     result.errors = [f"{d.code} {d.message}" for d in validate(built, registry) if d.severity == "error"]
     present = {n.type for n in built.nodes} | {r.type for r in built.resources}
-    result.missing_types = [t for t in case["types"] if t not in present]
+    result.missing_types = [t for t in case.get("types", []) if t not in present]
     result.passed = not result.errors and not result.missing_types
     return result
 
 
-async def run(model: str, only: str | None = None) -> list[CaseResult]:
+FIX_REQUEST = "This workflow has a problem. Find it, explain it in one sentence, and fix it."
+
+
+def debug_cases(settings: Settings, registry: Registry) -> list[dict[str, Any]]:
+    """Planted bugs (S15): each starter template broken in up to five ways the validator reports. A case passes
+    when the Copilot's fix leaves no validation errors."""
+    cases: list[dict[str, Any]] = []
+    for name, doc in list_templates(settings).items():
+        if name.startswith(("demo", "dev")):
+            continue
+        wf = Workflow.model_validate({**doc, "id": f"wf_{name}"})
+        to_end = next((e for e in wf.edges if e.kind == "flow" and e.target.node == "END"), None)
+        wiring = next((e for e in wf.edges if e.kind == "wiring" and e.target.port == "model"), None)
+        writer = next((n for n in wf.nodes if isinstance(n.config.get("output"), str)), None)
+        router = next((n for n in wf.nodes if n.type == "core.router" and n.config.get("cases")), None)
+        prompt = next((n for n in wf.nodes if isinstance(n.config.get("prompt"), str)), None)
+        bugs: list[tuple[str, list[dict[str, Any]]]] = []
+        if to_end:
+            bugs.append(("no_end", [{"op": "Disconnect", "id": to_end.id}]))
+        if wiring:
+            bugs.append(("no_model", [{"op": "Disconnect", "id": wiring.id}]))
+        if writer:
+            bugs.append(
+                ("bad_output", [{"op": "UpdateNode", "id": writer.id, "patch": {"config": {"output": "nowhere"}}}])
+            )
+        if router:
+            broken = [dict(router.config["cases"][0], when="state. =="), *router.config["cases"][1:]]
+            bugs.append(
+                ("bad_condition", [{"op": "UpdateNode", "id": router.id, "patch": {"config": {"cases": broken}}}])
+            )
+        if prompt:
+            bad = str(prompt.config["prompt"]) + " {{ state.missing_field }}"
+            bugs.append(
+                ("unknown_field", [{"op": "UpdateNode", "id": prompt.id, "patch": {"config": {"prompt": bad}}}])
+            )
+        for bug, commands in bugs:
+            try:
+                broken_wf, _ = apply_batch(wf, parse_commands(commands))
+            except Exception:  # noqa: BLE001 - a mutation that does not fit this template is skipped
+                continue
+            if any(d.severity == "error" for d in validate(broken_wf, registry)):
+                cases.append({"id": f"{name}/{bug}", "request": FIX_REQUEST, "start": broken_wf})
+    return cases
+
+
+async def run(model: str, only: str | None = None, suite: str = "build") -> list[CaseResult]:
     from agentcanvas.adapters import get_adapter
 
     adapter = get_adapter()
     resources = adapter.new_resources()
     resolved = ResolvedModel(model=model, origin="eval")
-    cases = [c for c in CASES if only in (None, c["id"])]
     settings = Settings(env="prod")
-    return [await run_case(c, adapter, resources, resolved, default_registry(), settings) for c in cases]
+    registry = default_registry()
+    pool = CASES if suite == "build" else debug_cases(settings, registry)
+    cases = [c for c in pool if only in (None, c["id"])]
+    return [await run_case(c, adapter, resources, resolved, registry, settings) for c in cases]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Copilot eval harness")
     parser.add_argument("--model", required=True, help="provider:model")
     parser.add_argument("--case", help="run one case by id")
+    parser.add_argument("--suite", choices=["build", "debug"], default="build", help="debug: ~30 planted bugs")
     parser.add_argument("--out", help="write the results as JSON")
     args = parser.parse_args()
-    results = asyncio.run(run(args.model, args.case))
+    results = asyncio.run(run(args.model, args.case, args.suite))
     for r in results:
         status = "PASS" if r.passed else "FAIL"
         detail = r.problem or "; ".join(r.errors + [f"missing {t}" for t in r.missing_types])

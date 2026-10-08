@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "gen:ir": "json2ts -i ../../packages/ir-schema/ir.schema.json -o src/ir/generated.ts --bannerComment \"/* Generated from packages/ir-schema/ir.schema.json (pnpm gen:ir). Do not edit. */\" --additionalProperties false",
     "gen:api": "node scripts/gen-api-types.mjs",
-    "gen": "pnpm gen:ir && pnpm gen:api"
+    "gen:help": "node -e \"require('fs').copyFileSync('../../packages/ir-schema/diagnostics.json', 'src/help/diagnostics.generated.json')\"",
+    "gen": "pnpm gen:ir && pnpm gen:api && pnpm gen:help"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",

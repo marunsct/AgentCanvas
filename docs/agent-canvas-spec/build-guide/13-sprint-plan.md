@@ -38,10 +38,10 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S13** | 2 | Evaluation in production → v0.5.0 | FR-EVAL-06…08, FR-EVAL-03 rest + S12 follow-ups | — | 22 | Online evaluators and drift alerts, annotation queues, pairwise and composite evaluators, rubric self-grading, simulated users |
 | **S14** | 2 | AI Copilot I → v0.6.0 | Copilot plan (Claude Doc "Copilot, export and beginner features", plan v2) | — | 24 | Copilot briefs, plans and builds workflows as proposals you accept on the canvas |
 | **S15** | 2 | Open doors → v0.7.0 | [doc 16 §7](../16-competitive-roadmap.md#7-sprint-plan) | — | — | Deployments as MCP tools and A2A agents, MCP connector gallery (~30), OTel trace export |
-| **S16** | 2 | Any framework as a node → v0.8.0 | doc 16, doc 11 F1 | — | — | Wrapped, A2A and MCP agent nodes for 9 frameworks; Agent Spec import/export |
-| **S17** | 2 | Ship to users → v0.9.0 | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
-| **S18** | 2 | AI Copilot II → v0.10.0 | configure, test, debug and fix | — | — | The Copilot tests, debugs and fixes workflows |
-| **S19** | 2 | Export deploy kit → v0.11.0 | export as a service | — | — | Exports are deployable codebases with prerequisites, setup and deploy guides |
+| **S16** | 2 | Any framework as a node → v0.10.0 | doc 16, doc 11 F1 | — | — | Wrapped, A2A and MCP agent nodes for 9 frameworks; Agent Spec import/export |
+| **S17** | 2 | Ship to users → v0.11.0 | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
+| **S18** | 2 | AI Copilot II → v0.8.0 | configure, test, debug and fix | — | 23 | The Copilot tests, debugs and fixes workflows (✅ done, built ahead of S16–S17) |
+| **S19** | 2 | Export deploy kit → v0.9.0 | export as a service | — | 24 | Exports are deployable codebases with prerequisites, setup and deploy guides (✅ done, built ahead of S16–S17) |
 | **S20** | 2 | Knowledge Studio → v0.12.0 | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
 | **S21** | 2 | OpenAI Agents SDK adapter → v0.13.0 | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Second framework; portability check; convert-and-compare |
 | **S22** | 2 | Model gateway & cost → v0.14.0 | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
@@ -54,7 +54,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S32** | 2 | Mastra → v0.21.0 | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
 | **Later** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, Git sync, hosted trial | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
 
-From S15 the order follows the value-first [competitive roadmap](../16-competitive-roadmap.md), approved 2026-10-07.
+From S15 the order follows the value-first [competitive roadmap](../16-competitive-roadmap.md), approved 2026-10-07. S18 and S19 were built first (their drafts predated the reorder) and finished on 2026-10-08 at the owner's request, so release numbers follow merge order: S18 v0.8.0, S19 v0.9.0, S16 v0.10.0, S17 v0.11.0.
 
 Total to MVP ≈ 19 weeks; to production-ready ≈ 23 weeks with four developers. One developer: multiply by ~3.5.
 
@@ -380,6 +380,52 @@ Deviations and gaps:
 - Answers arrive per model turn, not token by token.
 - "One turn at a time per conversation" is enforced per API instance; two replicas could each take one message.
 - Removed elements are listed on the proposal card, not drawn as ghosts on the canvas.
+
+### S18 — AI Copilot II and debug assistant → v0.8.0
+
+| # | Item | Days | Acceptance |
+|---|------|-----:|------------|
+| 1 | Configurator | 3 | build prompt fills required settings; `list_models` (models, providers, secret names only) |
+| 2 | Tester and fix loop | 3 | `run_test` runs the working copy as a dry run, optional scripted model replies and expectations |
+| 3 | Brief to tests | 2 | `propose_tests`; tests are saved as test cases when the proposal is accepted |
+| 4 | Debug assistant | 6 | `get_problems` (explained), `list_runs`, `get_run` (Explain-mode steps), `reproduce_run` replays a run's recorded model and tool I/O on the working copy; Ask-the-Copilot buttons in Problems and run errors |
+| 5 | Error catalog | 1 | one catalog (`validation/help.json`) for the editor and the Copilot's pack |
+| 6 | Debug eval set | 2 | `--suite debug`: 27 planted bugs across the starter templates |
+| 7 | Docs search | 2 | BM25 over the user guide, packaged with the API |
+| 8 | Project Copilot notes | 2 | notes in Copilot settings, read every turn; `save_note` proposals |
+| 9 | Split/privacy modes | 1 | `ask_model` for questions; `privacy: local_only` refuses non-local models |
+| 10 | Docs | 1 | user guide Testing, Debugging, Project notes sections |
+
+**Review (2026-10-07).** Before the sprint the codebase was re-checked (all gates green after S14's merge). Every
+item met its acceptance in `test_copilot_debug.py` and `e2e/copilot.spec.ts`. Deviations:
+- Reproductions use the *current draft* to explain past runs; a deployment thread pinned to an older version is
+  explained against the draft.
+- The debug eval suite has only been run with a scripted model here (no provider keys).
+- Test runs are dry runs only; the Copilot cannot run a workflow for real.
+
+### S19 — Export deploy kit → v0.9.0
+
+| # | Item | Days | Acceptance |
+|---|------|-----:|------------|
+| 1 | Service with the deployment API | 4 | `app.py`: runs/wait, runs/stream, threads/{id}/resume, runs/{id}/feedback, healthz, docs; API keys; same shapes as AgentCanvas deployments |
+| 2 | Startup checks and checkpointer by environment | 1 | Postgres with `DATABASE_URL`, else SQLite; the service stops at startup with a plain message naming missing settings |
+| 3 | Dockerfile and Compose | 2 | non-root, health check, pinned base images; service plus Postgres; Caddy with automatic HTTPS for servers |
+| 4 | Target packs | 4 | Helm chart (Deployment, Service, Ingress, HPA), Cloud Run, ECS Fargate, Azure Container Apps; only the chosen target in the zip |
+| 5 | Guide generator | 3 | 1-PREREQUISITES, 2-SETUP, 3-DEPLOY, 4-VERIFY-AND-OPERATE with this workflow's keys, hosts and settings |
+| 6 | `make doctor` and `make smoke` | 3 | tools, settings, database, hosts, port, `--live` model calls, each problem pointing at its guide section; smoke runs the example input and answers approvals |
+| 7 | Tests and gate in the export | 2 | saved test cases and the service's API tests (offline, `DEMO_MODE`); `make gate` |
+| 8 | Export dialog | 2 | version and target picker; what the target needs before download (`GET …/export/plan`) |
+| 9 | CI | 3 | every template to every target; deploy files linted; each export's own tests with its own pins; Compose and kind deployed for real with doctor and smoke |
+
+**Review (2026-10-07).** Before the sprint the whole codebase was reviewed (7 findings, fixed in #17: Copilot
+test runs refuse unaccepted code and secrets sent to a new address, late Copilot answers stay with their workflow,
+Accept is recorded only when the edit lands, one Copilot turn at a time with merged saves, the question model keeps
+its endpoint, policy codes treated as in the Run panel). Deviations from the plan:
+- `make gate` runs the saved test cases and the service's API tests; LLM-judged evaluations stay in AgentCanvas.
+- Feedback is logged (and written to `FEEDBACK_FILE`), not stored in a database.
+- Cloud targets (Cloud Run, AWS, Azure) are syntax-checked in CI only, since CI holds no cloud accounts; the parity
+  script against a live AgentCanvas deployment is replaced by the service's API tests using the same request and
+  response shapes.
 
 ### S20+ — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).

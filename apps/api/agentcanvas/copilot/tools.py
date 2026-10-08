@@ -8,6 +8,7 @@ and `set_brief` records what the workflow is for. Tools never raise to the model
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -15,11 +16,16 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from agentcanvas.copilot import docs
 from agentcanvas.copilot.pack import block_summary
+from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry
+from agentcanvas.services.testcases import Expect
 from agentcanvas.validation import Diagnostic
+from agentcanvas.validation.help import diagnostic_help
+from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 MAX_COMMANDS = 80  # per proposal: a whole workflow fits, a runaway loop does not
 MAX_RESULT = 12_000  # characters of one tool result sent back to the model
@@ -29,9 +35,11 @@ MAX_RESULT = 12_000  # characters of one tool result sent back to the model
 class Proposal:
     summary: list[str] = field(default_factory=list)
     commands: list[dict[str, Any]] = field(default_factory=list)
+    tests: list[dict[str, Any]] = field(default_factory=list)  # saved as test cases when accepted (S15)
+    notes: list[str] = field(default_factory=list)  # added to the project's Copilot notes when accepted
 
     def __bool__(self) -> bool:
-        return bool(self.commands)
+        return bool(self.commands or self.tests or self.notes)
 
 
 @dataclass
@@ -42,6 +50,8 @@ class ToolContext:
     validate: Callable[[Workflow], Awaitable[list[Diagnostic]]]
     brief: dict[str, Any] | None = None
     proposal: Proposal = field(default_factory=Proposal)
+    runs: RunAccess | None = None  # past runs, test runs, reproductions (S15)
+    secret_names: list[str] = field(default_factory=list)  # names only, never values
     events: list[dict[str, Any]] = field(default_factory=list)  # brief/proposal updates for the stream
 
 
@@ -57,9 +67,15 @@ class Tool:
         return {"name": self.name, "description": self.description, "parameters": self.parameters}
 
 
-def _diagnostics(diags: list[Diagnostic]) -> list[dict[str, Any]]:
+def _diagnostics(diags: list[Diagnostic], *, explained: bool = False) -> list[dict[str, Any]]:
     keep = ("code", "severity", "message", "node_id", "edge_id", "path", "hint")
-    return [{k: getattr(d, k) for k in keep if getattr(d, k, None) not in (None, "")} for d in diags]
+    out = []
+    for d in diags:
+        item = {k: getattr(d, k) for k in keep if getattr(d, k, None) not in (None, "")}
+        if explained and (h := diagnostic_help(d.code)):
+            item["what"], item["fix"] = h["what"], h["fix"]
+        out.append(item)
+    return out
 
 
 def compact_workflow(wf: Workflow) -> dict[str, Any]:
@@ -167,6 +183,152 @@ async def set_brief(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True}
 
 
+# ------------------------------------------------------- S15: debug, test ----
+async def get_problems(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    diags = await ctx.validate(ctx.workflow)
+    return {"ok": True, "problems": _diagnostics(diags, explained=True), "count": len(diags)}
+
+
+async def list_runs(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.runs is None:
+        return {"ok": False, "error": "runs are not available here"}
+    return {"ok": True, "runs": await ctx.runs.recent(int(args.get("limit") or 10))}
+
+
+async def get_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.runs is None:
+        return {"ok": False, "error": "runs are not available here"}
+    return await ctx.runs.describe(str(args.get("run_id") or ""))
+
+
+async def _runnable(ctx: ToolContext) -> str | None:
+    # organisation policies are enforced at publish; like the Run panel, they do not stop a try-out
+    errors = [d for d in await ctx.validate(ctx.workflow) if d.severity == "error" and d.code not in POLICY_CODES]
+    if errors:
+        return f"fix the {len(errors)} validation error(s) first: {errors[0].code} {errors[0].message}"
+    if ctx.runs is not None and (risks := unaccepted_risks(ctx.runs.workflow, ctx.workflow, ctx.registry)):
+        return (
+            "a test run only runs what the person has accepted for "
+            + ", ".join(risks[:3])
+            + ": propose the change, and test it after it is accepted"
+        )
+    return None
+
+
+def _flat(wf: Workflow) -> tuple[list[Any], list[Any]]:
+    """Every node and resource, subgraphs included."""
+    nodes, resources = list(wf.nodes), list(wf.resources)
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            with contextlib.suppress(Exception):  # an invalid subgraph never runs
+                inner_nodes, inner_resources = _flat(wf.subworkflow(n))
+                nodes += inner_nodes
+                resources += inner_resources
+    return nodes, resources
+
+
+ENDPOINT_KEYS = ("base_url", "url", "headers", "endpoint", "azure_endpoint", "command", "args")
+
+
+def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[str]:
+    """What the working copy would run that the person has not accepted and a dry run does not stub: new or changed
+    code (script steps, Python tools, custom code steps), and secrets sent to a new or changed address."""
+    old_nodes = {n.id: n for n in _flat(saved)[0]}
+    old_resources = {r.name: r for r in _flat(saved)[1]}
+    out: list[str] = []
+    nodes, resources = _flat(working)
+    for n in nodes:
+        m = registry.get(n.type) if registry else None
+        runs_code = n.type == "core.script" or (m is not None and "code_exec" in (m.side_effects or []))
+        old = old_nodes.get(n.id)
+        if runs_code and (old is None or old.type != n.type or old.config != n.config):
+            out.append(f"the new or changed code step '{n.name}'")
+    for r in resources:
+        old = old_resources.get(r.name)
+        if old is not None and old.type == r.type and old.config == r.config:
+            continue
+        if r.type == "tool.python":
+            out.append(f"the new or changed Python tool '{r.name}'")
+        elif secret_refs(r.config) and _endpoint(r.config) != (_endpoint(old.config) if old else _endpoint({})):
+            out.append(f"'{r.name}', which sends a secret to a new address")
+    return out
+
+
+def secret_refs(value: Any) -> set[str]:
+    """The secret names a config refers to ({"$secret": NAME}), at any depth."""
+    if isinstance(value, dict):
+        if isinstance(value.get("$secret"), str):
+            return {value["$secret"]}
+        return set().union(*(secret_refs(v) for v in value.values())) if value else set()
+    if isinstance(value, list):
+        return set().union(*(secret_refs(v) for v in value)) if value else set()
+    return set()
+
+
+def _endpoint(config: dict[str, Any]) -> list[Any]:
+    return [config.get(k) for k in ENDPOINT_KEYS]
+
+
+async def run_test(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.runs is None:
+        return {"ok": False, "error": "test runs are not available here"}
+    if problem := await _runnable(ctx):
+        return {"ok": False, "error": problem}
+    if not isinstance(args.get("input"), dict):
+        return {"ok": False, "error": 'input must be an object of channel values, e.g. {"question": "..."}'}
+    expect = args.get("expect") if isinstance(args.get("expect"), dict) else None
+    return await ctx.runs.test(ctx.workflow, args["input"], mocks=args.get("mocks") or None, expect=expect)
+
+
+async def reproduce_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.runs is None:
+        return {"ok": False, "error": "runs are not available here"}
+    if problem := await _runnable(ctx):
+        return {"ok": False, "error": problem}
+    return await ctx.runs.reproduce(ctx.workflow, str(args.get("run_id") or ""))
+
+
+async def propose_tests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    raw = args.get("tests")
+    if not isinstance(raw, list) or not raw:
+        return {"ok": False, "error": "send a non-empty list of tests"}
+    tests = []
+    for i, t in enumerate(raw[:10]):
+        if not isinstance(t, dict) or not isinstance(t.get("input"), dict) or not t.get("name"):
+            return {"ok": False, "error": f"test #{i} needs a name and an input object"}
+        try:
+            expect = Expect.model_validate(t.get("expect") or {}).model_dump(mode="json", exclude_none=True)
+        except ValidationError as exc:
+            return {"ok": False, "error": f"test #{i} expect: {exc.errors()[0]['msg']}"}
+        tests.append({"name": str(t["name"])[:200], "input": t["input"], "expect": expect,
+                      "mocks": t.get("mocks") if isinstance(t.get("mocks"), dict) else {}})  # fmt: skip
+    ctx.proposal.tests.extend(tests)
+    if summary := str(args.get("summary") or "").strip():
+        ctx.proposal.summary.append(summary)
+    return {"ok": True, "tests": len(tests), "note": "saved as test cases when the person accepts"}
+
+
+async def search_guide(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    found = docs.search(str(args.get("query") or ""))
+    return {"ok": True, "results": found} if found else {"ok": True, "results": [], "note": "nothing found"}
+
+
+async def list_models(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    models = [{"id": m.id, "label": m.label, "tools": m.tools} for m in ctx.registry.models()]
+    providers = [
+        {"id": p.id, "label": p.label, "key_secret": p.key_env, "local": p.local} for p in ctx.registry.providers()
+    ]
+    return {"ok": True, "models": models, "providers": providers, "secrets_set": ctx.secret_names}
+
+
+async def save_note(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    note = " ".join(str(args.get("note") or "").split())
+    if not note:
+        return {"ok": False, "error": "the note is empty"}
+    ctx.proposal.notes.append(note[:500])
+    return {"ok": True, "note": "added to the project's Copilot notes when the person accepts"}
+
+
 _STR_LIST = {"type": "array", "items": {"type": "string"}}
 TOOLS: dict[str, Tool] = {
     t.name: t
@@ -227,6 +389,82 @@ TOOLS: dict[str, Tool] = {
                 "required": ["summary", "commands"],
             },
             propose_changes,
+            writes=True,
+        ),
+        Tool(
+            "get_problems",
+            "The workflow's validation problems, each with a plain explanation and how to fix it.",
+            {"type": "object", "properties": {}},
+            get_problems,
+        ),
+        Tool(
+            "list_runs",
+            "Recent runs of this workflow: id, status and error.",
+            {"type": "object", "properties": {"limit": {"type": "integer"}}},
+            list_runs,
+        ),
+        Tool(
+            "get_run",
+            "What happened in one run: status, error with an explanation, input, output and each step.",
+            {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]},
+            get_run,
+        ),
+        Tool(
+            "search_guide",
+            "Search the AgentCanvas user guide.",
+            {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            search_guide,
+        ),
+        Tool(
+            "list_models",
+            "The AI models and providers this server knows, and which project secrets are set (names only).",
+            {"type": "object", "properties": {}},
+            list_models,
+        ),
+        Tool(
+            "run_test",
+            "Run the workflow as it would be with your proposal, once, as a dry run (risky tools are stubbed). "
+            "`mocks` maps a model resource name to scripted replies to avoid model calls; `expect` is "
+            '{"status", "channels": {name: value}, "route": [node ids]}.',
+            {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "object"},
+                    "mocks": {"type": "object"},
+                    "expect": {"type": "object"},
+                },
+                "required": ["input"],
+            },
+            run_test,
+            writes=True,
+        ),
+        Tool(
+            "reproduce_run",
+            "Rerun a past run's input on the workflow as it would be with your proposal, replaying the run's "
+            "recorded model replies and tool outputs when it has them. Use it to check that a fix works.",
+            {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]},
+            reproduce_run,
+            writes=True,
+        ),
+        Tool(
+            "propose_tests",
+            "Propose saved test cases (from the brief's success criteria): each {name, input, expect, mocks?}.",
+            {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "tests": {"type": "array", "items": {"type": "object"}},
+                },
+                "required": ["tests"],
+            },
+            propose_tests,
+            writes=True,
+        ),
+        Tool(
+            "save_note",
+            "Propose a short note for the project's Copilot notes (a convention or preference to remember).",
+            {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]},
+            save_note,
             writes=True,
         ),
     )

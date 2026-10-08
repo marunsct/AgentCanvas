@@ -26,6 +26,13 @@ class CopilotSettings(BaseModel):
     base_url: str | None = Field(None, max_length=500)
     api_key: dict[str, str] | None = Field(None, description='{"$secret": NAME}')
     token_cap: int = Field(DEFAULT_TOKEN_CAP, ge=1_000, le=10_000_000, description="per conversation, in + out")
+    ask_model: str | None = Field(
+        None, pattern=r"^[a-z0-9_\-]+:.+$", description="split mode: a cheaper model for Ask-mode questions"
+    )
+    privacy: Literal["standard", "local_only"] = Field(
+        "standard", description="local_only: the Copilot may only use models running on your own machines"
+    )
+    notes: str = Field("", max_length=4000, description="project conventions the Copilot always reads")
 
 
 class ResolvedModel(BaseModel):
@@ -38,15 +45,34 @@ def load(project_settings: dict[str, Any] | None) -> CopilotSettings:
     return CopilotSettings.model_validate((project_settings or {}).get("copilot") or {})
 
 
+def _endpoint_for(model: str, settings: CopilotSettings, project_settings: dict[str, Any] | None) -> dict[str, Any]:
+    """The base URL and key of the separate model or the project default when `model` is from the same provider
+    (a self-hosted server answers both), else none: the provider's own endpoint and key."""
+    provider = model.partition(":")[0]
+    if settings.model and settings.model.partition(":")[0] == provider:
+        return {k: v for k, v in (("base_url", settings.base_url), ("api_key", settings.api_key)) if v}
+    default = (project_settings or {}).get("default_model") or {}
+    if str(default.get("model", "")).partition(":")[0] == provider:
+        return {k: v for k, v in default.items() if k in ("base_url", "api_key")}
+    return {}
+
+
 def resolve(
     settings: CopilotSettings,
     project_settings: dict[str, Any] | None,
     wf: Workflow,
     registry: Registry,
     policies: list[Policy],
+    mode: str = "build",
 ) -> ResolvedModel:
-    """The Copilot's model for this workflow, or InvalidInput saying what to change."""
-    if settings.source == "separate":
+    """The Copilot's model for this workflow (and mode), or InvalidInput saying what to change."""
+    if mode == "ask" and settings.ask_model:
+        chosen = ResolvedModel(
+            model=settings.ask_model,
+            config=_endpoint_for(settings.ask_model, settings, project_settings),
+            origin="Copilot settings (questions)",
+        )
+    elif settings.source == "separate":
         if not settings.model:
             raise InvalidInput("the Copilot is set to use a separate model, but none is chosen in Copilot settings")
         config = {k: v for k, v in (("base_url", settings.base_url), ("api_key", settings.api_key)) if v}
@@ -63,6 +89,13 @@ def resolve(
             )
         config = {k: v for k, v in res.config.items() if k in ("base_url", "api_key")}
         chosen = ResolvedModel(model=str(res.config["model"]), config=config, origin=f"workflow model '{res.name}'")
+    if settings.privacy == "local_only":
+        provider = registry.provider(chosen.model.partition(":")[0])
+        if provider is None or not provider.local:
+            raise InvalidInput(
+                f"the Copilot is set to local models only, but {chosen.model} is not a local model; "
+                "choose a local model (Ollama, LM Studio, vLLM, llama.cpp) in Copilot settings"
+            )
     info = registry.model(chosen.model)
     if info is not None and not info.tools:
         raise InvalidInput(f"{chosen.model} cannot call tools, which the Copilot needs; choose another model")

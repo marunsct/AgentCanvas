@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.registry import NodeManifest, Registry
+from agentcanvas.validation.help import catalog
 
 GUIDE = Path(__file__).parent / "knowledge" / "guide.md"
 MAX_DESCRIPTION = 220
@@ -79,6 +80,9 @@ def build_pack(registry: Registry, templates: dict[str, dict[str, Any]]) -> Pack
     for kind in ("runtime", "resource", "middleware", "trigger"):
         blocks = sorted((m for m in registry.all() if m.kind == kind), key=lambda m: m.type)
         parts.extend(block_summary(m) for m in blocks)
+    parts.append("\n# Problem codes (what each validation code means and how to fix it)\n")
+    for code, h in catalog()["diagnostics"].items():
+        parts.append(f"- {code}: {h['what']} Fix: {h['fix']}")
     parts.append("\n# Starter templates\n")
     for name, doc in templates.items():
         parts.append(f"- `{name}`: {doc.get('name', name)}. {_short(doc.get('description', ''))}")

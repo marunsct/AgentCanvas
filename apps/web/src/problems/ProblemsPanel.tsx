@@ -3,6 +3,7 @@ import { useEditor } from "../editor/store";
 import { findElement } from "../ir/model";
 import { diagnosticHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
+import { useCopilot } from "../copilot/copilot";
 
 const ICON = { error: "⛔", warning: "⚠", info: "ℹ" } as const;
 
@@ -17,6 +18,12 @@ export function ProblemsPanel() {
       <div className="problems-head">
         Problems <span className="badge err">{counts.error}</span> <span className="badge warn">{counts.warning}</span>{" "}
         <span className="badge">{counts.info}</span>
+        {counts.error > 0 && (
+          <button type="button" className="link small" data-testid="ask-copilot-fix"
+            onClick={() => useCopilot.getState().askFor("Find and fix the problems in this workflow.", "build")}>
+            ✦ Ask the Copilot to fix these
+          </button>
+        )}
       </div>
       {diagnostics.length === 0 ? (
         <p className="muted ok-text">No problems — the workflow can run.</p>

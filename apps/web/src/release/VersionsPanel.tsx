@@ -7,6 +7,7 @@ import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import { ContractSection } from "./ContractSection";
+import { ExportSection } from "./ExportSection";
 import { PublishSection } from "./PublishSection";
 import { TriggersSection } from "./TriggersSection";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -57,11 +58,7 @@ export function VersionsPanel() {
         <button type="submit" className="primary" disabled={save.isPending}>Save version</button>
       </form>}
       {save.error && <p className="error-text small">{(save.error as Error).message}</p>}
-      <p className="small">
-        <button type="button" className="link" data-testid="export-draft"
-          onClick={() => download(`/workflows/${wf.id}/export.zip`, "export.zip")}>
-          ⬇ Export draft as a Python project</button>
-      </p>
+      <ExportSection wfId={wf.id} versions={versions.data ?? []} />
       {downloadError && <p className="error-text small" role="alert">{downloadError}</p>}
       {diff && (
         <div className="diff-box" data-testid="diff-summary">

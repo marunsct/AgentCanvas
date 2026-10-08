@@ -11,7 +11,8 @@ import zipfile
 
 from test_versions import HIGH_CASE, new_triage
 
-from agentcanvas.adapters.langchain.packager import _env_example, dependencies, package_name
+from agentcanvas.adapters.langchain import deploykit
+from agentcanvas.adapters.langchain.packager import dependencies, package_name
 from agentcanvas.ir.models import Workflow
 
 P = "/v1/projects/prj_default"
@@ -39,7 +40,7 @@ def test_package_metadata(triage):
              "config": {"url": "https://x.example.com", "headers": {"Authorization": {"$secret": "CRM_TOKEN"}}}},
         ]}
     )  # fmt: skip
-    env = _env_example(wf)
+    env = deploykit.env_example(deploykit.facts(wf, "triage", "1.0.0"), deploykit.TARGETS["local"])
     assert "OPENAI_API_KEY=" in env and "ANTHROPIC_API_KEY=" in env and "CRM_TOKEN=" in env
 
 
@@ -109,4 +110,69 @@ async def test_export_zip_runs_its_own_tests(app, api_client, tmp_path):
         capture_output=True, text=True, timeout=240, check=False,
     )  # fmt: skip
     assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-2000:]
-    assert "3 passed" in proc.stdout  # vendored library, builds, the saved case
+    assert "6 passed" in proc.stdout  # vendored library, builds, the saved case; the service: auth, wait, stream
+
+
+async def test_deploy_kit_for_every_target(api_client, tmp_path):
+    """S16: each target gets the service, its own deploy files only, four filled-in guides, doctor and smoke."""
+    import yaml
+
+    wf = await new_triage(api_client)
+    plan = (await api_client.get(f"/v1/workflows/{wf['id']}/export/plan", params={"target": "kubernetes"})).json()
+    assert [t["id"] for t in plan["targets"]] == ["local", "server", "kubernetes", "cloudrun", "aws", "azure"]
+    pre = plan["prerequisites"]
+    assert {"kubectl", "helm", "docker"} <= {t["name"] for t in pre["tools"]}
+    assert {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"} <= {k["name"] for k in pre["keys"]}
+    assert pre["database"]["needed"] and pre["database"]["shared"]  # triage pauses for an approval
+    assert "api.openai.com" in {h["host"] for h in pre["hosts"]}
+    bad = await api_client.get(f"/v1/workflows/{wf['id']}/export.zip", params={"target": "mainframe"})
+    assert bad.status_code == 422
+
+    expect = {
+        "local": {"deploy/local/docker-compose.yml"},
+        "server": {"deploy/server/docker-compose.yml", "deploy/server/Caddyfile"},
+        "kubernetes": {"deploy/kubernetes/chart/Chart.yaml", "deploy/kubernetes/chart/templates/deployment.yaml"},
+        "cloudrun": {"deploy/cloudrun/deploy.sh"},
+        "aws": {"deploy/aws/task-definition.json"},
+        "azure": {"deploy/azure/deploy.sh"},
+    }
+    for target, own in expect.items():
+        r = await api_client.get(f"/v1/workflows/{wf['id']}/export.zip", params={"target": target})
+        assert r.status_code == 200, r.text
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        names = {n.split("/", 1)[1] for n in z.namelist()}
+        common = {"Makefile", "Dockerfile", ".env.example", "workflow.ir.json", "src/triage/app.py",
+                  "src/triage/checks.py", "src/triage/smoke.py", "src/triage/kit.json", "tests/test_service.py",
+                  f"deploy/{target}/deploy.sh", "docs/1-PREREQUISITES.md", "docs/2-SETUP.md", "docs/3-DEPLOY.md",
+                  "docs/4-VERIFY-AND-OPERATE.md"}  # fmt: skip
+        assert common | own <= names, (common | own) - names
+        assert not {n for n in names if n.startswith("deploy/") and not n.startswith(f"deploy/{target}/")}
+        script = z.getinfo(f"triage/deploy/{target}/deploy.sh")
+        assert (script.external_attr >> 16) & 0o111  # executable
+        out = tmp_path / target
+        z.extractall(out)
+        root = out / "triage"
+        proc = subprocess.run(
+            ["bash", "-n", str(root / f"deploy/{target}/deploy.sh")], capture_output=True, text=True, check=False
+        )
+        assert proc.returncode == 0, proc.stderr
+        kit = json.loads((root / "src/triage/kit.json").read_text())
+        assert kit["target"] == target and kit["needs_database"] and kit["example_input"]
+        pre_md = (root / "docs/1-PREREQUISITES.md").read_text()
+        assert "OPENAI_API_KEY" in pre_md and "api.anthropic.com" in pre_md
+        for p in root.glob("deploy/*/docker-compose.yml"):
+            assert "app" in yaml.safe_load(p.read_text())["services"]
+        if target == "aws":
+            json.loads((root / "deploy/aws/task-definition.json").read_text())
+        for p in ("app.py", "checks.py", "smoke.py"):
+            compile((root / "src/triage" / p).read_text(), p, "exec")
+
+    # make doctor: settings are reported missing with the guide section that fixes them
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path)}
+    proc = subprocess.run([sys.executable, "src/triage/checks.py", "--no-tools"], cwd=tmp_path / "local/triage",
+                          env=env, capture_output=True, text=True, timeout=60, check=False)  # fmt: skip
+    assert proc.returncode == 1 and "OPENAI_API_KEY: missing" in proc.stdout and "2-SETUP.md" in proc.stdout
+    subprocess.run([sys.executable, "src/triage/checks.py", "--init"], cwd=tmp_path / "local/triage", env=env,
+                   check=True, capture_output=True)  # fmt: skip
+    assert "API_KEYS=" in (tmp_path / "local/triage/.env").read_text()
+    assert "API_KEYS=\n" not in (tmp_path / "local/triage/.env").read_text()

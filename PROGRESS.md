@@ -5,7 +5,7 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 
 - **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-07. Sprint 14 (AI Copilot I → v0.6.0) is done: the Copilot briefs, plans and builds workflows as proposals previewed on the canvas. Before it, a whole-codebase review's 11 findings were fixed.
+- **Last updated:** 2026-10-07. Sprint 16 (Export deploy kit → v0.8.0) is done: an export is a deployable service for the target you pick (your computer, a Linux server, Kubernetes, Cloud Run, AWS, Azure) with four generated guides, `make doctor` and `make smoke`.
 - **Previously:** 2026-10-06. Sprint 13 is merged (#8; tag `v0.5.0` is the maintainer's call). #9 adds the user guide, models from any provider (local ones included) with per-provider keys, a first-run model setup screen, and `make docker-up`.
 
 ## At a glance
@@ -31,7 +31,9 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 | **User guide, any-provider and local models, first-run setup, Docker app** | ✅ **done** (#9) |
 | S14 AI Copilot I → v0.6.0 | ✅ done (merged in #15; tag `v0.6.0` pending) |
 | S15 Open doors (MCP/A2A endpoints, connectors, trace export) → v0.7.0 | ✅ done (merged in #17; tag `v0.7.0` pending) |
-| S16–S32 (any framework as a node, ship to users, Copilot II, deploy kit, Knowledge Studio, framework adapters) | ⏸ paused by the owner after S15, see [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S18 AI Copilot II and debug assistant → v0.8.0 | ✅ done (built ahead of S16–S17 at the owner's request) |
+| S19 Export deploy kit → v0.9.0 | ✅ done (built ahead of S16–S17 at the owner's request) |
+| S16–S17, S20–S32 (any framework as a node, ship to users, Knowledge Studio, framework adapters) | ⏸ paused by the owner, see [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
 | Later: GA backlog | ⬜ pending |
 
 **Test totals** at the end of S13:
