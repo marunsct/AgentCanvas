@@ -20,8 +20,8 @@ updated one wins; fix the other in the same PR.
 | Git tags | **none pushed.** v0.1.0 … v0.9.0 are all left to the owner (see §2) |
 | Next sprint | **S16 Any framework as a node → v0.10.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)); then S17 Ship to users → v0.11.0, then S20 onward |
 | Work status | **Paused.** Do not start S16 or later until the owner says so in the project chat |
-| Open PRs | #19 until it is merged |
-| CI | green on #19 before merge (api, web, e2e, docs, connectors, export, audit, images) |
+| Open PRs | the UI refresh (themes) PR; S16 is in progress |
+| CI | green on main after #19 (api, web, e2e, docs, connectors, export, audit, images) |
 
 **Test totals at the end of S18/S19** (all green):
 
@@ -182,7 +182,7 @@ kind deployed for real), `images` (Docker builds, Trivy, prod and local compose 
 | S14 AI Copilot I | #15 | `958f9cd` | v0.6.0 |
 | S15 Open doors + end-to-end review fixes | #17 | `19de2dc` | v0.7.0 |
 | Handover document | #18 | `9c9ef6e` | — |
-| S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | (fill after merge) | v0.8.0, v0.9.0 |
+| S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | 7cca0c6 | v0.8.0, v0.9.0 |
 
 ## 11. Sprint-end checklist
 
