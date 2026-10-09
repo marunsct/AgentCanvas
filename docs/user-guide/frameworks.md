@@ -23,12 +23,51 @@ The Problems tab explains the rest:
 | P001 | The workflow's framework cannot run this block, or the framework is not installed on this server |
 | P002 | The framework only imitates this block, so it may behave a little differently (the message says how) |
 | P003 | The workflow could move to some installed frameworks but not others |
-| P004 | This AI block is designed for another framework than the workflow's; for now it runs on the workflow's |
+| P004 | This AI block is designed for another workflow framework than the workflow's; for now it runs on the workflow's |
+| P005 | The agent framework this AI agent is designed for cannot take something wired into it (add-ons, some tools, its answer shape) |
+| P006 | The agent framework this AI agent is designed for is not installed on this server, so runs here fail until it is |
 
 ## An AI block of its own framework
 
 An AI step, AI agent or Planning Agent can be **Designed for** another framework than the workflow (in the block's
 settings). Until mixed-framework flows arrive, the block still runs on the workflow's framework and P004 reminds you.
+
+## Design an agent in any agent framework
+
+An **AI agent** block can be designed as a native agent of a popular agent framework. In the block's settings,
+**Designed for** lists them under *Agent frameworks*:
+
+| Framework | Packages it uses | Model API |
+|---|---|---|
+| OpenAI Agents SDK | `openai-agents` | OpenAI-compatible |
+| CrewAI | `crewai` | OpenAI-compatible |
+| Google ADK | `google-adk`, `litellm` | OpenAI-compatible |
+| Pydantic AI | `pydantic-ai-slim[openai]` | OpenAI-compatible |
+| Agno | `agno`, `openai` | OpenAI-compatible |
+| Strands Agents | `strands-agents[openai]` | OpenAI-compatible |
+| LlamaIndex | `llama-index-core`, `llama-index-llms-openai-like` | OpenAI-compatible |
+| Microsoft Agent Framework | `agent-framework-core`, `agent-framework-openai` | OpenAI-compatible |
+| Claude Agent SDK | `claude-agent-sdk` | Anthropic |
+
+Pick one and the block is generated as that framework's own code. You design it exactly as before: its
+instructions, the model wired into it, its tools (Python functions from the workspace, HTTP tools and MCP servers),
+which tools need approval, and an answer shape. What changes:
+
+- **It runs as that framework.** A run calls the generated agent. Its model calls still go through the model wired
+  into the block, so the run is traced, costed, mocked and replayed like any other AI step, and your API keys stay
+  on the server.
+- **View the code.** **View … code** in the block's settings shows the module that runs, updated as you edit.
+- **Take it away.** **Export as … project** downloads a ready-to-run project for that framework: the agent, its
+  tools, a small `main.py`, pinned packages, a README and tests that run without an API key (`uv run pytest`).
+  Exporting the whole workflow also puts each designed agent's code in `agents/` and adds its packages.
+- **Approvals pause the run.** A tool that needs approval pauses the run as usual; when you approve, the agent step
+  starts again from its beginning with your answer.
+- **Typed answers.** An answer shape becomes the framework's own structured output (a Pydantic class), and the
+  answer lands in the block's `structured_response` output.
+
+Each framework takes a little less than LangGraph does: add-ons (middleware) and the more unusual tool kinds cannot
+be wired into a designed agent, and P005 says which. Only the LangGraph framework can run designed agents today,
+so other workflow frameworks show them as blocks they cannot run.
 
 ## What each framework can do
 

@@ -2,7 +2,7 @@
 import { diagnosticHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
 import { useManifests } from "../api/queries";
-import { EnginePicker } from "../editor/Frameworks";
+import { DesignedAgent, EnginePicker } from "../editor/Frameworks";
 import { useEditor } from "../editor/store";
 import { findElement, isResource, type IRNode } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
@@ -48,6 +48,7 @@ export function Inspector() {
         </label>
       )}
       {!res && <EnginePicker node={el as IRNode} />}
+      {!res && <DesignedAgent node={el as IRNode} />}
       {mine.length > 0 && (
         <ul className="diag-list">
           {mine.map((d, i) => (

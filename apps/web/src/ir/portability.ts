@@ -23,12 +23,22 @@ export interface Fit {
   emulated: { id: string; name: string; type: string }[];
 }
 
-export function portability(wf: Pick<WF, "nodes" | "resources">, frameworks: AdapterManifest[]): Fit[] {
+/** S21: an Agent block designed for an agent framework (OpenAI Agents, CrewAI, ...) runs through a framework
+ * whose manifest has the `agent_designs` ability; the others cannot run it. */
+export function designed(el: { type: string; engine?: string | null }, agentFrameworks: ReadonlySet<string>): boolean {
+  return el.type === "core.agent" && Boolean(el.engine) && agentFrameworks.has(el.engine as string);
+}
+
+export function portability(
+  wf: Pick<WF, "nodes" | "resources">, frameworks: AdapterManifest[], agentFrameworks: ReadonlySet<string> = new Set(),
+): Fit[] {
   return frameworks.map((m) => {
     const blockers: Fit["blockers"] = [];
     const emulated: Fit["emulated"] = [];
     for (const el of [...wf.nodes, ...wf.resources]) {
-      const level = support(m, el.type);
+      const level = designed(el as { type: string; engine?: string | null }, agentFrameworks)
+        ? (m.abilities ?? []).includes("agent_designs") ? "native" : "unsupported"
+        : support(m, el.type);
       const entry = { id: el.id, name: el.name, type: el.type };
       if (level === "unsupported") blockers.push(entry);
       else if (level === "emulated") emulated.push(entry);

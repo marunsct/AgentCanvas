@@ -480,3 +480,212 @@ def mcp_agent_node(
 
     run.__name__ = name
     return run
+
+
+# ------------------------------------------------------- designed on the canvas (S21) ----
+_JSON_PY: dict[str, Any] = {"string": str, "integer": int, "number": float, "boolean": bool}
+
+
+def _py_type(prop: Any) -> Any:
+    """The Python type a framework reads from a tool argument's JSON Schema."""
+    from typing import Literal
+
+    if not isinstance(prop, dict):
+        return Any
+    if "enum" in prop and prop["enum"] and all(isinstance(v, str) for v in prop["enum"]):
+        return Literal[tuple(prop["enum"])]  # pyright: ignore[reportInvalidTypeForm]
+    t = prop.get("type")
+    if isinstance(t, list):
+        t = next((x for x in t if x != "null"), None)
+    if t in _JSON_PY:
+        return _JSON_PY[t]
+    if t == "array":
+        return list[_py_type(prop.get("items") or {})]  # pyright: ignore[reportInvalidTypeForm]
+    if t == "object":
+        return dict[str, Any]
+    for key in ("anyOf", "oneOf"):
+        options = [o for o in prop.get(key) or [] if isinstance(o, dict) and o.get("type") != "null"]
+        if options:
+            return _py_type(options[0])
+    return Any
+
+
+def _identifier(name: str) -> str:
+    import re
+
+    out = re.sub(r"\W", "_", name) or "tool"
+    return out if not out[0].isdigit() else f"tool_{out}"
+
+
+def plain_tool(t: Any, call: Callable[[Any, dict[str, Any]], Awaitable[Any]]) -> Callable:
+    """A LangChain tool as a plain async function with a real signature and docstring, which every framework can
+    turn into a tool of its own. `call(tool, args)` runs it (through LangChain, so it is traced and recorded)."""
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    spec = convert_to_openai_tool(t)["function"]
+    schema = spec.get("parameters") or {}
+    props: dict[str, Any] = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    params, annotations, doc_args = [], {}, []
+    for arg in sorted(props, key=lambda a: a not in required):  # required arguments first
+        hint = _py_type(props[arg])
+        if arg in required:
+            params.append(inspect.Parameter(arg, inspect.Parameter.KEYWORD_ONLY, annotation=hint))
+        else:
+            hint = hint | None
+            params.append(inspect.Parameter(arg, inspect.Parameter.KEYWORD_ONLY, annotation=hint, default=None))
+        annotations[arg] = hint
+        if props[arg].get("description"):
+            doc_args.append(f"    {arg}: {props[arg]['description']}")
+
+    async def fn(**kwargs: Any) -> str:
+        args = {k: v for k, v in kwargs.items() if v is not None or k in required}
+        out = await call(t, args)
+        return out if isinstance(out, str) else json.dumps(out, default=str)
+
+    fn.__name__ = fn.__qualname__ = _identifier(spec["name"])
+    fn.__doc__ = (spec.get("description") or spec["name"]) + ("\n\nArgs:\n" + "\n".join(doc_args) if doc_args else "")
+    fn.__signature__ = inspect.Signature(params, return_annotation=str)  # pyright: ignore[reportFunctionMemberAccess]
+    fn.__annotations__ = {**annotations, "return": str}
+    return fn
+
+
+def _conversation(state: Any) -> str:
+    """What a designed agent is asked: the latest message, after the earlier turns of the conversation if any."""
+    messages = list(state.get("messages") or [])
+
+    def line(m: Any) -> tuple[str, str]:
+        role = getattr(m, "type", None) or (m.get("role") if isinstance(m, dict) else "")
+        content = getattr(m, "content", None) if not isinstance(m, dict) else m.get("content")
+        if not isinstance(content, str):
+            content = json.dumps(content, default=str)
+        return {"human": "user", "ai": "assistant"}.get(str(role), str(role)), content
+
+    turns = [line(m) for m in messages if line(m)[0] in ("user", "assistant") and line(m)[1]]
+    if not turns:
+        return ""
+    if len(turns) == 1:
+        return turns[-1][1]
+    earlier = "\n".join(f"{role}: {text}" for role, text in turns[:-1])
+    return f"The conversation so far:\n{earlier}\n\nThe latest message:\n{turns[-1][1]}"
+
+
+# (thread, namespace, step, nth approval) -> the tool call a person was asked about, so that a designed agent's rerun
+# after the pause only uses the decision for that exact call (interrupts resume by position, not by content)
+_ASKED: dict[tuple[str, str, str, int], str] = {}
+
+
+def design_module(package: str | None, name: str) -> Any:
+    """The generated module of the designed agent `name` in an exported project (`<package>/agents/<name>.py`)."""
+    import importlib
+
+    return importlib.import_module(f"{package}.agents.{name}" if package else f"agents.{name}")
+
+
+def designed_agent_node(
+    *,
+    node_id: str,
+    name: str,
+    framework: str,
+    label: str,
+    api: str,
+    requires: str,
+    source: str | None = None,
+    module: Any = None,
+    model: Any,
+    tools: list[Any],
+    approve_tools: list[str] | None = None,
+    structured: bool = False,
+) -> Callable:
+    """An Agent block designed for another framework, run as one step of a LangGraph flow (S21 mixed flows).
+
+    `source` (or an imported `module`) is the agent written in that framework's own style by `agentcanvas.designs`:
+    `build(tools, model=, base_url=, api_key=)` and `ask(agent, text)`. The canvas model reaches it through the model
+    bridge, the canvas tools as plain functions; tools in `approve_tools` ask a person first, as in a LangGraph agent
+    (the step then runs again from the start with the answer, so the model is asked again)."""
+    from langgraph.config import get_config
+    from langgraph.errors import GraphInterrupt
+
+    from agentcanvas.adapters.langchain.bridge import model_bridge
+
+    approve = set(approve_tools or [])
+    loaded: dict[str, Any] = {"module": module}
+
+    def agent_module() -> Any:
+        if loaded["module"] is None:
+            import types
+
+            mod = types.ModuleType(f"agentcanvas_design_{name}")
+            exec(compile(source or "", f"<{label} agent {name}>", "exec"), mod.__dict__)  # our generated code
+            loaded["module"] = mod
+        return loaded["module"]
+
+    async def run(state: Any) -> dict:
+        try:
+            __import__(requires)
+        except ImportError as exc:
+            raise AgentError(
+                f"{label} is not installed on this server, so the agent '{name}' cannot run ({exc})"
+            ) from None
+        config = get_config()
+        waiting: list[GraphInterrupt] = []
+        conf = config.get("configurable") or {}
+        where = (str(conf.get("thread_id")), str(conf.get("checkpoint_ns", "")), node_id)
+        asked_count = 0
+
+        async def call(t: Any, args: dict[str, Any]) -> Any:
+            nonlocal asked_count
+            if t.name in approve:
+                from langchain_core.runnables.config import var_child_runnable_config
+
+                asking = json.dumps({"tool": t.name, "args": args}, sort_keys=True, default=str)
+                slot = (*where, asked_count)
+                asked_count += 1
+                token = var_child_runnable_config.set(config)  # frameworks may run tools outside the step's context
+                try:
+                    allowed = _approve(node_id, name, framework, asking)
+                except GraphInterrupt as asked:
+                    _ASKED[slot] = asking
+                    waiting.append(asked)
+                    return (
+                        "This tool call is waiting for a person's approval. Do not call it again; say you are waiting."
+                    )
+                finally:
+                    var_child_runnable_config.reset(token)
+                # the step reran from its start: a decision only counts for the very call the person saw
+                if _ASKED.pop(slot, None) != asking:
+                    return (
+                        "This tool call was not run: it differs from the call a person approved or rejected. "
+                        "Tell the person what you wanted to do so they can ask again."
+                    )
+                if not allowed:
+                    return "A person rejected this tool call. Do not try it again."
+            return await t.ainvoke(args, config=config)
+
+        functions = [plain_tool(t, call) for t in tools]
+        text = _conversation(state)
+        bridge = await model_bridge()
+        with bridge.serving(model, config) as key:
+            base_url = bridge.root + ("/v1" if api == "openai" else "")
+            try:
+                mod = agent_module()
+                agent = mod.build(functions, model="canvas", base_url=base_url, api_key=key)
+                answer = await mod.ask(agent, text)
+            except Exception as exc:
+                if waiting:
+                    raise waiting[0] from None
+                raise AgentError(f"the {label} agent '{name}' failed: {type(exc).__name__}: {exc}") from exc
+        if waiting:  # a tool asked for approval: pause here, as a LangGraph agent would
+            raise waiting[0]
+        update: dict[str, Any] = {}
+        if structured and answer is not None and not isinstance(answer, str):
+            data = answer.model_dump(mode="json") if hasattr(answer, "model_dump") else answer
+            update["structured_response"] = data
+            reply = json.dumps(data, default=str)
+        else:
+            reply = _text(answer)
+        _trace(node=name, framework=framework, input=text, output=reply)
+        return {**update, "messages": [AIMessage(content=reply, name=name)]}
+
+    run.__name__ = name
+    return run

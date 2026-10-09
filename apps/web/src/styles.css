@@ -821,3 +821,9 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .framework-badge.ok { color: var(--ok, #059669); border-color: color-mix(in srgb, var(--ok, #059669) 40%, transparent); }
 .framework-badge.blocked { color: var(--warn, #b45309); border-color: color-mix(in srgb, var(--warn, #b45309) 40%, transparent); cursor: pointer; }
 .framework-badge.mine { font-weight: 600; }
+
+/* S21: an Agent block designed for an agent framework */
+.designed-agent { margin: 8px 0; }
+.designed-agent .row { flex-wrap: wrap; }
+.designed-code { font-family: var(--mono); font-size: 11px; white-space: pre; overflow: auto; max-height: 360px;
+  background: var(--code-bg); color: var(--code-fg); padding: 8px 10px; border-radius: 6px; }

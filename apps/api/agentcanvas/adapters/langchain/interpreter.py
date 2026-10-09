@@ -11,6 +11,7 @@ from typing import Any
 from langgraph.cache.base import BaseCache
 from langgraph.graph import END, START, StateGraph
 
+from agentcanvas import designs
 from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.plan import Plan, PlannedResource, lower
@@ -80,6 +81,25 @@ def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: di
     raise ValueError(f"unsupported resource type {r.type}")  # pragma: no cover - rejected by the validator
 
 
+def designed_agent(plan: Plan, n: Any, model: Any, tools: list[Any]) -> Any:
+    """An Agent block designed for another framework: its generated code, run as one step (S21)."""
+    fw = designs.AGENT_FRAMEWORKS[str(n.engine)]
+    design = designs.design_for(plan.wf, n)
+    return interop.designed_agent_node(
+        node_id=n.id,
+        name=n.name,
+        framework=fw.id,
+        label=fw.label,
+        api=fw.api,
+        requires=fw.module,
+        source=designs.generate(fw.id, design),
+        model=model,
+        tools=tools,
+        approve_tools=n.config.get("approve_tools"),
+        structured=design.output_schema is not None,
+    )
+
+
 def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, store=None, cache: BaseCache | None = None):
     State = ac.make_state_type("State", plan.channels)
     Input, Output = ac.make_io_types(plan.channels, plan.settings)
@@ -105,6 +125,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             fn = ac.custom_node(import_path=p.impl, config=cfg, resources=resources)
         elif n.type == "core.llm":
             fn = ac.llm_node(model=wired("model")[0], prompt=cfg["prompt"], output=cfg["output"])
+        elif n.type == "core.agent" and n.engine in designs.AGENT_FRAMEWORKS:  # S21: designed for another framework
+            fn = designed_agent(plan, n, wired("model")[0], wired("tools"))
         elif n.type == "core.agent":
             fn = ac.agent_node(
                 name=n.name,

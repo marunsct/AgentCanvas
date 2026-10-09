@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 HERE = Path(__file__).parent / "adapters"
 DEFAULT_FRAMEWORK = "langchain"
 
-Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints"]
+Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs"]
 Support = Literal["native", "emulated", "unsupported"]
 
 ABILITY_LABEL: dict[str, str] = {
@@ -30,6 +30,7 @@ ABILITY_LABEL: dict[str, str] = {
     "memory_store": "long-term memory",
     "mcp_inspect": "browsing an app connector's tools",
     "breakpoints": "breakpoints in debug runs",
+    "agent_designs": "agents designed for other frameworks (mixed flows)",
 }
 
 

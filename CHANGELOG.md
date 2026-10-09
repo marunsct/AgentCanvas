@@ -2,6 +2,20 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.13.0 — Design any agent (not tagged yet)
+
+### Added
+- **Design an AI agent in any of nine agent frameworks.** An AI agent block's **Designed for** now lists agent frameworks: OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands Agents, LlamaIndex, Microsoft Agent Framework and Claude Agent SDK. The block is generated as that framework's own code (instructions, model, workspace/HTTP/MCP tools, tool approvals, a typed answer as a Pydantic class) and runs as that code. `GET /v1/agent-frameworks`.
+- **Model bridge.** A designed agent's model calls go to a local, per-run endpoint that speaks the OpenAI chat-completions and Anthropic messages APIs (streaming included) and answers with the model wired into the block, so runs stay traced, costed, mocked and replayable, and API keys never reach the agent's code.
+- **View the code and take it away.** **View … code** in the block's settings (`GET /v1/workflows/{id}/agents/{node}/code`, `…/code.py`) and **Export as … project** (`…/export.zip`): the agent, its tools, `main.py`, pinned packages, a README and tests that run against a bundled fake model without an API key. Whole-workflow exports put each designed agent in `agents/` and add its packages.
+- **Checks** P005 (the framework cannot take something wired into the agent: add-ons, other tool kinds, its answer shape) and P006 (the framework is not installed on this server). Workflow frameworks without the new `agent_designs` ability (Echo) cannot run designed agents (P001), and their badge says so.
+- The Copilot knows the agent frameworks and suggests designing an agent in one when asked.
+- CI runs each framework's designed agent (plain, typed answer, approval) and its exported project's tests against the real package.
+
+### Notes
+- A tool approval pauses the run; on approval the designed agent's step starts again from its beginning, and the decision applies only if the agent asks for exactly the same call again.
+- Structured output uses each framework's own mechanism, so typed answers may differ slightly between frameworks.
+
 ## v0.12.0 — Framework foundation (not tagged yet)
 
 ### Added
