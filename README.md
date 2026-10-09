@@ -116,5 +116,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | UI refresh: light, medium and dark themes | ✅ done (#20) |
 | S16: Any framework as a node (v0.10.0) | ✅ done |
 | S17: Workspace and editor fixes (v0.11.0) | ✅ done: a workspace per workflow, exports bundle its code, Copilot in the code editor, a way back to the canvas, labelled buttons |
-| S20–S22: framework foundation, design any agent in nine frameworks, whole flows (preview) | ⏸ planned after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) |
+| S20: Framework foundation (v0.12.0) | ✅ done: a framework per workflow, badges for where it can run, adapter interface v2, conformance kit |
+| S21–S22: design any agent in nine frameworks, whole flows (preview) | ⏸ planned after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) |
 | S23–S36: ship to users, Knowledge Studio, framework flows, mixed-flow export | ⏸ planned; order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

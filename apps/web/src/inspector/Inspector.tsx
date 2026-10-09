@@ -2,8 +2,9 @@
 import { diagnosticHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
 import { useManifests } from "../api/queries";
+import { EnginePicker } from "../editor/Frameworks";
 import { useEditor } from "../editor/store";
-import { findElement, isResource } from "../ir/model";
+import { findElement, isResource, type IRNode } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
 import { MockPanel, PinPanel } from "./DebugAids";
 import { McpBrowser } from "./McpBrowser";
@@ -46,6 +47,7 @@ export function Inspector() {
             onBlur={(e) => e.target.value !== (el.label ?? "") && update({ label: e.target.value || null })} />
         </label>
       )}
+      {!res && <EnginePicker node={el as IRNode} />}
       {mine.length > 0 && (
         <ul className="diag-list">
           {mine.map((d, i) => (

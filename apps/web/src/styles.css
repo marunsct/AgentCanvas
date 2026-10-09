@@ -811,3 +811,13 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .rjsf .rjsf-add { margin: 4px 0; }
 .rjsf .rjsf-btn { font-size: 12px; padding: 2px 8px; white-space: nowrap; }
 .rjsf .array-item-toolbox .btn-group, .rjsf .array-item-toolbox { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* S20: frameworks this workflow can run on */
+.framework-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.framework-badge {
+  font-size: 11px; line-height: 1; padding: 4px 8px; border-radius: 999px; cursor: default;
+  border: 1px solid var(--border); background: var(--surface-2, transparent); color: var(--muted);
+}
+.framework-badge.ok { color: var(--ok, #059669); border-color: color-mix(in srgb, var(--ok, #059669) 40%, transparent); }
+.framework-badge.blocked { color: var(--warn, #b45309); border-color: color-mix(in srgb, var(--warn, #b45309) 40%, transparent); cursor: pointer; }
+.framework-badge.mine { font-weight: 600; }

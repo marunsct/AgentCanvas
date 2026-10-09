@@ -40,13 +40,13 @@ async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
 
     # fix and check: propose the change, reproduce the old run on it, test it with an expectation
     seen: list = []
-    original = app.state.projects.adapter.chat
+    original = app.state.models.chat
 
     async def spy(resources, model, messages, tools, usage=None, config=None):
         seen.append(messages)
         return await original(resources, model, messages, tools, usage=usage, config=config)
 
-    app.state.projects.adapter.chat = spy
+    app.state.models.chat = spy
     try:
         script(
             app,
@@ -60,7 +60,7 @@ async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
         )  # fmt: skip
         events = await ask(api_client, wf, "make it say Hi instead and check it")
     finally:
-        app.state.projects.adapter.chat = original
+        app.state.models.chat = original
     results = [m for m in seen[-1] if m["role"] == "tool"]
     reproduced, tested = json.loads(results[1]["content"]), json.loads(results[2]["content"])
     assert (
@@ -93,17 +93,17 @@ async def test_problems_are_explained_and_tests_wait_for_a_valid_workflow(app, a
     script(app, call("propose_changes", summary="x", commands=broken), call("get_problems"),
            call("run_test", input={"who": "x"}), "It no longer reaches the end.")  # fmt: skip
     seen: list = []
-    original = app.state.projects.adapter.chat
+    original = app.state.models.chat
 
     async def spy(resources, model, messages, tools, usage=None, config=None):
         seen.append(messages)
         return await original(resources, model, messages, tools, usage=usage, config=config)
 
-    app.state.projects.adapter.chat = spy
+    app.state.models.chat = spy
     try:
         await ask(api_client, wf, "remove the last arrow")
     finally:
-        app.state.projects.adapter.chat = original
+        app.state.models.chat = original
     results = [json.loads(m["content"]) for m in seen[-1] if m["role"] == "tool"]
     problems = results[1]["problems"]
     assert problems and all("what" in p and "fix" in p for p in problems if p["code"].startswith("E"))
@@ -142,7 +142,7 @@ async def test_split_and_privacy_settings(app, api_client):
 async def test_debug_suite_plants_bugs_and_scores_a_fix():
     from langchain_core.messages import AIMessage
 
-    from agentcanvas.adapters import get_adapter
+    from agentcanvas.adapters import model_service
     from agentcanvas.adapters.langchain.testing import DemoResources, scripted
     from agentcanvas.copilot.evals import debug_cases, run_case
     from agentcanvas.copilot.settings import ResolvedModel
@@ -162,7 +162,7 @@ async def test_debug_suite_plants_bugs_and_scores_a_fix():
     ]  # fmt: skip
     resources = DemoResources(overrides={"copilot": scripted(*replies)})
     model = ResolvedModel(model="anthropic:claude-haiku-4-5", origin="test")
-    result = await run_case(case, get_adapter(), resources, model, registry, settings)
+    result = await run_case(case, model_service(), resources, model, registry, settings)
     assert result.passed and result.turns == 1, result
 
 

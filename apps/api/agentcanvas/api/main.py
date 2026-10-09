@@ -7,6 +7,7 @@ uvicorn agentcanvas.dev.fake_server:app --reload   # scripted fake models (no ke
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 from contextlib import asynccontextmanager
@@ -18,7 +19,8 @@ from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from agentcanvas import observability
-from agentcanvas.adapters import get_adapter
+from agentcanvas.adapters import get_adapter, installed_adapters, model_service
+from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.problems import install_problem_handlers
@@ -66,9 +68,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await retire_dev_user(s)
         app.state.db = db
         observability.trace_engine(db.engine)
-        adapter = get_adapter("langchain")
-        async with adapter.persistence(settings.persistence_url or settings.database_url):
-            if moved := await adapter.memory_adopt(DEV_ORG):  # memories from before organisations (M7-T2)
+        adapter = get_adapter("langchain")  # the host framework: long-term memory, MCP browsing, model resolution
+        others = {i: a for i, a in installed_adapters().items() if i != adapter.id}  # S20: other frameworks
+        async with contextlib.AsyncExitStack() as stack:
+            await stack.enter_async_context(adapter.persistence(settings.persistence_url or settings.database_url))
+            for other in others.values():
+                await stack.enter_async_context(other.persistence(settings.persistence_url or settings.database_url))
+            app.state.models = model_service()
+            if moved := await require(adapter, "memory_store", MemoryAbility).memory_adopt(
+                DEV_ORG
+            ):  # memories from before organisations (M7-T2)
                 log.info("memory.adopted", org_id=DEV_ORG, items=moved)
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
@@ -78,7 +87,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
                 for project, values in (await SecretService(s, app.state.keyring).values()).items():
                     app.state.projects.secrets.setdefault(project, {}).update(values)
-            runner = Runner(db, adapter, lambda thread_id, wf: _resources(app, thread_id, wf))
+            runner = Runner(
+                db,
+                adapter,
+                lambda thread_id, wf: _resources(app, thread_id, wf),
+                adapters=others,
+                models=app.state.models,
+            )
             app.state.runner = runner
             app.state.events = EventService(db, runner, app.state.projects)
             runner.finish_hooks.append(app.state.events.on_run_finished)
@@ -131,7 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.11.0", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.12.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

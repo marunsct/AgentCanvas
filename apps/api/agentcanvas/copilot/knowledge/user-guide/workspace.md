@@ -12,8 +12,40 @@ Each project has a **workspace**: a git repository of Python code used by its wo
 | `nodes/` | Custom widgets declared with `@canvas_node(...)` | New widgets in the palette, in the category you choose |
 | `events/` | Event handlers declared with `@on("type")`; JSON schemas in `events/schemas/` | The **Events** page |
 
-Click a file to edit it (with lint markers), **New** to add one. Every save is a git commit, and a workflow
+Click a file to edit it (with lint markers), **New file** to add one. Every save is a git commit, and a workflow
 **version** pins the workspace commit it was made with.
+
+## Each workflow's own code, and shared code
+
+Open the Workspace from a workflow (the **Workspace** button in the editor, or **Open … in the Workspace** on a
+Script block) and you see two groups:
+
+- **This workflow's code** lives in `flows/<workflow>/` with its own `scripts/`, `tools/` and `nodes/`. A Script
+  block's **+ Create the code file** puts the file there, and its import path starts with `flows.<workflow>.`.
+  Other workflows do not see it in their palette.
+- **Shared code** is everything in the folders at the root (`scripts/`, `tools/`, `nodes/`, `events/`). Every
+  workflow in the project can use it, and event handlers always live here.
+
+Code can import other workspace code the usual Python way, for example `from scripts.textutil import shout` or
+`from .helpers import clean`, and it works the same on the canvas, in the sandbox and in an export.
+
+**← Back to *workflow*** at the top (or the browser's Back button) returns you to the canvas with the same zoom,
+position and selected block. The Workspace opened from the home page shows every file in the project.
+
+The **+ Script step**, **+ Tool for the AI** and **+ Custom block** buttons start a new file with working starter
+code for that kind of file.
+
+## Copilot help with code
+
+Below the editor of a Python file, the **✦ Copilot** box helps you write it:
+
+- **Write with Copilot**: describe what the code should do (select lines in the editor to focus on them).
+- **Explain**: what the file, or the selected lines, does, step by step.
+- **Fix N problems**: fixes the problems the linter reports, changing as little as possible.
+
+The Copilot answers with an explanation and, when it changes code, a diff. **Accept changes** puts the new code in
+the editor as an ordinary, undoable edit; nothing is saved until you press **Save**. It uses the Copilot's model and
+privacy settings (see [Copilot](copilot.md)). Viewers can use **Explain** only.
 
 ## A script
 

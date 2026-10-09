@@ -11,11 +11,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas import agentspec
-from agentcanvas.adapters import get_adapter
+from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
+from agentcanvas.registry.adapters import portability
 from agentcanvas.services.workflows import WorkflowService, WorkflowView
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic
@@ -166,7 +167,22 @@ async def validate_workflow(wf_id: str, svc: WorkflowService = Depends(service))
 @router.get("/workflows/{wf_id}/code", response_class=PlainTextResponse)
 async def get_code(wf_id: str, svc: WorkflowService = Depends(service)) -> str:
     view = await svc.get(wf_id)
-    return get_adapter(view.workflow.framework).generate(view.workflow, svc.registry(view.row.project_id))
+    return framework_adapter(view.workflow.framework).generate(view.workflow, svc.registry(view.row.project_id))
+
+
+class PortabilityOut(BaseModel):
+    adapter: str
+    label: str
+    ok: bool
+    blockers: list[dict[str, Any]]
+    emulated: list[dict[str, Any]]
+
+
+@router.get("/workflows/{wf_id}/portability", response_model=list[PortabilityOut])
+async def get_portability(wf_id: str, svc: WorkflowService = Depends(service)) -> list[dict[str, Any]]:
+    """For each installed framework (S20): can this workflow move to it, and which blocks stop or bend it."""
+    view = await svc.get(wf_id)
+    return portability(view.workflow)
 
 
 # ------------------------------------------------------------------ Agent Spec (S16) ----

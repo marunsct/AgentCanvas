@@ -6,6 +6,7 @@ Kept free of framework imports so the framework-neutral IR package can use it.
 from __future__ import annotations
 
 import os
+import re
 
 # shared code at the workspace root, and each workflow's own code under flows/<workflow>/ (S17)
 WORKSPACE_IMPORT_PREFIXES = ("scripts.", "tools.", "nodes.", "events.", "flows.")
@@ -20,3 +21,12 @@ def allowed_import_prefixes(env: str | None = None) -> tuple[str, ...]:
 def is_allowed_import_path(import_path: str, env: str | None = None) -> bool:
     module, sep, attr = import_path.partition(":")
     return bool(sep and attr and module.startswith(allowed_import_prefixes(env)))
+
+
+SCRIPT_PATH = re.compile(r"^(scripts|flows\.[a-z][a-z0-9_]*\.scripts)\.")
+
+
+def is_script_path(import_path: str) -> bool:
+    """A Script step's code (shared `scripts.` or a workflow's own `flows.<wf>.scripts.`): sandboxed when the project
+    has a sandbox."""
+    return bool(SCRIPT_PATH.match(import_path))

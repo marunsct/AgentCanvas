@@ -148,6 +148,22 @@
       "what": "This block uses a feature that may still change upstream.",
       "fix": "Nothing to do; just be aware it may change in a future version."
     },
+    "P001": {
+      "what": "The workflow's framework cannot run this block (or the framework is not installed on this server).",
+      "fix": "Pick another framework in the workflow settings (click empty canvas → Framework), or replace the block with one the framework can run. The badges at the top show what each framework is missing."
+    },
+    "P002": {
+      "what": "This framework can run the block only by imitating it, so it may behave a little differently.",
+      "fix": "Nothing to do if that is fine; the message says what differs. Pick a framework that runs it natively to avoid it."
+    },
+    "P003": {
+      "what": "This workflow could move to some installed frameworks but not to others.",
+      "fix": "Nothing to do. To make it portable, replace the blocks the message names."
+    },
+    "P004": {
+      "what": "This block is designed for a different framework than the rest of the workflow.",
+      "fix": "Nothing to do for now: it runs on the workflow's framework until mixed-framework flows arrive. Choose “Same as the workflow” in the block's settings to clear it."
+    },
     "W001": {
       "what": "These steps form a loop with no way out, so it would only stop at the safety limit.",
       "fix": "Add a “Choose a path” step in the loop with a path that leaves it."

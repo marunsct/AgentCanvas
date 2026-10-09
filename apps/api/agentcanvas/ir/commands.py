@@ -250,16 +250,20 @@ class ReplaceSettings(_Cmd):
 
 
 class UpdateMeta(_Cmd):
-    """Change name / description / metadata of the workflow."""
+    """Change name / description / metadata / framework of the workflow."""
 
     op: Literal["UpdateMeta"] = "UpdateMeta"
     name: str | None = None
     description: str | None = None
     metadata: dict[str, Any] | None = None
+    framework: str | None = None  # S20: the framework the workflow is designed for (an adapter id)
 
     def apply(self, doc: dict[str, Any]) -> list[_Cmd]:
-        inverse = UpdateMeta(name=doc["name"], description=doc["description"], metadata=doc["metadata"])
-        for key in ("name", "description", "metadata"):
+        inverse = UpdateMeta(
+            name=doc["name"], description=doc["description"], metadata=doc["metadata"],
+            framework=doc.get("framework", "langchain"),
+        )  # fmt: skip
+        for key in ("name", "description", "metadata", "framework"):
             value = getattr(self, key)
             if value is not None:
                 doc[key] = value

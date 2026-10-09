@@ -1,0 +1,11 @@
+{
+  "id": "langchain",
+  "label": "LangGraph",
+  "framework": "langgraph + langchain + deepagents",
+  "version": "1.0.0",
+  "tier": "T1",
+  "description": "LangGraph runs the workflow as a graph with checkpoints: pause and resume, time travel, long-term memory and every block in the palette. Exports are Python services.",
+  "languages": ["python"],
+  "abilities": ["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints"],
+  "nodes": {"*": "native"}
+}

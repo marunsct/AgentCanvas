@@ -6,6 +6,7 @@ export type NodeManifest = G.NodeManifest;
 export type PortSpec = G.PortSpec;
 export type ModelInfo = G.ModelInfo;
 export type ProviderInfo = G.ProviderInfo;
+export type AdapterManifest = G.AdapterManifest;
 export type SetupOut = G.SetupOut;
 export type TemplateInfo = G.TemplateInfo;
 export type WorkflowSummary = G.WorkflowSummary;

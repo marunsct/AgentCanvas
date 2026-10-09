@@ -1,6 +1,6 @@
 /* Generated from packages/ir-schema/ir.schema.json (pnpm gen:ir). Do not edit. */
 
-export type IrVersion = "1.0" | "1.1";
+export type IrVersion = "1.0" | "1.1" | "1.2";
 export type Id = string;
 export type Name = string;
 export type Description = string;
@@ -39,6 +39,7 @@ export type Ttl = number | null;
 export type ErrorRoute = string | null;
 export type Trace = "full" | "summarize" | "omit_inputs" | "omit_outputs" | "omit";
 export type Disabled = boolean;
+export type Engine = string | null;
 export type Nodes = Node[];
 export type Id3 = string;
 export type Kind1 = "flow" | "wiring" | "data";
@@ -139,6 +140,7 @@ export interface Node {
   policies?: NodePolicies | null;
   disabled?: Disabled;
   metadata?: Metadata;
+  engine?: Engine;
 }
 export interface Config1 {
   [k: string]: unknown;

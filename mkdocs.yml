@@ -26,6 +26,7 @@ nav:
       - Core concepts: user-guide/concepts.md
       - Models and API keys: user-guide/models.md
       - Building on the canvas: user-guide/canvas.md
+      - Choosing a framework: user-guide/frameworks.md
       - AI Copilot: user-guide/copilot.md
       - Block reference: user-guide/widgets.md
       - Running and debugging: user-guide/run-and-debug.md

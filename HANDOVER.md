@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-09, after Sprint 17 (Workspace and editor fixes → v0.11.0). Previous update: the re-plan after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) ([#22](https://github.com/marunsct/AgentCanvas/pull/22)).
+- **Last updated:** 2026-10-09, after Sprint 20 (Framework foundation → v0.12.0). Previous update: after Sprint 17 (Workspace and editor fixes → v0.11.0, [#23](https://github.com/marunsct/AgentCanvas/pull/23)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,21 +14,21 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S17 Workspace and editor fixes → v0.11.0** (the S17 PR): each workflow's own code in `flows/<workflow id>/` next to the shared root folders; exports bundle exactly the code a workflow uses (imports followed) with an import test; Copilot code help (write, explain, fix as a diff) and starter files in the Workspace; the Workspace at `/workflows/{id}/workspace` with a way back to the same spot on the canvas; labelled list buttons and empty new list items; a browser check for unlabelled buttons |
-| Before that | S16 Any framework as a node → v0.10.0 ([#21](https://github.com/marunsct/AgentCanvas/pull/21), merged `25be73e`); the re-plan (#22, merged `9140ef9`); UI refresh (#20, merged `24a63fe`) |
-| Version in code | API `0.11.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.11.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.11.0 are all left to the owner (see §2) |
-| Next sprint | **S20 Framework foundation → v0.12.0** (backlog in [sprint plan §3](docs/agent-canvas-spec/build-guide/13-sprint-plan.md)), then S21 Design any agent, S22 Whole flows (preview); order in [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan). **Do not start until the owner says so** |
-| Work status | S17 is in its PR, waiting for the owner to merge (no standing merge grant for S17) |
-| Open PRs | the S17 PR (`claude/project-thread-nz5vdj`) |
+| Last sprint done | **S20 Framework foundation → v0.12.0** (the S20 PR): adapter interface v2 (required core plus optional abilities, ADR 0018); the runtime, state, history, code view and export follow each workflow's `framework`; adapter manifests as data (`registry/adapters/*.json`, `AGENTCANVAS_ADAPTERS`); a framework-neutral model service for the Copilot and judges; IR 1.2 `engine` on AI blocks; P001–P004; framework picker, engine picker and badges; conformance kit passed by LangChain and the Echo demo engine |
+| Before that | S17 Workspace and editor fixes → v0.11.0 ([#23](https://github.com/marunsct/AgentCanvas/pull/23), merged `cd8c770`); S16 Any framework as a node → v0.10.0 (#21, merged `25be73e`) |
+| Version in code | API `0.12.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.12.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.12.0 are all left to the owner (see §2) |
+| Next sprint | **S21 Design any agent → v0.13.0** (backlog in [sprint plan §3](docs/agent-canvas-spec/build-guide/13-sprint-plan.md)), then S22 Whole flows (preview), then S23 onward in [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan). The owner said on 2026-10-09 to build the remaining sprints one by one; each sprint's PR still waits for the owner's merge |
+| Work status | S20 is in its PR, waiting for the owner to merge |
+| Open PRs | the S20 PR (`claude/project-thread-nz5vdj`) |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S17** (all green locally):
+**Test totals at the end of S20** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 472 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
-| Web unit (vitest) | 79 | `cd apps/web && pnpm exec vitest run` |
+| API (pytest, Postgres) | 505 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| Web unit (vitest) | 81 | `cd apps/web && pnpm exec vitest run` |
 | Browser journeys (Playwright, prod build under the prod CSP) | 44 | see §5 |
 | Real frameworks (S16) | 9 frameworks + Agent Spec check | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
@@ -62,6 +62,8 @@ These come from the owner in the project chat; they override defaults.
 - **Node versions:** stay on Node LTS. Node 25 dropped corepack, which `infra/Dockerfile.web` uses (Dependabot #10 was closed for this).
 - **Dependabot:** `@dependabot` commands must be typed by the owner; ones posted by an agent are ignored.
 - **Merged branches** are deleted by the owner from the PR page (the cloud git proxy refuses remote branch deletion).
+- **Build the remaining sprints one by one** (owner, 2026-10-09): S20, S21, S22, then S23 onward in the re-planned
+  order, one PR per sprint, codebase review before each. Still ask the owner before every merge.
 
 ## 3. Unmerged work
 
@@ -164,7 +166,11 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.11.0 not created (owner).
+- **Release tags** v0.1.0 to v0.12.0 not created (owner).
+- **S20 limits:** model and tool resolution (`Resources`) is still the LangChain adapter's object handed to every
+  adapter, and long-term memory, MCP browsing and judges stay on the host adapter; a block's `engine` is recorded
+  and checked but the block runs on the workflow's framework (mixed runs come with S22); the conformance kit has no
+  tool-calling agent, subgraph or cross-process resume cases yet; Echo is a demo (in-memory pauses, no deploy kit).
 - **S17 limits:** event handlers and secrets stay per project; custom block types written in a workflow's folder are
   registered for the whole project; editing a helper module does not reload the files that import it until they
   change too; a workflow's folder is named after its id (`flows/wf_…/`), and code a workflow imports from another
@@ -213,7 +219,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | UI refresh: themes, restyle, Copilot chat layout | #20 | `24a63fe` | (in v0.10.0) |
 | S16 Any framework as a node | #21 | `25be73e` | v0.10.0 |
 | Framework coverage review and re-plan (S17, S20–S36) | #22 | `9140ef9` | — |
-| S17 Workspace and editor fixes | the S17 PR | (after merge) | v0.11.0 |
+| S17 Workspace and editor fixes | #23 | `cd8c770` | v0.11.0 |
+| S20 Framework foundation | the S20 PR | (after merge) | v0.12.0 |
 
 ## 11. Sprint-end checklist
 

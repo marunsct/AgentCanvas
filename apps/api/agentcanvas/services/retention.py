@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from prometheus_client import Counter
 from sqlalchemy import delete, select
 
+from agentcanvas.adapters.spi import MemoryAbility, supports
 from agentcanvas.db.models import AuditLog, Organization, Project, Thread, WorkflowRow
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
@@ -87,7 +88,7 @@ class RetentionJob:
             for thread_id in expired:
                 if thread_id in self.runner.active_by_thread:  # started since the scan
                     continue
-                await self.runner.adapter.delete_thread(thread_id)  # checkpoints first: rows are the index
+                await self.runner.forget_thread(thread_id)  # checkpoints first: rows are the index
                 async with self.db.sessionmaker() as s:
                     await delete_thread_rows(s, thread_id)
                     await s.commit()
@@ -115,8 +116,11 @@ class RetentionJob:
         if self.memory_days <= 0:
             return 0
         before, n = now - timedelta(days=self.memory_days), 0
+        if not supports(self.runner.adapter, "memory_store"):
+            return 0
+        memory = cast(MemoryAbility, self.runner.adapter)
         for org_id in org_ids:
-            n += await self.runner.adapter.memory_expire((f"org:{org_id}",), before)
+            n += await memory.memory_expire((f"org:{org_id}",), before)
         if n:
             log.info("retention.memory_deleted", items=n, days=self.memory_days)
         return n

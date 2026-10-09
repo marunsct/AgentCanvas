@@ -10,7 +10,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
@@ -27,7 +28,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
-from agentcanvas.runtime.types import ResumeSpec, is_tool_recording
+from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.secrets import hide_secrets
@@ -36,6 +37,13 @@ from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 router = APIRouter(tags=["runs"])
+
+
+def _travel(r: Runner, wf: Workflow) -> ThreadStateAbility:
+    """The workflow's adapter, for history, replay and forks (S20: refused when its framework has no time travel)."""
+    return require(r.adapter_for(wf), "time_travel", ThreadStateAbility)
+
+
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
@@ -380,7 +388,11 @@ async def get_thread(
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
     res = r.resources(thread_id, wf)
-    state = await r.adapter.get_state(wf, thread_id, res)
+    adapter = r.adapter_for(wf)
+    if supports(adapter, "thread_state"):
+        state = await cast(ThreadStateAbility, adapter).get_state(wf, thread_id, res)
+    else:  # S20: a framework without saved state still shows the conversation, without its values
+        state = ThreadState(values={}, next=[], interrupts=[], checkpoint_id=None)
     return hide_secrets({
         "id": t.id,
         "workflow_id": t.workflow_id,
@@ -392,6 +404,7 @@ async def get_thread(
         "checkpoint_id": state.checkpoint_id,
         "step": state.step,
         "interrupts": [i.__dict__ for i in state.interrupts],
+        "state_available": supports(adapter, "thread_state"),
     }, _secrets(res))  # fmt: skip
 
 
@@ -417,7 +430,7 @@ async def thread_history(
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
     res = r.resources(thread_id, wf)
-    items = await r.adapter.history(wf, thread_id, res, limit, include_values)
+    items = await _travel(r, wf).history(wf, thread_id, res, limit, include_values)
     out = [{k: v for k, v in c.__dict__.items() if include_values or k != "values"} for c in items]
     return hide_secrets(out, _secrets(res))
 
@@ -434,7 +447,7 @@ async def explain_thread(
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
     res = r.resources(thread_id, wf)
-    history = await r.adapter.history(wf, thread_id, res, limit, include_values=True)
+    history = await _travel(r, wf).history(wf, thread_id, res, limit, include_values=True)
     return hide_secrets(explain(wf, history), _secrets(res))
 
 
@@ -502,7 +515,7 @@ async def edit_state(
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
     _idle(r, thread_id)
-    cid = await r.adapter.update_state(
+    cid = await require(r.adapter_for(wf), "thread_state", ThreadStateAbility).update_state(
         wf, thread_id, r.resources(thread_id, wf), body.values, body.as_node, body.checkpoint_id
     )
     return {"checkpoint_id": cid}
@@ -537,9 +550,11 @@ async def fork_thread(
             )
         )
         await session.commit()
-        checkpoint = await r.adapter.copy_thread(wf, thread_id, target, r.resources(target, wf), body.checkpoint_id)
+        checkpoint = await _travel(r, wf).copy_thread(
+            wf, thread_id, target, r.resources(target, wf), body.checkpoint_id
+        )
     if body.values is not None:
-        checkpoint = await r.adapter.update_state(
+        checkpoint = await _travel(r, wf).update_state(
             wf, target, r.resources(target, wf), body.values, body.as_node, checkpoint
         )
     h = await r.start(
@@ -565,7 +580,7 @@ async def delete_thread(
             await asyncio.wait_for(h.done.wait(), timeout=10)
         except TimeoutError:
             pass
-    await r.adapter.delete_thread(thread_id)
+    await r.forget_thread(thread_id)
     await delete_thread_rows(session, thread_id)
     await session.commit()
     return Response(status_code=204)

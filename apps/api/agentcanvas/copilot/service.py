@@ -5,7 +5,8 @@ the person to confirm; the *planner* says which blocks in which order; the *buil
 `propose_changes`, reads the validator's errors and repairs them itself. Nothing is saved here: the turn ends with
 at most one proposal (all of the turn's commands), which the person accepts on the canvas or rejects.
 
-The loop is framework-neutral: it calls the adapter's `chat` (tool calling) and the tools in `copilot.tools`.
+The loop is framework-neutral: it calls the model service's `chat` (tool calling, S20) and the tools in
+`copilot.tools`.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from agentcanvas.copilot.settings import ResolvedModel
 from agentcanvas.copilot.tools import READ_ONLY, TOOLS, ToolContext, compact_workflow, result_text, run_tool
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import adapters as adapter_manifests
 
 Mode = Literal["build", "ask"]
 MAX_STEPS = 16  # model calls per turn
@@ -58,14 +60,10 @@ cannot change or run the workflow in this mode: if a change would help, describe
 Keep replies short and plain."""
 
 
-FRAMEWORKS = {
-    "langchain": "LangChain and LangGraph: the canvas compiles to a LangGraph graph, and exports are LangGraph code",
-}
-
-
 def framework_note(framework: str) -> str:
     """Which framework the workflow targets, so the Copilot's advice and changes fit what that framework runs."""
-    what = FRAMEWORKS.get(framework, f"'{framework}', which this AgentCanvas has no adapter for")
+    m = adapter_manifests.all_manifests().get(framework)
+    what = f"{m.label}: {m.description}" if m else f"'{framework}', which this AgentCanvas has no adapter for"
     return (
         f"Target framework: {what}. Only use blocks and settings the registry offers for it, and when the person "
         "asks about code, exports or deployment, answer for this framework."
@@ -97,7 +95,7 @@ class CopilotTurn:
 
     def __init__(
         self,
-        adapter: Any,
+        models: Any,
         resources: Any,
         model: ResolvedModel,
         pack: Pack,
@@ -111,7 +109,7 @@ class CopilotTurn:
         project_notes: str = "",
         saved: Any = None,
     ):
-        self.adapter, self.resources, self.model, self.pack, self.ctx = adapter, resources, model, pack, ctx
+        self.models, self.resources, self.model, self.pack, self.ctx = models, resources, model, pack, ctx
         self.history, self.proposals, self.usage = history, proposals, usage
         self.token_cap, self.base_version, self.project_notes = token_cap, base_version, project_notes
         self.before = saved if saved is not None else ctx.workflow  # the saved draft
@@ -166,7 +164,7 @@ class CopilotTurn:
                 if self._over_cap():
                     yield {"type": "error", "message": "this conversation reached its token limit; start a new chat"}
                     break
-                reply = await self.adapter.chat(
+                reply = await self.models.chat(
                     self.resources, self.model.model, messages, tools, usage=self.usage, config=self.model.config
                 )
                 if reply["content"].strip():

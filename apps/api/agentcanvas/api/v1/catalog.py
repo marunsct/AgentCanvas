@@ -16,10 +16,12 @@ from agentcanvas.registry import (
     ModelInfo,
     NodeManifest,
     ProviderInfo,
+    adapters,
     default_registry,
     installed_providers,
     load_gallery,
 )
+from agentcanvas.registry.adapters import AdapterManifest
 from agentcanvas.services.workflows import list_templates
 from agentcanvas.settings import Settings
 
@@ -33,6 +35,13 @@ def node_types(request: Request, project_id: str | None = None) -> list[NodeMani
     if project_id:
         return request.app.state.projects.registry(project_id).all()
     return default_registry().all()
+
+
+@router.get("/frameworks", response_model=list[AdapterManifest])
+def frameworks() -> list[AdapterManifest]:
+    """The frameworks this server can run workflows on (S20): abilities and which blocks each runs, natively or by
+    emulation. The first one is the default for new workflows."""
+    return adapters.installed()
 
 
 @router.get("/models", response_model=list[ModelInfo])

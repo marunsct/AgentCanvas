@@ -12,7 +12,7 @@ export type Settings = G.WorkflowSettings;
 
 /** A workflow with every collection present (the server always sends full documents). */
 export interface WF {
-  ir_version: "1.0" | "1.1";
+  ir_version: "1.0" | "1.1" | "1.2";
   id: string;
   name: string;
   description: string;
@@ -29,7 +29,7 @@ export interface WF {
 
 export function normalize(w: G.Workflow): WF {
   return {
-    ir_version: w.ir_version ?? "1.1",
+    ir_version: w.ir_version ?? "1.2",
     id: w.id,
     name: w.name,
     description: w.description ?? "",

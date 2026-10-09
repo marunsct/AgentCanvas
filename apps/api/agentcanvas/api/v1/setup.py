@@ -145,7 +145,7 @@ async def test_model(
     resources = projects.adapter.new_resources(secrets=secrets, resources_class=projects.resources_class)
     try:
         reply = await asyncio.wait_for(
-            projects.adapter.complete(
+            request.app.state.models.complete(
                 resources, body.model, "You are a connection test.", "Reply with: OK", config=config
             ),
             TEST_TIMEOUT_S,

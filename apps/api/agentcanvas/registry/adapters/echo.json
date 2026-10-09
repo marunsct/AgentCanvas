@@ -1,0 +1,25 @@
+{
+  "id": "echo",
+  "label": "Echo (demo engine)",
+  "framework": "agentcanvas-echo",
+  "version": "0.1.0",
+  "tier": "community",
+  "description": "A tiny built-in engine that proves AgentCanvas can run a workflow on more than one framework. It runs simple flows (set values, paths, wait for all, approvals, questions, Python steps); AI steps answer with scripted replies or repeat their prompt. Not for production.",
+  "languages": ["python"],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "native",
+    "core.join": "native",
+    "core.approval": "native",
+    "core.human_input": "native",
+    "core.script": "native",
+    "core.llm": "emulated",
+    "model.chat": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.llm": "answers with the scripted reply for its AI model, or repeats its prompt",
+    "model.chat": "only names the scripted replies; no model is called"
+  }
+}

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { apiFetch } from "./client";
 import { can } from "./session";
-import type { ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
+import type { AdapterManifest, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
 import type { McpConnector } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
@@ -67,6 +67,11 @@ export function useMcpConnectors() {
 export function useManifests(): Map<string, NodeManifest> {
   const { data } = useNodeTypes();
   return useMemo(() => new Map((data ?? []).map((m) => [m.type, m])), [data]);
+}
+
+/** The frameworks this server can run workflows on (S20): abilities and which blocks each runs. */
+export function useFrameworks() {
+  return useQuery({ queryKey: ["frameworks"], queryFn: () => apiFetch<AdapterManifest[]>("/frameworks"), staleTime: Infinity });
 }
 
 export function useModels() {

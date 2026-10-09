@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
+from agentcanvas.adapters.spi import McpAbility, require
 from agentcanvas.api.deps import get_settings_dep
 from agentcanvas.api.v1.runs import runner
 from agentcanvas.errors import Forbidden, UpstreamError
@@ -36,6 +37,7 @@ async def inspect_mcp(
     settings: Settings = Depends(get_settings_dep),
     r: Runner = Depends(runner),
 ) -> list[McpToolInfo]:
+    mcp = require(r.adapter, "mcp_inspect", McpAbility)
     cfg = body.config
     url = str(cfg.get("url") or "")
     local = cfg.get("transport") == "stdio" or not url.startswith(("http://", "https://"))
@@ -45,7 +47,7 @@ async def inspect_mcp(
         # the project's own resources (its secrets fill `$secret` headers); the org guard checked project_id
         factory = getattr(request.app.state, "resources_factory", None)
         resources = factory("mcp-inspect", None) if factory else request.app.state.projects.resources(project_id)
-        tools = await r.adapter.inspect_mcp(body.name, cfg, resources)
+        tools = await mcp.inspect_mcp(body.name, cfg, resources)
     except Exception as exc:  # network errors, protocol errors, auth failures
         raise UpstreamError(f"could not list tools of '{body.name}': {type(exc).__name__}: {exc}") from exc
     return [McpToolInfo(**t) for t in tools]

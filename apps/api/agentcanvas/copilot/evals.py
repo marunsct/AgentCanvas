@@ -66,7 +66,7 @@ class CaseResult:
 
 
 async def run_case(
-    case: dict[str, Any], adapter: Any, resources: Any, model: ResolvedModel, registry: Registry, settings: Settings
+    case: dict[str, Any], models: Any, resources: Any, model: ResolvedModel, registry: Registry, settings: Settings
 ) -> CaseResult:
     started = time.monotonic()
     templates = list_templates(settings)
@@ -84,7 +84,7 @@ async def run_case(
     for text in (case["request"], CONFIRM):
         ctx = ToolContext(empty, registry, templates, check, brief=brief)
         turn = CopilotTurn(
-            adapter, resources, model, pack, ctx, history=history, proposals=proposals, usage=usage,
+            models, resources, model, pack, ctx, history=history, proposals=proposals, usage=usage,
             token_cap=2_000_000, base_version=1,
         )  # fmt: skip
         async for event in turn.run(text, "build"):
@@ -158,16 +158,15 @@ def debug_cases(settings: Settings, registry: Registry) -> list[dict[str, Any]]:
 
 
 async def run(model: str, only: str | None = None, suite: str = "build") -> list[CaseResult]:
-    from agentcanvas.adapters import get_adapter
+    from agentcanvas.adapters import get_adapter, model_service
 
-    adapter = get_adapter()
-    resources = adapter.new_resources()
+    resources = get_adapter().new_resources()
     resolved = ResolvedModel(model=model, origin="eval")
     settings = Settings(env="prod")
     registry = default_registry()
     pool = CASES if suite == "build" else debug_cases(settings, registry)
     cases = [c for c in pool if only in (None, c["id"])]
-    return [await run_case(c, adapter, resources, resolved, registry, settings) for c in cases]
+    return [await run_case(c, model_service(), resources, resolved, registry, settings) for c in cases]
 
 
 def main() -> None:
