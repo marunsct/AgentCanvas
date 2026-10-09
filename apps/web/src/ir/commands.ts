@@ -127,6 +127,7 @@ export function applyLocal(wf: WF, cmd: Command): WF {
         name: cmd.name ?? wf.name,
         description: cmd.description ?? wf.description,
         metadata: (cmd.metadata as Record<string, unknown>) ?? wf.metadata,
+        framework: cmd.framework ?? wf.framework,
       };
   }
 }

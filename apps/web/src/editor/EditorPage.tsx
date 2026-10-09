@@ -22,6 +22,7 @@ import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
 import { runErrorHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
+import { FrameworkBadges } from "./Frameworks";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
 import { recallView } from "./viewMemory";
@@ -104,6 +105,7 @@ export function EditorPage() {
         {can("builder")
           ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
           : <span className="save-state" data-testid="view-only" title={`your role is ${ME.role}`}>View only</span>}
+        <FrameworkBadges />
         <span className="spacer" />
         <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link">Evaluate</Link>
         <Link to={`/workflows/${wf.id}/workspace`} className="inbox-link" data-testid="workspace-link"

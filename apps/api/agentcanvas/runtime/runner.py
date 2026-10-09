@@ -14,11 +14,11 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from sqlalchemy import func, select, update
 
-from agentcanvas.adapters.spi import FrameworkAdapter
+from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
 from agentcanvas.db.models import InterruptTask, Run, RunScore, Thread
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
@@ -155,9 +155,13 @@ class Runner:
         adapter: FrameworkAdapter,
         resources_factory: ResourcesFactory | None = None,
         keep_finished: int = 500,
+        adapters: dict[str, FrameworkAdapter] | None = None,
+        models: ModelService | None = None,
     ):
         self.db = db
-        self.adapter = adapter
+        self.adapter = adapter  # the host's default framework: long-term memory, MCP browsing, retention
+        self.adapters: dict[str, FrameworkAdapter] = {adapter.id: adapter, **(adapters or {})}  # S20: by framework
+        self._models = models
         self.resources_factory: ResourcesFactory = resources_factory or (lambda _t, _w: adapter.default_resources())
         self.handles: OrderedDict[str, RunHandle] = OrderedDict()
         self.active_by_thread: dict[str, str] = {}
@@ -167,6 +171,31 @@ class Runner:
         # called when a run starts (metrics)
         self.start_hooks: list[Callable[[RunHandle], None]] = []
         self.draining = False  # shutting down: no new runs (FR-X-10)
+
+    @property
+    def models(self) -> ModelService:
+        """Model calls outside workflows (LLM judges), framework-neutral (S20)."""
+        if self._models is None:
+            from agentcanvas.adapters import model_service
+
+            self._models = model_service()
+        return self._models
+
+    def adapter_for(self, wf: Workflow) -> FrameworkAdapter:
+        """The adapter of the workflow's framework (S20); a plain 409 when this server does not have it."""
+        found = self.adapters.get(wf.framework)
+        if found is None:
+            raise Conflict(
+                f"this workflow is designed for '{wf.framework}', which this server does not have; "
+                f"installed: {', '.join(self.adapters)}"
+            )
+        return found
+
+    async def forget_thread(self, thread_id: str) -> None:
+        """Delete a conversation's saved state in every framework that keeps one."""
+        for a in self.adapters.values():
+            if supports(a, "thread_state"):
+                await cast(ThreadStateAbility, a).delete_thread(thread_id)
 
     def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
@@ -199,6 +228,9 @@ class Runner:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
+        adapter = self.adapter_for(wf)
+        if mode == "debug" and (breakpoints_before or breakpoints_after) and not supports(adapter, "breakpoints"):
+            raise Conflict(f"{adapter.manifest.label} does not support breakpoints; run without them")
         thread_id = thread_id or new_id("th")
         if thread_id in self.active_by_thread:  # double-texting policy "reject" (FR-RUN-11 later adds others)
             raise Conflict(f"thread '{thread_id}' already has an active run", run_id=self.active_by_thread[thread_id])
@@ -324,6 +356,7 @@ class Runner:
                 "threadId": h.thread_id,
                 "workflowId": h.workflow_id,
                 "mode": spec.mode,
+                "adapter": spec.workflow.framework,
             },
         )
         status, error, interrupts = "error", None, []
@@ -333,7 +366,7 @@ class Runner:
             before = await self._thread_spend(spec.thread_id, h.run_id) if budget else (0, 0.0)
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
-            events = self.adapter.execute(spec, resources)
+            events = self.adapter_for(spec.workflow).execute(spec, resources)
             async with asyncio.timeout(budget.max_seconds if budget and budget.max_seconds else None):
                 async for raw in events:
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":

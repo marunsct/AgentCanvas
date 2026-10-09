@@ -40,7 +40,7 @@ async def test_default_project_is_seeded(api_client):
 
 async def test_create_empty_workflow(api_client):
     wf = await create(api_client)
-    assert wf["id"].startswith("wf_") and wf["version"] == 1 and wf["ir"]["ir_version"] == "1.1"
+    assert wf["id"].startswith("wf_") and wf["version"] == 1 and wf["ir"]["ir_version"] == "1.2"
     assert wf["diagnostics"] == []
     r = await api_client.get(f"/v1/workflows/{wf['id']}")
     assert r.headers["ETag"] == '"1"' and r.json()["ir_hash"] == wf["ir_hash"]

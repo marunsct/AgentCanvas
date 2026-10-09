@@ -2,6 +2,25 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.12.0 — Framework foundation (not tagged yet)
+
+### Added
+- **Pick a workflow's framework.** Workflow settings (click empty canvas) → **Framework** lists the frameworks this server offers; switching is an undoable edit (`UpdateMeta.framework`). Runs, conversation state, history, the code view and exports use that framework's adapter.
+- **Badges for where a workflow can run.** One badge per installed framework next to the workflow's name: ✓ when every block can run there, or how many blocks cannot (point at it to see which, click it to select the first). `GET /v1/frameworks`, `GET /v1/workflows/{id}/portability`.
+- **Portability checks** P001 (the framework cannot run this block, or is not installed), P002 (it only imitates the block), P003 (which other installed frameworks the workflow could move to) and P004 (a block designed for another framework), with plain-language help.
+- The Problems panel says "No problems" when only info notes remain; the notes are still listed.
+- **IR 1.2: a block's own framework.** AI steps, AI agents and Planning Agents can be **Designed for** another framework (`engine`); until mixed-framework flows arrive they run on the workflow's framework. Older workflows load unchanged.
+- **Conformance kit** (`agentcanvas.conformance`): sequence, three-way paths, parallel branches joined, a bounded loop, AI replies that fill a field or pick a path, approve, reject, approve with an edit, and a question re-asked after an invalid answer, plus checks on the events every run must send. Every adapter runs it in CI.
+- **Echo demo engine** (`AGENTCANVAS_ADAPTERS=langchain,echo`): a tiny second framework that passes the kit, to prove the seams. Off by default; not for production.
+
+### Changed
+- **Adapter interface v2** (ADR 0018): a required core (generate, package, run with canonical events) and optional abilities each adapter declares (conversation state, history and replay, long-term memory, connector browsing, breakpoints). What a workflow's framework lacks is refused with a plain message instead of failing.
+- **Model calls outside workflows** (the Copilot, LLM judges, the setup page's connection test) go through a framework-neutral model service, not a workflow adapter.
+
+### Fixed (review of v0.11.0)
+- A workflow's own Script steps (`flows.<workflow>.scripts.…`) ran in the server process even when the project has a sandbox; they now go to the sandbox like shared scripts.
+- The Copilot's copy of the user guide had missed the v0.11.0 Workspace, Export and Copilot pages.
+
 ## v0.11.0 — Workspace and editor fixes (not tagged yet)
 
 ### Added

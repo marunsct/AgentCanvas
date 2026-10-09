@@ -1,5 +1,6 @@
 /** Workflow-level settings shown when nothing is selected. */
 import { useEditor } from "../editor/store";
+import { FrameworkPicker } from "../editor/Frameworks";
 import { StateDesigner } from "./StateDesigner";
 
 export function WorkflowPanel() {
@@ -20,6 +21,7 @@ export function WorkflowPanel() {
         <textarea defaultValue={wf.description} rows={2} key={`desc-${wf.description}`}
           onBlur={(e) => e.target.value !== wf.description && dispatch([{ op: "UpdateMeta", description: e.target.value }])} />
       </label>
+      <FrameworkPicker />
       <div className="row gap">
         <label>
           Recursion limit

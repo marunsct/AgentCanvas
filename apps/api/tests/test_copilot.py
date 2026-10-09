@@ -152,18 +152,18 @@ async def test_brief_then_build_with_self_repair_and_accept(app, api_client):
 
     # the next turn tells the model what happened to its proposal
     seen: list = []
-    original = app.state.projects.adapter.chat
+    original = app.state.models.chat
 
     async def spy(resources, model, messages, tools, usage=None, config=None):
         seen.append(messages)
         return await original(resources, model, messages, tools, usage=usage, config=config)
 
-    app.state.projects.adapter.chat = spy
+    app.state.models.chat = spy
     try:
         script(app, "It greets whoever you pass as `who`.")
         await ask(api_client, wf_id, "what does it do?", mode="ask")
     finally:
-        app.state.projects.adapter.chat = original
+        app.state.models.chat = original
     context = seen[0][1]["content"]
     assert "Add a greeter; Connect it: accepted" in context and '"n_greet"' in context
     assert seen[0][0].get("cache") is True  # the knowledge pack is the cacheable prefix
@@ -239,7 +239,7 @@ async def test_a_runaway_loop_stops(app, api_client, steps):
 
 
 async def test_eval_harness_scores_a_case():
-    from agentcanvas.adapters import get_adapter
+    from agentcanvas.adapters import model_service
     from agentcanvas.copilot.evals import CASES, run_case
     from agentcanvas.copilot.settings import ResolvedModel
 
@@ -253,7 +253,7 @@ async def test_eval_harness_scores_a_case():
     ]  # fmt: skip
     resources = DemoResources(overrides={"copilot": scripted(*replies)})
     model = ResolvedModel(model="anthropic:claude-haiku-4-5", origin="test")
-    result = await run_case(case, get_adapter(), resources, model, default_registry(), Settings(env="test"))
+    result = await run_case(case, model_service(), resources, model, default_registry(), Settings(env="test"))
     assert result.passed and result.turns == 2 and result.applied, result
 
 

@@ -255,7 +255,7 @@ def test_delta_storage_requires_batch_safe_reducer():
 def test_ir_1_0_documents_are_upgraded(triage):
     doc = triage.model_dump(mode="json")
     doc["ir_version"] = "1.0"
-    assert Workflow.model_validate(doc).ir_version == "1.1"
+    assert Workflow.model_validate(doc).ir_version == "1.2"
 
 
 def test_validation_of_200_nodes_is_fast():

@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from agentcanvas.adapters.spi import ThreadStateAbility, require
 from agentcanvas.db.models import Run, Thread, WorkflowVersion
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -89,7 +90,8 @@ class RunAccess:
         try:
             wf = await self._ran(run)
             res = self.runner.resources(run.thread_id, wf)
-            history = await self.runner.adapter.history(wf, run.thread_id, res, 60, include_values=True)
+            travel = require(self.runner.adapter_for(wf), "time_travel", ThreadStateAbility)
+            history = await travel.history(wf, run.thread_id, res, 60, include_values=True)
             steps = [{"step": s["step"], "text": s["text"]} for s in explain(wf, history)]
         except Exception as exc:  # noqa: BLE001 - e.g. checkpoints removed by retention; the rest still helps
             steps = [{"step": 0, "text": f"step history unavailable: {type(exc).__name__}"}]

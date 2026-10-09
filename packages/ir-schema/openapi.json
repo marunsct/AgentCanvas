@@ -1,6 +1,91 @@
 {
   "components": {
     "schemas": {
+      "AdapterManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "abilities": {
+            "items": {
+              "enum": [
+                "thread_state",
+                "time_travel",
+                "memory_store",
+                "mcp_inspect",
+                "breakpoints"
+              ],
+              "type": "string"
+            },
+            "title": "Abilities",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "framework": {
+            "title": "Framework",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Languages",
+            "type": "array"
+          },
+          "nodes": {
+            "additionalProperties": {
+              "enum": [
+                "native",
+                "emulated",
+                "unsupported"
+              ],
+              "type": "string"
+            },
+            "title": "Nodes",
+            "type": "object"
+          },
+          "notes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "object"
+          },
+          "tier": {
+            "enum": [
+              "T1",
+              "T2",
+              "T3",
+              "community"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "framework",
+          "version",
+          "tier"
+        ],
+        "title": "AdapterManifest",
+        "type": "object"
+      },
       "AddNode": {
         "additionalProperties": false,
         "properties": {
@@ -4819,6 +4904,17 @@
             "title": "Disabled",
             "type": "boolean"
           },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -5731,6 +5827,47 @@
           "type"
         ],
         "title": "PortSpec",
+        "type": "object"
+      },
+      "PortabilityOut": {
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "blockers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "emulated": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Emulated",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "adapter",
+          "label",
+          "ok",
+          "blockers",
+          "emulated"
+        ],
+        "title": "PortabilityOut",
         "type": "object"
       },
       "Progress": {
@@ -8027,7 +8164,7 @@
       },
       "UpdateMeta": {
         "additionalProperties": false,
-        "description": "Change name / description / metadata of the workflow.",
+        "description": "Change name / description / metadata / framework of the workflow.",
         "properties": {
           "description": {
             "anyOf": [
@@ -8039,6 +8176,17 @@
               }
             ],
             "title": "Description"
+          },
+          "framework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Framework"
           },
           "metadata": {
             "anyOf": [
@@ -8523,7 +8671,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.11.0"
+    "version": "0.12.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11625,6 +11773,67 @@
         ]
       }
     },
+    "/v1/frameworks": {
+      "get": {
+        "description": "The frameworks this server can run workflows on (S20): abilities and which blocks each runs, natively or by\nemulation. The first one is the default for new workflows.",
+        "operationId": "frameworks_v1_frameworks_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdapterManifest"
+                  },
+                  "title": "Response Frameworks V1 Frameworks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Frameworks",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/v1/hooks/{trigger_id}": {
       "post": {
         "description": "Start a run from a signed webhook delivery (401 on a bad, stale or missing signature, before anything else\nhappens).",
@@ -14447,7 +14656,7 @@
     },
     "/v1/projects/{project_id}/scripts": {
       "post": {
-        "description": "Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01), or `workflows/<workflow>/scripts/<name>.py`\nwith `workflow_id` (S17); returns its import path.",
+        "description": "Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01), or `flows/<workflow>/scripts/<name>.py`\nwith `workflow_id` (S17); returns its import path.",
         "operationId": "new_script_v1_projects__project_id__scripts_post",
         "parameters": [
           {
@@ -19235,6 +19444,76 @@
           }
         ],
         "summary": "Set Layout",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/portability": {
+      "get": {
+        "description": "For each installed framework (S20): can this workflow move to it, and which blocks stop or bend it.",
+        "operationId": "get_portability_v1_workflows__wf_id__portability_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PortabilityOut"
+                  },
+                  "title": "Response Get Portability V1 Workflows  Wf Id  Portability Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Portability",
         "tags": [
           "workflows"
         ]

@@ -55,6 +55,7 @@ from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPoli
 from typing_extensions import TypedDict
 
 from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.security.imports import is_script_path
 from agentcanvas.workspace.loader import load_attr
 
 MODEL_CACHE_SIZE = 64  # model clients kept per Resources
@@ -1170,7 +1171,7 @@ def script_node(*, import_path: str, resources: Resources | None = None) -> Call
 
     With a sandbox configured (M5-T4) each call runs in an isolated process instead of in this one.
     """
-    if resources is not None and resources.script_runner is not None and import_path.startswith("scripts."):
+    if resources is not None and resources.script_runner is not None and is_script_path(import_path):
         return resources.script_runner(import_path)
     return ensure_async(safe_import(import_path, resources.workspace if resources else None))
 

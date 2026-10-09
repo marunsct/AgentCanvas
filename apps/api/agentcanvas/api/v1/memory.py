@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel
 
+from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user
 from agentcanvas.api.v1.runs import runner
@@ -47,15 +48,19 @@ def _parse(namespace: str, user: CurrentUser, *, allow_empty: bool = False) -> t
     return _root(user) + parts
 
 
+def _memory(r: Runner) -> MemoryAbility:
+    return require(r.adapter, "memory_store", MemoryAbility)
+
+
 @router.get("/namespaces", response_model=list[NamespaceOut])
 async def namespaces(
     prefix: str = "", r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)
 ) -> list[NamespaceOut]:
     if user.role == "admin":
-        found = await r.adapter.memory_namespaces(_parse(prefix, user, allow_empty=True))
+        found = await _memory(r).memory_namespaces(_parse(prefix, user, allow_empty=True))
     else:  # everyone else sees only the namespaces that are theirs
         parts = tuple(p for p in prefix.strip("/").split("/") if p)
-        found = await r.adapter.memory_namespaces(_root(user) + parts, limit=10_000)
+        found = await _memory(r).memory_namespaces(_root(user) + parts, limit=10_000)
         found = sorted(ns for ns in found if user.id in ns[len(_root(user)) :])[:200]
     own = [ns[len(_root(user)) :] for ns in sorted(found)]
     return [NamespaceOut(namespace="/".join(ns), parts=list(ns)) for ns in own]
@@ -69,7 +74,7 @@ async def items(
     r: Runner = Depends(runner),
     user: CurrentUser = Depends(current_user),
 ) -> list[MemoryItem]:
-    found = await r.adapter.memory_items(_parse(namespace, user), q or None, limit)
+    found = await _memory(r).memory_items(_parse(namespace, user), q or None, limit)
     return [MemoryItem(**{**i, "namespace": i["namespace"][len(_root(user)) :]}) for i in found]
 
 
@@ -81,7 +86,7 @@ async def delete_item(
     r: Runner = Depends(runner),
     user: CurrentUser = Depends(current_user),
 ) -> Response:
-    await r.adapter.memory_delete(_parse(namespace, user), key)
+    await _memory(r).memory_delete(_parse(namespace, user), key)
     note(request, target=f"namespace={namespace}", key=key)
     return Response(status_code=204)
 
@@ -91,6 +96,6 @@ async def erase(
     namespace: str, request: Request, r: Runner = Depends(runner), user: CurrentUser = Depends(current_user)
 ) -> dict:
     """Delete every memory under a namespace prefix (e.g. all of one user's memories)."""
-    deleted = await r.adapter.memory_erase(_parse(namespace, user))
+    deleted = await _memory(r).memory_erase(_parse(namespace, user))
     note(request, target=f"namespace={namespace}", deleted=deleted)
     return {"deleted": deleted}

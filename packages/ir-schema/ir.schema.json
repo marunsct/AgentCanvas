@@ -357,6 +357,18 @@
           "additionalProperties": true,
           "title": "Metadata",
           "type": "object"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine"
         }
       },
       "required": [
@@ -665,10 +677,11 @@
   "additionalProperties": false,
   "properties": {
     "ir_version": {
-      "default": "1.1",
+      "default": "1.2",
       "enum": [
         "1.0",
-        "1.1"
+        "1.1",
+        "1.2"
       ],
       "title": "Ir Version",
       "type": "string"

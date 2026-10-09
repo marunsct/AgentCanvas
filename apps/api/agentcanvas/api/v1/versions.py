@@ -10,13 +10,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.adapters import get_adapter
+from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, if_match
 from agentcanvas.api.v1.runs import _context
 from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
 from agentcanvas.db.models import Run, TestCase, Thread, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
-from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
+from agentcanvas.errors import Conflict, InvalidInput, NotFound, WorkflowHasErrors
 from agentcanvas.ir.contract import Contract, ContractChange, breaking_changes, contract
 from agentcanvas.ir.diff import WorkflowDiff
 from agentcanvas.ir.models import Workflow
@@ -151,6 +151,11 @@ async def export_plan(
     from agentcanvas.adapters.langchain import deploykit
 
     _, wf, semver = await _export_source(session, svc, wf_id, version)
+    if wf.framework != "langchain":  # the deploy kit builds LangGraph services (S20: other frameworks export as is)
+        raise Conflict(
+            f"the deploy kit builds LangGraph services; a {framework_adapter(wf.framework).manifest.label} workflow "
+            "downloads as a plain export"
+        )
     facts = deploykit.facts(wf, "workflow", semver)
     return ExportPlanOut(
         targets=[ExportTargetOut(id=t.id, label=t.label, summary=t.summary) for t in deploykit.TARGETS.values()],
@@ -174,7 +179,7 @@ async def export_zip(
         {"name": c.name, "input": c.input, "context": c.context, "mocks": c.mocks, "pins": c.pins, "expect": c.expect}
         for c in await TestCaseService(session).list(wf_id)
     ]
-    name, data = get_adapter(wf.framework).package(
+    name, data = framework_adapter(wf.framework).package(
         wf,
         svc.registry(view.row.project_id),
         workspace=request.app.state.projects.workspace(view.row.project_id).root,

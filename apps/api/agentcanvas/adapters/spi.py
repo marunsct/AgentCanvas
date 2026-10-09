@@ -1,8 +1,16 @@
-"""Framework Adapter SPI (spec doc 12 §C.2, minimal R1 subset — ticket M3-T1).
+"""Framework Adapter SPI v2 (spec doc 12 §C.2; S20, ADR 0018).
 
-Everything framework-specific (LangChain/LangGraph today) lives behind this protocol; the core
-(IR, validation, registry, db, services, runtime runner, API) never imports a framework (ADR 0011,
-enforced by import-linter).
+Everything framework-specific lives behind these protocols; the core (IR, validation, registry, db, services,
+runtime runner, API) never imports a framework (ADR 0011, enforced by import-linter).
+
+An adapter has a **required core** (`FrameworkAdapter`: generate, package, persistence, execute with canonical
+events, scripts and resources) and **optional abilities** it declares in its manifest
+(`registry/adapters/<id>.json`): `thread_state` and `time_travel` (`ThreadStateAbility`), `memory_store`
+(`MemoryAbility`), `mcp_inspect` (`McpAbility`) and `breakpoints`. Callers ask for an ability with `require()`,
+which refuses with a plain message when the workflow's framework lacks it.
+
+Model calls that are not part of a workflow (the Copilot, LLM judges, the setup page's connection test) go
+through a framework-neutral `ModelService`, not through an adapter.
 """
 
 from __future__ import annotations
@@ -10,14 +18,19 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
+from agentcanvas.errors import Conflict
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry.adapters import ABILITY_LABEL, AdapterManifest
 from agentcanvas.runtime.types import CheckpointInfo, RunSpec, ThreadState
 
 
 class FrameworkAdapter(Protocol):
+    """The required core every adapter implements."""
+
     id: str
+    manifest: AdapterManifest
 
     # ---- compilation
     def generate(self, wf: Workflow, registry: Any = None) -> str:
@@ -43,7 +56,22 @@ class FrameworkAdapter(Protocol):
     # ---- execution: canonical events (AG-UI based), last one is RUN_FINISHED or RUN_ERROR
     def execute(self, spec: RunSpec, resources: Any) -> AsyncIterator[dict[str, Any]]: ...
 
-    # ---- thread state
+    def script(self, resources: Any, import_path: str) -> Any:
+        """A workspace function `(state) -> dict` as an async callable, sandboxed when the project has one."""
+        ...
+
+    def default_resources(self) -> Any:
+        """Resources (models/tools resolver) used when the host installs no override."""
+        ...
+
+    def new_resources(self, *, resources_class: Any = None, **kw: Any) -> Any:
+        """A resolver for one project (workspace, secrets, script_runner keyword arguments)."""
+        ...
+
+
+class ThreadStateAbility(Protocol):
+    """`thread_state` (read, edit, copy and delete a conversation) and `time_travel` (history, replay)."""
+
     async def get_state(self, wf: Workflow, thread_id: str, resources: Any) -> ThreadState: ...
 
     async def history(
@@ -66,7 +94,10 @@ class FrameworkAdapter(Protocol):
 
     async def delete_thread(self, thread_id: str) -> None: ...
 
-    # ---- long-term memory (store)
+
+class MemoryAbility(Protocol):
+    """`memory_store`: the long-term memory inspector and retention."""
+
     async def memory_namespaces(self, prefix: tuple[str, ...], limit: int = 200) -> list[tuple[str, ...]]: ...
 
     async def memory_items(self, namespace: tuple[str, ...], query: str | None, limit: int) -> list[dict[str, Any]]: ...
@@ -83,12 +114,18 @@ class FrameworkAdapter(Protocol):
         """Move memories written before organisations existed under `org_id`'s root; returns how many moved."""
         ...
 
-    # ---- tools
+
+class McpAbility(Protocol):
+    """`mcp_inspect`: list an app connector's tools."""
+
     async def inspect_mcp(self, name: str, config: dict[str, Any], resources: Any) -> list[dict[str, Any]]:
         """Tools of an MCP server: name, description, destructive/read_only annotations."""
         ...
 
-    # ---- evaluation (FR-EVAL-03)
+
+class ModelService(Protocol):
+    """Framework-neutral model calls outside workflows: LLM judges (FR-EVAL-03), the Copilot (S14), setup tests."""
+
     async def complete(
         self,
         resources: Any,
@@ -103,7 +140,6 @@ class FrameworkAdapter(Protocol):
         settings such as `base_url` and `api_key` (first-run setup's connection test)."""
         ...
 
-    # ---- Copilot (S14)
     async def chat(
         self,
         resources: Any,
@@ -121,14 +157,19 @@ class FrameworkAdapter(Protocol):
         {"name", "description", "parameters" (JSON schema)}. Returns {"content": str, "tool_calls": [...]}."""
         ...
 
-    def script(self, resources: Any, import_path: str) -> Any:
-        """A workspace function `(state) -> dict` as an async callable, sandboxed when the project has one."""
-        ...
 
-    def default_resources(self) -> Any:
-        """Resources (models/tools resolver) used when the host installs no override."""
-        ...
+def supports(adapter: Any, ability: str) -> bool:
+    m = getattr(adapter, "manifest", None)
+    return bool(m and m.has(ability))
 
-    def new_resources(self, *, resources_class: Any = None, **kw: Any) -> Any:
-        """A resolver for one project (workspace, secrets, script_runner keyword arguments)."""
-        ...
+
+def require[T](adapter: Any, ability: str, protocol: type[T]) -> T:
+    """`adapter` as `protocol` when its manifest declares `ability`; else a 409 that says what is missing."""
+    if not supports(adapter, ability):
+        label = adapter.manifest.label if getattr(adapter, "manifest", None) else getattr(adapter, "id", "?")
+        raise Conflict(
+            f"{label} does not support {ABILITY_LABEL.get(ability, ability)}; switch the workflow to a framework "
+            "that does (Workflow settings → Framework)",
+            ability=ability, framework=getattr(adapter, "id", None),
+        )  # fmt: skip
+    return cast(T, adapter)

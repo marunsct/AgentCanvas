@@ -243,7 +243,7 @@ async def _start_turn(
         else request.app.state.projects.for_workflow(view.workflow)
     )
     turn = CopilotTurn(
-        request.app.state.projects.adapter, resources, model, _pack(registry, templates), ctx,
+        request.app.state.models, resources, model, _pack(registry, templates), ctx,
         history=list(conv.messages or []), proposals=[dict(p) for p in conv.proposals or []], usage=usage,
         token_cap=cs.token_cap, base_version=view.row.version, project_notes=cs.notes, saved=view.workflow,
     )  # fmt: skip
@@ -470,7 +470,7 @@ async def code_help(
     )
     usage: dict[str, int] = {}
     try:
-        reply = await request.app.state.projects.adapter.chat(
+        reply = await request.app.state.models.chat(
             resources, model.model, code_prompt(body), [], usage=usage, config=model.config
         )
     except Exception as exc:

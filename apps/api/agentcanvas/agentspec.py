@@ -509,7 +509,7 @@ class _Importer:
             channels.insert(0, {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages",
                                 "storage": "delta"})  # fmt: skip
         ir = {
-            "ir_version": "1.1",
+            "ir_version": "1.2",
             "id": self.wf_id,
             "name": _title(self.name or flow.get("name")),
             "description": flow.get("description") or "",

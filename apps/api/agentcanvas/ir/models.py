@@ -9,6 +9,9 @@ IR versions
 * ``1.1`` — adds channel ``storage``/``io``, a run ``context`` schema, node ``policies``,
   workflow ``settings``, ``data`` edges, edge ``order`` and open (registry-checked) node types.
   Documents with ``ir_version: "1.0"`` are upgraded on load (1.0 is a strict subset).
+* ``1.2`` — adds an optional ``engine`` on AI blocks: the framework that block is designed for, when it differs
+  from the workflow's ``framework`` (S20). Older documents load unchanged; ``engine`` is left out of the JSON
+  when unset, so their hashes keep the same shape.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-IR_VERSION = "1.1"
+IR_VERSION = "1.2"
 IDENT = re.compile(r"^[a-z][a-z0-9_]{0,62}$")  # names become Python identifiers
 TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")  # e.g. core.llm, model.chat, acme.upsert
 RESERVED_NAMES = {"start", "end", "__start__", "__end__"}
@@ -163,6 +166,8 @@ class Node(_Base):
     policies: NodePolicies | None = None
     disabled: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # IR 1.2: the framework this block is designed for (an installed adapter id); None = the workflow's framework
+    engine: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
     @field_validator("type")
     @classmethod
@@ -226,7 +231,7 @@ class WorkflowSettings(_Base):
 
 
 class Workflow(_Base):
-    ir_version: Literal["1.0", "1.1"] = IR_VERSION
+    ir_version: Literal["1.0", "1.1", "1.2"] = IR_VERSION
     id: str
     name: str
     description: str = ""
@@ -242,7 +247,7 @@ class Workflow(_Base):
 
     @model_validator(mode="after")
     def _upgrade(self) -> Workflow:
-        self.ir_version = IR_VERSION  # 1.0 documents are a strict subset of 1.1
+        self.ir_version = IR_VERSION  # 1.0 and 1.1 documents are strict subsets of 1.2
         return self
 
     # ---- small helpers used by validator, interpreter and compiler ----
