@@ -1,4 +1,4 @@
-# 13 — Sprint Plan (S0–S13) and Execution Log
+# 13 — Sprint Plan (S0–S36) and Execution Log
 
 The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) says **what** to build and in which order; this document time-boxes it into **two-week sprints**, slots in the v0.6 requirements (doc [15](../15-concept-evolution-and-new-features.md), FR-X) and the review fixes (doc [14](../14-deep-review-v0.6.md)), and records **execution status**.
 
@@ -39,22 +39,27 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S14** | 2 | AI Copilot I → v0.6.0 | Copilot plan (Claude Doc "Copilot, export and beginner features", plan v2) | — | 24 | Copilot briefs, plans and builds workflows as proposals you accept on the canvas |
 | **S15** | 2 | Open doors → v0.7.0 | [doc 16 §7](../16-competitive-roadmap.md#7-sprint-plan) | — | — | Deployments as MCP tools and A2A agents, MCP connector gallery (~30), OTel trace export |
 | **S16** | 2 | Any framework as a node → v0.10.0 | doc 16, doc 11 F1 | — | — | Wrapped, A2A and MCP agent nodes for 9 frameworks; Agent Spec import/export (✅ done) |
-| **S17** | 2 | Ship to users → v0.11.0 | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
 | **S18** | 2 | AI Copilot II → v0.8.0 | configure, test, debug and fix | — | 23 | The Copilot tests, debugs and fixes workflows (✅ done, built ahead of S16–S17) |
 | **S19** | 2 | Export deploy kit → v0.9.0 | export as a service | — | 24 | Exports are deployable codebases with prerequisites, setup and deploy guides (✅ done, built ahead of S16–S17) |
-| **S20** | 2 | Knowledge Studio → v0.12.0 | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
-| **S21** | 2 | OpenAI Agents SDK adapter → v0.13.0 | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Second framework; portability check; convert-and-compare |
-| **S22** | 2 | Model gateway & cost → v0.14.0 | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
-| **S23** | 2 | Onboarding & switching → v0.15.0 | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers |
-| **S24** | 2 | Pydantic AI & Agno → v0.16.0 | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
-| **S25–S26** | 4 | CrewAI adapter → v0.17.0 | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
-| **S27–S28** | 4 | Google ADK adapter → v0.18.0 | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full |
-| **S29** | 2 | Strands & LlamaIndex → v0.19.0 | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier |
-| **S30–S31** | 4 | Microsoft Agent Framework → v0.20.0 | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Full |
-| **S32** | 2 | Mastra → v0.21.0 | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
+| **S17** | 2 | Workspace and editor fixes → v0.11.0 | owner's findings 2026-10-09, §3 below | — | 14 | A workspace per workflow, exports bundle its code, a way back to the canvas, Copilot in the code editor, every button labelled |
+| **S20** | 2 | Framework foundation → v0.12.0 | [doc 17](../17-framework-coverage-review.md), doc 12 WS0 | — | 20 | Adapter interface v2, adapter per workflow, `engine` per node, framework picker, portability check, conformance kit |
+| **S21** | 2 | Design any agent → v0.13.0 | doc 17 | — | 22 | The canvas Agent block builds a native agent in nine frameworks; mixed flows run and export |
+| **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to CrewAI, OpenAI Agents, AutoGen and LangGraph through Agent Spec (preview) |
+| **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
+| **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
+| **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare |
+| **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
+| **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
+| **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries |
+| **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full |
+| **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers |
+| **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
+| **S33–S34** | 4 | Microsoft Agent Framework flows → v0.24.0 (was S30–S31) | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Authoring tier; Full later if users ask |
+| **S35** | 2 | Strands & LlamaIndex flows → v0.25.0 (was S29) | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier |
+| **S36** | 2 | Mastra → v0.26.0 (was S32) | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
 | **Later** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, Git sync, hosted trial | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
 
-From S15 the order follows the value-first [competitive roadmap](../16-competitive-roadmap.md), approved 2026-10-07. S18 and S19 were built first (their drafts predated the reorder) and finished on 2026-10-08 at the owner's request, so release numbers follow merge order: S18 v0.8.0, S19 v0.9.0, S16 v0.10.0, S17 v0.11.0.
+From S15 the order follows the value-first [competitive roadmap](../16-competitive-roadmap.md), approved 2026-10-07. S18 and S19 were built first (their drafts predated the reorder) and finished on 2026-10-08 at the owner's request, so release numbers follow merge order: S18 v0.8.0, S19 v0.9.0, S16 v0.10.0. On 2026-10-09 the owner re-planned from S17 on after the [framework coverage review](../17-framework-coverage-review.md): S17 is now the owner's workspace and editor fixes, then S20–S22 bring framework design forward; the old S17–S32 moved to S23–S36 ("was" in the table).
 
 Total to MVP ≈ 19 weeks; to production-ready ≈ 23 weeks with four developers. One developer: multiply by ~3.5.
 
@@ -403,6 +408,57 @@ Deviations from the plan:
 - The real-framework job uses a fake model server, so it proves the wiring, not model quality; the Claude Agent SDK
   runs its bundled CLI against the fake Anthropic API.
 
+### S17 — Workspace and editor fixes → v0.11.0 (backlog, not started)
+
+Reported by the owner on 2026-10-09. Causes marked *(checked)* were confirmed in the code; the others are the likely
+cause and are confirmed at the pre-sprint review.
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | **Way back from the Workspace** | F | 1 | Opening the Workspace from a block or the editor shows "Back to *workflow name*" and returns to the same workflow, selection and canvas position; the browser Back button does the same; the Workspace page shows which workflow it belongs to. *(checked: `/workspace` is one route with no workflow in it, `apps/web/src/app/App.tsx`)* |
+| 2 | **A workspace per workflow** | B, F | 4 | Each workflow has its own code folder (`workflows/<workflow>/` with `scripts/`, `tools/`, `nodes/`, `events/`); a shared `lib/` holds code several workflows use; existing projects migrate (current files move to `lib/` so nothing breaks); import paths, the code editor's file tree, secrets and Copilot tools follow the workflow; versions pin the workflow's own code. *(checked: one workspace per project today, `workspace_commit` is the project's head)* |
+| 3 | **Exports bundle the right code** | B | 2 | An export contains the workflow's own folder, every `lib/` module it imports (found by following imports, not by copying everything), data files under those folders and a `requirements` list the workflow's code declares; other workflows' code is left out; an export test fails if any `import_path` in the workflow cannot be imported inside the exported project. *(checked: `packager.py` copies only `scripts/ tools/ nodes/ events/` of the whole project, `WORKSPACE_DIRS`)* |
+| 4 | **Copilot in the code editor** | B, F | 4 | In the Workspace editor: "Write with Copilot" turns a plain description into a function with the right signature for the block that uses it (script step, tool, custom block, event handler); "Explain" and "Fix" on the open file or a selected range, using the ruff markers; changes arrive as a diff to accept or reject, never written silently; starter snippets per file type for beginners; works with the workflow's Copilot model and its privacy mode |
+| 5 | **Every button labelled** | F | 2 | Icon-only buttons get visible text or a tooltip plus an accessible name; the list fields in block settings ("Tools that need approval" in the AI agent block and every other list) show "Add", "Remove", "Move up" and "Move down"; a new list item starts empty instead of `null`, so it no longer shows "Instance type null is invalid"; a Playwright check with axe's `button-name` rule runs on the editor, inspector, Workspace, Versions, Copilot and settings pages and fails on any unlabelled button. *(likely cause: the settings form library's default list buttons use an icon font the app does not load)* |
+| 6 | Docs | all | 1 | User guide Workspace page (per-workflow code, shared library, Copilot in the editor), changelog, handover |
+
+**Demo:** open the AI agent block, add a tool that needs approval with labelled buttons, open its code in the
+Workspace, write the tool with the Copilot, go back to the same spot on the canvas, export and run the export's tests.
+
+### S20 — Framework foundation → v0.12.0 (backlog, not started)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Adapter interface v2 | R | 5 | `FrameworkAdapter` split into a required core (generate, package, execute, canonical events) and optional abilities (thread state, time travel, memory store, MCP inspection) declared in a manifest; model calls for the Copilot and LLM judges move to a framework-neutral model service; the LangChain adapter passes unchanged |
+| 2 | Adapter per workflow | R, B | 3 | The runtime, state, memory and export routes pick the adapter from `workflow.framework`; features an adapter lacks are hidden or refused with a plain message |
+| 3 | IR v1.2: `engine` per node | R | 2 | Optional `engine` on agent blocks, validated against installed adapters; schema regenerated; old workflows load unchanged |
+| 4 | Framework picker and portability check | F, R | 4 | A workflow framework picker and a per-block engine picker; P001–P004 diagnostics with help entries; a badge row showing which frameworks the workflow can target and what blocks each |
+| 5 | Conformance kit | R | 3 | C-AGENT, C-FLOW, C-HITL, C-EVENTS suites with the fake model server, run against every installed adapter in CI |
+| 6 | Toy second adapter | R | 2 | An "echo" adapter passes the kit, proving the seams |
+| 7 | Docs | all | 1 | ADR for interface v2, user guide "Choosing a framework", changelog, handover |
+
+### S21 — Design any agent → v0.13.0 (backlog, not started)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Agent codegen per framework | R | 8 | The canvas Agent block (instructions, model, tools, structured output) generates a native agent for OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands, LlamaIndex, Microsoft Agent Framework and Claude Agent SDK; golden-file tests per framework |
+| 2 | Tools and models across frameworks | R | 4 | Python, HTTP and MCP tools and every catalog model (local ones included) reach each framework's agent; what a framework cannot take is a P-diagnostic, not a run error |
+| 3 | Mixed flows | R | 3 | A drawn agent with a non-LangChain engine runs in the LangGraph host through the S16 step, keeping approvals, traces and the inbox; tool-level approvals where the framework has them |
+| 4 | Single-agent export per framework | B | 4 | Export one agent as a native project for its framework (its own runner, pinned package, README, tests) |
+| 5 | Copilot builds for a framework | B | 2 | The Copilot proposes engine choices and explains portability problems |
+| 6 | Real-framework CI | D | 1 | The `frameworks` job runs every drawn agent, mixed flow and single-agent export against the fake model server |
+| 7 | Docs | all | 1 | User guide "Mixing frameworks", templates, changelog, handover |
+
+### S22 — Whole flows, preview → v0.14.0 (backlog, not started)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Agent Spec bridge export | R | 6 | Portable workflows export as runnable projects for CrewAI, OpenAI Agents, AutoGen and LangGraph through pyagentspec loaders, marked preview; P004 "bridge used" diagnostic |
+| 2 | Bridge CI | D | 3 | 5 templates export and run on 3 frameworks against the fake model server |
+| 3 | Gaps report | R | 2 | What each bridge cannot express is listed in the export and in the portability panel |
+| 4 | Export dialog | F | 2 | Framework choice in the export dialog with preview labels |
+| 5 | Docs | all | 1 | User guide, changelog, handover |
+
 ### S18 — AI Copilot II and debug assistant → v0.8.0
 
 | # | Item | Days | Acceptance |
@@ -461,14 +517,15 @@ feedback finds a run's thread in the checkpoints, so it works across replicas an
 and the generated curl send the required context fields; the MCP and A2A addresses (S15) are documented as not part
 of the exported service.
 
-### S20+ — GA backlog (prioritised quarterly)
+### Later — GA backlog (prioritised quarterly)
 Multiplayer (Yjs) · persistence bindings & RoutedStore · Data Studio · learning loops (ADR 0014) · A2A/AG-UI exposure & chat widget · FR-X-03 headless tools · FR-X-04 generative UI · FR-X-16 multimodal · FR-X-21 per-user connections · FR-X-05/06 decision models & Engine bridge · FR-X-09 stream projections · FR-X-11 ACP · FR-X-12 trace import · FR-X-20 PR visual diffs · FR-X-23 budget-aware routing · second framework adapter (doc 12).
 
 ### S15 onward
 
-Scope, exit criteria and ordering for S15–S32 are in the [competitive roadmap §7](../16-competitive-roadmap.md#7-sprint-plan),
-approved on 2026-10-07. Each sprint's detailed backlog is added here when the sprint starts, after the pre-sprint
-codebase review. Framework adapter sprints (S21, S24–S32) follow their [adapter specs](../adapters/README.md).
+Scope, exit criteria and ordering for S15–S36 are in the [competitive roadmap §7](../16-competitive-roadmap.md#7-sprint-plan),
+approved on 2026-10-07 and re-planned on 2026-10-09 after the [framework coverage review](../17-framework-coverage-review.md).
+S17 and S20–S22 have backlogs above; the others get theirs when the sprint starts, after the pre-sprint codebase
+review. Framework flow sprints (S25, S27, S29–S30, S32–S36) follow their [adapter specs](../adapters/README.md).
 
 ## 4. Risks to the schedule
 
