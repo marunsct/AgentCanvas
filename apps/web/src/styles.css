@@ -806,3 +806,8 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* S17: settings-form list buttons with words */
+.rjsf .rjsf-add { margin: 4px 0; }
+.rjsf .rjsf-btn { font-size: 12px; padding: 2px 8px; white-space: nowrap; }
+.rjsf .array-item-toolbox .btn-group, .rjsf .array-item-toolbox { display: flex; gap: 4px; flex-wrap: wrap; }

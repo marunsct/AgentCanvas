@@ -24,6 +24,7 @@ import { runErrorHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
+import { recallView } from "./viewMemory";
 import { can, ME } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
@@ -53,7 +54,13 @@ export function EditorPage() {
     useEditor.getState().reset();
     useRun.getState().reset();
     useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null, busy: false, live: null });
-    useEditor.getState().load(id).catch((e: Error) => setError(e.message));
+    const sel = recallView(id)?.selected; // back from the Workspace: the block you had selected (S17)
+    useEditor.getState().load(id)
+      .then(() => {
+        const st = useEditor.getState();
+        if (sel && (st.wf?.nodes.some((n) => n.id === sel) || st.wf?.resources.some((r) => r.id === sel))) st.select(sel);
+      })
+      .catch((e: Error) => setError(e.message));
     const thread = params.get("thread");  // "open this run's timeline", e.g. from an experiment's results
     if (thread) {
       useRun.getState().setThread(thread);
@@ -99,7 +106,8 @@ export function EditorPage() {
           : <span className="save-state" data-testid="view-only" title={`your role is ${ME.role}`}>View only</span>}
         <span className="spacer" />
         <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link">Evaluate</Link>
-        <Link to="/workspace" className="inbox-link" data-testid="workspace-link">Workspace</Link>
+        <Link to={`/workflows/${wf.id}/workspace`} className="inbox-link" data-testid="workspace-link"
+          title="This workflow's code (scripts, tools, custom blocks) and the project's shared code">Workspace</Link>
         <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}
@@ -115,8 +123,8 @@ export function EditorPage() {
             title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
         </div>
         <div className="toolbar-group" role="group" aria-label="History">
-          <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)">↶</button>
-          <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)">↷</button>
+          <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)" aria-label="Undo">↶</button>
+          <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo">↷</button>
         </div>
         <button type="button" onClick={() => useUi.getState().setHelp(!useUi.getState().help)} data-testid="help-button"
           title="A short guide for beginners: what the blocks, dots and arrows mean">❓ Help</button>

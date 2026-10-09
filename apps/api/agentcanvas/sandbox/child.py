@@ -34,6 +34,10 @@ def _block_network() -> None:
 
 def _load(import_path: str):
     module, _, attr = import_path.partition(":")
+    # workspace files import each other (`from scripts.textutil import x`, S17); last on the path, so the
+    # standard library always wins over a file of the same name
+    if os.getcwd() not in sys.path:
+        sys.path.append(os.getcwd())
     path = os.path.join(os.getcwd(), *module.split(".")) + ".py"
     spec = importlib.util.spec_from_file_location(module, path)
     if spec is None or spec.loader is None or not os.path.isfile(path):

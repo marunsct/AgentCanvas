@@ -5,9 +5,10 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 
 - **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-09. Plan only, no code: after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) the owner re-planned from S17 on. S17 is now the owner's workspace and editor fixes (a workspace per workflow, exports bundling its code, a way back from the Workspace, Copilot in the code editor, labelled buttons), then S20 Framework foundation, S21 Design any agent and S22 Whole flows (preview); the old S17–S32 moved to S23–S36. Backlogs are in the sprint plan §3. Implementation waits for the owner's go-ahead.
-- **Before that:** 2026-10-08. Sprint 16 (Any framework as a node → v0.10.0) is done: agents from nine frameworks, remote A2A agents and MCP tools run as canvas steps with approvals and traces, workflows move in and out as Open Agent Spec files, and a CI job runs a real agent from each framework. The UI refresh with light, medium and dark themes was merged in #20.
-- **Before that:** 2026-10-08. Sprints 18 (AI Copilot II and debug assistant → v0.8.0) and 19 (Export deploy kit → v0.9.0) are done in #19, ahead of S16–S17 at the owner's request: the Copilot tests and debugs workflows, and an export is a deployable service for the target you pick with four generated guides, `make doctor`, `make smoke` and `make gate`.
+- **Last updated:** 2026-10-09. Sprint 17 (Workspace and editor fixes → v0.11.0) is done: each workflow has its own code folder next to the shared code, exports bundle exactly the code a workflow uses (with an import test), the Copilot writes, explains and fixes code in the Workspace editor as a diff you accept, the Workspace has a way back to the same spot on the canvas, and every button has a label (list fields in block settings start empty). Next: S20 Framework foundation, after the owner's go-ahead.
+- **Before that:** 2026-10-09. Plan only: after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) the owner re-planned from S17 on (S17 workspace and editor fixes, S20–S22 framework design, old S17–S32 moved to S23–S36).
+- **Earlier:** 2026-10-08. Sprint 16 (Any framework as a node → v0.10.0) is done: agents from nine frameworks, remote A2A agents and MCP tools run as canvas steps with approvals and traces, workflows move in and out as Open Agent Spec files, and a CI job runs a real agent from each framework. The UI refresh with light, medium and dark themes was merged in #20.
+- **Earlier:** 2026-10-08. Sprints 18 (AI Copilot II and debug assistant → v0.8.0) and 19 (Export deploy kit → v0.9.0) are done in #19, ahead of S16–S17 at the owner's request: the Copilot tests and debugs workflows, and an export is a deployable service for the target you pick with four generated guides, `make doctor`, `make smoke` and `make gate`.
 - **Previously:** 2026-10-06. Sprint 13 is merged (#8; tag `v0.5.0` is the maintainer's call). #9 adds the user guide, models from any provider (local ones included) with per-provider keys, a first-run model setup screen, and `make docker-up`.
 
 ## At a glance
@@ -37,8 +38,8 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 | S19 Export deploy kit → v0.9.0 | ✅ done (built ahead of S16–S17 at the owner's request) |
 | UI refresh: light, medium and dark themes, modern restyle, Copilot chat layout | ✅ done (merged in #20) |
 | S16 Any framework as a node → v0.10.0 | ✅ done |
-| S17 Workspace and editor fixes → v0.11.0 | ⏸ planned (backlog ready); needs the owner's go-ahead |
-| S20 Framework foundation, S21 Design any agent, S22 Whole flows (preview) | ⏸ planned (backlogs ready), after S17 |
+| S17 Workspace and editor fixes → v0.11.0 | ✅ done |
+| S20 Framework foundation, S21 Design any agent, S22 Whole flows (preview) | ⏸ planned (backlogs ready); S20 next, needs the owner's go-ahead |
 | S23–S36 (ship to users, Knowledge Studio, framework flows, mixed-flow export, importers) | ⏸ planned, see [competitive roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan) |
 | Later: GA backlog | ⬜ pending |
 

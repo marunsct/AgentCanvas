@@ -40,7 +40,7 @@ test("script node: scaffold its file, edit it with ruff feedback, run the new co
   // a unique node name keeps parallel runs of this journey apart (one shared workspace)
   await page.getByLabel("node name").fill(`shout_${stamp}`);
   await page.getByLabel("node name").blur();
-  await page.getByRole("button", { name: `+ Create scripts/shout_${stamp}.py` }).click();
+  await page.getByRole("button", { name: `+ Create the code file shout_${stamp}.py` }).click();
   await expect(page.getByTestId("open-script")).toBeVisible();
 
   await connect(page, handle(page, "START", "next"), handle(page, `shout_${stamp}`, "in"));

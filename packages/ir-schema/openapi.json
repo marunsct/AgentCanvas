@@ -972,6 +972,105 @@
         "title": "Check",
         "type": "object"
       },
+      "CodeHelpIn": {
+        "properties": {
+          "action": {
+            "enum": [
+              "write",
+              "explain",
+              "fix"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "content": {
+            "default": "",
+            "description": "the file as it is in the editor, unsaved edits included",
+            "maxLength": 200000,
+            "title": "Content",
+            "type": "string"
+          },
+          "instruction": {
+            "default": "",
+            "description": "what to write, or what to change",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "problems": {
+            "description": "ruff findings shown for the file",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Problems",
+            "type": "array"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "maxLength": 50000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the selected lines, when any",
+            "title": "Selection"
+          }
+        },
+        "required": [
+          "action",
+          "path"
+        ],
+        "title": "CodeHelpIn",
+        "type": "object"
+      },
+      "CodeHelpOut": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the whole proposed file, to show as a diff; never saved here",
+            "title": "Code"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "text": {
+            "description": "the Copilot's explanation, in plain words",
+            "title": "Text",
+            "type": "string"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "text",
+          "model"
+        ],
+        "title": "CodeHelpOut",
+        "type": "object"
+      },
       "CommandBatch": {
         "properties": {
           "commands": {
@@ -3366,6 +3465,34 @@
         "title": "FileSave",
         "type": "object"
       },
+      "FilesOut": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileOut"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the workflow's own code folder, when `workflow_id` was given",
+            "title": "Folder"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "FilesOut",
+        "type": "object"
+      },
       "FilterIn": {
         "properties": {
           "metadata": {
@@ -4651,6 +4778,18 @@
             "pattern": "^[a-z][a-z0-9_]{0,62}$",
             "title": "Name",
             "type": "string"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "create it in this workflow's own folder (S17)",
+            "title": "Workflow Id"
           },
           "writes": {
             "items": {
@@ -8384,7 +8523,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -14308,7 +14447,7 @@
     },
     "/v1/projects/{project_id}/scripts": {
       "post": {
-        "description": "Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01); returns its import path.",
+        "description": "Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01), or `workflows/<workflow>/scripts/<name>.py`\nwith `workflow_id` (S17); returns its import path.",
         "operationId": "new_script_v1_projects__project_id__scripts_post",
         "parameters": [
           {
@@ -15144,6 +15283,81 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/workflow-files/{wf_id}": {
+      "get": {
+        "description": "One workflow's view of the workspace: its own folder (created on first use) and the shared code, without\nother workflows' folders.",
+        "operationId": "list_workflow_files_v1_projects__project_id__workflow_files__wf_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Workflow Files",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/workflows": {
       "get": {
         "operationId": "list_workflows_v1_projects__project_id__workflows_get",
@@ -15398,6 +15612,24 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "only shared code and this workflow's own (S17)",
+            "in": "query",
+            "name": "workflow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only shared code and this workflow's own (S17)",
+              "title": "Workflow Id"
             }
           },
           {
@@ -17795,6 +18027,82 @@
           }
         ],
         "summary": "Get Conversation",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot/code": {
+      "post": {
+        "description": "Copilot help in the code editor (S17): write code from a description, explain it, or fix it. The answer is a\nproposal the editor shows as a diff; nothing is written to the workspace here.",
+        "operationId": "code_help_v1_workflows__wf_id__copilot_code_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeHelpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeHelpOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Code Help",
         "tags": [
           "copilot"
         ]

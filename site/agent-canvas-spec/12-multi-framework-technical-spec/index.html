@@ -1,0 +1,4243 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Visual agentic workflows compiled to LangGraph / LangChain / Deep Agents">
+      
+      
+      
+      
+        <link rel="prev" href="../11-framework-agnostic-plan/">
+      
+      
+        <link rel="next" href="../13-deep-review-report/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Multi-framework technical spec - AgentCanvas</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#12-multi-framework-support-verified-research-technical-specification-delivery-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="AgentCanvas" class="md-header__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AgentCanvas
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Multi-framework technical spec
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="AgentCanvas" class="md-nav__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AgentCanvas
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/run-locally/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run on your computer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/beginner-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Beginner's guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and API keys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building on the canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/copilot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Copilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Block reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/run-and-debug/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running and debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspace, secrets and events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish and integrate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/agents-and-connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect to other agents and tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export and deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organisations, roles and policies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy and operate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Specification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-functional-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functional spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-technical-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-graph-ir-and-compiler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph IR & compiler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-node-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Node catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-workspaces-scripting-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces, scripting & events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-roadmap-risks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap & risks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-worked-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worked example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-persistence-memory-data-modeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence & memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09-self-improving-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-improving agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../15-concept-evolution-and-new-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concept & new features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../16-competitive-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Competitive roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../17-framework-coverage-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework coverage review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../14-deep-review-v0.6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review v0.6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_14" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_14" id="__nav_3_14_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_14_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    History
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-improvement-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Improvement plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-framework-agnostic-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework-agnostic plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-framework technical spec
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-framework technical spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#part-a-verification-research" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part A — Verification research
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part A — Verification research">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a1-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.1 Method
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2-versions-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.2 Versions verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a3-key-findings-what-changed-versus-the-doc-11-assumptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.3 Key findings (what changed versus the doc 11 assumptions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a4-verified-concept-matrix-core-ir-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.4 Verified concept matrix (Core IR → framework)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-b-revised-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part B — Revised strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part B — Revised strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#b1-what-the-evidence-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B.1 What the evidence changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b2-revised-adapter-order-replaces-doc-11-5-f2f4-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B.2 Revised adapter order (replaces doc 11 §5 F2–F4 ordering)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b3-two-lowering-paths-per-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B.3 Two lowering paths per adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-c-technical-specification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part C — Technical specification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part C — Technical specification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#c1-package-repository-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.1 Package &amp; repository layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c2-adapter-spi-normative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.2 Adapter SPI (normative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c3-canonical-run-event-protocol-ag-ui-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.3 Canonical Run Event protocol (AG-UI based)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c4-canonical-hitl-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.4 Canonical HITL protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c5-state-persistence-memory-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.5 State, persistence &amp; memory mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c6-tool-model-bridges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.6 Tool &amp; model bridges
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c7-hosting-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.7 Hosting wrappers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c8-conformance-suite-normative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.8 Conformance suite (normative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c9-certification-tiers-refined" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.9 Certification tiers (refined)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c10-stack-version-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.10 Stack &amp; version management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c11-uiux-specification-for-multi-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.11 UI/UX specification for multi-framework
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c12-security-considerations-per-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.12 Security considerations per adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-d-detailed-delivery-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part D — Detailed delivery plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part D — Detailed delivery plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#d1-timeline-overview-relative-to-release-1-ga-month-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.1 Timeline overview (relative to Release 1 GA = month 0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d2-workstreams-milestones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.2 Workstreams &amp; milestones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d3-staffing-cost-incremental-to-core-product-team" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.3 Staffing &amp; cost (incremental to core product team)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d4-definition-of-done-per-adapter-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.4 Definition of Done per adapter (checklist)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d5-risks-evidence-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.5 Risks (evidence-based)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-e-updates-to-earlier-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part E — Updates to earlier documents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources-verified-2026-09-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources (verified 2026-09-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../13-deep-review-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review report (v0.5)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/00-concepts-primer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts primer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/01-environment-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/02-repository-and-conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository & conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/03-walking-skeleton-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walking skeleton
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/04-implementation-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/05-backend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/06-frontend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/07-compiler-and-node-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler & node types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/08-testing-and-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/09-deployment-and-operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment & operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/10-security-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/11-troubleshooting-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/12-traceability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traceability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/13-sprint-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint plan & execution log
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_16" id="__nav_4_16_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spikes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_16">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Spikes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/spikes/SP-2-langsmith-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-2 LangSmith sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/spikes/SP-3-v3-streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-3 v3 streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/spikes/SP-4-server-runtime-hosting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-4 ServerRuntime hosting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#part-a-verification-research" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part A — Verification research
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part A — Verification research">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a1-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.1 Method
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2-versions-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.2 Versions verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a3-key-findings-what-changed-versus-the-doc-11-assumptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.3 Key findings (what changed versus the doc 11 assumptions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a4-verified-concept-matrix-core-ir-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A.4 Verified concept matrix (Core IR → framework)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-b-revised-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part B — Revised strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part B — Revised strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#b1-what-the-evidence-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B.1 What the evidence changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b2-revised-adapter-order-replaces-doc-11-5-f2f4-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B.2 Revised adapter order (replaces doc 11 §5 F2–F4 ordering)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b3-two-lowering-paths-per-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B.3 Two lowering paths per adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-c-technical-specification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part C — Technical specification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part C — Technical specification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#c1-package-repository-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.1 Package &amp; repository layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c2-adapter-spi-normative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.2 Adapter SPI (normative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c3-canonical-run-event-protocol-ag-ui-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.3 Canonical Run Event protocol (AG-UI based)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c4-canonical-hitl-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.4 Canonical HITL protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c5-state-persistence-memory-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.5 State, persistence &amp; memory mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c6-tool-model-bridges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.6 Tool &amp; model bridges
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c7-hosting-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.7 Hosting wrappers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c8-conformance-suite-normative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.8 Conformance suite (normative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c9-certification-tiers-refined" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.9 Certification tiers (refined)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c10-stack-version-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.10 Stack &amp; version management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c11-uiux-specification-for-multi-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.11 UI/UX specification for multi-framework
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c12-security-considerations-per-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C.12 Security considerations per adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-d-detailed-delivery-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part D — Detailed delivery plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part D — Detailed delivery plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#d1-timeline-overview-relative-to-release-1-ga-month-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.1 Timeline overview (relative to Release 1 GA = month 0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d2-workstreams-milestones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.2 Workstreams &amp; milestones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d3-staffing-cost-incremental-to-core-product-team" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.3 Staffing &amp; cost (incremental to core product team)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d4-definition-of-done-per-adapter-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.4 Definition of Done per adapter (checklist)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d5-risks-evidence-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.5 Risks (evidence-based)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-e-updates-to-earlier-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part E — Updates to earlier documents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources-verified-2026-09-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources (verified 2026-09-28)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="12-multi-framework-support-verified-research-technical-specification-delivery-plan">12 — Multi-Framework Support: Verified Research, Technical Specification &amp; Delivery Plan</h1>
+<blockquote>
+<p>Supersedes the <em>indicative</em> concept mapping in <a href="../11-framework-agnostic-plan/#3-concept-mapping-across-frameworks-planning-reference">doc 11 §3</a>. Every framework fact in this document was verified <strong>against the framework's own source repository</strong> (shallow clones of the default branch taken on <strong>2026-09-28</strong>), not against blog posts. Per-framework adapter specifications live in <a href="./adapters/"><code>adapters/</code></a>.</p>
+</blockquote>
+<hr />
+<h2 id="part-a-verification-research">Part A — Verification research</h2>
+<h3 id="a1-method">A.1 Method</h3>
+<ol>
+<li>Shallow-cloned each framework's official repository and read the public API from source (class fields, constructor signatures, decorators, exported symbols, docs in-repo, samples).</li>
+<li>Resolved the latest release tag via <code>git ls-remote --tags</code>.</li>
+<li>For each Core IR concept (doc 11 §2.1) classified support as <strong>N</strong> native · <strong>E</strong> emulatable by the adapter · <strong>U</strong> unsupported, and recorded the exact API that implements it.</li>
+<li>Checked licences (bundling/redistribution), interop protocol support (MCP, A2A, AG-UI, OpenTelemetry) and hosting/deploy options.</li>
+<li>Checked two cross-framework assets that can be reused: <strong>Open Agent Spec</strong> adapters and <strong>AG-UI</strong> framework integrations.</li>
+</ol>
+<h3 id="a2-versions-verified">A.2 Versions verified</h3>
+<table>
+<thead>
+<tr>
+<th>Framework</th>
+<th>Package(s)</th>
+<th>Latest release verified</th>
+<th>Languages</th>
+<th>Licence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LangChain / LangGraph / Deep Agents (reference)</td>
+<td><code>langchain</code>, <code>langgraph</code>, <code>deepagents</code></td>
+<td>1.4.2 / 1.2.12 / 0.7.19</td>
+<td>Py, TS</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>OpenAI Agents SDK</td>
+<td><code>openai-agents</code></td>
+<td><strong>0.22.3</strong> (pre-1.0)</td>
+<td>Py (JS SDK separate)</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>Google Agent Development Kit</td>
+<td><code>google-adk</code></td>
+<td><strong>2.10.0</strong></td>
+<td>Py, TS, Java, Go</td>
+<td>Apache-2.0</td>
+</tr>
+<tr>
+<td>Microsoft Agent Framework</td>
+<td><code>agent-framework</code> (+ ~40 sub-packages)</td>
+<td><strong>python-1.19.0</strong> (sub-packages mix GA and <code>b</code>/<code>a</code> pre-releases)</td>
+<td>Py, .NET</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>CrewAI</td>
+<td><code>crewai</code></td>
+<td><strong>1.15.22</strong></td>
+<td>Py</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>Pydantic AI</td>
+<td><code>pydantic-ai</code>, <code>pydantic-graph</code>, <code>pydantic-evals</code></td>
+<td><strong>2.51.0</strong></td>
+<td>Py</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>LlamaIndex Workflows</td>
+<td><code>llama-index-workflows</code> (+ <code>llama-agents-*</code> server/DBOS)</td>
+<td><strong>2.11.1</strong></td>
+<td>Py (TS separate)</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>Mastra</td>
+<td><code>@mastra/core</code> (+ <code>@mastra/*</code> stores)</td>
+<td><strong>1.72</strong> (alpha pre-release on main)</td>
+<td>TS</td>
+<td>Apache-2.0 (except <code>ee/</code> dirs)</td>
+</tr>
+<tr>
+<td>Strands Agents</td>
+<td><code>strands-agents</code></td>
+<td><strong>1.41.0</strong></td>
+<td>Py, TS</td>
+<td>Apache-2.0</td>
+</tr>
+<tr>
+<td>Claude Agent SDK</td>
+<td><code>claude-agent-sdk</code></td>
+<td><strong>0.2.160</strong></td>
+<td>Py, TS</td>
+<td>MIT</td>
+</tr>
+<tr>
+<td>Open Agent Spec</td>
+<td><code>pyagentspec</code>, <code>tsagentspec</code></td>
+<td><strong>26.3.1</strong> (26.4.0.dev on main)</td>
+<td>Py, TS</td>
+<td>Apache-2.0 / UPL</td>
+</tr>
+<tr>
+<td>A2A SDK</td>
+<td><code>a2a-sdk</code></td>
+<td><strong>1.1.5</strong> — implements A2A spec <strong>1.0</strong> (0.3 compat mode)</td>
+<td>Py</td>
+<td>Apache-2.0</td>
+</tr>
+<tr>
+<td>AG-UI</td>
+<td><code>ag-ui-protocol</code> SDKs + integrations</td>
+<td>rolling (per-integration versions)</td>
+<td>Py, TS, …</td>
+<td>MIT</td>
+</tr>
+</tbody>
+</table>
+<h3 id="a3-key-findings-what-changed-versus-the-doc-11-assumptions">A.3 Key findings (what changed versus the doc 11 assumptions)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Finding</th>
+<th>Evidence (source)</th>
+<th>Consequence for AgentCanvas</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>K1</td>
+<td><strong>Google ADK 2.x has a real graph workflow engine</strong>: <code>google.adk.workflow.Workflow(name, edges=[("START", a, b), (router, {"route": node})], max_concurrency, rerun_on_resume)</code>, <code>@node(parallel_worker=True)</code> fan-out over iterables, <code>JoinNode</code>, <code>RetryConfig</code>, <code>NodeTimeoutError</code>, nodes that <code>yield Event(state=…, route=…)</code>, nested workflows, and <strong><code>RequestInput</code></strong> for human input with resume.</td>
+<td><code>src/google/adk/workflow/*</code>, <code>contributing/samples/workflows/{sequence,route,state,request_input,parallel_worker,loop,nested_workflow}</code></td>
+<td>ADK can be a <strong>Tier-1 Graph-tier adapter</strong>, not only an agent-tier one. Strong first candidate.</td>
+</tr>
+<tr>
+<td>K2</td>
+<td><strong>Microsoft Agent Framework (MAF) is GA (1.x) and has Pregel-style workflows</strong>: <code>WorkflowBuilder(start_executor, checkpoint_storage, max_iterations, …)</code> with <code>add_edge</code>, <code>add_chain</code>, <code>add_fan_out_edges</code>, <code>add_fan_in_edges</code>, <code>add_switch_case_edge_group</code>, <code>add_multi_selection_edge_group</code>; super-step events; <code>ctx.request_info(...)</code> for HITL; <code>CheckpointStorage</code> (in-memory, file, Azure Cosmos). Tools support <code>approval_mode="always_require"</code>. Orchestrations package: sequential, concurrent, group chat, handoff, magentic. Declarative YAML agents.</td>
+<td><code>python/packages/core/agent_framework/_workflows/*</code>, <code>_tools.py</code>, <code>packages/orchestrations</code>, <code>packages/declarative</code></td>
+<td>Excellent structural fit to LangGraph semantics (super-steps, checkpoints, request/response HITL). Tier-1 candidate.</td>
+</tr>
+<tr>
+<td>K3</td>
+<td><strong>OpenAI Agents SDK has native HITL</strong> (not emulated): <code>function_tool(needs_approval=bool|callable)</code> → <code>result.interruptions</code> (<code>ToolApprovalItem</code>) → <code>result.to_state()</code> → <code>RunState.approve/reject(...)</code> → <code>Runner.run(agent, state)</code>; <code>RunState.to_json()/from_json()</code> makes pauses <strong>serialisable</strong>. Sessions: SQLite, OpenAI Conversations, Redis, SQLAlchemy, MongoDB, Dapr, encrypted. <strong>No graph/workflow primitive</strong> — orchestration is handoffs, agents-as-tools, or code. Still pre-1.0 (0.22.x).</td>
+<td><code>src/agents/{agent.py,tool.py,run_state.py,memory/,extensions/memory/}</code>, <code>docs/human_in_the_loop.md</code></td>
+<td>Great Agent-tier adapter; Graph tier must be <strong>emulated</strong> (generated Python orchestration or hosted in LangGraph). Pre-1.0 → pin tightly.</td>
+</tr>
+<tr>
+<td>K4</td>
+<td><strong>CrewAI Flows now have a serialisable declarative contract</strong>: <code>FlowDefinition</code> (methods, trigger conditions, state schema as dict/Pydantic/JSON Schema, persistence, human feedback, actions of type code/tool/crew/agent/expression/script, <code>each</code> loops) independent of authoring and runtime; <code>@start/@listen/@router/or_/and_</code>, <code>@human_feedback(message, emit, llm, default_outcome, provider, learn…)</code>, <code>@persist</code>, state <code>CheckpointConfig(location, on_events, provider)</code>.</td>
+<td><code>lib/crewai/src/crewai/flow/{flow_definition.py,dsl/,human_feedback.py,persistence/}</code>, <code>state/checkpoint_config.py</code></td>
+<td>Generate/import CrewAI Flows via <strong>FlowDefinition</strong> rather than Python AST — much more robust codegen and round-trip.</td>
+</tr>
+<tr>
+<td>K5</td>
+<td><strong>Pydantic AI 2.x</strong>: declarative <strong>Agent Specs</strong> (<code>Agent.from_spec</code> / <code>Agent.from_file</code>, YAML/JSON), composable <strong>capabilities</strong>, <strong>deferred tools</strong> for HITL (<code>ApprovalRequired</code>, <code>CallDeferred</code>, <code>DeferredToolRequests</code> → resume with <code>DeferredToolResults</code>), durable execution integrations (<strong>Temporal, DBOS, Prefect</strong>), <code>pydantic_graph.GraphBuilder</code>, AG-UI &amp; Vercel AI UI adapters, <code>pydantic_evals</code>.</td>
+<td><code>pydantic_ai_slim/pydantic_ai/{agent,capabilities,durable_exec,_deferred.py,toolsets/approval_required.py}</code>, <code>docs/{agent-spec,deferred-tools,persistence}.md</code></td>
+<td>Agent tier maps cleanly via Agent Specs; graph tier via <code>pydantic_graph</code>. Tier-2 → Tier-1 candidate.</td>
+</tr>
+<tr>
+<td>K6</td>
+<td><strong>AG-UI already has integrations for almost every target</strong>: <code>a2a, adk-middleware, ag2, agent-spec, agno, aws-strands, claude-agent-sdk, claude-managed-agents, crew-ai, langchain, langgraph, langroid, llama-index, mastra, microsoft-agent-framework (py/.NET), pydantic-ai, vercel-ai-sdk, watsonx</code>; protocol events <code>RUN_STARTED/FINISHED/ERROR</code>, <code>STEP_STARTED/FINISHED</code>, <code>TEXT_MESSAGE_*</code>, <code>TOOL_CALL_START/ARGS/END/RESULT</code>, <code>STATE_SNAPSHOT/DELTA</code>, <code>MESSAGES_SNAPSHOT</code>, <code>REASONING_*</code>, <code>ACTIVITY_*</code>, <code>RAW</code>, <code>CUSTOM</code>, and a <code>RunFinished</code> <strong>interrupt outcome</strong>.</td>
+<td><code>ag-ui/integrations/*</code>, <code>sdks/python/ag_ui/core/events.py</code></td>
+<td><strong>Adopt AG-UI as the base of the Canonical Run Event protocol</strong> and reuse existing integrations as event translators → large reduction of per-adapter work.</td>
+</tr>
+<tr>
+<td>K7</td>
+<td><strong>Open Agent Spec ships loaders <em>and</em> exporters</strong> for <code>langgraph</code>, <code>openaiagents</code>, <code>agent_framework</code> (MAF), <code>crewai</code>, <code>autogen</code>, <code>wayflow</code>; components: <code>Agent</code>, <code>Flow</code> with nodes (<code>Start/End/LlmNode/AgentNode/ToolNode/ApiNode/BranchingNode/MapNode/ParallelMapNode/ParallelFlowNode/FlowNode/CatchExceptionNode/Input/OutputMessage</code>), <code>ControlFlowEdge</code>/<code>DataFlowEdge</code>, <code>ManagerWorkers</code>, <code>Swarm</code>, <code>RemoteAgent</code>, <code>A2AAgent</code>, MCP, datastores, standard tracing events. Adapters have explicit <code>NotImplementedError</code> gaps.</td>
+<td><code>pyagentspec/src/pyagentspec/{flows,adapters/*}</code></td>
+<td>Use Agent Spec as the <strong>interchange format</strong> and as an optional <em>bridge lowering path</em> ("IR → Agent Spec → framework via pyagentspec") for fast Tier-2 coverage; keep direct codegen for Tier-1 quality.</td>
+</tr>
+<tr>
+<td>K8</td>
+<td><strong>Strands</strong> has <code>multiagent.GraphBuilder</code> (<code>add_node</code>, <code>add_edge</code>, <code>set_entry_point</code>, <code>set_max_node_executions</code>, <code>build</code>), <code>Swarm</code>, A2A, first-class <strong>interrupts</strong> (hooks/tools raise → agent returns interrupts → respond &amp; re-invoke), session managers (file, S3, repository, snapshot), OTel.</td>
+<td><code>strands-py/src/strands/{multiagent,session,types/interrupt.py}</code></td>
+<td>Upgrade Strands from "black-box only" to a <strong>Tier-2 candidate</strong>.</td>
+</tr>
+<tr>
+<td>K9</td>
+<td><strong>Mastra</strong> (TS) workflows: <code>createWorkflow/createStep/createStepFromAgent</code>, <code>.then .parallel .branch .dowhile .dountil .foreach .map .sleep .sleepUntil .waitForEvent .commit</code>, <code>suspend()</code>/<code>resume()</code>, <code>restart</code>, time-travel, snapshots; ~30 storage adapters (pg, libsql, mongodb, redis, dynamodb, mssql, mysql, …).</td>
+<td><code>packages/core/src/workflows/workflow.ts</code>, <code>stores/*</code></td>
+<td>Strong TS target → reference for the <strong>Node sidecar SPI</strong>. Watch <code>ee/</code> licensing.</td>
+</tr>
+<tr>
+<td>K10</td>
+<td><strong>LlamaIndex Workflows</strong> 2.x: event-driven <code>@step(num_workers, retry_policy)</code> methods, <code>StartEvent/StopEvent</code>, <code>InputRequiredEvent/HumanResponseEvent</code>, Context state store with serializers, workflow representation/validation, server/client, DBOS durability, AgentCore deploy.</td>
+<td><code>packages/llama-index-workflows/src/workflows/*</code></td>
+<td>Graph tier maps via event types (each edge = event class). Tier-2.</td>
+</tr>
+<tr>
+<td>K11</td>
+<td><strong>Claude Agent SDK</strong> is an agent <em>harness</em>: <code>ClaudeAgentOptions(tools, allowed_tools, disallowed_tools, system_prompt, mcp_servers, permission_mode, can_use_tool, hooks, agents, resume/session_id, max_turns, max_budget_usd, model, fallback_model)</code>.</td>
+<td><code>src/claude_agent_sdk/types.py</code></td>
+<td>Tier-3 wrapped node with native approval via <code>can_use_tool</code> callback; no graph codegen.</td>
+</tr>
+<tr>
+<td>K12</td>
+<td><strong>A2A 1.0</strong> is the stable spec; task states include <code>input-required</code> and <code>auth-required</code> (usable for remote HITL).</td>
+<td><code>a2a-python</code> README &amp; enums</td>
+<td>Remote Agent node maps <code>input-required</code> → canonical interrupt.</td>
+</tr>
+<tr>
+<td>K13</td>
+<td><strong>LangSmith Agent Server hosts foreign frameworks</strong> via Functional API (<code>@entrypoint</code>/<code>@task</code>, <code>entrypoint.final(value, save)</code>) and <code>deployments-wrap-sdk</code> for ADK.</td>
+<td>LangSmith docs (doc 11 research)</td>
+<td>Hosting mode A confirmed for every Python adapter.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="a4-verified-concept-matrix-core-ir-framework">A.4 Verified concept matrix (Core IR → framework)</h3>
+<p>Legend: <strong>N</strong> native (API named) · <strong>E</strong> emulated by adapter (mechanism named) · <strong>U</strong> unsupported. "Tier target" is the planned certification level (§C.9).</p>
+<table>
+<thead>
+<tr>
+<th>Core IR concept</th>
+<th>LangChain (ref)</th>
+<th>OpenAI Agents SDK 0.22</th>
+<th>Google ADK 2.10</th>
+<th>MS Agent Framework 1.19</th>
+<th>CrewAI 1.15</th>
+<th>Pydantic AI 2.51</th>
+<th>LlamaIndex WF 2.11</th>
+<th>Strands 1.41</th>
+<th>Mastra 1.72 (TS)</th>
+<th>Claude Agent SDK 0.2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>core.agent</code> (tool loop)</td>
+<td>N <code>create_agent</code>/<code>create_deep_agent</code></td>
+<td>N <code>Agent</code>+<code>Runner</code></td>
+<td>N <code>LlmAgent</code></td>
+<td>N <code>Agent(client=…)</code></td>
+<td>N <code>Agent</code>+<code>Task</code> (single-task crew)</td>
+<td>N <code>Agent</code></td>
+<td>E (agent via llama-index <code>FunctionAgent</code> inside a step)</td>
+<td>N <code>Agent</code></td>
+<td>N <code>Agent</code></td>
+<td>N <code>query</code>/<code>ClaudeSDKClient</code></td>
+</tr>
+<tr>
+<td><code>core.model</code></td>
+<td>N <code>init_chat_model</code></td>
+<td>N model str/<code>Model</code>, LiteLLM ext</td>
+<td>N model str/<code>BaseLlm</code> (LiteLLM)</td>
+<td>N chat clients (OpenAI, Foundry, Anthropic, Bedrock, Gemini, Mistral, Ollama…)</td>
+<td>N <code>LLM</code> (LiteLLM-style ids)</td>
+<td>N <code>provider:model</code></td>
+<td>N LLM classes</td>
+<td>N model providers</td>
+<td>N model router</td>
+<td>N Claude models only</td>
+</tr>
+<tr>
+<td>Function tool</td>
+<td>N</td>
+<td>N <code>function_tool</code></td>
+<td>N <code>FunctionTool</code></td>
+<td>N <code>@tool</code></td>
+<td>N <code>BaseTool</code>/<code>@tool</code></td>
+<td>N <code>@agent.tool</code>/toolsets</td>
+<td>N</td>
+<td>N <code>@tool</code></td>
+<td>N <code>createTool</code></td>
+<td>N in-process MCP tools</td>
+</tr>
+<tr>
+<td>MCP tools</td>
+<td>N <code>langchain.mcp</code></td>
+<td>N <code>MCPServerStdio/Sse/StreamableHttp</code>, <code>HostedMCPTool</code></td>
+<td>N MCP toolset</td>
+<td>N MCP</td>
+<td>N <code>mcps</code></td>
+<td>N MCP toolsets/capability</td>
+<td>N</td>
+<td>N</td>
+<td>N</td>
+<td>N <code>mcp_servers</code></td>
+</tr>
+<tr>
+<td>Structured output</td>
+<td>N <code>response_format</code></td>
+<td>N <code>output_type</code></td>
+<td>N <code>output_schema</code></td>
+<td>N response format options</td>
+<td>N <code>output_pydantic/json</code></td>
+<td>N <code>output_type</code></td>
+<td>N</td>
+<td>N <code>structured_output</code></td>
+<td>N</td>
+<td>E (JSON schema prompt + validation)</td>
+</tr>
+<tr>
+<td>Instructions/templating</td>
+<td>N</td>
+<td>N <code>instructions</code> (str/callable), <code>prompt</code></td>
+<td>N <code>instruction</code> with <code>{state}</code> templating</td>
+<td>N <code>instructions</code></td>
+<td>N role/goal/backstory, <code>{input}</code> interpolation</td>
+<td>N <code>instructions</code></td>
+<td>N</td>
+<td>N</td>
+<td>N</td>
+<td>N <code>system_prompt</code></td>
+</tr>
+<tr>
+<td>Guardrails / middleware</td>
+<td>N middleware</td>
+<td>N input/output guardrails, tool guardrails, hooks</td>
+<td>N callbacks (before/after model/tool, on_error), plugins</td>
+<td>N middleware, context providers</td>
+<td>N guardrails, hooks, event listeners</td>
+<td>N capabilities/hooks</td>
+<td>E step wrappers</td>
+<td>N hooks, plugins, interventions</td>
+<td>N processors</td>
+<td>N hooks</td>
+</tr>
+<tr>
+<td>Sub-agent delegation</td>
+<td>N subagents (<code>task</code> tool)</td>
+<td>N <code>Agent.as_tool</code></td>
+<td>N sub_agents / <code>transfer_to_agent</code></td>
+<td>N agent-as-tool, orchestrations</td>
+<td>N hierarchical process / delegation</td>
+<td>N agent delegation via tools</td>
+<td>E</td>
+<td>N agents-as-tools, Swarm</td>
+<td>N agent networks</td>
+<td>N <code>agents</code> (subagents)</td>
+</tr>
+<tr>
+<td>Handoff (control transfer)</td>
+<td>N <code>Command(goto, graph=PARENT)</code></td>
+<td>N <code>handoffs</code></td>
+<td>N transfer to peer/parent</td>
+<td>N handoff orchestration</td>
+<td>E flow routing</td>
+<td>E</td>
+<td>E</td>
+<td>N Swarm handoff</td>
+<td>E</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Graph: sequence</td>
+<td>N <code>add_edge</code></td>
+<td>E generated orchestration code</td>
+<td>N <code>Workflow</code> edges</td>
+<td>N <code>add_edge</code>/<code>add_chain</code></td>
+<td>N <code>@listen</code></td>
+<td>N <code>pydantic_graph</code></td>
+<td>N events</td>
+<td>N <code>GraphBuilder</code></td>
+<td>N <code>.then</code></td>
+<td>U</td>
+</tr>
+<tr>
+<td>Graph: router</td>
+<td>N conditional edges</td>
+<td>E</td>
+<td>N <code>Event(route=)</code> + route map</td>
+<td>N switch-case edge group</td>
+<td>N <code>@router</code></td>
+<td>N decisions</td>
+<td>N event types</td>
+<td>N conditional edges</td>
+<td>N <code>.branch</code></td>
+<td>U</td>
+</tr>
+<tr>
+<td>Graph: parallel + join</td>
+<td>N</td>
+<td>E <code>asyncio.gather</code></td>
+<td>N parallel edges + <code>JoinNode</code></td>
+<td>N fan-out/fan-in edges</td>
+<td>N <code>and_</code> listeners</td>
+<td>N forks/joins</td>
+<td>N multiple events + <code>collect</code></td>
+<td>N</td>
+<td>N <code>.parallel</code></td>
+<td>U</td>
+</tr>
+<tr>
+<td>Graph: map (fan-out over list)</td>
+<td>N <code>Send</code></td>
+<td>E</td>
+<td>N <code>parallel_worker=True</code></td>
+<td>N fan-out</td>
+<td>N <code>each</code> action</td>
+<td>N</td>
+<td>N <code>num_workers</code></td>
+<td>E</td>
+<td>N <code>.foreach</code></td>
+<td>U</td>
+</tr>
+<tr>
+<td>Graph: loop with guard</td>
+<td>N</td>
+<td>E</td>
+<td>N loops + <code>max</code>/router</td>
+<td>N <code>max_iterations</code> + edges</td>
+<td>N router back-edges</td>
+<td>N</td>
+<td>N</td>
+<td>N <code>set_max_node_executions</code></td>
+<td>N <code>.dowhile/.dountil</code></td>
+<td>U</td>
+</tr>
+<tr>
+<td>Graph: subgraph</td>
+<td>N</td>
+<td>E</td>
+<td>N nested <code>Workflow</code></td>
+<td>N <code>WorkflowExecutor</code></td>
+<td>N flow in flow / crew action</td>
+<td>N</td>
+<td>N</td>
+<td>N nested multiagent</td>
+<td>N nested workflows</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Shared typed state</td>
+<td>N channels + reducers</td>
+<td>E (<code>RunContextWrapper.context</code> + orchestration vars)</td>
+<td>N session <code>state</code> (dict), <code>output_key</code></td>
+<td>N shared state (<code>_state.py</code>) + messages</td>
+<td>N flow state (dict/Pydantic)</td>
+<td>N graph state</td>
+<td>N <code>Context</code> store</td>
+<td>N <code>invocation_state</code></td>
+<td>N workflow state (<code>setState</code>)</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Reducers</td>
+<td>N</td>
+<td>E (adapter merge fns)</td>
+<td>E (adapter merge in function nodes)</td>
+<td>E</td>
+<td>E</td>
+<td>E</td>
+<td>E</td>
+<td>E</td>
+<td>E</td>
+<td>U</td>
+</tr>
+<tr>
+<td>HITL tool approval</td>
+<td>N <code>interrupt_on</code></td>
+<td><strong>N</strong> <code>needs_approval</code> → <code>RunState.approve/reject</code></td>
+<td><strong>N</strong> <code>require_confirmation</code></td>
+<td><strong>N</strong> <code>approval_mode="always_require"</code></td>
+<td>N task <code>human_input</code></td>
+<td><strong>N</strong> deferred tools (<code>ApprovalRequired</code>)</td>
+<td>E (<code>InputRequiredEvent</code>)</td>
+<td><strong>N</strong> interrupts</td>
+<td>N <code>suspend</code> in tool</td>
+<td><strong>N</strong> <code>can_use_tool</code></td>
+</tr>
+<tr>
+<td>HITL input/form node</td>
+<td>N <code>interrupt()</code></td>
+<td>E (tool + interruption)</td>
+<td><strong>N</strong> <code>RequestInput</code></td>
+<td><strong>N</strong> <code>ctx.request_info</code></td>
+<td><strong>N</strong> <code>@human_feedback</code></td>
+<td>E (deferred call)</td>
+<td><strong>N</strong> <code>InputRequiredEvent</code>/<code>HumanResponseEvent</code></td>
+<td><strong>N</strong> interrupt</td>
+<td><strong>N</strong> <code>suspend/resume</code></td>
+<td>E</td>
+</tr>
+<tr>
+<td>Durable resume after pause</td>
+<td>N checkpoints</td>
+<td><strong>N</strong> <code>RunState.to_json/from_json</code></td>
+<td>N sessions/events (<code>rerun_on_resume</code>)</td>
+<td>N <code>CheckpointStorage</code></td>
+<td>N <code>@persist</code> / <code>CheckpointConfig</code></td>
+<td>N durable_exec (Temporal/DBOS/Prefect) or history</td>
+<td>N context serializers / DBOS</td>
+<td>N session managers + snapshots</td>
+<td>N snapshots</td>
+<td>N <code>resume</code> session id</td>
+</tr>
+<tr>
+<td>Conversation memory</td>
+<td>N checkpointer</td>
+<td>N <code>Session</code> (SQLite/Redis/SQLAlchemy/Mongo/Dapr)</td>
+<td>N <code>SessionService</code> (in-memory/SQLite/DB/Vertex)</td>
+<td>N <code>HistoryProvider</code> (in-memory/file/Redis/Cosmos)</td>
+<td>N</td>
+<td>E (serialize history) / Harness <code>StepPersistence</code></td>
+<td>N context</td>
+<td>N session managers</td>
+<td>N memory</td>
+<td>N sessions</td>
+</tr>
+<tr>
+<td>Long-term memory</td>
+<td>N Store</td>
+<td>E (platform Memory Spaces via tools)</td>
+<td>N <code>MemoryService</code> (SQLite, Vertex Memory Bank/RAG)</td>
+<td>N context providers (Mem0, Redis, Cosmos)</td>
+<td>N unified memory (LanceDB/Qdrant)</td>
+<td>E / Harness <code>Memory</code></td>
+<td>E</td>
+<td>N vended memory stores</td>
+<td>N</td>
+<td>E</td>
+</tr>
+<tr>
+<td>Streaming tokens/events</td>
+<td>N <code>stream_events</code> v3</td>
+<td>N <code>run_streamed</code> events</td>
+<td>N event stream</td>
+<td>N <code>WorkflowEvent</code>s + streaming</td>
+<td>N event bus</td>
+<td>N stream/<code>run_stream_events</code></td>
+<td>N <code>stream_events</code></td>
+<td>N async iterators</td>
+<td>N <code>stream</code></td>
+<td>N message stream</td>
+</tr>
+<tr>
+<td>OTel / tracing</td>
+<td>N LangSmith</td>
+<td>N trace processors (<code>add_trace_processor</code>)</td>
+<td>N OTel GenAI semconv</td>
+<td>N OTel observability</td>
+<td>N telemetry + listeners</td>
+<td>N Logfire/OTel</td>
+<td>N</td>
+<td>N OTel</td>
+<td>N observability</td>
+<td>E (hooks → spans)</td>
+</tr>
+<tr>
+<td>AG-UI integration exists</td>
+<td>Y</td>
+<td>— (not in AG-UI list; adapter writes translator)</td>
+<td>Y <code>adk-middleware</code></td>
+<td>Y</td>
+<td>Y <code>crew-ai</code></td>
+<td>Y</td>
+<td>Y <code>llama-index</code></td>
+<td>Y <code>aws-strands</code></td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>A2A</td>
+<td>via Agent Server</td>
+<td>E</td>
+<td>N (<code>RemoteA2aAgent</code>, A2A server)</td>
+<td>N hosting-a2a</td>
+<td>N <code>a2a</code> module</td>
+<td>E</td>
+<td>E</td>
+<td>N</td>
+<td>N</td>
+<td>E</td>
+</tr>
+<tr>
+<td>Declarative spec</td>
+<td>Agent Spec adapter</td>
+<td>Agent Spec adapter</td>
+<td>N YAML <code>AgentConfig</code></td>
+<td>N declarative YAML</td>
+<td>N <code>FlowDefinition</code></td>
+<td>N Agent Spec (YAML/JSON)</td>
+<td>E</td>
+<td>E</td>
+<td>E</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Native hosting</td>
+<td>Agent Server / MDA</td>
+<td>self-host</td>
+<td>Cloud Run, GKE, <strong>Vertex AI Agent Engine</strong>, Docker (<code>adk deploy …</code>)</td>
+<td><strong>Foundry hosted agents</strong>, hosting-a2a/mcp/responses</td>
+<td>CrewAI AMP</td>
+<td>self-host (+ Temporal/DBOS)</td>
+<td>llama-agents server/control-plane, AgentCore</td>
+<td>self-host / AgentCore</td>
+<td>Mastra deployers</td>
+<td>self-host</td>
+</tr>
+<tr>
+<td><strong>Tier target</strong></td>
+<td>T1 (R1)</td>
+<td>T1 agent-tier, T2 graph-tier</td>
+<td><strong>T1</strong></td>
+<td><strong>T1</strong></td>
+<td>T1 (Flows)</td>
+<td>T2 → T1</td>
+<td>T2</td>
+<td>T2</td>
+<td>T2 (TS sidecar)</td>
+<td>T3</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-b-revised-strategy">Part B — Revised strategy</h2>
+<h3 id="b1-what-the-evidence-changes">B.1 What the evidence changes</h3>
+<ol>
+<li><strong>Two frameworks (ADK 2.x, MAF 1.x) are structurally close to LangGraph</strong> (graph workflows, checkpoints, request/response HITL, super-step semantics). They are the best candidates for full Graph-tier parity.</li>
+<li><strong>OpenAI Agents SDK is agent-centric</strong> with excellent native HITL but no workflow engine and a pre-1.0 API. Ideal for the Agent tier and as the <em>smallest</em> adapter to harden the SPI — but not sufficient alone to prove Graph-tier portability.</li>
+<li><strong>Cross-framework infrastructure already exists</strong> (AG-UI integrations, Agent Spec adapters, A2A 1.0, OTel GenAI semconv). We <em>compose</em> these rather than build N bespoke translators.</li>
+</ol>
+<h3 id="b2-revised-adapter-order-replaces-doc-11-5-f2f4-ordering">B.2 Revised adapter order (replaces doc 11 §5 F2–F4 ordering)</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Order</th>
+<th>Adapter</th>
+<th>Target tier</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">0</td>
+<td>LangChain / LangGraph / Deep Agents</td>
+<td>T1</td>
+<td>Release 1 reference adapter</td>
+</tr>
+<tr>
+<td style="text-align: right;">1a</td>
+<td><strong>OpenAI Agents SDK</strong></td>
+<td>T1 (agent tier) / T2 (graph tier)</td>
+<td>Smallest surface → hardens SPI in ~10 weeks; native HITL &amp; serialisable run state; high demand</td>
+</tr>
+<tr>
+<td style="text-align: right;">1b</td>
+<td><strong>Google ADK</strong> (in parallel, second squad)</td>
+<td>T1</td>
+<td>Native graph <code>Workflow</code>, <code>RequestInput</code>, confirmations, sessions, OTel, A2A, Vertex Agent Engine hosting; multi-language</td>
+</tr>
+<tr>
+<td style="text-align: right;">2</td>
+<td><strong>Microsoft Agent Framework</strong></td>
+<td>T1</td>
+<td>GA, Pregel-like workflows + checkpoints + <code>request_info</code>; enterprise/Azure demand; .NET later via sidecar</td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td><strong>CrewAI</strong> (Crews + Flows via <code>FlowDefinition</code>)</td>
+<td>T1</td>
+<td>Declarative contract makes codegen/import robust; large user base</td>
+</tr>
+<tr>
+<td style="text-align: right;">4</td>
+<td><strong>Pydantic AI</strong></td>
+<td>T2 → T1</td>
+<td>Agent Specs, deferred tools, durable exec</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td><strong>Strands</strong>, <strong>LlamaIndex Workflows</strong></td>
+<td>T2</td>
+<td>Graph/multi-agent + interrupts exist; smaller demand</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td><strong>Mastra</strong> (TS sidecar)</td>
+<td>T2</td>
+<td>TypeScript ecosystem; reference for Node SPI</td>
+</tr>
+<tr>
+<td style="text-align: right;">—</td>
+<td>Claude Agent SDK, Agno, smolagents, any A2A/MCP agent</td>
+<td>T3</td>
+<td>Wrapped/black-box nodes from F1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b3-two-lowering-paths-per-adapter">B.3 Two lowering paths per adapter</h3>
+<p><div class="highlight"><pre><span></span><code>                ┌─────────────── Direct path (Tier 1, default) ───────────────┐
+Core IR + dialect ─► adapter.lower() ─► framework AST/templates ─► idiomatic code
+                └─────────────── Bridge path (Tier 2 accelerator) ────────────┘
+Core IR ─► AgentSpecExporter (ours) ─► Agent Spec JSON/YAML ─► pyagentspec &lt;fw&gt; loader ─► runtime objects
+</code></pre></div>
+- <strong>Direct path</strong> produces idiomatic, readable, exportable code (the WYSIWYG promise). Required for Tier 1.
+- <strong>Bridge path</strong> reuses pyagentspec loaders (LangGraph, OpenAI Agents, MAF, CrewAI, AutoGen, WayFlow) to run portable workflows on a framework <em>before</em> its direct adapter exists — used for dev runs, cross-framework comparison experiments and Tier-2 coverage. Gaps (<code>NotImplementedError</code> in pyagentspec converters) are surfaced as <code>P002</code> diagnostics.</p>
+<hr />
+<h2 id="part-c-technical-specification">Part C — Technical specification</h2>
+<h3 id="c1-package-repository-layout">C.1 Package &amp; repository layout</h3>
+<p><div class="highlight"><pre><span></span><code>agentcanvas/
+├── core/                         # framework-neutral: IR models, validator core, plan lowering, events, SPI
+│   ├── ir/                       # Pydantic models: Workflow, Node, Edge, State, Resource, Persistence…
+│   ├── spi/                      # FrameworkAdapter protocol + helper base classes
+│   ├── events/                   # Canonical Run Events (AG-UI based) + helpers
+│   ├── hitl/                     # canonical interrupt/resume envelope
+│   ├── capabilities/             # capability schema, portability analysis
+│   └── conformance/              # shared conformance suite, fake models, tool cassettes
+├── adapters/
+│   ├── langchain/                # agentcanvas-adapter-langchain (R1)
+│   ├── openai_agents/            # agentcanvas-adapter-openai-agents
+│   ├── google_adk/
+│   ├── ms_agent_framework/
+│   ├── crewai/
+│   ├── pydantic_ai/
+│   ├── llamaindex_workflows/
+│   ├── strands/
+│   ├── agentspec_bridge/         # Bridge path (pyagentspec) + Agent Spec import/export
+│   └── wrapped/                  # Tier-3 wrappers: claude_agent_sdk, generic A2A/MCP, generic callable
+├── sidecars/node-adapter-host/   # TS adapters (Mastra, OpenAI JS, ADK TS) over JSON-RPC
+└── runtime/                      # agentcanvas_runtime: host wrappers, RoutedStore, memory/data clients, event emitters
+</code></pre></div>
+Rules: <code>core/**</code> may not import any framework package (import-linter contract in CI); each adapter is an independently versioned wheel with an <strong>optional-extra</strong> dependency on its framework (<code>agentcanvas-adapter-google-adk[adk]</code>).</p>
+<h3 id="c2-adapter-spi-normative">C.2 Adapter SPI (normative)</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># agentcanvas/core/spi/adapter.py</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">AsyncIterator</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">agentcanvas.core.ir</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExecutionPlan</span><span class="p">,</span> <span class="n">NodeTypeManifest</span><span class="p">,</span> <span class="n">Diagnostic</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">agentcanvas.core.events</span><span class="w"> </span><span class="kn">import</span> <span class="n">CanonicalEvent</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">agentcanvas.core.hitl</span><span class="w"> </span><span class="kn">import</span> <span class="n">ResumeEnvelope</span><span class="p">,</span> <span class="n">InterruptDecision</span>
+
+<span class="n">SupportLevel</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"native"</span><span class="p">,</span> <span class="s2">"emulated"</span><span class="p">,</span> <span class="s2">"unsupported"</span><span class="p">]</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">AdapterManifest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span>                          <span class="c1"># "google_adk"</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span>                     <span class="c1"># adapter semver</span>
+    <span class="n">framework</span><span class="p">:</span> <span class="nb">str</span>                   <span class="c1"># "google-adk"</span>
+    <span class="n">framework_range</span><span class="p">:</span> <span class="nb">str</span>             <span class="c1"># "&gt;=2.10,&lt;2.12"  (stack pin)</span>
+    <span class="n">languages</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Literal</span><span class="p">[</span><span class="s2">"python"</span><span class="p">,</span> <span class="s2">"typescript"</span><span class="p">,</span> <span class="s2">"java"</span><span class="p">,</span> <span class="s2">"go"</span><span class="p">,</span> <span class="s2">"dotnet"</span><span class="p">]]</span>
+    <span class="n">hosting_modes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Literal</span><span class="p">[</span><span class="s2">"agent_server"</span><span class="p">,</span> <span class="s2">"native"</span><span class="p">,</span> <span class="s2">"a2a_remote"</span><span class="p">,</span> <span class="s2">"mcp_remote"</span><span class="p">]]</span>
+    <span class="n">tier</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"T1"</span><span class="p">,</span> <span class="s2">"T2"</span><span class="p">,</span> <span class="s2">"T3"</span><span class="p">,</span> <span class="s2">"community"</span><span class="p">]</span>
+    <span class="n">licence</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">CapabilityMatrix</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">concepts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="s2">"CapabilityEntry"</span><span class="p">]</span>   <span class="c1"># key = core concept id, e.g. "hitl.tool_approval"</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">CapabilityEntry</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">level</span><span class="p">:</span> <span class="n">SupportLevel</span>
+    <span class="n">native_api</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>            <span class="c1"># e.g. "google.adk.tools.FunctionTool(require_confirmation=...)"</span>
+    <span class="n">emulation</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>             <span class="c1"># description of emulation mechanism</span>
+    <span class="n">caveats</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">since_framework</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">FrameworkAdapter</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="n">manifest</span><span class="p">:</span> <span class="n">AdapterManifest</span>
+    <span class="n">capabilities</span><span class="p">:</span> <span class="n">CapabilityMatrix</span>
+
+    <span class="c1"># authoring</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">node_library</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">NodeTypeManifest</span><span class="p">]:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plan</span><span class="p">:</span> <span class="n">ExecutionPlan</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Diagnostic</span><span class="p">]:</span> <span class="o">...</span>
+    <span class="c1"># compilation</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lower</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plan</span><span class="p">:</span> <span class="n">ExecutionPlan</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"AdapterPlan"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aplan</span><span class="p">:</span> <span class="s2">"AdapterPlan"</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="s2">"Target"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"BuildArtifact"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="c1"># execution</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aplan</span><span class="p">:</span> <span class="s2">"AdapterPlan"</span><span class="p">,</span> <span class="n">run</span><span class="p">:</span> <span class="s2">"RunRequest"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"RunHandle"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">resume</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handle_ref</span><span class="p">:</span> <span class="s2">"RunRef"</span><span class="p">,</span> <span class="n">envelope</span><span class="p">:</span> <span class="n">ResumeEnvelope</span><span class="p">,</span>
+                     <span class="n">decisions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">InterruptDecision</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">"RunHandle"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">events</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handle</span><span class="p">:</span> <span class="s2">"RunHandle"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="n">CanonicalEvent</span><span class="p">]:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">cancel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handle</span><span class="p">:</span> <span class="s2">"RunHandle"</span><span class="p">,</span> <span class="n">graceful</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="c1"># state</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">serialize_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handle</span><span class="p">:</span> <span class="s2">"RunHandle"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResumeEnvelope</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">persistence_mapping</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"PersistenceMapping"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="c1"># hosting &amp; packaging</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">host_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aplan</span><span class="p">:</span> <span class="s2">"AdapterPlan"</span><span class="p">,</span> <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"HostArtifact"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="c1"># optional</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">importer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Importer | None"</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">conformance_profile</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"ConformanceProfile"</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>Contracts:
+- <code>lower()</code> must be <strong>pure</strong> and deterministic; <code>generate()</code> byte-deterministic (TR-COMP-01 applies to every adapter).
+- <code>events()</code> must emit the <strong>mandatory canonical events</strong> (C.3) with <code>canvas_node_id</code> on node/tool/interrupt events.
+- <code>serialize_state()</code> must produce a <code>ResumeEnvelope</code> that can resume the run <strong>in a different process</strong> (required for Agent Server hosting and horizontal scaling).
+- Every <code>emulated</code> capability must be covered by a conformance case (C.8).</p>
+<h3 id="c3-canonical-run-event-protocol-ag-ui-based">C.3 Canonical Run Event protocol (AG-UI based)</h3>
+<p>We adopt <strong>AG-UI events as the wire base</strong> and add a small, namespaced extension set for canvas semantics. Framework translators can therefore <strong>reuse AG-UI integrations</strong> and only add the extension events.</p>
+<table>
+<thead>
+<tr>
+<th>Canonical event</th>
+<th>AG-UI base</th>
+<th>Extension payload (AgentCanvas)</th>
+<th>Mandatory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Run started / finished / error</td>
+<td><code>RUN_STARTED</code>, <code>RUN_FINISHED</code>, <code>RUN_ERROR</code></td>
+<td><code>workflow_id</code>, <code>version</code>, <code>adapter</code>, <code>thread_id</code>; <code>RUN_FINISHED</code> outcome <code>success</code>/<code>interrupt</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Node started / finished</td>
+<td><code>STEP_STARTED</code>, <code>STEP_FINISHED</code></td>
+<td><code>canvas_node_id</code>, <code>ns</code> (nesting path), <code>attempt</code>, <code>duration_ms</code>, <code>status</code> (<code>ok/error/timeout/bypassed/cached</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Token stream</td>
+<td><code>TEXT_MESSAGE_START/CONTENT/END</code></td>
+<td><code>canvas_node_id</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Reasoning stream</td>
+<td><code>REASONING_*</code></td>
+<td><code>canvas_node_id</code></td>
+<td>optional</td>
+</tr>
+<tr>
+<td>Tool call</td>
+<td><code>TOOL_CALL_START/ARGS/END/RESULT</code></td>
+<td><code>canvas_node_id</code>, <code>tool_source</code> (<code>function/mcp/hosted/agent</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>State</td>
+<td><code>STATE_SNAPSHOT</code>, <code>STATE_DELTA</code> (JSON Patch)</td>
+<td><code>channel</code> names mapped to IR state</td>
+<td>✅ (snapshot at node end at minimum)</td>
+</tr>
+<tr>
+<td>Messages</td>
+<td><code>MESSAGES_SNAPSHOT</code></td>
+<td>—</td>
+<td>optional</td>
+</tr>
+<tr>
+<td>Interrupt</td>
+<td><code>RUN_FINISHED</code> (interrupt outcome) + <code>CUSTOM name="ac.interrupt"</code></td>
+<td><code>InterruptRequest</code> (C.4)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Handoff / delegation</td>
+<td><code>CUSTOM name="ac.handoff"</code> / <code>"ac.delegate"</code></td>
+<td><code>from_agent</code>, <code>to_agent</code>, <code>canvas_node_id</code></td>
+<td>✅ where concept supported</td>
+</tr>
+<tr>
+<td>Checkpoint</td>
+<td><code>CUSTOM name="ac.checkpoint"</code></td>
+<td><code>checkpoint_id</code>, <code>step</code></td>
+<td>T1 only</td>
+</tr>
+<tr>
+<td>Usage/cost</td>
+<td><code>CUSTOM name="ac.usage"</code></td>
+<td>tokens in/out, model, cost</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Framework-native</td>
+<td><code>RAW</code></td>
+<td>original event (debug view only)</td>
+<td>optional</td>
+</tr>
+</tbody>
+</table>
+<p>Translators live in each adapter (<code>adapter.events()</code>), wrapping the existing AG-UI integration where one exists (ADK <code>adk-middleware</code>, <code>microsoft-agent-framework</code>, <code>crew-ai</code>, <code>pydantic-ai</code>, <code>llama-index</code>, <code>aws-strands</code>, <code>mastra</code>, <code>claude-agent-sdk</code>) and adding node mapping via source-map metadata. OpenAI Agents SDK needs a native translator (<code>RawResponsesStreamEvent</code>, <code>RunItemStreamEvent</code>, <code>AgentUpdatedStreamEvent</code> + <code>RunHooks</code>).</p>
+<p>Traces: in parallel, adapters ensure <strong>OTel GenAI semantic-convention</strong> spans (ADK, MAF, Strands, Pydantic AI emit these natively; OpenAI via a <code>TracingProcessor</code> exporting to OTel; CrewAI via its telemetry/listeners) → OTel collector → LangSmith (or customer backend). Span attribute <code>agentcanvas.node_id</code> is injected by generated code.</p>
+<h3 id="c4-canonical-hitl-protocol">C.4 Canonical HITL protocol</h3>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">InterruptRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span>                                   <span class="c1"># stable per pending interrupt</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"tool_approval"</span><span class="p">,</span> <span class="s2">"input"</span><span class="p">,</span> <span class="s2">"elicitation"</span><span class="p">,</span> <span class="s2">"file_permission"</span><span class="p">,</span> <span class="s2">"remote_input"</span><span class="p">]</span>
+    <span class="n">canvas_node_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">tool</span><span class="p">:</span> <span class="n">ToolCallInfo</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>          <span class="c1"># name, args, call_id, source</span>
+    <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>                 <span class="c1"># question / message</span>
+    <span class="n">response_schema</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>       <span class="c1"># JSON Schema of expected answer</span>
+    <span class="n">allowed_decisions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Literal</span><span class="p">[</span><span class="s2">"approve"</span><span class="p">,</span> <span class="s2">"edit"</span><span class="p">,</span> <span class="s2">"reject"</span><span class="p">,</span> <span class="s2">"respond"</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"approve"</span><span class="p">,</span> <span class="s2">"reject"</span><span class="p">]</span>
+    <span class="n">native_ref</span><span class="p">:</span> <span class="nb">dict</span>                          <span class="c1"># adapter-specific handle (never interpreted by core)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">InterruptDecision</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">interrupt_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"approve"</span><span class="p">,</span> <span class="s2">"edit"</span><span class="p">,</span> <span class="s2">"reject"</span><span class="p">,</span> <span class="s2">"respond"</span><span class="p">]</span>
+    <span class="n">edited_args</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">message</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ResumeEnvelope</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">adapter</span><span class="p">:</span> <span class="nb">str</span><span class="p">;</span> <span class="n">adapter_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">;</span> <span class="n">framework_version</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">native_state</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">|</span> <span class="nb">dict</span>                <span class="c1"># e.g. OpenAI RunState.to_json(), MAF checkpoint id, ADK session/event ids</span>
+    <span class="n">pending</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">InterruptRequest</span><span class="p">]</span>
+    <span class="n">state_snapshot</span><span class="p">:</span> <span class="nb">dict</span>                      <span class="c1"># canonical IR state view for the canvas</span>
+</code></pre></div>
+<p>Native mappings (verified):</p>
+<table>
+<thead>
+<tr>
+<th>Adapter</th>
+<th>Raise</th>
+<th>Resume</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LangChain</td>
+<td><code>interrupt()</code> / <code>HumanInTheLoopMiddleware</code></td>
+<td><code>Command(resume={"decisions": [...]})</code></td>
+</tr>
+<tr>
+<td>OpenAI Agents</td>
+<td><code>needs_approval</code> → <code>result.interruptions</code> (<code>ToolApprovalItem</code>)</td>
+<td><code>state = result.to_state()</code> (or <code>RunState.from_json</code>) → <code>state.approve(item)</code> / <code>state.reject(item, rejection_message=…)</code> → <code>Runner.run(agent, state)</code>; <em>edit</em> = reject with message + adapter-injected corrected call (documented emulation)</td>
+</tr>
+<tr>
+<td>Google ADK</td>
+<td><code>FunctionTool(require_confirmation=…)</code>; workflow node yields <code>RequestInput(message=…)</code></td>
+<td>send confirmation / user response event into the same session; <code>Workflow(rerun_on_resume=True)</code></td>
+</tr>
+<tr>
+<td>MAF</td>
+<td><code>@tool(approval_mode="always_require")</code>; executor <code>ctx.request_info(data, response_type)</code></td>
+<td>send responses to pending <code>request_info</code> ids; restore from <code>CheckpointStorage</code> if cross-process</td>
+</tr>
+<tr>
+<td>CrewAI</td>
+<td>Flow <code>@human_feedback(...)</code>; task <code>human_input=True</code></td>
+<td>feedback provider returns outcome → <code>emit</code> route; persisted flow state via <code>@persist</code></td>
+</tr>
+<tr>
+<td>Pydantic AI</td>
+<td>tool raises <code>ApprovalRequired</code> / <code>CallDeferred</code> → <code>DeferredToolRequests</code></td>
+<td><code>agent.run(..., message_history=…, deferred_tool_results=DeferredToolResults(...))</code></td>
+</tr>
+<tr>
+<td>LlamaIndex WF</td>
+<td><code>ctx.write_event_to_stream(InputRequiredEvent(...))</code></td>
+<td><code>ctx.send_event(HumanResponseEvent(...))</code></td>
+</tr>
+<tr>
+<td>Strands</td>
+<td>hook/tool raises interrupt → agent returns interrupts</td>
+<td>re-invoke agent with interrupt responses</td>
+</tr>
+<tr>
+<td>Mastra</td>
+<td>step <code>suspend(payload)</code></td>
+<td><code>run.resume({ step, resumeData })</code></td>
+</tr>
+<tr>
+<td>Claude Agent SDK</td>
+<td><code>can_use_tool</code> callback (async)</td>
+<td>callback awaits platform decision (in-process wait with timeout) — T3</td>
+</tr>
+<tr>
+<td>A2A remote</td>
+<td>task state <code>input-required</code> / <code>auth-required</code></td>
+<td>send follow-up message on same task</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c5-state-persistence-memory-mapping">C.5 State, persistence &amp; memory mapping</h3>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Thread identity</td>
+<td>Canvas <code>thread_id</code> ↔ framework conversation handle: LangGraph <code>thread_id</code>; OpenAI <code>Session(session_id)</code>; ADK <code>session_id</code> (+<code>user_id</code>, <code>app_name</code>); MAF <code>AgentSession</code> / workflow checkpoint lineage; CrewAI flow <code>id</code> (persisted); Pydantic AI message-history key; Strands session id; Mastra run id.</td>
+</tr>
+<tr>
+<td>Hosting mode A (Agent Server)</td>
+<td>The <code>@entrypoint</code> stores the <strong>ResumeEnvelope</strong> in <code>entrypoint.final(save=…)</code>; conversation history is kept either in the framework's session backend (bound per environment to Postgres/Redis/Mongo via doc 08 bindings) or inside the envelope for small runs.</td>
+</tr>
+<tr>
+<td>Persistence bindings (doc 08)</td>
+<td>Each adapter maps logical bindings to its native backends: OpenAI <code>SQLAlchemySession</code>/<code>RedisSession</code>/<code>MongoDBSession</code>; ADK <code>DatabaseSessionService</code> (SQLAlchemy URL) / <code>VertexAiSessionService</code>; MAF <code>HistoryProvider</code> (Redis/Cosmos) + <code>CheckpointStorage</code> (custom Postgres implementation shipped by us); CrewAI <code>FlowPersistence</code> (SQLite default; Postgres implementation shipped by us); Mastra stores (<code>@mastra/pg</code>, <code>@mastra/redis</code>, …).</td>
+</tr>
+<tr>
+<td>Shared IR state</td>
+<td>Adapters expose IR channels via a <strong>state bridge</strong>: ADK <code>ctx.state</code>, CrewAI flow state model, MAF shared state, LlamaIndex <code>Context</code> store, Mastra workflow state; reducers not native anywhere except LangGraph are <strong>emulated</strong> by generated merge functions (<code>E</code> in matrix).</td>
+</tr>
+<tr>
+<td>Long-term memory</td>
+<td>Platform Memory Spaces are reachable by every adapter through generated <strong>memory tools</strong> + <code>agentcanvas_runtime.memory</code> client; native memory services (ADK <code>MemoryService</code>, MAF context providers, CrewAI memory) can be selected as <em>dialect</em> bindings.</td>
+</tr>
+<tr>
+<td>Data Studio</td>
+<td>Generated repositories/tools (doc 08 §5) are framework-neutral Python; each adapter wraps them in its tool type.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c6-tool-model-bridges">C.6 Tool &amp; model bridges</h3>
+<ul>
+<li><strong>Single tool definition</strong> (<code>ToolSpec</code>: name, description, JSON Schema args, implementation ref, approval policy, read-only/destructive hints) → per-adapter tool factory: <code>langchain.tools.tool</code>, <code>agents.function_tool</code>, <code>google.adk.tools.FunctionTool</code>, <code>agent_framework.tool</code>, <code>crewai.tools.BaseTool</code>, Pydantic AI <code>Tool</code>, Strands <code>@tool</code>, Mastra <code>createTool</code> (sidecar).</li>
+<li><strong>MCP</strong>: tools from MCP servers are attached natively where supported (all T1/T2 frameworks verified above); the project MCP gateway (doc 11 A7) exposes platform tools uniformly.</li>
+<li><strong>Models</strong>: <code>ModelSpec(provider, model, params, gateway)</code> → per-adapter model object; via the model gateway (LangSmith LLM Gateway or OpenAI-compatible proxy) when the framework cannot reach a provider natively (e.g. Claude models in OpenAI Agents SDK via LiteLLM extension or gateway).</li>
+<li><strong>Capability-aware validation</strong>: e.g. <code>P001</code> if a Claude Agent SDK node is given a non-Claude model; <code>P002</code> if structured output is emulated.</li>
+</ul>
+<h3 id="c7-hosting-wrappers">C.7 Hosting wrappers</h3>
+<p><strong>Mode A — Agent Server host (Python adapters).</strong> Generated <code>host.py</code>:</p>
+<p><div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">langgraph.func</span><span class="w"> </span><span class="kn">import</span> <span class="n">entrypoint</span><span class="p">,</span> <span class="n">task</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langgraph.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">interrupt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">agentcanvas_runtime.hosting</span><span class="w"> </span><span class="kn">import</span> <span class="n">envelope_codec</span><span class="p">,</span> <span class="n">emit_canonical</span>
+
+<span class="nd">@task</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run_native</span><span class="p">(</span><span class="n">inp</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">envelope</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">decisions</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">return</span> <span class="k">await</span> <span class="n">ADAPTER</span><span class="o">.</span><span class="n">start_or_resume</span><span class="p">(</span><span class="n">PLAN</span><span class="p">,</span> <span class="n">inp</span><span class="p">,</span> <span class="n">envelope</span><span class="p">,</span> <span class="n">decisions</span><span class="p">)</span>   <span class="c1"># returns {"output"?, "pending"?, "envelope"}</span>
+
+<span class="nd">@entrypoint</span><span class="p">()</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">agent</span><span class="p">(</span><span class="n">inp</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">previous</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="k">await</span> <span class="n">run_native</span><span class="p">(</span><span class="n">inp</span><span class="p">,</span> <span class="p">(</span><span class="n">previous</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"envelope"</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">res</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"pending"</span><span class="p">):</span>
+        <span class="n">decisions</span> <span class="o">=</span> <span class="n">interrupt</span><span class="p">({</span><span class="s2">"interrupts"</span><span class="p">:</span> <span class="n">res</span><span class="p">[</span><span class="s2">"pending"</span><span class="p">]})</span>             <span class="c1"># surfaces in AgentCanvas Inbox / Agent Server</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="k">await</span> <span class="n">run_native</span><span class="p">(</span><span class="n">inp</span><span class="p">,</span> <span class="n">res</span><span class="p">[</span><span class="s2">"envelope"</span><span class="p">],</span> <span class="n">decisions</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">entrypoint</span><span class="o">.</span><span class="n">final</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">res</span><span class="p">[</span><span class="s2">"output"</span><span class="p">],</span> <span class="n">save</span><span class="o">=</span><span class="p">{</span><span class="s2">"envelope"</span><span class="p">:</span> <span class="n">res</span><span class="p">[</span><span class="s2">"envelope"</span><span class="p">]})</span>
+</code></pre></div>
+(ADK may alternatively use <code>deployments-wrap-sdk</code>'s <code>wrap(Runner(...))</code> + <code>LangsmithSessionService</code>.) Canonical events are forwarded through the <code>custom</code> stream mode.</p>
+<p><strong>Mode B — native hosting.</strong> Deploy service targets: ADK <code>adk deploy agent_engine|cloud_run|gke|docker</code>; MAF Foundry hosted agents / <code>hosting-*</code> packages; CrewAI AMP; LlamaIndex <code>llama-agents</code> server/control plane. Event translator attaches as a sidecar/plugin (ADK plugin, MAF middleware, CrewAI event listener) posting canonical events to our ingest endpoint; HITL resolved through the framework's native resume API.</p>
+<p><strong>Mode C — remote.</strong> A2A 1.0 client node (task streaming; <code>input-required</code> → interrupt) and MCP client node.</p>
+<p><strong>TypeScript adapters.</strong> <code>sidecars/node-adapter-host</code> implements the SPI over JSON-RPC (lower/generate/start/resume/events) so the Python control plane can drive Mastra/OpenAI-JS/ADK-TS; hosted in its own container per deployment with the same canonical event contract.</p>
+<h3 id="c8-conformance-suite-normative">C.8 Conformance suite (normative)</h3>
+<p>Shared cases in <code>agentcanvas/core/conformance</code>, run with <strong>fake models</strong> (scripted responses per framework's model interface) and <strong>tool cassettes</strong>. Each adapter declares which cases apply (by capability level).</p>
+<table>
+<thead>
+<tr>
+<th>Suite</th>
+<th>Cases (examples)</th>
+<th>Pass criteria</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C-AGENT</td>
+<td>single tool call; parallel tool calls; structured output; MCP tool; model error + retry</td>
+<td>same tool sequence &amp; final output as reference</td>
+</tr>
+<tr>
+<td>C-FLOW</td>
+<td>sequence; router (3 routes); parallel + join; map over 5 items; bounded loop; nested subgraph</td>
+<td>same node visit multiset &amp; final state (order-insensitive where parallel)</td>
+</tr>
+<tr>
+<td>C-HITL</td>
+<td>approve; edit; reject with message; input form; interrupt inside subgraph/sub-agent; resume <strong>in a new process</strong> from envelope</td>
+<td>identical post-resume trajectory</td>
+</tr>
+<tr>
+<td>C-STATE</td>
+<td>channel writes, emulated reducers (append, merge), state snapshot events</td>
+<td>canonical state equal</td>
+</tr>
+<tr>
+<td>C-PERSIST</td>
+<td>thread continuation across 3 turns; session backend bound to Postgres &amp; Redis</td>
+<td>history preserved</td>
+</tr>
+<tr>
+<td>C-EVENTS</td>
+<td>mandatory canonical events emitted with <code>canvas_node_id</code>; token streaming order</td>
+<td>schema-valid, complete</td>
+</tr>
+<tr>
+<td>C-CODEGEN</td>
+<td>ruff/pyright clean (or eslint/tsc), byte-deterministic, runs with framework CLI (<code>adk run</code>, etc.)</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>C-HOST</td>
+<td>Mode A wrapper passes C-HITL &amp; C-PERSIST on Agent Server (<code>langgraph dev</code>)</td>
+<td>pass</td>
+</tr>
+</tbody>
+</table>
+<p>Portable templates (Router, Support triage, Research-lite, Approval workflow, Map-reduce summariser) must produce <strong>equivalent outcomes</strong> on every T1 adapter — this is the "same canvas, any framework" guarantee.</p>
+<h3 id="c9-certification-tiers-refined">C.9 Certification tiers (refined)</h3>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Requirements</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>T1</strong></td>
+<td>Direct lowering path; C-AGENT, C-FLOW (all), C-HITL (all incl. cross-process), C-STATE, C-PERSIST, C-EVENTS, C-CODEGEN, C-HOST green; dev-run debugging (live overlay, breakpoints via interrupts or step hooks); importer for its own code <em>or</em> declarative spec (ADK YAML, MAF declarative, CrewAI FlowDefinition, Pydantic AI Agent Spec); nightly upstream CI; documented emulations</td>
+</tr>
+<tr>
+<td><strong>T2</strong></td>
+<td>Direct or bridge path; C-AGENT, C-FLOW (supported subset), C-HITL (approve/reject), C-EVENTS, C-CODEGEN; no breakpoints required</td>
+</tr>
+<tr>
+<td><strong>T3</strong></td>
+<td>Wrapped node; C-AGENT basic, C-EVENTS (run + text + tool), HITL where native callback exists</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c10-stack-version-management">C.10 Stack &amp; version management</h3>
+<ul>
+<li>Each adapter pins a <strong>framework range</strong> per AgentCanvas stack (e.g. <code>stack-2026.10</code>: <code>openai-agents&gt;=0.22,&lt;0.23</code>, <code>google-adk&gt;=2.10,&lt;2.11</code>, <code>agent-framework&gt;=1.19,&lt;1.20</code>, <code>crewai&gt;=1.15,&lt;1.16</code>, <code>pydantic-ai&gt;=2.51,&lt;2.52</code>).</li>
+<li><strong>Nightly upstream CI</strong> runs conformance against the framework's latest release and <code>main</code>; failures open issues and block stack promotion.</li>
+<li>Pre-1.0 frameworks (OpenAI Agents 0.x, Claude Agent SDK 0.x) get <strong>patch-level pins</strong> and a dedicated breaking-change watcher.</li>
+<li>MAF sub-packages in <code>b</code>/<code>a</code> pre-release (e.g. <code>hosting-mcp</code> alpha, <code>purview</code> beta) are <strong>not</strong> used by T1 features unless flagged experimental.</li>
+</ul>
+<h3 id="c11-uiux-specification-for-multi-framework">C.11 UI/UX specification for multi-framework</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>New workflow dialog</td>
+<td>Choose <strong>framework</strong> (LangChain default; others shown with tier badge); "Portable" toggle restricts palette to core nodes</td>
+</tr>
+<tr>
+<td>Palette</td>
+<td>Core nodes + active framework's dialect nodes; foreign-framework nodes greyed with reason</td>
+</tr>
+<tr>
+<td>Portability bar</td>
+<td>"Compiles on: LangChain ✓ · ADK ✓ · OpenAI ⚠ (2 emulated) · CrewAI ✗ (1 blocker)" → click for per-node table</td>
+</tr>
+<tr>
+<td>Switch framework</td>
+<td>Re-target wizard: shows blockers/emulations, proposes dialect-node replacements (e.g. <code>langchain.deep_agent</code> → <code>adk.llm_agent</code> + planner)</td>
+</tr>
+<tr>
+<td>Code view</td>
+<td>Shows generated code for the selected framework; side-by-side compare across frameworks</td>
+</tr>
+<tr>
+<td>Compare experiment</td>
+<td>Run the same dataset on N frameworks/models; results grid (quality, latency, cost, tokens)</td>
+</tr>
+<tr>
+<td>Node inspector</td>
+<td>"Implemented as: <code>google.adk.workflow.JoinNode</code>" + capability level + caveats</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c12-security-considerations-per-adapter">C.12 Security considerations per adapter</h3>
+<ul>
+<li>Framework code executes only in data-plane workers/sandboxes (doc 02); adapters run in the compiler workers <strong>only for lowering/generation</strong>, never executing user code.</li>
+<li>Framework-specific powerful tools (OpenAI <code>ShellTool</code>/<code>ApplyPatchTool</code>, sandbox agents; ADK code executors; MAF Hyperlight; Claude Agent SDK Bash/Edit tools) are <strong>admin-gated dialect nodes</strong>, default <code>needs_approval</code>/<code>permission_mode</code> restrictive, and must run with a sandbox binding.</li>
+<li>Licence gate: adapters record framework licence; Mastra <code>ee/</code> components excluded from generated code.</li>
+</ul>
+<hr />
+<h2 id="part-d-detailed-delivery-plan">Part D — Detailed delivery plan</h2>
+<h3 id="d1-timeline-overview-relative-to-release-1-ga-month-0">D.1 Timeline overview (relative to Release 1 GA = month 0)</h3>
+<div class="highlight"><pre><span></span><code>Month:     -4   -2    0    2    4    6    8   10   12   14   16   18   20
+R1 build   ████████████ (F0 foundations inside: IR split, SPI v0, canonical events on AG-UI, import-linter)
+F1 interop           ██████ (Tier-3 wrappers, A2A/MCP nodes, Agent Spec import/export, bridge path)
+F2a OpenAI                ████████ (T1 agent tier)
+F2b ADK                   ██████████████ (T1)
+F3 MAF                               ██████████████ (T1)
+F4 CrewAI                                      ██████████████ (T1 Flows)
+F5 PydAI/Strands/LlamaIdx                               ██████████████ (T2)
+F6 Mastra (TS sidecar)                                        ██████████ (T2)
+Mixed-framework graphs                                   ████████████
+Adapter SDK public                                                 ██████
+</code></pre></div>
+<h3 id="d2-workstreams-milestones">D.2 Workstreams &amp; milestones</h3>
+<p><strong>WS0 — Foundations (inside R1, months −4…0), squad: 2 eng + 0.5 PM</strong>
+| Milestone | Deliverables | Exit criteria |
+|-----------|-------------|---------------|
+| M0.1 IR split | <code>core.*</code> vs <code>langchain.*</code>/<code>langgraph.*</code> node namespaces; <code>x-&lt;adapter&gt;</code> overrides; IR v1.1 migration | All R1 templates validate in new IR |
+| M0.2 SPI v0 | <code>FrameworkAdapter</code> protocol (C.2); LangChain adapter refactored behind it | Compiler/runtime call SPI only; import-linter green |
+| M0.3 Canonical events v1 | AG-UI-based event schema + extensions (C.3); LangChain translator; UI consumes only canonical events | Live overlay works via canonical events |
+| M0.4 HITL envelope | <code>InterruptRequest/Decision/ResumeEnvelope</code> (C.4) for LangChain | Inbox works through canonical HITL |
+| M0.5 Conformance kit | C-AGENT/C-FLOW/C-HITL/C-EVENTS for LangChain; fake-model harness | Suite green |
+| M0.6 Toy adapter | "echo" adapter in &lt; 2 weeks | Proves seams |</p>
+<p><strong>WS1 — Interop (months 0…3), squad: 3 eng</strong>
+| Milestone | Deliverables | Exit |
+|-----------|-------------|------|
+| M1.1 Remote agents | A2A 1.0 client node (streaming, <code>input-required</code>→interrupt), MCP-agent node | Call ADK/MAF/Strands A2A servers from canvas |
+| M1.2 Wrapped agents | Generic Python callable wrapper + dedicated wrappers: Claude Agent SDK (<code>can_use_tool</code> → Inbox), OpenAI Agents (black-box), ADK (<code>deployments-wrap-sdk</code>), CrewAI crew, Strands agent | 5 frameworks as T3 nodes, Mode A hosted |
+| M1.3 Agent Spec | Import/export Core IR ↔ Agent Spec (Agent, Flow, nodes, edges, ManagerWorkers, Swarm) | Round-trip of 10 portable templates |
+| M1.4 Bridge path | pyagentspec loaders for OpenAI Agents / MAF / CrewAI dev runs | Portable templates run on 3 frameworks (T2-preview) |</p>
+<p><strong>WS2a — OpenAI Agents SDK adapter (months 1…4), squad A: 3 eng</strong> — spec: <a href="../adapters/openai-agents-sdk/">adapters/openai-agents-sdk.md</a>
+- M2a.1 capability matrix &amp; dialect nodes (guardrails, handoffs, hosted tools, sandbox agent — admin-gated) · M2a.2 lowering + codegen (agent tier; graph tier via generated async orchestration) · M2a.3 translator (stream events + RunHooks + TracingProcessor→OTel) · M2a.4 HITL via <code>RunState</code> JSON envelope · M2a.5 sessions bound to Postgres/Redis/Mongo · M2a.6 conformance &amp; beta. <strong>Exit:</strong> T1 (agent tier), T2 (graph tier).</p>
+<p><strong>WS2b — Google ADK adapter (months 1…7), squad B: 3 eng</strong> — spec: <a href="../adapters/google-adk/">adapters/google-adk.md</a>
+- M2b.1 capabilities &amp; dialect nodes (LlmAgent options, planners, code executors, plugins, Sequential/Parallel/Loop agents) · M2b.2 graph lowering to <code>Workflow</code> edges/routes/JoinNode/parallel_worker · M2b.3 state bridge (<code>ctx.state</code>, <code>output_key</code>, emulated reducers) · M2b.4 HITL (<code>require_confirmation</code>, <code>RequestInput</code>) · M2b.5 sessions/memory bindings (<code>DatabaseSessionService</code>, Vertex) · M2b.6 events via AG-UI <code>adk-middleware</code> + node mapping · M2b.7 hosting A (wrap) and B (Agent Engine/Cloud Run) · M2b.8 importer from ADK YAML <code>AgentConfig</code> · M2b.9 conformance. <strong>Exit:</strong> T1.</p>
+<p><strong>WS3 — Microsoft Agent Framework adapter (months 4…10), squad B</strong> — spec: <a href="../adapters/microsoft-agent-framework/">adapters/microsoft-agent-framework.md</a>
+- Lowering to <code>WorkflowBuilder</code> (edges, chains, fan-out/in, switch-case, multi-selection), executors from nodes, agents as executors; HITL (<code>approval_mode</code>, <code>request_info</code>); <strong>Postgres <code>CheckpointStorage</code></strong> implementation (ours, contributed upstream); history providers bound per env; events via AG-UI MAF integration; hosting A + Foundry hosted agents; declarative YAML import/export; orchestrations as dialect macros (group chat, magentic). <strong>Exit:</strong> T1; .NET via sidecar = later.</p>
+<p><strong>WS4 — CrewAI adapter (months 7…13), squad A</strong> — spec: <a href="../adapters/crewai/">adapters/crewai.md</a>
+- Graph tier → <strong><code>FlowDefinition</code></strong> generation (plus readable DSL Python projection); Agent tier → Agent/Task/Crew; HITL via <code>@human_feedback</code> &amp; task <code>human_input</code>; persistence via <code>FlowPersistence</code> (Postgres impl ours) and <code>CheckpointConfig</code>; events via AG-UI <code>crew-ai</code> + event bus listener; importer from <code>FlowDefinition</code>. <strong>Exit:</strong> T1 (Flows), T2 (Crews hierarchical).</p>
+<p><strong>WS5 — Pydantic AI, Strands, LlamaIndex Workflows (months 9…15), squad C: 3 eng</strong> — specs in <a href="./adapters/">adapters/</a>
+- Pydantic AI: Agent Spec YAML emission, capabilities as dialect nodes, deferred-tool HITL, <code>pydantic_graph</code> lowering, durable exec binding (Temporal/DBOS) → T2 then T1.
+- Strands: <code>GraphBuilder</code>/<code>Swarm</code> lowering, interrupts, session managers → T2.
+- LlamaIndex Workflows: event-class-per-edge lowering, <code>InputRequiredEvent</code> HITL, Context state → T2.</p>
+<p><strong>WS6 — TypeScript sidecar &amp; Mastra (months 11…16), squad C</strong> — spec: <a href="../adapters/mastra/">adapters/mastra.md</a>
+- Node adapter host (JSON-RPC SPI), Mastra lowering (<code>createWorkflow</code> chains, <code>.branch/.parallel/.foreach/.dowhile</code>, <code>suspend/resume</code>), storage bindings (<code>@mastra/pg</code>, <code>@mastra/redis</code>), AG-UI Mastra integration. <strong>Exit:</strong> T2.</p>
+<p><strong>WS7 — Mixed-framework graphs &amp; comparison (months 10…16)</strong>
+- Per-node <code>engine</code>; boundary contracts (explicit data edges, schema-validated); in-process composition for Python adapters (foreign agent wrapped as a node/task inside the primary adapter), A2A for cross-language; cross-framework compare experiments in LangSmith.</p>
+<p><strong>WS8 — Public Adapter SDK (months 16…20)</strong>
+- <code>agentcanvas adapter new</code> scaffolding, docs, conformance kit as a package, certification programme, marketplace listing, community T3/T2 adapters (Agno, smolagents, AG2, Langroid…).</p>
+<h3 id="d3-staffing-cost-incremental-to-core-product-team">D.3 Staffing &amp; cost (incremental to core product team)</h3>
+<table>
+<thead>
+<tr>
+<th>Period</th>
+<th>Squads</th>
+<th>Engineers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1 build (F0)</td>
+<td>Foundations (shared with core)</td>
+<td>+2</td>
+</tr>
+<tr>
+<td>Months 0–7</td>
+<td>Interop + OpenAI + ADK</td>
+<td>6–7</td>
+</tr>
+<tr>
+<td>Months 7–16</td>
+<td>MAF/CrewAI + PydAI/Strands/LlamaIndex + TS sidecar</td>
+<td>6–9</td>
+</tr>
+<tr>
+<td>Months 16–20</td>
+<td>SDK &amp; ecosystem + maintenance rotation</td>
+<td>3 + 1 upstream-watch rotation per 3 adapters</td>
+</tr>
+</tbody>
+</table>
+<h3 id="d4-definition-of-done-per-adapter-checklist">D.4 Definition of Done per adapter (checklist)</h3>
+<ul>
+<li>[ ] Verification spike report (versions, API citations, licence) committed under <code>adapters/&lt;fw&gt;/VERIFICATION.md</code></li>
+<li>[ ] Capability matrix reviewed by product &amp; security</li>
+<li>[ ] Dialect node manifests + UI forms + docs</li>
+<li>[ ] Direct lowering &amp; codegen with golden tests; generated project runs with the framework's own CLI</li>
+<li>[ ] Canonical event translator (AG-UI reuse where available) with node mapping</li>
+<li>[ ] HITL mapping incl. cross-process resume via <code>ResumeEnvelope</code></li>
+<li>[ ] Persistence mapping for Postgres &amp; Redis bindings (+ Mongo where native)</li>
+<li>[ ] Hosting mode A; mode B where planned</li>
+<li>[ ] Conformance suite green for the target tier; nightly upstream CI</li>
+<li>[ ] Templates (≥ 3) and Copilot knowledge pack</li>
+<li>[ ] Beta with ≥ 3 design partners; certification sign-off</li>
+</ul>
+<h3 id="d5-risks-evidence-based">D.5 Risks (evidence-based)</h3>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Evidence</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pre-1.0 API churn</td>
+<td>OpenAI Agents 0.22.x, Claude Agent SDK 0.2.x, many MAF sub-packages <code>a</code>/<code>b</code></td>
+<td>Patch pins, nightly CI, avoid pre-release sub-packages in T1</td>
+</tr>
+<tr>
+<td>Fast-moving graph APIs</td>
+<td>ADK <code>workflow</code> package is new in 2.x; Mastra main is alpha</td>
+<td>Target released tags only; adapter-level shims; conformance on upgrade</td>
+</tr>
+<tr>
+<td>Semantic gaps in state reducers</td>
+<td>Only LangGraph has native reducers</td>
+<td>Generated merge functions + C-STATE tests; warn on concurrent writes (<code>W071</code>)</td>
+</tr>
+<tr>
+<td>Missing Postgres persistence in some frameworks</td>
+<td>MAF checkpoints (memory/file/Cosmos), CrewAI persistence (SQLite)</td>
+<td>Ship &amp; upstream Postgres implementations; conformance-test them</td>
+</tr>
+<tr>
+<td>Bridge-path gaps</td>
+<td>pyagentspec converters raise <code>NotImplementedError</code> for some features</td>
+<td>Surface as <code>P002</code>; fall back to direct path</td>
+</tr>
+<tr>
+<td>Event fidelity varies across AG-UI integrations</td>
+<td>Integrations are community-maintained, per-framework</td>
+<td>Pin integration versions; extension events added by our translators; C-EVENTS gate</td>
+</tr>
+<tr>
+<td>Licensing</td>
+<td>Mastra <code>ee/</code> directories</td>
+<td>Licence gate in adapter manifest; exclude from codegen</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-e-updates-to-earlier-documents">Part E — Updates to earlier documents</h2>
+<ul>
+<li>Doc 11 §3's concept mapping is now <strong>superseded by A.4</strong> (verified); doc 11 §5 phase ordering is <strong>superseded by B.2 and D.1</strong>.</li>
+<li>Doc 02: add <code>agentcanvas/core</code> vs <code>adapters/*</code> packaging (C.1) and the Node sidecar (C.7).</li>
+<li>Doc 03: IR <code>framework</code>/<code>engine</code>, <code>x-&lt;adapter&gt;</code> blocks, portability diagnostics (<code>P001–P003</code>) — unchanged; add <code>P004</code> <em>bridge path used (non-idiomatic code)</em>.</li>
+<li>Doc 08: persistence bindings get per-adapter mappings (C.5).</li>
+</ul>
+<h2 id="sources-verified-2026-09-28">Sources (verified 2026-09-28)</h2>
+<p>Framework repositories (default branch, shallow clones): <code>openai/openai-agents-python</code>, <code>google/adk-python</code>, <code>microsoft/agent-framework</code>, <code>crewAIInc/crewAI</code>, <code>pydantic/pydantic-ai</code>, <code>run-llama/workflows-py</code>, <code>mastra-ai/mastra</code>, <code>strands-agents/sdk-python</code>, <code>anthropics/claude-agent-sdk-python</code>, <code>oracle/agent-spec</code>, <code>a2aproject/a2a-python</code>, <code>ag-ui-protocol/ag-ui</code>; LangChain docs repo <code>langchain-ai/docs</code> (Agent Server hosting of other frameworks).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,19 +1,24 @@
-"""Workspace files (M5-T1/T2/T3): browse, read, save (with ruff diagnostics), delete, scaffold scripts."""
+"""Workspace files (M5-T1/T2/T3): browse, read, save (with ruff diagnostics), delete, scaffold scripts.
+
+S17: `?workflow_id=` scopes a request to one workflow's own code folder (`flows/<workflow>/`, created on first
+use) next to the project's shared code at the root.
+"""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session
-from agentcanvas.db.repositories import ProjectRepo
+from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.sandbox.policy import POLICY_FILE, check_policy
 from agentcanvas.workspace import Workspace, WorkspaceError
+from agentcanvas.workspace.store import workflow_key
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["workspace"])
 
@@ -50,6 +55,12 @@ class SavedFile(FileOut):
 class NewScript(BaseModel):
     name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,62}$")
     writes: list[str] = Field(default_factory=list)  # channels the scaffold returns
+    workflow_id: str | None = Field(None, description="create it in this workflow's own folder (S17)")
+
+
+class FilesOut(BaseModel):
+    files: list[FileOut]
+    folder: str | None = Field(None, description="the workflow's own code folder, when `workflow_id` was given")
 
 
 async def workspace(project_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> Workspace:
@@ -66,9 +77,32 @@ def _guard(fn):
         raise NotFound(f"file '{exc.args[0]}' not found") from exc
 
 
+async def _own_folder(session: AsyncSession, project_id: str, ws: Workspace, wf_id: str) -> str:
+    """The workflow's code folder, created on first use; the workflow must belong to this project."""
+    row = await WorkflowRepo(session).require(wf_id)
+    if row.project_id != project_id:
+        raise NotFound(f"workflow '{wf_id}' not found")
+    return _guard(lambda: ws.ensure_workflow(wf_id))
+
+
 @router.get("/files", response_model=list[FileOut])
 async def list_files(ws: Workspace = Depends(workspace)) -> list[FileOut]:
     return [FileOut(path=f.path, size=f.size, modified=f.modified) for f in ws.list()]
+
+
+@router.get("/workflow-files/{wf_id}", response_model=FilesOut)
+async def list_workflow_files(
+    project_id: str, wf_id: str, session: AsyncSession = Depends(get_session), ws: Workspace = Depends(workspace)
+) -> FilesOut:
+    """One workflow's view of the workspace: its own folder (created on first use) and the shared code, without
+    other workflows' folders."""
+    folder = await _own_folder(session, project_id, ws, wf_id)
+    files = [
+        FileOut(path=f.path, size=f.size, modified=f.modified)
+        for f in ws.list()
+        if not f.path.startswith("flows/") or f.path.startswith(f"{folder}/")
+    ]
+    return FilesOut(files=files, folder=folder)
 
 
 def _lint(ws: Workspace, path: str, request: Request, project_id: str) -> list[LintItem]:
@@ -106,7 +140,7 @@ async def delete_file(path: str, ws: Workspace = Depends(workspace)) -> Response
     return Response(status_code=204)
 
 
-SCRIPT_TEMPLATE = '''"""Script node `{name}`: receives the workflow state, returns the channels to update."""
+SCRIPT_TEMPLATE = '''"""Script step `{name}`: return the fields to update."""
 
 
 def run(state: dict) -> dict:
@@ -115,17 +149,22 @@ def run(state: dict) -> dict:
 
 
 @router.post("/scripts", status_code=201)
-async def new_script(body: NewScript, ws: Workspace = Depends(workspace)) -> dict[str, Any]:
-    """Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01); returns its import path."""
-    path = f"scripts/{body.name}.py"
+async def new_script(
+    project_id: str, body: NewScript, session: AsyncSession = Depends(get_session), ws: Workspace = Depends(workspace)
+) -> dict[str, Any]:
+    """Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01), or `flows/<workflow>/scripts/<name>.py`
+    with `workflow_id` (S17); returns its import path."""
+    folder = await _own_folder(session, project_id, ws, body.workflow_id) if body.workflow_id else ""
+    path = f"{folder}/scripts/{body.name}.py" if folder else f"scripts/{body.name}.py"
+    module = path.removesuffix(".py").replace("/", ".")
     if (ws.root / path).exists():
-        raise Conflict(f"'{path}' already exists", import_path=f"scripts.{body.name}:run")
+        raise Conflict(f"'{path}' already exists", import_path=f"{module}:run")
     writes = [w for w in body.writes if re.fullmatch(r"[a-z][a-z0-9_]*", w)]
     lines = ["    # read inputs with state.get(...)"] + (
         ["    return {" + ", ".join(f'"{w}": None' for w in writes) + "}"] if writes else ["    return {}"]
     )
     _guard(lambda: ws.write(path, SCRIPT_TEMPLATE.format(name=body.name, body="\n".join(lines))))
-    return {"path": path, "import_path": f"scripts.{body.name}:run"}
+    return {"path": path, "import_path": f"{module}:run"}
 
 
 class CatalogOut(BaseModel):
@@ -138,19 +177,29 @@ class CatalogOut(BaseModel):
 
 
 @router.get("/workspace/catalog", response_model=CatalogOut)
-async def workspace_catalog(project_id: str, request: Request, _: Workspace = Depends(workspace)) -> CatalogOut:
+async def workspace_catalog(
+    project_id: str,
+    request: Request,
+    _: Workspace = Depends(workspace),
+    workflow_id: str | None = Query(None, description="only shared code and this workflow's own (S17)"),
+) -> CatalogOut:
     """What the workspace contributes to the palette: tools, custom nodes, scripts, event handlers (AST scan)."""
     projects = request.app.state.projects
     cat = projects.catalog(project_id)
+    key = _guard(lambda: workflow_key(workflow_id)) if workflow_id else None
+
+    def visible(item: dict[str, Any]) -> bool:
+        return workflow_id is None or item.get("workflow") in (None, key)
+
     policy = check_policy(
         projects.workspace(project_id).root,
         projects.settings.script_execution,
         set(projects.secrets.get(project_id, {})),
     )
     return CatalogOut(
-        tools=cat.tools,
+        tools=[t for t in cat.tools if visible(t)],
         nodes=[m.type for m in cat.nodes],
-        scripts=cat.scripts,
+        scripts=[x for x in cat.scripts if visible(x)],
         handlers=cat.handlers,
         problems=[*cat.problems, *policy],
         schemas=sorted(

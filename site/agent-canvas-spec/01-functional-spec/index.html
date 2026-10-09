@@ -1,0 +1,3830 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Visual agentic workflows compiled to LangGraph / LangChain / Deep Agents">
+      
+      
+      
+      
+        <link rel="prev" href="../../user-guide/faq/">
+      
+      
+        <link rel="next" href="../02-technical-architecture/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Functional spec - AgentCanvas</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#01-functional-specification" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="AgentCanvas" class="md-header__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AgentCanvas
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Functional spec
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="AgentCanvas" class="md-nav__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AgentCanvas
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/run-locally/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run on your computer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/beginner-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Beginner's guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and API keys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building on the canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/copilot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Copilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Block reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/run-and-debug/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running and debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspace, secrets and events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish and integrate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/agents-and-connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect to other agents and tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export and deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organisations, roles and policies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy and operate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Specification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functional spec
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functional spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-personas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Personas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-core-user-journeys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Core user journeys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-application-layout-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Application layout (UI)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-functional-modules-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Functional modules &amp; requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Functional modules &amp; requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-canvas-editor-fr-can" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Canvas editor (FR-CAN)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-node-palette-node-model-fr-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Node palette &amp; node model (FR-NODE)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-type-system-live-validation-fr-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Type system &amp; live validation (FR-TYPE)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-state-designer-fr-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 State designer (FR-STATE)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-agent-composer-fr-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 Agent composer (FR-AGENT)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-execution-testing-debugging-fr-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6 Execution, testing &amp; debugging (FR-RUN)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-human-in-the-loop-inbox-fr-hitl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.7 Human-in-the-loop &amp; Inbox (FR-HITL)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#48-workspaces-scripting-fr-ws-summary-full-spec-in-doc-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.8 Workspaces &amp; scripting (FR-WS) — summary; full spec in doc 05
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#49-triggers-events-channels-fr-trig-summary-full-spec-in-doc-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.9 Triggers, events &amp; channels (FR-TRIG) — summary; full spec in doc 05
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#410-knowledge-rag-fr-kb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.10 Knowledge &amp; RAG (FR-KB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#411-evaluation-studio-fr-eval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.11 Evaluation studio (FR-EVAL)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#412-observability-fr-obs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.12 Observability (FR-OBS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#413-versioning-collaboration-fr-ver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.13 Versioning &amp; collaboration (FR-VER)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#414-publish-deploy-expose-fr-dep-fr-exp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.14 Publish, deploy &amp; expose (FR-DEP / FR-EXP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#415-ai-copilot-fr-cop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.15 AI Copilot (FR-COP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#416-templates-marketplace-reuse-fr-tpl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.16 Templates, marketplace &amp; reuse (FR-TPL)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#417-connections-secrets-integrations-fr-con" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.17 Connections, secrets &amp; integrations (FR-CON)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#418-governance-admin-fr-gov" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.18 Governance &amp; admin (FR-GOV)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#419-cost-performance-estimation-fr-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.19 Cost &amp; performance estimation (FR-COST)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#420-persistence-fr-per-summary-full-spec-in-doc-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.20 Persistence (FR-PER) — summary; full spec in doc 08
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#421-long-term-memory-caching-fr-mem-fr-cache-summary-full-spec-in-doc-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.21 Long-term memory &amp; caching (FR-MEM, FR-CACHE) — summary; full spec in doc 08
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#422-data-studio-visual-data-modelling-fr-dm-summary-full-spec-in-doc-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.22 Data Studio — visual data modelling (FR-DM) — summary; full spec in doc 08
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#423-self-improving-agents-fr-lrn-summary-full-spec-in-doc-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.23 Self-improving agents (FR-LRN) — summary; full spec in doc 09
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#424-v06-additions-fr-x-summary-full-spec-in-doc-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.24 v0.6 additions (FR-X) — summary; full spec in doc 15
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-non-functional-requirements-product-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Non-functional requirements (product-level)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-technical-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-graph-ir-and-compiler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph IR & compiler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-node-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Node catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-workspaces-scripting-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces, scripting & events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-roadmap-risks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap & risks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-worked-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worked example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-persistence-memory-data-modeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence & memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09-self-improving-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-improving agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../15-concept-evolution-and-new-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concept & new features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../16-competitive-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Competitive roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../17-framework-coverage-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework coverage review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../14-deep-review-v0.6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review v0.6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_14" id="__nav_3_14_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    History
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-improvement-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Improvement plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-framework-agnostic-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework-agnostic plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12-multi-framework-technical-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-framework technical spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../13-deep-review-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review report (v0.5)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/00-concepts-primer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts primer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/01-environment-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/02-repository-and-conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository & conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/03-walking-skeleton-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walking skeleton
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/04-implementation-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/05-backend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/06-frontend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/07-compiler-and-node-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler & node types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/08-testing-and-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/09-deployment-and-operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment & operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/10-security-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/11-troubleshooting-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/12-traceability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traceability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/13-sprint-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint plan & execution log
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_16" id="__nav_4_16_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spikes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_16">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Spikes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/spikes/SP-2-langsmith-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-2 LangSmith sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/spikes/SP-3-v3-streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-3 v3 streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-guide/spikes/SP-4-server-runtime-hosting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-4 ServerRuntime hosting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-personas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Personas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-core-user-journeys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Core user journeys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-application-layout-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Application layout (UI)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-functional-modules-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Functional modules &amp; requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Functional modules &amp; requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-canvas-editor-fr-can" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Canvas editor (FR-CAN)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-node-palette-node-model-fr-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Node palette &amp; node model (FR-NODE)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-type-system-live-validation-fr-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Type system &amp; live validation (FR-TYPE)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-state-designer-fr-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 State designer (FR-STATE)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-agent-composer-fr-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 Agent composer (FR-AGENT)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-execution-testing-debugging-fr-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6 Execution, testing &amp; debugging (FR-RUN)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-human-in-the-loop-inbox-fr-hitl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.7 Human-in-the-loop &amp; Inbox (FR-HITL)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#48-workspaces-scripting-fr-ws-summary-full-spec-in-doc-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.8 Workspaces &amp; scripting (FR-WS) — summary; full spec in doc 05
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#49-triggers-events-channels-fr-trig-summary-full-spec-in-doc-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.9 Triggers, events &amp; channels (FR-TRIG) — summary; full spec in doc 05
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#410-knowledge-rag-fr-kb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.10 Knowledge &amp; RAG (FR-KB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#411-evaluation-studio-fr-eval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.11 Evaluation studio (FR-EVAL)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#412-observability-fr-obs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.12 Observability (FR-OBS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#413-versioning-collaboration-fr-ver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.13 Versioning &amp; collaboration (FR-VER)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#414-publish-deploy-expose-fr-dep-fr-exp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.14 Publish, deploy &amp; expose (FR-DEP / FR-EXP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#415-ai-copilot-fr-cop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.15 AI Copilot (FR-COP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#416-templates-marketplace-reuse-fr-tpl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.16 Templates, marketplace &amp; reuse (FR-TPL)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#417-connections-secrets-integrations-fr-con" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.17 Connections, secrets &amp; integrations (FR-CON)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#418-governance-admin-fr-gov" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.18 Governance &amp; admin (FR-GOV)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#419-cost-performance-estimation-fr-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.19 Cost &amp; performance estimation (FR-COST)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#420-persistence-fr-per-summary-full-spec-in-doc-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.20 Persistence (FR-PER) — summary; full spec in doc 08
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#421-long-term-memory-caching-fr-mem-fr-cache-summary-full-spec-in-doc-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.21 Long-term memory &amp; caching (FR-MEM, FR-CACHE) — summary; full spec in doc 08
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#422-data-studio-visual-data-modelling-fr-dm-summary-full-spec-in-doc-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.22 Data Studio — visual data modelling (FR-DM) — summary; full spec in doc 08
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#423-self-improving-agents-fr-lrn-summary-full-spec-in-doc-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.23 Self-improving agents (FR-LRN) — summary; full spec in doc 09
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#424-v06-additions-fr-x-summary-full-spec-in-doc-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.24 v0.6 additions (FR-X) — summary; full spec in doc 15
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-non-functional-requirements-product-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Non-functional requirements (product-level)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="01-functional-specification">01 — Functional Specification</h1>
+<h2 id="1-personas">1. Personas</h2>
+<table>
+<thead>
+<tr>
+<th>Persona</th>
+<th>Goals</th>
+<th>Primary tier</th>
+<th>Must-have capabilities</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P1 — Citizen builder</strong> (ops analyst, PM, support lead)</td>
+<td>Automate a process with an agent without coding</td>
+<td>Agent tier</td>
+<td>Templates, Copilot, Agent widget with sensible defaults, one-click run/publish, chat test panel</td>
+</tr>
+<tr>
+<td><strong>P2 — Agent architect</strong> (ML/AI engineer)</td>
+<td>Design reliable multi-agent systems, control flow, HITL</td>
+<td>Graph tier</td>
+<td>Explicit state schema, routers, fan-out, subgraphs, interrupts, evals, time-travel debugging</td>
+</tr>
+<tr>
+<td><strong>P3 — Platform engineer</strong></td>
+<td>Extend the platform, integrate enterprise systems</td>
+<td>Code tier</td>
+<td>Workspaces, custom nodes SDK, custom middleware, event handlers, CI/CD, Git, eject</td>
+</tr>
+<tr>
+<td><strong>P4 — Reviewer / approver</strong> (compliance, domain expert)</td>
+<td>Approve agent actions; approve releases</td>
+<td>Inbox / Review</td>
+<td>Human task inbox, version diffs, eval reports, audit log</td>
+</tr>
+<tr>
+<td><strong>P5 — Admin</strong></td>
+<td>Govern cost, security, access</td>
+<td>Admin console</td>
+<td>RBAC, SSO, secrets, model policies, spend limits, audit, data retention</td>
+</tr>
+<tr>
+<td><strong>P6 — End user of a published agent</strong></td>
+<td>Use the agent</td>
+<td>Chat widget / API / Slack</td>
+<td>Embeddable chat, streaming, file upload, approvals</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-core-user-journeys">2. Core user journeys</h2>
+<p><strong>J1 — From idea to running agent in 5 minutes (P1)</strong>
+1. User clicks <em>New workflow</em> → chooses "Describe it" and types: <em>"Every morning, read new Zendesk tickets, classify urgency, draft replies for low-urgency ones, and ask me before sending anything."</em>
+2. Copilot proposes a graph (Cron Trigger → Fetch Tickets (MCP tool) → Classifier (structured output) → Router → Deep Agent "Reply drafter" → Human Approval → Send Reply tool). The diff is shown as ghost nodes; user accepts.
+3. Validator flags <em>"Zendesk connection missing"</em>; user clicks the badge → connects via OAuth.
+4. User presses ▶ <strong>Test run</strong> with a sample payload. Nodes light up; the approval card appears in the right panel; user approves; run finishes. Trace link to LangSmith shown.
+5. User presses <strong>Publish</strong> → chooses <em>LangSmith Deployment</em> → gets an endpoint, a cron schedule, and a Slack channel hook.</p>
+<p><strong>J2 — Architect builds a supervised multi-agent research system (P2)</strong>
+Designs a state schema (<code>messages</code>, <code>plan</code>, <code>findings[]</code> with append reducer, <code>report</code>); adds a Planner node, a <code>Send</code> fan-out node that spawns N Researcher subgraphs in parallel, a Reducer/Synthesizer, a Rubric critic loop (max 3 iterations), and an Interrupt before publishing. Sets breakpoints, runs, scrubs the timeline back to the planner step, edits the plan in state, forks a new run. Creates a dataset from 10 traces, runs an experiment comparing two models, and sets the experiment as a release gate.</p>
+<p><strong>J3 — Engineer adds a custom event and a custom node (P3)</strong>
+Opens the Workspace, creates <code>nodes/salesforce_upsert.py</code> using the <code>@canvas_node</code> decorator with typed ports; it appears in the palette immediately (hot reload). Writes an event handler <code>events/on_high_value_lead.py</code> subscribed to the <code>lead.created</code> webhook with a filter; the handler starts the workflow with a mapped payload. Writes unit tests; CI runs them on push; eject to GitHub.</p>
+<p><strong>J4 — Reviewer handles approvals (P4)</strong>
+Gets a Slack/email notification; opens the Inbox; sees the pending tool call (<code>send_email</code> with args), the agent's reasoning excerpt, and the trace; chooses <strong>Edit</strong> (fixes the subject line) → <strong>Approve</strong>. The run resumes (<code>Command(resume=…)</code>).</p>
+<p><strong>J6 — Persistent, self-improving assistant with company data (P2/P3)</strong>
+The architect opens <strong>Data Studio</strong>, imports the existing CRM Postgres schema (reverse engineering), adds a Redis <code>SessionState</code> entity with a 1-hour TTL, marks <code>email</code> as PII and <code>tenant_id</code> as the tenant scope, and generates data tools (<code>search_customers</code>, <code>get_ticket</code>, <code>update_ticket_status</code> — writes require approval). In the workflow's <strong>Persistence panel</strong> they bind the checkpointer to the company Postgres in prod (SQLite in dev), set a 30-day thread TTL and enable encryption. They add Memory Spaces <code>user_profile</code> (Postgres store) and <code>episodes</code> (MongoDB vector search) behind one routed store, drop a <em>Recall</em> node before the agent and enable memory tools. Finally they add the <em>Nightly self-improvement loop</em> template: HITL edits and 👎 feedback become examples and prompt-optimisation input; candidates pass an eval gate and a human review before a 10 % canary.</p>
+<p><strong>J5 — Production incident (P3/P5)</strong>
+An alert fires (LangSmith online eval score drop). The engineer opens the failing trace; the canvas overlays the trace; the failing tool node is red; engineer pins the failing input, fixes the prompt, re-runs from that node only (cache), adds the case to the regression dataset, publishes v1.4.1 through the eval gate, and rolls back instantly if needed.</p>
+<h2 id="3-application-layout-ui">3. Application layout (UI)</h2>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ Top bar: project ▸ workflow ▸ branch/version │ env: dev ▾ │ ▶ Run ▾ │ ⏸ │ Publish │ 👥 │
+├──────────┬──────────────────────────────────────────────────────────┬───────────────┤
+│ Left     │                    CANVAS                                │ Right panel   │
+│ rail     │  (infinite, zoomable; minimap; groups; comments)         │ (contextual)  │
+│ ─────────│                                                          │ ─ Inspector   │
+│ Palette  │   [Trigger]──▶[Agent]──▶[Router]──▶[Tool]                │ ─ Chat/Test   │
+│ Outline  │        ▲ model  ▲ tools                                  │ ─ Run/State   │
+│ State    │   [ChatModel]  [MCP Server]                              │ ─ Approvals   │
+│ Files    │                                                          │ ─ Copilot     │
+│ Data     │                                                          │ ─ Code view   │
+│ Memory   │                                                          │ ─ Persistence │
+│ Evals    │                                                          │               │
+│ Learning │                                                          │               │
+│ Versions │                                                          │               │
+├──────────┴──────────────────────────────────────────────────────────┴───────────────┤
+│ Bottom dock: Timeline scrubber │ Logs │ Problems │ Terminal │ Traces │ Cost/Latency    │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<p>Three switchable main views (same IR): <strong>Canvas</strong>, <strong>Code</strong> (read-only generated code with source-map highlighting; editable only in code islands), <strong>Split</strong> (canvas + code side-by-side, selection-synced).</p>
+<hr />
+<h2 id="4-functional-modules-requirements">4. Functional modules &amp; requirements</h2>
+<h3 id="41-canvas-editor-fr-can">4.1 Canvas editor (FR-CAN)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-CAN-01</td>
+<td>Infinite pan/zoom canvas with minimap, grid snapping, auto-layout (ELK layered, left→right and top→bottom), align/distribute tools.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-02</td>
+<td>Drag nodes from palette; quick-add by double-clicking empty canvas (fuzzy search, like ComfyUI's search box); drag from a port to empty space opens a filtered search showing only type-compatible nodes.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-03</td>
+<td>Three edge types rendered distinctly: <strong>Flow</strong> (solid, animated during runs), <strong>Wiring</strong> (thin, colored by port type), <strong>Data</strong> (dashed, labeled with channel names).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-04</td>
+<td>Conditional edges show their branch labels; router nodes show one output port per declared route plus optional <code>default</code>.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-05</td>
+<td>Groups: select nodes → <em>Group</em> (visual only) or <em>Convert to Subgraph</em> (semantic; creates a reusable component with its own input/output schema). Double-click to enter; breadcrumb to exit.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-06</td>
+<td>Reroute/elbow points, edge bundling, and "wireless" named links (send/receive pairs) to reduce spaghetti (ComfyUI "Anything Everywhere" equivalent, but typed).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-CAN-07</td>
+<td>Node states rendered with badges: <em>invalid</em> (red), <em>warning</em> (yellow), <em>running</em> (pulsing blue), <em>interrupted</em> (amber), <em>succeeded</em> (green), <em>cached</em> (grey tick), <em>pinned</em> (pin icon), <em>disabled/bypassed</em> (faded).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-08</td>
+<td>Bypass/disable a node (compile skips it and passes state through) for quick experiments.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-CAN-09</td>
+<td>Undo/redo (unbounded within session), copy/paste across workflows (including as IR JSON in clipboard), duplicate with wiring.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-10</td>
+<td>Sticky notes and Markdown comments pinned to nodes; threaded discussions (see collaboration).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-CAN-11</td>
+<td>Keyboard-first operation: command palette (⌘K), shortcuts for run, run-from-here, toggle breakpoint, group, bypass, focus, search.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CAN-12</td>
+<td>Accessibility: full keyboard navigation of graph (tab through nodes/ports, arrow keys along edges), screen-reader outline view, high-contrast theme, WCAG 2.2 AA.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-CAN-13</td>
+<td>Canvas scales to ≥ 500 nodes / 1,000 edges at 60 fps (virtualized rendering, LOD: collapsed rendering at low zoom).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-CAN-14</td>
+<td>"Outline" tree view of the workflow (nodes, groups, subgraphs, resources) for navigation and bulk editing.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-node-palette-node-model-fr-node">4.2 Node palette &amp; node model (FR-NODE)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-NODE-01</td>
+<td>Palette organized by category: Triggers, Agents, Models, Tools, MCP, Knowledge/RAG, Memory, Logic &amp; Control, Human-in-the-loop, Data &amp; Transform, Scripts, Middleware/Guardrails, Subgraphs, Outputs &amp; Channels, Evaluation, Custom (workspace), Marketplace. Full catalog in doc 04.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-NODE-02</td>
+<td>Each node has: title, icon, description, typed input/output ports, a config form (generated from a JSON Schema), advanced settings, docs link, and a "View code" action showing the compiled snippet.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-NODE-03</td>
+<td>Config fields can be <strong>literal</strong>, <strong>expression</strong> (sandboxed expression language over state/context, e.g. <code>{{ state.customer.tier }}</code>), <strong>secret reference</strong>, or <strong>promoted to input port</strong> (like ComfyUI "convert widget to input").</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-NODE-04</td>
+<td>Prompt fields use a rich prompt editor: Mustache/f-string variables with autocomplete from the state schema, token counter, version history, link to LangSmith prompt/Context Hub commits, test-in-playground button.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-NODE-05</td>
+<td>Node versioning: each node type is semver'd; workflows pin node versions; upgrade assistant shows breaking changes.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-NODE-06</td>
+<td>Custom nodes from the Workspace and the marketplace appear in the palette with a provenance badge (built-in / org / community / local).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-NODE-07</td>
+<td>Per-node runtime policies (Graph-tier runtime nodes): retry policy, cache policy, timeout (run/idle, idle refreshed automatically or by <code>runtime.heartbeat()</code>), error handler route, concurrency limit, tags/metadata for tracing, <strong>trace policy</strong> (full / omit inputs / omit outputs — FR-X-07). Graph-wide defaults compile to <code>set_node_defaults(...)</code>.</td>
+<td>P0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-type-system-live-validation-fr-type">4.3 Type system &amp; live validation (FR-TYPE)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-TYPE-01</td>
+<td>Ports are typed. Connecting incompatible ports is refused with an explanation; compatible-with-adapter connections offer an auto-inserted adapter (e.g. <code>Text → Messages</code>, <code>JSON → Text</code>).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-TYPE-02</td>
+<td>Continuous validation on every IR change (&lt; 150 ms for 200 nodes) with a <em>Problems</em> panel: errors (block run/publish), warnings, info; click to focus.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-TYPE-03</td>
+<td>Graph-level checks: START reachable to END; no dangling required ports; unbounded cycles must have a guard (loop counter, recursion limit, or router exit) — warn otherwise; interrupts require a checkpointer (always present on our runtime; flagged for export targets); <code>Send</code> targets must accept the sent payload type; subgraph I/O schema compatibility; state-channel write conflicts in the same super-step without a reducer → error (mirrors LangGraph <code>InvalidUpdateError</code>).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-TYPE-04</td>
+<td>Agent-level checks: model supports tool calling if tools wired; structured output schema valid; <code>response_format</code> strategy supported by model; tool name collisions; subagent names unique with descriptions present; permissions paths absolute and without <code>..</code>; HITL configured only for tools that exist.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-TYPE-05</td>
+<td>Security checks: secrets never inlined; shell/<code>execute</code> tools only with a sandbox backend; destructive MCP tools without approval produce a warning; network egress for scripts limited by policy.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-TYPE-06</td>
+<td>Script nodes are type-checked (pyright) against their declared ports; errors surface as node badges.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44-state-designer-fr-state">4.4 State designer (FR-STATE)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-STATE-01</td>
+<td>Visual editor for the graph's state schema: channels with name, type (JSON Schema / Pydantic-like), default, reducer (<code>replace</code>, <code>append</code>, <code>add_messages</code>, <code>merge_dict</code>, <code>sum</code>, <code>max</code>, <code>custom</code> (script)), <strong>storage mode</strong> (<code>full</code> default, or <code>delta</code> = LangGraph <code>DeltaChannel</code> for append-heavy channels; only with batch-safe reducers — see doc 14 V-06), visibility (input/output/private).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-STATE-02</td>
+<td>Separate <strong>Input schema</strong>, <strong>Output schema</strong>, and <strong>Context schema</strong> (run-scoped, immutable config such as <code>user_id</code>, <code>tenant</code>, feature flags — compiles to <code>context_schema</code>/<code>Runtime.context</code>).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-STATE-03</td>
+<td>Presets: <em>Chat</em> (<code>messages</code> with <code>add_messages</code>), <em>Agent</em> (Deep Agents state incl. <code>files</code>, optional <code>todos</code>), <em>Pipeline</em> (typed fields).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-STATE-04</td>
+<td>Each node declares which channels it reads and writes; the canvas shows read/write badges; the validator warns about channels never written or never read.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-STATE-05</td>
+<td>Schema migrations: renaming/removing channels on a published workflow triggers a migration wizard (because persisted threads contain old checkpoints); publish runs a <strong>resume-compatibility check</strong> (can threads created by the previous version resume on the new one?). Promoted to P1 in v0.2.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-STATE-06</td>
+<td>Channels can be typed with <strong>Data Studio entities</strong> (<code>Customer</code>, <code>Ticket</code>) and marked as <code>DeltaChannel</code> for append-heavy data; the designer shows estimated checkpoint growth per turn.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="45-agent-composer-fr-agent">4.5 Agent composer (FR-AGENT)</h3>
+<p>The <strong>Deep Agent</strong> widget is the flagship. It exposes every <code>create_deep_agent</code> capability as slots and panels; the <strong>Lite Agent</strong> widget exposes <code>create_agent</code>.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-AGENT-01</td>
+<td>Slots (wiring ports): <code>model</code> (ChatModel), <code>tools</code> (Tool[] — multi-connect), <code>middleware</code> (Middleware[] — ordered), <code>subagents</code> (Subagent[]), <code>skills</code> (SkillSet), <code>memory</code> (MemorySource[]), <code>backend</code> (Backend), <code>store</code> (Store), <code>response_format</code> (Schema).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-AGENT-02</td>
+<td>Config panel: name, system prompt (rich editor), <code>interrupt_on</code> table (per tool: approve / edit / reject / respond allowed decisions), permissions rule table (<code>operations</code>, <code>paths</code>, <code>mode</code> = allow/deny/interrupt; first-match-wins with reorder handles), debug flag, recursion limit.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-AGENT-03</td>
+<td>Built-in capabilities toggles with explanations: Planning (adds <code>TodoListMiddleware</code> — opt-in since deepagents 0.7), Filesystem tools, General-purpose subagent (on/off/override), Summarization (trigger thresholds), Prompt caching (auto), Code interpreter (QuickJS; PTC tool allow-list), Dynamic subagents, Rubric self-grading.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-AGENT-04</td>
+<td>Subagents editor: add <em>Declarative subagent</em> (name, description, system prompt, model, tools, middleware, skills, permissions, interrupt_on, response_format), <em>Compiled subagent</em> (link any sub-workflow on the canvas), <em>Forked subagent</em> (continues the parent's conversation; <code>SubAgent(mode="fork")</code>, <strong>experimental</strong> upstream — capability-flagged, v0.6), <em>Async subagent</em> (remote/ASGI deployment; launch/check/update/cancel/list tools). Each subagent is also visible as a nested canvas.</td>
+<td>P0 (sync), P1 (async/forked/dynamic)</td>
+</tr>
+<tr>
+<td>FR-AGENT-05</td>
+<td>Backend chooser: <em>State</em> (ephemeral per thread), <em>Store</em> (persistent; namespace per user / assistant / thread / org), <em>Local filesystem</em> (dev only), <em>Sandbox</em> (Daytona, Modal, Runloop, E2B, Vercel, AWS AgentCore, LangSmith Sandboxes, Docker; thread- or assistant-scoped), <em>Context Hub</em> (versioned in LangSmith), <em>Composite</em> (route path prefixes to backends, e.g. <code>/memories/</code> → Store, <code>/workspace/</code> → Sandbox).</td>
+<td>P0 (State/Store/Composite), P1 (sandboxes, Context Hub)</td>
+</tr>
+<tr>
+<td>FR-AGENT-06</td>
+<td>Skills manager: attach skills (folders with <code>SKILL.md</code> + <code>scripts/</code>, <code>references/</code>, <code>assets/</code>) from the Workspace, Context Hub or marketplace; per-subagent skill selection; read-only vs writable; write-approval.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-AGENT-07</td>
+<td>Memory manager: <code>AGENTS.md</code>-style memory files; scope (agent / user / org); read-only vs writable; episodic memory search toggle; background consolidation schedule. Memory is configured through <strong>Memory Spaces</strong> (doc 08 §3) so the same spaces are shared by agent file routes, memory tools and Recall/Remember nodes.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-AGENT-08</td>
+<td>Harness/Provider profile selection (deepagents <code>HarnessProfile</code> / <code>ProviderProfile</code>) with an override editor.</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>FR-AGENT-09</td>
+<td>"Explode to graph": convert a Lite Agent into an explicit Graph-tier ReAct loop (model node + tool node + conditional edge) for full control; and "Collapse to agent" inverse where pattern matches.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-AGENT-10</td>
+<td>Structured output designer: define the response schema visually (fields, types, enums, descriptions), choose strategy (provider-native vs tool-calling), preview JSON Schema/Pydantic.</td>
+<td>P0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="46-execution-testing-debugging-fr-run">4.6 Execution, testing &amp; debugging (FR-RUN)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-RUN-01</td>
+<td><strong>Run</strong> a workflow from the canvas with: chat input (for message-based workflows), JSON input form generated from Input schema, or a saved test case.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-02</td>
+<td><strong>Live overlay</strong>: node status transitions per super-step; token streaming into the active node's preview; tool calls &amp; results shown on the tool node; subagent activity streamed into nested badges (Deep Agents subagent streaming); custom events (<code>get_stream_writer</code>) shown as toasts or node logs.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-03</td>
+<td><strong>Run modes</strong>: <em>Run all</em>, <em>Run from here</em> (reuse cached upstream checkpoint), <em>Run to here</em>, <em>Step</em> (one super-step), <em>Re-run node</em> (with same inputs).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-04</td>
+<td><strong>Breakpoints</strong> on nodes (before/after) → compiled into dynamic <code>interrupt_before</code> / <code>interrupt_after</code> for debug runs only; conditional breakpoints (expression over state).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-05</td>
+<td><strong>State inspector</strong>: view the full state at any checkpoint, diff between checkpoints, <strong>edit state</strong> and continue (<code>update_state</code>), <strong>fork</strong> from any checkpoint (time travel).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-06</td>
+<td><strong>Timeline scrubber</strong> in the bottom dock: one tick per super-step; hover shows nodes executed; click restores canvas overlay to that point.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-07</td>
+<td><strong>Pinned outputs</strong>: pin a node's last output so downstream iterations don't re-execute it; pinned data editable as JSON.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-08</td>
+<td><strong>Mock mode</strong>: replace a model with a fake/scripted model or <code>LLMToolEmulator</code>, replace tools with recorded responses (cassettes) — deterministic, zero-cost test runs.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-RUN-09</td>
+<td><strong>Node caching</strong>: nodes flagged cacheable are memoized by input hash (<code>CachePolicy</code>, TTL); changing a node invalidates only downstream caches.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-RUN-10</td>
+<td>Multiple concurrent test threads; thread list with titles; resume any thread.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-RUN-11</td>
+<td><strong>Double-texting policy</strong> selection for published agents (reject / enqueue / interrupt / rollback).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-RUN-12</td>
+<td>Cancel and <strong>graceful drain</strong> (<code>langgraph.runtime.RunControl.request_drain()</code>; the run raises <code>langgraph.errors.GraphDrained</code>), resume later from the saved checkpoint.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-RUN-13</td>
+<td>Run cost &amp; latency displayed per node and per run (tokens, $, ms) from trace data.</td>
+<td>P0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="47-human-in-the-loop-inbox-fr-hitl">4.7 Human-in-the-loop &amp; Inbox (FR-HITL)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-HITL-01</td>
+<td><strong>Human Approval node</strong> (Graph tier) and <strong>tool-level approvals</strong> (Agent tier via <code>interrupt_on</code> / <code>HumanInTheLoopMiddleware</code>) with decision types <em>approve</em>, <em>edit</em> (args), <em>reject</em> (with feedback message), <em>respond</em> (answer instead of executing).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-HITL-02</td>
+<td><strong>Human Input node</strong>: pause and ask a question with a generated form (from a JSON Schema); resume with the answer.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-HITL-03</td>
+<td><strong>Inbox</strong>: all pending interrupts across workflows/threads; filters (workflow, assignee, age, priority); bulk approve; SLA timers; escalation rules; assignment by role/group; audit of every decision.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-HITL-04</td>
+<td>Notifications via email, Slack, Teams, webhook, mobile push; deep link to the approval card.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-HITL-05</td>
+<td>MCP elicitation requests (from <code>langchain.mcp</code> <code>MCPAdapter</code>, surfaced as interrupts) appear in the same inbox.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-HITL-06</td>
+<td>Filesystem permission rules with <code>mode="interrupt"</code> surface as approvals with a file diff preview.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="48-workspaces-scripting-fr-ws-summary-full-spec-in-doc-05">4.8 Workspaces &amp; scripting (FR-WS) — summary; full spec in doc 05</h3>
+<p>Git-backed per-project code workspace with Monaco editor, Python LSP, package management (<code>uv</code>), terminal into a sandbox, test runner, and hot reload into the palette. Holds script nodes, custom nodes, custom tools, custom middleware, state reducers, event handlers, skills, prompts, and tests.</p>
+<h3 id="49-triggers-events-channels-fr-trig-summary-full-spec-in-doc-05">4.9 Triggers, events &amp; channels (FR-TRIG) — summary; full spec in doc 05</h3>
+<p>Manual, API, Webhook (signed), Cron, Event bus (internal &amp; external: Kafka, SQS, Pub/Sub, Postgres CDC), Email inbound, Slack/Teams/Discord/WhatsApp channels, File drop (S3/GCS), Form submission, MCP/A2A inbound calls, Workflow-completed (chaining). Each trigger has a payload schema and a mapping to the workflow Input schema; filters and dedup keys; custom event handlers in code.</p>
+<h3 id="410-knowledge-rag-fr-kb">4.10 Knowledge &amp; RAG (FR-KB)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-KB-01</td>
+<td>Knowledge Base resource: upload files / connect sources (S3, GDrive, Confluence, Notion, SharePoint, web crawl, DB), choose splitter, embedding model, vector store (pgvector default; Pinecone, Qdrant, Weaviate, Elastic, OpenSearch, Chroma adapters).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-KB-02</td>
+<td>Retriever node / Retriever-as-tool node (compiles to retriever tool); hybrid search, metadata filters from state expressions, reranker option.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-KB-03</td>
+<td>Agentic RAG template (grade documents → rewrite query → re-retrieve loop).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-KB-04</td>
+<td>Ingestion pipelines are themselves workflows (scheduled re-index).</td>
+<td>P2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="411-evaluation-studio-fr-eval">4.11 Evaluation studio (FR-EVAL)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-EVAL-01</td>
+<td>Test cases per workflow (input, expected output/criteria, optional reference trajectory); "Save run as test case" from any run.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-EVAL-02</td>
+<td>Datasets synced to LangSmith datasets; import from CSV/JSONL/traces; dataset splits and versions.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EVAL-03</td>
+<td>Evaluators: exact/regex/JSON-schema match, LLM-as-judge (custom rubric), trajectory match (tool sequence strict/unordered/subset), code evaluators (workspace scripts), pairwise comparison, composite evaluators, human annotation queues. Use <code>openevals</code> / <code>agentevals</code> where applicable.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EVAL-04</td>
+<td>Experiments: run workflow version(s) × dataset × config matrix (models, prompts, temperatures); results grid; per-example trace; statistical comparison.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EVAL-05</td>
+<td><strong>Release gate</strong>: publishing to <em>prod</em> requires the gating experiment to meet thresholds (e.g. correctness ≥ 0.85, no regression &gt; 3 %).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EVAL-06</td>
+<td>Online evaluators on production traffic (sampling rate, LLM-judge/code/composite/multi-turn), alerts on drift.</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>FR-EVAL-07</td>
+<td>Multi-turn simulation: simulated user persona against chat workflows.</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>FR-EVAL-08</td>
+<td>Runtime self-evaluation via the <strong>Rubric</strong> capability (deepagents <code>RubricMiddleware</code>) with rubric authored in the UI and grading events shown live.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="412-observability-fr-obs">4.12 Observability (FR-OBS)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-OBS-01</td>
+<td>Every run is traced to LangSmith (project per workflow per environment) with metadata: <code>canvas_workflow_id</code>, <code>canvas_version</code>, <code>canvas_node_id</code>, <code>env</code>, <code>tenant</code>, <code>user</code>.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-OBS-02</td>
+<td>Trace overlay: open any LangSmith trace on the canvas; spans mapped back to nodes via <code>canvas_node_id</code> metadata.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-OBS-03</td>
+<td>Dashboards: runs, error rate, p50/p95 latency, tokens, cost, per-node hot spots, interrupt wait time, eval scores.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-OBS-04</td>
+<td>Alerts: thresholds on error rate, latency, cost, eval scores; destinations Slack/PagerDuty/email/webhook.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-OBS-05</td>
+<td>PII-safe tracing: input/output masking rules, trace sampling, conditional tracing; OpenTelemetry export for customers with their own stack.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-OBS-06</td>
+<td>Insights: clustering of production conversations to find failure modes (LangSmith Insights).</td>
+<td>P2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="413-versioning-collaboration-fr-ver">4.13 Versioning &amp; collaboration (FR-VER)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-VER-01</td>
+<td>Auto-save drafts; explicit <strong>commit</strong> with message creates an immutable version (IR + workspace files snapshot).</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-VER-02</td>
+<td>Git backing: each project is a Git repo (internal Gitea-compatible or customer GitHub/GitLab); IR stored as canonical, stably-ordered JSON/YAML for readable diffs.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-VER-03</td>
+<td><strong>Visual diff</strong>: added/removed/changed nodes &amp; edges highlighted; per-field config diff; code diff for scripts.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-VER-04</td>
+<td>Branches, merge with 3-way IR merge (node-level), conflict resolution UI.</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>FR-VER-05</td>
+<td>Real-time multiplayer editing (CRDT), live cursors/presence, follow mode, node-level soft locks during edits.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-VER-06</td>
+<td>Review requests: request review on a version; reviewers comment on nodes; approval required to publish to prod (configurable).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-VER-07</td>
+<td>Environments: dev / staging / prod with per-env config overrides (models, secrets, endpoints) and promotion flow.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="414-publish-deploy-expose-fr-dep-fr-exp">4.14 Publish, deploy &amp; expose (FR-DEP / FR-EXP)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-DEP-01</td>
+<td><strong>Publish targets</strong>: (a) AgentCanvas Cloud runtime (our managed Agent Server fleet), (b) customer's <strong>LangSmith Deployment</strong> (cloud/hybrid/self-hosted), (c) <strong>Managed Deep Agents</strong> project (<code>mda deploy</code>) for Agent-tier-only workflows, (d) <strong>Docker image</strong> (standalone Agent Server), (e) <strong>Export to Git</strong> (clean project), (f) P2: TypeScript target.</td>
+<td>P0 (a,e), P1 (b,c,d), P2 (f)</td>
+</tr>
+<tr>
+<td>FR-DEP-02</td>
+<td>Pre-publish checklist: validation clean, tests pass, eval gate, secrets bound for target env, cost estimate reviewed.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-DEP-03</td>
+<td>Blue/green &amp; canary (percentage traffic to new revision), instant rollback to previous revision.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-DEP-04</td>
+<td>Assistants: multiple configured <em>assistants</em> per published workflow (same graph, different config — e.g. model, prompt, tool subset).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EXP-01</td>
+<td>Every published workflow automatically exposes: REST/SSE (Agent Server API: threads, runs, stream, state, history), <strong>MCP endpoint</strong> (the workflow as an MCP tool), <strong>A2A</strong> endpoint, <strong>AG-UI</strong> event stream, and OpenAPI spec.</td>
+<td>P0 (REST), P1 (MCP, A2A, AG-UI)</td>
+</tr>
+<tr>
+<td>FR-EXP-02</td>
+<td><strong>Embeddable chat widget</strong> (script tag / React component) with theming, streaming, file upload, interrupt/approval UI, generative UI components; plus a hosted shareable chat page.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EXP-03</td>
+<td>API keys per consumer, rate limits, quotas, custom auth (JWT/OIDC) mapped to <code>Runtime</code> user identity for per-user memory and credentials.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-EXP-04</td>
+<td>Crons and schedules with timezone and payload; webhooks on run completion.</td>
+<td>P0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="415-ai-copilot-fr-cop">4.15 AI Copilot (FR-COP)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-COP-01</td>
+<td>NL → workflow: generate a full graph from a description; shown as ghost diff; accept/partial accept/reject.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-COP-02</td>
+<td>NL edits: "add an approval before sending emails", "make the researchers run in parallel", "switch all models to the cheaper tier".</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-COP-03</td>
+<td>Explain: explain a node, a run, a failure ("why did it loop 12 times?") using trace + IR.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-COP-04</td>
+<td>Lint &amp; auto-fix: best-practice rules (missing subagent descriptions, overly broad tool sets, no loop guard, missing approval on destructive tools, prompt anti-patterns).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-COP-05</td>
+<td>Code assist inside the Workspace: generate custom nodes/tools/handlers from description; tests generation.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-COP-06</td>
+<td>Eval assist: synthesize test cases &amp; rubrics from the workflow's purpose and traces.</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>FR-COP-07</td>
+<td>Copilot operates only through the IR mutation API and must pass validation; every copilot change is an undoable, attributed commit.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="416-templates-marketplace-reuse-fr-tpl">4.16 Templates, marketplace &amp; reuse (FR-TPL)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-TPL-01</td>
+<td>Templates gallery (≥ 15 at GA): Deep Research, Agentic RAG, SQL Analyst, Customer Support Triage, Coding Agent (sandbox), Data Analysis (interpreter), Content Pipeline, Email Assistant with approvals, Meeting-notes-to-tasks, Lead Enrichment, Document Extraction (structured output), Supervisor multi-agent, Handoffs/Swarm, Router, Evaluator-Optimizer loop.</td>
+<td>P0 (5), P1 (15)</td>
+</tr>
+<tr>
+<td>FR-TPL-02</td>
+<td>Reusable components: publish a subgraph as an org component with versioned I/O contract.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-TPL-03</td>
+<td>Marketplace for custom nodes, components, skills, templates; publisher verification, code signing, security scanning, ratings; org-private registries.</td>
+<td>P2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="417-connections-secrets-integrations-fr-con">4.17 Connections, secrets &amp; integrations (FR-CON)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-CON-01</td>
+<td>Connections manager: model providers (OpenAI, Anthropic, Google, Bedrock, Azure, Mistral, Fireworks, Groq, Ollama/vLLM local, NVIDIA NIM, LangSmith LLM Gateway), MCP servers (URL/stdio/in-process with OAuth 2.1 / bearer / per-user auth), SaaS OAuth apps, databases, vector stores.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CON-02</td>
+<td>Secrets stored in a vault, referenced by name, injected at runtime only; never shown after creation; scoped per env; rotation.</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-CON-03</td>
+<td>Per-end-user credentials (delegated OAuth) so an agent acts as the calling user.</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>FR-CON-04</td>
+<td>MCP server browser: list tools/resources/prompts of a connected server; import tools selectively as tool nodes; tool metadata (<code>destructive_hint</code>, <code>read_only_hint</code>) displayed.</td>
+<td>P0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="418-governance-admin-fr-gov">4.18 Governance &amp; admin (FR-GOV)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-GOV-01</td>
+<td>Orgs → Workspaces(tenancy) → Projects → Workflows hierarchy; RBAC roles: Owner, Admin, Builder, Developer, Reviewer, Operator, Viewer; custom roles; ABAC on tags.</td>
+<td>P0 (basic RBAC), P1</td>
+</tr>
+<tr>
+<td>FR-GOV-02</td>
+<td>SSO (SAML/OIDC), SCIM provisioning, MFA.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-GOV-03</td>
+<td>Model policies: allow-list providers/models per env; spend limits per project/user; rate limits (via LLM Gateway policies or our proxy).</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-GOV-04</td>
+<td>Audit log of all actions (edits, publishes, approvals, secret access) exportable to SIEM.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-GOV-05</td>
+<td>Data retention policies for threads/checkpoints/traces; right-to-erasure per end user.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-GOV-06</td>
+<td>Node allow-list: admins can disable node types (e.g. shell, arbitrary HTTP) per project.</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="419-cost-performance-estimation-fr-cost">4.19 Cost &amp; performance estimation (FR-COST)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Pri</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-COST-01</td>
+<td>Static estimate per run: model calls × expected tokens (from prompt sizes + historical averages) × price table; ranges for loops.</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-COST-02</td>
+<td>Actual cost per run/node from traces; budgets and alerts.</td>
+<td>P0 (actuals)</td>
+</tr>
+<tr>
+<td>FR-COST-03</td>
+<td>Suggestions: cheaper model for subagents, prompt caching opportunities, summarization thresholds, tool pruning (<code>LLMToolSelectorMiddleware</code>, provider tool search).</td>
+<td>P2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="420-persistence-fr-per-summary-full-spec-in-doc-08">4.20 Persistence (FR-PER) — summary; full spec in doc 08</h3>
+<p>Persistence panel per workflow: checkpointer binding per environment (platform / Postgres / Redis / MongoDB / DynamoDB-Valkey / Cosmos / CockroachDB / SQLite / memory / custom), durability mode (<code>exit</code>/<code>async</code>/<code>sync</code>), TTL &amp; pruning, <code>DeltaChannel</code> optimisation, encryption, subgraph persistence modes, conformance gate for non-default backends, thread browser (search, inspect, copy, export, delete). Requirements FR-PER-01…10.</p>
+<h3 id="421-long-term-memory-caching-fr-mem-fr-cache-summary-full-spec-in-doc-08">4.21 Long-term memory &amp; caching (FR-MEM, FR-CACHE) — summary; full spec in doc 08</h3>
+<p>Memory Spaces (typed, namespaced, indexed, TTL, writers, PII policy), Recall / Remember / Forget nodes, generated memory tools, Memory Inspector, episodic memory, background consolidation, memory safety; <strong>RoutedStore</strong> to spread memory across several databases; cache bindings, node caches, semantic LLM cache. Requirements FR-MEM-01…08, FR-CACHE-01…05.</p>
+<h3 id="422-data-studio-visual-data-modelling-fr-dm-summary-full-spec-in-doc-08">4.22 Data Studio — visual data modelling (FR-DM) — summary; full spec in doc 08</h3>
+<p>ER-style polyglot modelling (entities, relations, indexes, vector fields, PII &amp; tenant classifications), physical mappings to Postgres/MySQL/SQL Server, Redis, MongoDB, DynamoDB, Neo4j, Elasticsearch, vector DBs and warehouses; reverse engineering; migrations with approval; data browser &amp; fixtures; DB branching; data nodes (Get, Query, Upsert, Vector search, Graph traverse, Cache, Transaction scope), generated repositories and scoped agent data tools; CDC triggers. Requirements FR-DM-01…11.</p>
+<h3 id="423-self-improving-agents-fr-lrn-summary-full-spec-in-doc-09">4.23 Self-improving agents (FR-LRN) — summary; full spec in doc 09</h3>
+<p>Feedback schema &amp; capture (incl. automatic capture of HITL edits), Learning Center, Learning Loop nodes (Trace Query, Memory Extractor, Example Curator, Few-shot Selector, Prompt Optimizer, Skill Writer, Variant Router, Fine-tune Job, Eval Gate, Human Review, Promote/Canary/Rollback), versioned &amp; revertible learned artifacts, learning budgets and safety. Requirements FR-LRN-01…10.</p>
+<hr />
+<h3 id="424-v06-additions-fr-x-summary-full-spec-in-doc-15">4.24 v0.6 additions (FR-X) — summary; full spec in doc 15</h3>
+<p>Live Code Mirror, blast-radius map &amp; dry run, headless client-side tools, generative UI designer, decision-model nodes, LangSmith Engine bridge, per-node trace policy, sandbox policy designer, custom stream projections, safe redeploy, ACP exposure, trace-to-canvas import, record/replay from production, contract view &amp; API diff, budgets, multimodal I/O, explain mode, channel lineage, policy-as-code lint profiles, PR visual diffs, per-user runtime connections, events-as-code, budget-aware model routing, guided build. Requirements FR-X-01…24 with priorities and target sprints in <a href="../15-concept-evolution-and-new-features/#7-new-requirements-fr-x">doc 15 §7</a>.</p>
+<hr />
+<h2 id="5-non-functional-requirements-product-level">5. Non-functional requirements (product-level)</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NFR-01</td>
+<td>Editor interactions &lt; 50 ms; validation &lt; 150 ms (200 nodes); compile-to-code &lt; 2 s (200 nodes); first token of a test run &lt; 1.5 s + model latency.</td>
+</tr>
+<tr>
+<td>NFR-02</td>
+<td>Runtime availability 99.9 % (GA), 99.95 % enterprise; no loss of committed checkpoints.</td>
+</tr>
+<tr>
+<td>NFR-03</td>
+<td>Horizontal scalability: 10k concurrent active runs per region; 1M threads per tenant.</td>
+</tr>
+<tr>
+<td>NFR-04</td>
+<td>Security: SOC 2 Type II, ISO 27001 readiness; tenant isolation; encryption at rest (AES-256) and in transit (TLS 1.3); sandboxed user code.</td>
+</tr>
+<tr>
+<td>NFR-05</td>
+<td>Portability: exported code runs with only open-source dependencies (<code>langgraph</code>, <code>langchain</code>, <code>deepagents</code>, provider packages) + an optional thin <code>agentcanvas-runtime</code> helper package (Apache-2.0). No lock-in.</td>
+</tr>
+<tr>
+<td>NFR-06</td>
+<td>Browser support: latest 2 versions of Chrome, Edge, Firefox, Safari. Desktop-first; read-only/approvals on mobile.</td>
+</tr>
+<tr>
+<td>NFR-07</td>
+<td>Internationalization-ready UI; initial English.</td>
+</tr>
+<tr>
+<td>NFR-09</td>
+<td>Persistence: no committed checkpoint lost (RPO ≤ 1 min in data plane); right-to-erasure across all persistence layers &lt; 72 h; zero business-data queries without a resolved tenant/user scope.</td>
+</tr>
+<tr>
+<td>NFR-08</td>
+<td>Observability of the platform itself: OpenTelemetry everywhere.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

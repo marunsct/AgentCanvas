@@ -151,7 +151,10 @@ class DemoCopilotModel(BaseChatModel):
         self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
     ) -> ChatResult:
         last = max((i for i, m in enumerate(messages) if m.type == "human"), default=-1)
-        if any(isinstance(m, ToolMessage) for m in messages[last + 1 :]):
+        system = next((str(m.content) for m in messages if m.type == "system"), "")
+        if "write Python code for AgentCanvas" in system:  # code help in the Workspace editor (S17)
+            reply = AIMessage(content=_demo_code_help(_last_human(messages)))
+        elif any(isinstance(m, ToolMessage) for m in messages[last + 1 :]):
             reply = AIMessage(content="I proposed a Greet step that writes a friendly greeting (demo Copilot).")
         elif "propose_changes" in self.tool_names and "build" in _last_human(messages).lower():
             args = {"summary": "Add a Greet step", "commands": _DEMO_GREETER}
@@ -160,6 +163,19 @@ class DemoCopilotModel(BaseChatModel):
         else:
             reply = AIMessage(content="This is the demo Copilot (no model key configured). Ask me to build something.")
         return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+def _demo_code_help(asked: str) -> str:
+    """The demo Copilot's code help: explains in one line, or returns the file with a small helper added."""
+    current = asked.split("```python\n", 1)[1].split("\n```", 1)[0] if "```python\n" in asked else ""
+    if asked.startswith("Explain"):
+        return f"This file has {len(current.splitlines())} lines of Python (demo Copilot: no model key configured)."
+    helper = (
+        'def count_words(text: str) -> int:\n    """How many words the text has (demo Copilot)."""\n'
+        "    return len(text.split())\n"
+    )
+    code = current if asked.startswith("Fix") else f"{current.rstrip()}\n\n\n{helper}"
+    return f"I added a small helper (demo Copilot: no model key configured).\n\n```python\n{code.strip()}\n```"
 
 
 def _last_human(messages: list[BaseMessage]) -> str:

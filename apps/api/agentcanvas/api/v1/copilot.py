@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from typing import Any, Literal
 
@@ -369,3 +370,110 @@ async def put_copilot_settings(
     project.settings = {**(project.settings or {}), "copilot": body.model_dump(exclude_none=True)}
     await session.commit()
     return await get_copilot_settings(project_id, session)
+
+
+# ------------------------------------------------------------------ code help (S17) ----
+CODE_KINDS = {
+    "scripts": "a Script step: `def run(state: dict) -> dict` (or async) that reads workflow fields with "
+    "`state.get(...)` and returns only the fields to update; an optional second parameter `runtime` gives the "
+    "LangGraph runtime",
+    "tools": "a tool the AI can call: a function decorated with `@tool` from `langchain_core.tools`, with typed "
+    "arguments and a docstring the model reads to decide when to call it; it returns a string or JSON-able value",
+    "nodes": "a custom block: a function `(state: dict, cfg: dict) -> dict` decorated with "
+    "`@canvas_node(name='acme.my_block', label=..., writes=[...])` from `agentcanvas.sdk`",
+    "events": "an event handler: `@on('type', filter=..., dedup_key=...)` from `agentcanvas.sdk` on "
+    "`def handler(event, act)`, which may call `act.start_workflow(name, input=...)`",
+}
+CODE_SYSTEM = """You help a beginner write Python code for AgentCanvas, a visual agent-workflow builder.
+The file is {path}. It is {kind}.
+Secrets come from `agentcanvas.sdk.secret("NAME")`, never from literals. Keep code short, plain and commented
+where a beginner would wonder why. Use only the standard library and packages the file already imports, unless asked.
+Answer in two parts: first a few plain sentences for the person; then, unless you are only explaining, the WHOLE
+updated file in one ```python fenced block (nothing after it). Never include more than one code block."""
+FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S)
+
+
+class CodeHelpIn(BaseModel):
+    action: Literal["write", "explain", "fix"]
+    path: str = Field(min_length=1, max_length=500)
+    content: str = Field("", max_length=200_000, description="the file as it is in the editor, unsaved edits included")
+    selection: str | None = Field(None, max_length=50_000, description="the selected lines, when any")
+    instruction: str = Field("", max_length=4000, description="what to write, or what to change")
+    problems: list[str] = Field(default_factory=list, max_length=50, description="ruff findings shown for the file")
+
+
+class CodeHelpOut(BaseModel):
+    text: str = Field(description="the Copilot's explanation, in plain words")
+    code: str | None = Field(None, description="the whole proposed file, to show as a diff; never saved here")
+    model: str
+    usage: dict[str, int] = Field(default_factory=dict)
+
+
+def _kind(path: str) -> str:
+    parts = path.strip("/").split("/")
+    folder = parts[2] if parts[0] == "flows" and len(parts) > 3 else parts[0]
+    return CODE_KINDS.get(folder, "a helper module other workspace code imports")
+
+
+def code_prompt(body: CodeHelpIn) -> list[dict[str, Any]]:
+    """The model's messages for one code-help request (pure, so it is testable without a model)."""
+    task = {
+        "write": f"Write or extend the code as asked: {body.instruction or 'a useful starting point for this file'}",
+        "explain": "Explain what this code does, step by step, for a beginner. Do not change it; no code block.",
+        "fix": "Fix the problems below (and any bug you are sure of), changing as little as possible."
+        + (f" Also: {body.instruction}" if body.instruction else ""),
+    }[body.action]
+    parts = [task, f"Current file `{body.path}`:\n```python\n{body.content}\n```"]
+    if body.selection:
+        parts.append(f"Focus on this selected part:\n```python\n{body.selection}\n```")
+    if body.problems:
+        parts.append("Problems the linter reports:\n" + "\n".join(f"- {p}" for p in body.problems))
+    system = CODE_SYSTEM.format(path=body.path, kind=_kind(body.path))
+    return [{"role": "system", "content": system, "cache": True}, {"role": "user", "content": "\n\n".join(parts)}]
+
+
+def split_reply(content: str, action: str) -> tuple[str, str | None]:
+    """(explanation, whole proposed file or None) from the model's answer."""
+    blocks = FENCE.findall(content)
+    if action == "explain" or not blocks:
+        return content.strip(), None
+    code = blocks[-1]
+    text = FENCE.sub("", content).strip()
+    return text or "Here is the updated file.", code if code.endswith("\n") else code + "\n"
+
+
+@router.post("/workflows/{wf_id}/copilot/code", response_model=CodeHelpOut)
+async def code_help(
+    wf_id: str,
+    body: CodeHelpIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    user: CurrentUser = Depends(current_user),
+) -> CodeHelpOut:
+    """Copilot help in the code editor (S17): write code from a description, explain it, or fix it. The answer is a
+    proposal the editor shows as a diff; nothing is written to the workspace here."""
+    if body.action != "explain" and RANK.get(user.role, -1) < RANK["builder"]:
+        raise Forbidden("only builders can have the Copilot write code; Explain works for every role")
+    svc = _service(request, session, settings)
+    view = await svc.get(wf_id)
+    project = await ProjectRepo(session).require(view.row.project_id)
+    cs = copilot_settings.load(project.settings)
+    if not cs.enabled:
+        raise Forbidden("the Copilot is switched off for this project")
+    model = await _model(svc, view, project.settings or {}, cs, "ask" if body.action == "explain" else "build")
+    factory = getattr(request.app.state, "resources_factory", None)
+    resources = (
+        factory(f"copilot-code:{wf_id}", view.workflow)
+        if factory
+        else request.app.state.projects.for_workflow(view.workflow)
+    )
+    usage: dict[str, int] = {}
+    try:
+        reply = await request.app.state.projects.adapter.chat(
+            resources, model.model, code_prompt(body), [], usage=usage, config=model.config
+        )
+    except Exception as exc:
+        raise InvalidInput(f"the model call failed: {type(exc).__name__}: {exc}"[:500]) from exc
+    text, code = split_reply(str(reply.get("content") or ""), body.action)
+    return CodeHelpOut(text=text, code=code, model=model.model, usage=usage)

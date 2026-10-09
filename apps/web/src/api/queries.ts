@@ -36,18 +36,21 @@ export function useNodeTypes() {
 }
 
 export interface WorkspaceCatalog {
-  tools: { name: string; import_path: string; description: string }[];
+  tools: { name: string; import_path: string; description: string; workflow?: string | null }[];
   nodes: string[];
-  scripts: { name: string; import_path: string; description: string }[];
+  scripts: { name: string; import_path: string; description: string; workflow?: string | null }[];
   handlers: { name: string; type: string; filter: string | null; dedup_key: string | null; import_path: string; targets: string[] }[];
   problems: { path: string; message: string; code?: string }[];
   schemas: string[];
 }
 
-export function useWorkspaceCatalog() {
+/** The workspace's tools, scripts, custom blocks and handlers; with `workflowId`, only shared code and that
+ * workflow's own (S17). */
+export function useWorkspaceCatalog(workflowId?: string | null) {
   return useQuery({
-    queryKey: ["workspace-catalog", PROJECT_ID],
-    queryFn: () => apiFetch<WorkspaceCatalog>(`/projects/${PROJECT_ID}/workspace/catalog`),
+    queryKey: ["workspace-catalog", PROJECT_ID, workflowId ?? null],
+    queryFn: () => apiFetch<WorkspaceCatalog>(
+      `/projects/${PROJECT_ID}/workspace/catalog${workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : ""}`),
     staleTime: 2_000,
   });
 }

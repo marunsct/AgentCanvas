@@ -1,0 +1,4654 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Visual agentic workflows compiled to LangGraph / LangChain / Deep Agents">
+      
+      
+      
+      
+        <link rel="prev" href="../03-walking-skeleton-tutorial/">
+      
+      
+        <link rel="next" href="../05-backend-guide/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Implementation plan - AgentCanvas</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#04-implementation-plan-milestones-tickets" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="AgentCanvas" class="md-header__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AgentCanvas
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Implementation plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="AgentCanvas" class="md-nav__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AgentCanvas
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/run-locally/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run on your computer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/beginner-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Beginner's guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and API keys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building on the canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/copilot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Copilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Block reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/run-and-debug/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running and debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspace, secrets and events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish and integrate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/agents-and-connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect to other agents and tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export and deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organisations, roles and policies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy and operate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Specification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../01-functional-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functional spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-technical-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-graph-ir-and-compiler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph IR & compiler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-node-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Node catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../05-workspaces-scripting-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces, scripting & events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../06-roadmap-risks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap & risks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-worked-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worked example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-persistence-memory-data-modeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence & memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../09-self-improving-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-improving agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../15-concept-evolution-and-new-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concept & new features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-competitive-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Competitive roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-framework-coverage-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework coverage review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../14-deep-review-v0.6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review v0.6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_14" id="__nav_3_14_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    History
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../10-improvement-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Improvement plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-framework-agnostic-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework-agnostic plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../12-multi-framework-technical-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-framework technical spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../13-deep-review-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review report (v0.5)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../00-concepts-primer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts primer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-environment-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-repository-and-conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository & conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-walking-skeleton-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walking skeleton
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#milestone-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m0-foundations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0 — Foundations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M0 — Foundations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m0-t1-create-the-product-repository" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T1 Create the product repository
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-t2-ci-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T2 CI pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-t3-adrs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T3 ADRs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-t4-walking-skeleton-demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T4 Walking skeleton demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m1-persistence-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1 — Persistence &amp; API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M1 — Persistence &amp; API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m1-t1-database-layer-sqlalchemy-alembic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T1 Database layer (SQLAlchemy + Alembic)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t2-ids-settings-logging-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T2 IDs, settings, logging, errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t3-workflow-crud-v1workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T3 Workflow CRUD (/v1/workflows)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t4-command-api-edit-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T4 Command API (edit operations)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t5-layout-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T5 Layout document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t6-threads-runs-in-the-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T6 Threads &amp; runs in the database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t7-ir-json-schema-node-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T7 IR JSON Schema &amp; node registry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t8-validator-expansion-p0-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T8 Validator expansion (P0 rules)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m2-canvas-editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2 — Canvas editor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M2 — Canvas editor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m2-t1-app-shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T1 App shell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t2-generated-types-api-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T2 Generated types &amp; API client
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t3-load-edit-autosave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T3 Load, edit, autosave
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t4-palette-drag-and-drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T4 Palette &amp; drag-and-drop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t5-custom-node-renderers-with-typed-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T5 Custom node renderers with typed ports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t6-connecting-with-type-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T6 Connecting with type checks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t7-inspector-config-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T7 Inspector (config forms)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t8-state-designer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T8 State designer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t9-problems-panel-badges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T9 Problems panel &amp; badges
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t10-undo-redo-copy-paste-delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T10 Undo / redo, copy / paste, delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t11-auto-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T11 Auto-layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t12-keyboard-command-palette-p0-subset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T12 Keyboard &amp; command palette (P0 subset)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t13-groups-subgraphs-fr-can-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T13 Groups &amp; subgraphs (FR-CAN-05)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m3-node-catalog-p0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3 — Node catalog (P0)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M3 — Node catalog (P0)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m3-t1-adapter-boundary-framework-agnostic-groundwork" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T1 Adapter boundary (framework-agnostic groundwork)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t2-model-catalog-chat-model-resource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T2 Model catalog &amp; Chat Model resource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t3-agent-lite-full-p0-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T3 Agent (Lite) — full P0 options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t4-deep-agent-widget-p0-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T4 Deep Agent widget (P0 options)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t5-mcp-server-resource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T5 MCP server resource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t6-http-request-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T6 HTTP request tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t7-human-input-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T7 Human input node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t8-map-node-fan-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T8 Map node (fan-out)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t9-parallel-branches-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T9 Parallel branches &amp; join
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t10-loop-guard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T10 Loop guard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t11-return-output-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T11 Return / output mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t12-middleware-widgets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T12 Middleware widgets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t13-node-policies-retry-timeout-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T13 Node policies (retry, timeout, cache)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t14-memory-nodes-recall-remember-forget-memory-tools-fr-mem-0103" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T14 Memory nodes: Recall / Remember / Forget + memory tools (FR-MEM-01…03)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m4-run-debug-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4 — Run &amp; debug experience
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M4 — Run &amp; debug experience">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m4-t1-test-run-panel-chat-form-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T1 Test-run panel (chat &amp; form input)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t2-live-overlay-harden-skeleton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T2 Live overlay (harden skeleton)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t3-token-streaming-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T3 Token streaming preview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t4-inbox-pending-approvals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T4 Inbox (pending approvals)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t5-timeline-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T5 Timeline &amp; history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t6-state-inspector-edit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T6 State inspector &amp; edit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t7-fork-from-checkpoint-time-travel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T7 Fork from checkpoint (time travel)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t8-breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T8 Breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t9-pinned-outputs-mock-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T9 Pinned outputs &amp; mock mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t10-cancel-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T10 Cancel run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t11-cost-latency-per-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T11 Cost &amp; latency per node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t12-memory-inspector-fr-mem-04-browsedelete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T12 Memory inspector (FR-MEM-04, browse/delete)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m5-workspaces-scripts-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5 — Workspaces, scripts, secrets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M5 — Workspaces, scripts, secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m5-t1-workspace-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T1 Workspace storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t2-code-editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T2 Code editor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t3-script-node-from-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T3 Script node from workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t4-sandbox-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T4 Sandbox runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t5-custom-tools-from-the-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T5 Custom tools from the workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t6-secrets-vault-secret-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T6 Secrets vault &amp; secret references
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t7-custom-node-sdk-fr-cn-0103" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T7 Custom node SDK (FR-CN-01…03)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m6-export-versions-publish-mvp-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6 — Export, versions, publish (MVP release)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M6 — Export, versions, publish (MVP release)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m6-t1-versions-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T1 Versions &amp; diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t2-project-packager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T2 Project packager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t3-export-zip-git-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T3 Export (zip / git push)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t4-publish-to-the-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T4 Publish to the runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t5-webhook-cron-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T5 Webhook &amp; cron triggers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t6-tracing-langsmith-otel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T6 Tracing (LangSmith / OTel)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t7-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T7 Templates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t9-saved-test-cases-fr-eval-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T9 Saved test cases (FR-EVAL-01)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t8-mvp-hardening-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T8 MVP hardening &amp; release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m7-accounts-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M7 — Accounts &amp; access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m8-production-readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M8 — Production readiness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m9-after-mvp-ga-roadmap-follow-the-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M9 — After MVP (GA roadmap, follow the spec)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-backend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-frontend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-compiler-and-node-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler & node types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-testing-and-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09-deployment-and-operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment & operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-security-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-troubleshooting-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12-traceability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traceability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../13-sprint-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint plan & execution log
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_16" id="__nav_4_16_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spikes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_16">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Spikes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spikes/SP-2-langsmith-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-2 LangSmith sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spikes/SP-3-v3-streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-3 v3 streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spikes/SP-4-server-runtime-hosting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-4 ServerRuntime hosting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../adr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#milestone-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Milestone overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m0-foundations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0 — Foundations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M0 — Foundations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m0-t1-create-the-product-repository" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T1 Create the product repository
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-t2-ci-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T2 CI pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-t3-adrs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T3 ADRs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-t4-walking-skeleton-demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-T4 Walking skeleton demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m1-persistence-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1 — Persistence &amp; API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M1 — Persistence &amp; API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m1-t1-database-layer-sqlalchemy-alembic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T1 Database layer (SQLAlchemy + Alembic)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t2-ids-settings-logging-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T2 IDs, settings, logging, errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t3-workflow-crud-v1workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T3 Workflow CRUD (/v1/workflows)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t4-command-api-edit-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T4 Command API (edit operations)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t5-layout-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T5 Layout document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t6-threads-runs-in-the-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T6 Threads &amp; runs in the database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t7-ir-json-schema-node-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T7 IR JSON Schema &amp; node registry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-t8-validator-expansion-p0-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-T8 Validator expansion (P0 rules)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m2-canvas-editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2 — Canvas editor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M2 — Canvas editor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m2-t1-app-shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T1 App shell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t2-generated-types-api-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T2 Generated types &amp; API client
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t3-load-edit-autosave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T3 Load, edit, autosave
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t4-palette-drag-and-drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T4 Palette &amp; drag-and-drop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t5-custom-node-renderers-with-typed-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T5 Custom node renderers with typed ports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t6-connecting-with-type-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T6 Connecting with type checks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t7-inspector-config-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T7 Inspector (config forms)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t8-state-designer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T8 State designer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t9-problems-panel-badges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T9 Problems panel &amp; badges
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t10-undo-redo-copy-paste-delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T10 Undo / redo, copy / paste, delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t11-auto-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T11 Auto-layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t12-keyboard-command-palette-p0-subset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T12 Keyboard &amp; command palette (P0 subset)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-t13-groups-subgraphs-fr-can-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-T13 Groups &amp; subgraphs (FR-CAN-05)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m3-node-catalog-p0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3 — Node catalog (P0)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M3 — Node catalog (P0)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m3-t1-adapter-boundary-framework-agnostic-groundwork" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T1 Adapter boundary (framework-agnostic groundwork)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t2-model-catalog-chat-model-resource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T2 Model catalog &amp; Chat Model resource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t3-agent-lite-full-p0-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T3 Agent (Lite) — full P0 options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t4-deep-agent-widget-p0-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T4 Deep Agent widget (P0 options)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t5-mcp-server-resource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T5 MCP server resource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t6-http-request-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T6 HTTP request tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t7-human-input-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T7 Human input node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t8-map-node-fan-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T8 Map node (fan-out)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t9-parallel-branches-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T9 Parallel branches &amp; join
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t10-loop-guard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T10 Loop guard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t11-return-output-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T11 Return / output mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t12-middleware-widgets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T12 Middleware widgets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t13-node-policies-retry-timeout-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T13 Node policies (retry, timeout, cache)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-t14-memory-nodes-recall-remember-forget-memory-tools-fr-mem-0103" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-T14 Memory nodes: Recall / Remember / Forget + memory tools (FR-MEM-01…03)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m4-run-debug-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4 — Run &amp; debug experience
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M4 — Run &amp; debug experience">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m4-t1-test-run-panel-chat-form-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T1 Test-run panel (chat &amp; form input)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t2-live-overlay-harden-skeleton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T2 Live overlay (harden skeleton)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t3-token-streaming-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T3 Token streaming preview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t4-inbox-pending-approvals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T4 Inbox (pending approvals)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t5-timeline-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T5 Timeline &amp; history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t6-state-inspector-edit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T6 State inspector &amp; edit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t7-fork-from-checkpoint-time-travel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T7 Fork from checkpoint (time travel)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t8-breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T8 Breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t9-pinned-outputs-mock-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T9 Pinned outputs &amp; mock mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t10-cancel-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T10 Cancel run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t11-cost-latency-per-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T11 Cost &amp; latency per node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-t12-memory-inspector-fr-mem-04-browsedelete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-T12 Memory inspector (FR-MEM-04, browse/delete)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m5-workspaces-scripts-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5 — Workspaces, scripts, secrets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M5 — Workspaces, scripts, secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m5-t1-workspace-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T1 Workspace storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t2-code-editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T2 Code editor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t3-script-node-from-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T3 Script node from workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t4-sandbox-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T4 Sandbox runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t5-custom-tools-from-the-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T5 Custom tools from the workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t6-secrets-vault-secret-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T6 Secrets vault &amp; secret references
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-t7-custom-node-sdk-fr-cn-0103" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-T7 Custom node SDK (FR-CN-01…03)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m6-export-versions-publish-mvp-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6 — Export, versions, publish (MVP release)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="M6 — Export, versions, publish (MVP release)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m6-t1-versions-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T1 Versions &amp; diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t2-project-packager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T2 Project packager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t3-export-zip-git-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T3 Export (zip / git push)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t4-publish-to-the-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T4 Publish to the runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t5-webhook-cron-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T5 Webhook &amp; cron triggers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t6-tracing-langsmith-otel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T6 Tracing (LangSmith / OTel)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t7-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T7 Templates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t9-saved-test-cases-fr-eval-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T9 Saved test cases (FR-EVAL-01)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-t8-mvp-hardening-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-T8 MVP hardening &amp; release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m7-accounts-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M7 — Accounts &amp; access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m8-production-readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M8 — Production readiness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m9-after-mvp-ga-roadmap-follow-the-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M9 — After MVP (GA roadmap, follow the spec)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="04-implementation-plan-milestones-tickets">04 — Implementation Plan (Milestones &amp; Tickets)</h1>
+<p><strong>How to use this document:</strong> take tickets <strong>in order</strong> inside a milestone (dependencies are listed). Each ticket has: <em>Goal</em>, <em>Depends on</em>, <em>Files</em>, <em>Steps</em>, <em>Acceptance criteria (AC)</em>, <em>Tests</em>, <em>Estimate</em> (ideal days for one developer new to the codebase). A milestone is done when all its ACs are demonstrated and CI is green.</p>
+<p>Spec references use <code>docNN §x</code> (e.g. <code>doc03 §4</code> = <a href="../../03-graph-ir-and-compiler/">03-graph-ir-and-compiler.md</a> section 4). Requirement IDs (FR-…) come from <a href="../../01-functional-spec/">01-functional-spec.md</a>; the mapping is in <a href="../12-traceability/">12-traceability.md</a>.</p>
+<h2 id="milestone-overview">Milestone overview</h2>
+<table>
+<thead>
+<tr>
+<th>Milestone</th>
+<th>Outcome (what a user can do at the end)</th>
+<th style="text-align: right;">Est. (1 dev)</th>
+<th style="text-align: right;">Est. (4 devs)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>M0</strong> Foundations</td>
+<td>Repo, CI, local infra; the walking skeleton runs in the product repo</td>
+<td style="text-align: right;">1 wk</td>
+<td style="text-align: right;">3 d</td>
+</tr>
+<tr>
+<td><strong>M1</strong> Persistence &amp; API</td>
+<td>Workflows, versions, threads stored in Postgres; stable <code>/v1</code> API</td>
+<td style="text-align: right;">3 wk</td>
+<td style="text-align: right;">1.5 wk</td>
+</tr>
+<tr>
+<td><strong>M2</strong> Canvas editor</td>
+<td>Build and edit workflows by drag &amp; drop with live validation</td>
+<td style="text-align: right;">6 wk</td>
+<td style="text-align: right;">2.5 wk</td>
+</tr>
+<tr>
+<td><strong>M3</strong> Node catalog P0</td>
+<td>Agents, Deep Agent, MCP/HTTP tools, map/parallel/loop, human input, guardrails</td>
+<td style="text-align: right;">6 wk</td>
+<td style="text-align: right;">2.5 wk</td>
+</tr>
+<tr>
+<td><strong>M4</strong> Run &amp; debug</td>
+<td>Chat test panel, live overlay, inbox, timeline, state edit, fork, breakpoints, pins</td>
+<td style="text-align: right;">5 wk</td>
+<td style="text-align: right;">2 wk</td>
+</tr>
+<tr>
+<td><strong>M5</strong> Workspaces &amp; secrets</td>
+<td>Code editor, script nodes, custom tools/nodes, sandbox, secrets vault</td>
+<td style="text-align: right;">5 wk</td>
+<td style="text-align: right;">2 wk</td>
+</tr>
+<tr>
+<td><strong>M6</strong> Export &amp; publish (<strong>MVP</strong>)</td>
+<td>Versions &amp; diff, export project, publish endpoint, webhook/cron triggers, tracing, templates</td>
+<td style="text-align: right;">5 wk</td>
+<td style="text-align: right;">2 wk</td>
+</tr>
+<tr>
+<td><strong>M7</strong> Accounts &amp; access</td>
+<td>Login (OIDC), organisations/projects, roles, audit log</td>
+<td style="text-align: right;">3 wk</td>
+<td style="text-align: right;">1.5 wk</td>
+</tr>
+<tr>
+<td><strong>M8</strong> Production readiness</td>
+<td>Containers, Helm, observability, backups, load tests, security review</td>
+<td style="text-align: right;">3 wk</td>
+<td style="text-align: right;">1.5 wk</td>
+</tr>
+</tbody>
+</table>
+<p>After M8 continue with GA features from the spec (evals, multiplayer, Data Studio, learning loops, extra frameworks) — see §M9.</p>
+<hr />
+<h2 id="m0-foundations">M0 — Foundations</h2>
+<h3 id="m0-t1-create-the-product-repository">M0-T1 Create the product repository</h3>
+<ul>
+<li><strong>Goal:</strong> product repo with the reference code as starting point.</li>
+<li><strong>Files:</strong> whole repo (layout in <a href="../02-repository-and-conventions/#2-target-monorepo-layout-grow-into-it-milestone-by-milestone">02 §2</a>).</li>
+<li><strong>Steps:</strong> follow <a href="../02-repository-and-conventions/#1-create-the-product-repository-ticket-m0-t1">02 §1</a>; add <code>Makefile</code> (02 §3); add <code>README.md</code> with "how to run" copied from 01 §4–5.</li>
+<li><strong>AC:</strong> <code>make infra &amp;&amp; make test &amp;&amp; make lint</code> succeed on a fresh clone.</li>
+<li><strong>Estimate:</strong> 0.5 d</li>
+</ul>
+<h3 id="m0-t2-ci-pipeline">M0-T2 CI pipeline</h3>
+<ul>
+<li><strong>Depends:</strong> T1 · <strong>Files:</strong> <code>.github/workflows/ci.yml</code> (02 §8)</li>
+<li><strong>AC:</strong> a PR shows green <code>api</code> and <code>web</code> jobs; a failing test turns CI red.</li>
+<li><strong>Estimate:</strong> 0.5 d</li>
+</ul>
+<h3 id="m0-t3-adrs">M0-T3 ADRs</h3>
+<ul>
+<li><strong>Files:</strong> <code>docs/adr/0001…0011</code> (02 §6). <strong>AC:</strong> all eleven merged. <strong>Estimate:</strong> 0.5 d</li>
+</ul>
+<h3 id="m0-t4-walking-skeleton-demo">M0-T4 Walking skeleton demo</h3>
+<ul>
+<li><strong>Steps:</strong> run fake server + web (01 §4–5); record a 1-minute screen capture; add the Playwright script as <code>apps/web/e2e/skeleton.spec.ts</code> (convert <code>e2e.mjs</code> to <code>@playwright/test</code>).</li>
+<li><strong>AC:</strong> <code>pnpm exec playwright test</code> passes locally and in CI (add job with <code>npx playwright install --with-deps chromium</code>).</li>
+<li><strong>Estimate:</strong> 1 d</li>
+</ul>
+<hr />
+<h2 id="m1-persistence-api">M1 — Persistence &amp; API</h2>
+<h3 id="m1-t1-database-layer-sqlalchemy-alembic">M1-T1 Database layer (SQLAlchemy + Alembic)</h3>
+<ul>
+<li><strong>Goal:</strong> async DB session and migrations.</li>
+<li><strong>Files:</strong> <code>agentcanvas/db/session.py</code>, <code>agentcanvas/db/models.py</code>, <code>migrations/</code> (Alembic).</li>
+<li><strong>Steps:</strong></li>
+<li><code>uv add "sqlalchemy[asyncio]&gt;=2" alembic asyncpg python-ulid structlog</code>.</li>
+<li><code>session.py</code>: <code>create_async_engine(settings.database_url.replace("postgresql://","postgresql+asyncpg://"))</code>, <code>async_sessionmaker</code>, FastAPI dependency <code>get_session()</code>.</li>
+<li><code>alembic init -t async migrations</code>; set <code>target_metadata = Base.metadata</code>.</li>
+<li>SQLAlchemy models for <strong>all 14 tables</strong> in <a href="../05-backend-guide/#3-database-schema-mvp">05 §3</a> / <code>reference/infra/schema.sql</code> (<code>organization</code>, <code>app_user</code>, <code>membership</code>, <code>project</code>, <code>workflow</code>, <code>workflow_version</code>, <code>deployment</code>, <code>thread</code>, <code>run</code>, <code>interrupt_task</code>, <code>secret</code>, <code>connection</code>, <code>trigger</code>, <code>audit_log</code>). Until M7, seed one organization/project/user (<code>scripts/seed_dev.py</code>).</li>
+<li><code>alembic revision --autogenerate -m "initial"</code>; review the file; <code>alembic upgrade head</code>.</li>
+<li><strong>AC:</strong> <code>alembic upgrade head</code> on an empty DB creates all tables; <code>alembic downgrade base</code> removes them.</li>
+<li><strong>Tests:</strong> <code>tests/integration/test_migrations.py</code> runs upgrade/downgrade against <code>TEST_DATABASE_URL</code>.</li>
+<li><strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m1-t2-ids-settings-logging-errors">M1-T2 IDs, settings, logging, errors</h3>
+<ul>
+<li><strong>Files:</strong> <code>agentcanvas/ids.py</code>, <code>settings.py</code> (pydantic-settings), <code>logging.py</code> (structlog), <code>api/errors.py</code>.</li>
+<li><strong>Steps:</strong> <code>new_id("wf") -&gt; "wf_" + ULID()</code>; settings from env (01 §7); request-id middleware; exception handlers mapping <code>CompileError</code>/<code>ValidationError</code>/<code>NotFound</code>/<code>Conflict</code> → problem+json (02 §5).</li>
+<li><strong>AC:</strong> every response has <code>x-request-id</code>; a 404 returns <code>application/problem+json</code> with <code>type/title/status/detail</code>.</li>
+<li><strong>Tests:</strong> unit tests for handlers. <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m1-t3-workflow-crud-v1workflows">M1-T3 Workflow CRUD (<code>/v1/workflows</code>)</h3>
+<ul>
+<li><strong>Depends:</strong> T1, T2 · <strong>Files:</strong> <code>api/workflows.py</code>, <code>db/repositories/workflows.py</code>.</li>
+<li><strong>Endpoints:</strong> <code>POST /v1/projects/{project_id}/workflows</code> (create empty IR), <code>GET /v1/workflows/{id}</code>, <code>PUT /v1/workflows/{id}</code> (full IR, <code>If-Match: &lt;version&gt;</code>), <code>DELETE</code>, <code>GET /v1/projects/{id}/workflows?cursor=</code>.</li>
+<li><strong>Steps:</strong> store draft IR in <code>workflow.draft_ir</code> (JSONB) + <code>workflow.version</code> (int, incremented on each save); validate with <code>Workflow.model_validate</code>; return diagnostics with every save.</li>
+<li><strong>AC:</strong> concurrent saves with the same <code>If-Match</code> → second gets <code>409</code>; invalid IR JSON → <code>422</code> problem with pydantic errors; list is paginated.</li>
+<li><strong>Tests:</strong> API tests for create/get/update/conflict/delete/pagination. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m1-t4-command-api-edit-operations">M1-T4 Command API (edit operations)</h3>
+<ul>
+<li><strong>Goal:</strong> the canvas sends small commands instead of whole documents (enables undo/redo, copilot, audit).</li>
+<li><strong>Files:</strong> <code>ir/commands.py</code>, <code>api/workflows.py</code> (<code>POST /v1/workflows/{id}/commands</code>).</li>
+<li><strong>Commands (P0):</strong> <code>AddNode</code>, <code>RemoveNode</code> (also removes its edges), <code>UpdateNodeConfig</code> (JSON merge-patch), <code>RenameNode</code>, <code>AddResource</code>, <code>RemoveResource</code>, <code>Connect</code>, <code>Disconnect</code>, <code>SetChannels</code>, <code>MoveNodes</code> (layout only).</li>
+<li><strong>Steps:</strong> each command = Pydantic model with <code>apply(wf) -&gt; Workflow</code> (pure, returns a new object) and <code>invert(wf) -&gt; Command</code> (for undo). Endpoint applies a batch atomically with <code>If-Match</code>, saves, returns new IR + version + diagnostics.</li>
+<li><strong>AC:</strong> applying a batch then its inverses returns the original IR (property test with Hypothesis).</li>
+<li><strong>Tests:</strong> unit per command; Hypothesis round-trip. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<h3 id="m1-t5-layout-document">M1-T5 Layout document</h3>
+<ul>
+<li><strong>Goal:</strong> node positions stored separately from IR (spec doc03 §2.6), so moving nodes never changes the IR hash.</li>
+<li><strong>Files:</strong> <code>workflow.layout</code> JSONB <code>{node_id: {x, y}}</code>; <code>PUT /v1/workflows/{id}/layout</code>.</li>
+<li><strong>AC:</strong> moving a node changes <code>layout</code> but not <code>ir_hash</code>. <strong>Estimate:</strong> 0.5 d</li>
+</ul>
+<h3 id="m1-t6-threads-runs-in-the-database">M1-T6 Threads &amp; runs in the database</h3>
+<ul>
+<li><strong>Goal:</strong> remove in-memory maps from the skeleton.</li>
+<li><strong>Files:</strong> <code>db/models.py</code> (<code>thread</code>, <code>run</code>), <code>runtime/runner.py</code> (move <code>_stream</code> here), <code>api/runs.py</code>, <code>api/threads.py</code>.</li>
+<li><strong>Steps:</strong></li>
+<li><code>POST /v1/workflows/{id}/runs/stream</code> creates <code>thread</code> (if new) and <code>run</code> rows (<code>status=running</code>, <code>workflow_version</code> = draft hash or version id).</li>
+<li>Stream as in the skeleton; update <code>run.status</code> to <code>success|interrupted|error|cancelled</code>, set <code>ended_at</code>.</li>
+<li><code>thread</code> stores <code>workflow_id</code> → fixes the restart problem noted in 01 §4.</li>
+<li>Checkpointer/store: <code>AsyncPostgresSaver</code> + <code>AsyncPostgresStore</code> opened in FastAPI <code>lifespan</code> (as in the skeleton) — always when <code>DATABASE_URL</code> is set.</li>
+<li>Accept <code>durability: "exit"|"async"|"sync"</code> in the run request and pass it to <code>astream(..., durability=…)</code> (verified parameter; default <code>async</code>, use <code>sync</code> for workflows with side effects) (FR-PER-03).</li>
+<li><code>GET /v1/threads?workflow_id=&amp;status=&amp;cursor=</code>; <code>GET /v1/threads/{id}</code> (state), <code>/history</code>, <code>POST /state</code>, <code>DELETE /v1/threads/{id}</code> (calls <code>checkpointer.adelete_thread(thread_id)</code>).</li>
+<li><strong>AC:</strong> restart the API during a paused run → <code>GET /v1/threads/{id}</code> still shows the interrupt; resume works.</li>
+<li><strong>Tests:</strong> integration test with Postgres: run → pause → restart app (new lifespan) → resume. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m1-t7-ir-json-schema-node-registry">M1-T7 IR JSON Schema &amp; node registry</h3>
+<ul>
+<li><strong>Goal:</strong> one machine-readable description of every node type (ports, config schema) for the UI and validator.</li>
+<li><strong>Files:</strong> <code>registry/nodes/*.json</code> (one manifest per node type, format in doc04 §12), <code>registry/loader.py</code>, <code>GET /v1/node-types</code>, script <code>scripts/export_ir_schema.py</code> → <code>packages/ir-schema/ir.schema.json</code> (<code>Workflow.model_json_schema()</code>).</li>
+<li><strong>Manifest example (<code>core.llm.json</code>):</strong>
+  <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"core.llm"</span><span class="p">,</span><span class="w"> </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0.0"</span><span class="p">,</span><span class="w"> </span><span class="nt">"label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"LLM call"</span><span class="p">,</span><span class="w"> </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AI"</span><span class="p">,</span><span class="w"> </span><span class="nt">"icon"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sparkles"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"ports"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"inputs"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"model"</span><span class="p">,</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ChatModel"</span><span class="p">,</span><span class="w"> </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"wiring"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">}],</span>
+<span class="w">           </span><span class="nt">"outputs"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"next"</span><span class="p">,</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Flow"</span><span class="p">}]},</span>
+<span class="w"> </span><span class="nt">"config_schema"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span><span class="w"> </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"prompt"</span><span class="p">,</span><span class="w"> </span><span class="s2">"output"</span><span class="p">],</span>
+<span class="w">   </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"prompt"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">,</span><span class="w"> </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Prompt"</span><span class="p">,</span><span class="w"> </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"prompt"</span><span class="p">},</span>
+<span class="w">                  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">,</span><span class="w"> </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Output channel"</span><span class="p">,</span><span class="w"> </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"channel"</span><span class="p">}}}}</span>
+</code></pre></div></li>
+<li><strong>AC:</strong> <code>GET /v1/node-types</code> lists all implemented types; the validator checks each node's <code>config</code> against its <code>config_schema</code> (new rule <code>E004 invalid config</code>).</li>
+<li><strong>Tests:</strong> every manifest validates as JSON Schema; every example IR validates. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m1-t8-validator-expansion-p0-rules">M1-T8 Validator expansion (P0 rules)</h3>
+<ul>
+<li><strong>Files:</strong> <code>ir/validate.py</code> (split into <code>rules/*.py</code>, one function per rule, registered in a list).</li>
+<li><strong>Add rules:</strong> E002 port type mismatch (from manifests), E004 config schema, E020 two parallel writers to a <code>replace</code> channel, E030 model without tool calling but tools wired (from model catalog capability flag), E031 duplicate tool names, E033 <code>approve_tools</code> names not wired, E050 secret-looking literal (<code>sk-</code>, <code>AKIA</code>, long base64) in config, E070 script node that both writes externally and interrupts (heuristic: <code>core.approval</code> must not be preceded in the same node — structural rule), W003 channel written never read, W010 model not in allow-list.</li>
+<li><strong>AC:</strong> each rule has a failing and a passing test IR; validation of 200 nodes &lt; 150 ms (benchmark test).</li>
+<li><strong>Estimate:</strong> 4 d</li>
+</ul>
+<hr />
+<h2 id="m2-canvas-editor">M2 — Canvas editor</h2>
+<p>Frontend structure and code patterns are explained in <a href="../06-frontend-guide/">06-frontend-guide.md</a>.</p>
+<h3 id="m2-t1-app-shell">M2-T1 App shell</h3>
+<ul>
+<li><strong>Files:</strong> <code>src/app/{App.tsx,routes.tsx,Layout.tsx}</code>; routes <code>/projects</code>, <code>/workflows/:id</code>.</li>
+<li><strong>Steps:</strong> React Router; TanStack Query provider; layout with left rail, canvas, right panel, bottom dock (doc01 §3).</li>
+<li><strong>AC:</strong> navigating between projects and a workflow works; unknown route shows 404 page. <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m2-t2-generated-types-api-client">M2-T2 Generated types &amp; API client</h3>
+<ul>
+<li><strong>Steps:</strong> <code>pnpm add -D openapi-typescript json-schema-to-typescript</code>; scripts: <code>gen:api</code> (<code>openapi-typescript http://localhost:8000/openapi.json -o src/api/schema.d.ts</code>) and <code>gen:ir</code> (<code>json2ts packages/ir-schema/ir.schema.json &gt; src/ir/generated.ts</code>); thin <code>apiFetch&lt;T&gt;()</code> wrapper that parses problem+json into an <code>ApiError</code>.</li>
+<li><strong>AC:</strong> removing a field in Pydantic breaks <code>tsc</code> in the web app after regeneration (types are really shared). <strong>Estimate:</strong> 1 d</li>
+</ul>
+<h3 id="m2-t3-load-edit-autosave">M2-T3 Load, edit, autosave</h3>
+<ul>
+<li><strong>Files:</strong> <code>src/canvas/useWorkflow.ts</code>, <code>src/canvas/commandQueue.ts</code>.</li>
+<li><strong>Steps:</strong> load IR + layout; every edit becomes a command (M1-T4) queued and sent debounced (300 ms) with <code>If-Match</code>; on <code>409</code> reload and show a toast "Updated elsewhere — reloaded".</li>
+<li><strong>AC:</strong> edits survive a page reload; two tabs editing produce a 409 toast instead of silent overwrite. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m2-t4-palette-drag-and-drop">M2-T4 Palette &amp; drag-and-drop</h3>
+<ul>
+<li><strong>Files:</strong> <code>src/canvas/Palette.tsx</code>.</li>
+<li><strong>Steps:</strong> load <code>/v1/node-types</code>, group by <code>category</code>, search box; HTML5 drag (<code>dataTransfer.setData("application/agentcanvas", type)</code>); on drop use <code>screenToFlowPosition()</code> to place; create node with <code>new_id</code> from server (or client ULID + server validation) and default config from schema defaults.</li>
+<li><strong>AC:</strong> dragging "LLM call" onto the canvas adds a node at the drop point and an <code>AddNode</code> command is saved. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m2-t5-custom-node-renderers-with-typed-ports">M2-T5 Custom node renderers with typed ports</h3>
+<ul>
+<li><strong>Files:</strong> <code>src/canvas/nodes/WidgetNode.tsx</code>.</li>
+<li><strong>Steps:</strong> one generic renderer driven by the manifest: header (icon, label, status badge), one <code>&lt;Handle type="target" id={port.name}&gt;</code> per input port (left), one source handle per output port (right; routers: one per route <code>route:&lt;name&gt;</code>); handle colour by port type; resources render as compact pills.</li>
+<li><strong>AC:</strong> every node type renders with correct handles; status colours from the run store still work. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m2-t6-connecting-with-type-checks">M2-T6 Connecting with type checks</h3>
+<ul>
+<li><strong>Steps:</strong> <code>isValidConnection</code> compares port types from manifests (snippet in 06 §5); on connect create <code>Connect</code> command with <code>kind = "wiring"</code> if the source is a resource, else <code>"flow"</code>; wiring edges dashed and coloured; flow edges solid.</li>
+<li><strong>AC:</strong> connecting a Chat Model to an Agent's <code>tools</code> port is refused with a tooltip explaining why. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m2-t7-inspector-config-forms">M2-T7 Inspector (config forms)</h3>
+<ul>
+<li><strong>Files:</strong> <code>src/inspector/Inspector.tsx</code>, <code>src/inspector/widgets/{PromptWidget,ChannelSelect,CelEditor}.tsx</code>.</li>
+<li><strong>Steps:</strong> RJSF form from the node's <code>config_schema</code> (snippet in 06 §6); custom widgets by <code>format</code>: <code>prompt</code> (textarea with <code>{{ state.x }}</code> autocomplete from channels), <code>channel</code> (select from state channels), <code>cel</code> (input with server-side validation via <code>/v1/expressions/check</code>); edits → <code>UpdateNodeConfig</code> command.</li>
+<li><strong>AC:</strong> editing a prompt updates the IR; invalid CEL shows an inline error. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<h3 id="m2-t8-state-designer">M2-T8 State designer</h3>
+<ul>
+<li><strong>Files:</strong> <code>src/inspector/StateDesigner.tsx</code>.</li>
+<li><strong>Steps:</strong> table of channels (name, type, reducer, default); presets <em>Chat</em> (<code>messages</code> + <code>add_messages</code>) and <em>Pipeline</em>; <code>SetChannels</code> command.</li>
+<li><strong>AC:</strong> adding channel <code>summary</code> makes it selectable in all <code>channel</code> selects. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m2-t9-problems-panel-badges">M2-T9 Problems panel &amp; badges</h3>
+<ul>
+<li><strong>Steps:</strong> diagnostics from every save → bottom-dock list (click focuses node via <code>fitView({nodes:[id]})</code>); red/yellow badge on nodes; Run button disabled while errors exist.</li>
+<li><strong>AC:</strong> removing a model wire shows <code>E001</code> on the node and in the panel within 1 s. <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m2-t10-undo-redo-copy-paste-delete">M2-T10 Undo / redo, copy / paste, delete</h3>
+<ul>
+<li><strong>Steps:</strong> client stack of applied command batches; undo sends inverse batch; <code>⌘Z / ⌘⇧Z / Delete / ⌘C / ⌘V</code> (paste re-IDs nodes and keeps internal edges).</li>
+<li><strong>AC:</strong> 20 random edits undone one by one restore the original IR (Playwright test). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m2-t11-auto-layout">M2-T11 Auto-layout</h3>
+<ul>
+<li><strong>Steps:</strong> "Tidy up" button runs ELK layered left→right (snippet in 06 §7); saves layout.</li>
+<li><strong>AC:</strong> example workflows lay out without overlapping nodes. <strong>Estimate:</strong> 1 d</li>
+</ul>
+<h3 id="m2-t12-keyboard-command-palette-p0-subset">M2-T12 Keyboard &amp; command palette (P0 subset)</h3>
+<ul>
+<li><strong>Steps:</strong> <code>⌘K</code> palette (add node, run, tidy, go to node); double-click on empty canvas opens node search at cursor.</li>
+<li><strong>AC:</strong> a workflow can be built without the mouse except for wiring. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m2-t13-groups-subgraphs-fr-can-05">M2-T13 Groups &amp; subgraphs (FR-CAN-05)</h3>
+<ul>
+<li><strong>Steps:</strong> (a) visual group = React Flow parent node (<code>parentId</code>) stored in layout only; (b) "Convert to subgraph" creates a <code>core.subgraph</code> node whose <code>config.workflow</code> is an embedded IR (own channels + <code>input</code>/<code>output</code> channel mapping); double-click opens it with a breadcrumb.</li>
+<li><strong>Compile:</strong> builder compiles the inner IR with the same interpreter and adds it as a node; when inner and outer channels differ, wrap it: <code>async def run(state): out = await inner.ainvoke({k: state[k] for k in inputs}); return {k: out[k] for k in outputs}</code>.</li>
+<li><strong>AC:</strong> a 3-node group converted to a subgraph behaves identically (equivalence test); canvas shows nested activity via <code>ns</code> events. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<hr />
+<h2 id="m3-node-catalog-p0">M3 — Node catalog (P0)</h2>
+<p>Recipe for every node type: <a href="../07-compiler-and-node-types/">07-compiler-and-node-types.md</a> (IR type → manifest → builder → interpreter → template → validator rules → tests → UI). Each ticket below = one pass of that recipe.</p>
+<h3 id="m3-t1-adapter-boundary-framework-agnostic-groundwork">M3-T1 Adapter boundary (framework-agnostic groundwork)</h3>
+<ul>
+<li><strong>Goal:</strong> all LangChain/LangGraph code behind <code>adapters/langchain/</code> (spec doc11 §4 A1–A4).</li>
+<li><strong>Steps:</strong> move <code>runtime/nodes.py</code>, <code>interpreter.py</code>, <code>events.py</code>, codegen templates into <code>adapters/langchain/</code>; define <code>FrameworkAdapter</code> protocol (doc12 §C.2, minimal methods: <code>validate</code>, <code>build</code>, <code>generate</code>, <code>events</code>); core calls the adapter; add <code>import-linter</code> contract "core must not import langchain/langgraph/deepagents".</li>
+<li><strong>AC:</strong> <code>lint-imports</code> passes; all tests still pass. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m3-t2-model-catalog-chat-model-resource">M3-T2 Model catalog &amp; Chat Model resource</h3>
+<ul>
+<li><strong>Files:</strong> <code>registry/models.yaml</code> (provider, model id, capabilities: tools, structured_output, vision, context_window, price in/out per 1M tokens), manifest <code>model.chat</code>.</li>
+<li><strong>Config:</strong> <code>model</code> (select from catalog or free text), <code>temperature</code>, <code>max_tokens</code>, <code>timeout</code>, <code>base_url</code>, <code>api_key_secret</code> (secret ref, M5), <code>fallbacks</code>.</li>
+<li><strong>AC:</strong> E030 uses the catalog's <code>tools</code> capability; unknown models allowed with warning W010. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m3-t3-agent-lite-full-p0-options">M3-T3 Agent (Lite) — full P0 options</h3>
+<ul>
+<li><strong>Config:</strong> system prompt, tools (wiring), <code>approve_tools</code>, structured output schema (<code>response_format</code> → Pydantic model built from JSON Schema via <code>pydantic.create_model</code>, or pass the JSON Schema dict directly: <code>create_agent(..., response_format=&lt;dict&gt;)</code> is supported), middleware (wiring, ordered, M3-T12).</li>
+<li><strong>Writes:</strong> <code>messages</code>, optional <code>structured_response</code> channel.</li>
+<li><strong>AC:</strong> agent with structured output writes a dict matching the schema (test with a fake model returning the structured tool call). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m3-t4-deep-agent-widget-p0-options">M3-T4 Deep Agent widget (P0 options)</h3>
+<ul>
+<li><strong>Builder:</strong> <code>create_deep_agent(model=…, tools=…, system_prompt=…, subagents=[…], backend=…, interrupt_on=…, middleware=[…], name=…)</code>. P0 options: subagents (declarative: name, description, system_prompt, tools), backend <code>State</code> or <code>Composite(/memories/ → Store(user))</code>, planning toggle (adds <code>TodoListMiddleware()</code>), <code>interrupt_on</code>.</li>
+<li><strong>AC:</strong> Deep Agent writes a file under <code>/memories/</code> that appears in the store for the thread's user (verified pattern: <code>StoreBackend(namespace=lambda rt: ("users", user_id))</code>). <strong>Estimate:</strong> 4 d</li>
+</ul>
+<h3 id="m3-t5-mcp-server-resource">M3-T5 MCP server resource</h3>
+<ul>
+<li><strong>Builder:</strong> <code>from langchain.mcp import MCPAdapter</code>; <code>config = {"mcpServers": {name: {"url": url, "auth": token_or_"oauth"}}}</code>; <code>async with MCPAdapter(config) as a: tools = await a.list_tools()</code>; filter by <code>tool_filter</code>. Tools are loaded once per graph build (async) — make <code>build_graph</code> async-capable (<code>abuild_graph</code>).</li>
+<li><strong>UI:</strong> "Browse tools" button calls <code>POST /v1/mcp/inspect</code> to list tools with <code>destructive_hint</code>.</li>
+<li><strong>AC:</strong> tools from a local test MCP server (FastMCP in tests) are callable by an agent; destructive tools default into <code>approve_tools</code> (W002 otherwise). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m3-t6-http-request-tool">M3-T6 HTTP request tool</h3>
+<ul>
+<li><strong>Config:</strong> method, URL template (Jinja over tool args), headers (secret refs), JSON body schema → tool args schema, allowed domains.</li>
+<li><strong>Builder:</strong> generate a <code>StructuredTool</code> with <code>args_schema</code> from JSON Schema; <code>httpx.AsyncClient</code> with timeout; reject hosts not in allow-list.</li>
+<li><strong>AC:</strong> calling a disallowed domain returns a tool error, not an exception. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m3-t7-human-input-node">M3-T7 Human input node</h3>
+<ul>
+<li><strong>Builder:</strong> <code>interrupt({"kind": "input", "canvas_node_id": id, "prompt": …, "response_schema": …})</code>; validate the resume value against the schema; write to <code>output</code>.</li>
+<li><strong>AC:</strong> the Inbox (M4-T4) renders a form from <code>response_schema</code>. <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m3-t8-map-node-fan-out">M3-T8 Map node (fan-out)</h3>
+<ul>
+<li><strong>Pattern (verified):</strong> conditional edge returning <code>[Send("worker_node", {"item": x}) for x in state[list_channel]]</code>; the worker writes into an <code>append</code> channel; the next node runs after all workers.</li>
+<li><strong>IR:</strong> <code>core.map {items: &lt;channel&gt;, target: &lt;node id&gt;, as: "item"}</code>; target node receives <code>{"item": …}</code> plus read-only access to configured channels.</li>
+<li><strong>AC:</strong> map over 5 items produces 5 results; validator requires the result channel to use <code>append</code> (E022). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m3-t9-parallel-branches-join">M3-T9 Parallel branches &amp; join</h3>
+<ul>
+<li><strong>Pattern:</strong> several flow edges from one node run in the same step; <code>builder.add_edge(["a", "b"], "join")</code> waits for both.</li>
+<li><strong>IR:</strong> a flow edge list with multiple sources to one target marks a join (UI: <code>core.join</code> node that compiles to the multi-source edge).</li>
+<li><strong>AC:</strong> two branches writing different channels both arrive at the join. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m3-t10-loop-guard">M3-T10 Loop guard</h3>
+<ul>
+<li><strong>Pattern:</strong> <code>core.counter</code> (tutorial exercise) + router; validator W001 when a cycle has no router; recursion limit from workflow settings (<code>config={"recursion_limit": n}</code>).</li>
+<li><strong>AC:</strong> an infinite loop stops at the recursion limit with a readable <code>RUN_ERROR</code> ("GraphRecursionError: …"). <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m3-t11-return-output-mapping">M3-T11 Return / output mapping</h3>
+<ul>
+<li><strong>Steps:</strong> workflow <em>output schema</em> (subset of channels); runner returns only those in <code>RUN_FINISHED.output</code>; generated graph uses <code>StateGraph(State, output_schema=Output)</code>.</li>
+<li><strong>AC:</strong> API consumers see only declared outputs. <strong>Estimate:</strong> 1 d</li>
+</ul>
+<h3 id="m3-t12-middleware-widgets">M3-T12 Middleware widgets</h3>
+<ul>
+<li><strong>Types &amp; verified constructors:</strong> <code>PIIMiddleware(pii_type, strategy="redact|mask|hash|block", apply_to_input=True, apply_to_output=False, apply_to_tool_results=False)</code>, <code>ModelCallLimitMiddleware(thread_limit=, run_limit=, exit_behavior="end|error")</code>, <code>ToolCallLimitMiddleware(tool_name=, thread_limit=, run_limit=)</code>, <code>ModelRetryMiddleware(...)</code>, <code>ModelFallbackMiddleware(&lt;models&gt;)</code>, <code>SummarizationMiddleware(model, trigger=("tokens", 4000), keep=("messages", 20))</code>.</li>
+<li><strong>UI:</strong> middleware resources wired into an agent's ordered <code>middleware</code> port; order = edge <code>order</code> field (drag to reorder in inspector).</li>
+<li><strong>AC:</strong> PII redaction visible in the model input (test by capturing the fake model's received messages). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m3-t13-node-policies-retry-timeout-cache">M3-T13 Node policies (retry, timeout, cache)</h3>
+<ul>
+<li><strong>Mapping (verified):</strong> <code>add_node(..., retry_policy=RetryPolicy(max_attempts=n), timeout=TimeoutPolicy(run_timeout=s, idle_timeout=s), cache_policy=CachePolicy(ttl=s))</code> and <code>compile(cache=InMemoryCache())</code> (Redis cache later).</li>
+<li><strong>AC:</strong> a flaky script node succeeds on attempt 3 with <code>max_attempts=3</code>; a cached node is not re-executed on the next run (test counts calls). <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m3-t14-memory-nodes-recall-remember-forget-memory-tools-fr-mem-0103">M3-T14 Memory nodes: Recall / Remember / Forget + memory tools (FR-MEM-01…03)</h3>
+<ul>
+<li><strong>IR:</strong> <code>memory_spaces</code> in workflow settings (name, namespace template over <code>context</code>/identity only, JSON schema, index fields); nodes <code>core.memory_recall {space, query_template, top_k, output}</code>, <code>core.memory_remember {space, key_template, value_channel}</code>, <code>core.memory_forget</code>.</li>
+<li><strong>Builder:</strong> use LangGraph's store through the runtime: <code>from langgraph.config import get_store</code> inside the node, <code>await store.asearch(namespace, query=…, limit=k)</code>, <code>await store.aput(namespace, key, value)</code>; generated memory tools for agents wrap the same calls.</li>
+<li><strong>Deep Agent:</strong> a space can be mounted as <code>/memories/</code> via <code>CompositeBackend(routes={"/memories/": StoreBackend(namespace=lambda rt: …)})</code> (verified pattern, M3-T4).</li>
+<li><strong>User scoping (verified):</strong> declare a run context <code>@dataclass class Ctx: user_id: str</code>; build with <code>StateGraph(State, context_schema=Ctx)</code>; nodes take <code>runtime: Runtime[Ctx]</code> (<code>from langgraph.runtime import Runtime</code>) and use <code>("users", runtime.context.user_id, "facts")</code> as namespace; the runner passes <code>graph.ainvoke(input, config, context=Ctx(user_id=&lt;authenticated user&gt;))</code> — never a value from the model.</li>
+<li><strong>AC:</strong> a value remembered on thread A is recalled on thread B for the same user and <strong>not</strong> for another user (namespace includes user id). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<hr />
+<h2 id="m4-run-debug-experience">M4 — Run &amp; debug experience</h2>
+<h3 id="m4-t1-test-run-panel-chat-form-input">M4-T1 Test-run panel (chat &amp; form input)</h3>
+<ul>
+<li><strong>Steps:</strong> right-panel tab "Test": if the state has <code>messages</code>, show a chat box; else a form generated from the workflow input schema; thread picker (new / existing).</li>
+<li><strong>AC:</strong> multi-turn chat on one thread keeps history. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m4-t2-live-overlay-harden-skeleton">M4-T2 Live overlay (harden skeleton)</h3>
+<ul>
+<li><strong>Steps:</strong> status badges per node (idle/running/ok/error/interrupted/cached), animated flow edges for the active path (edge ids from traversed node pairs), error tooltip with message; nested agent activity shown as a small activity feed on the agent node (from <code>ns</code> events).</li>
+<li><strong>AC:</strong> Playwright test asserts colours for success, error and interrupt runs. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m4-t3-token-streaming-preview">M4-T3 Token streaming preview</h3>
+<ul>
+<li><strong>Steps:</strong> node card shows last 200 characters of streamed text; chat panel shows full stream; coalesce updates at 30 Hz (<code>requestAnimationFrame</code> batching).</li>
+<li><strong>AC:</strong> no UI jank with 2,000 tokens/s (performance test). <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m4-t4-inbox-pending-approvals">M4-T4 Inbox (pending approvals)</h3>
+<ul>
+<li><strong>Backend:</strong> when a run ends with an interrupt, insert <code>interrupt_task</code> rows (id, thread, node, kind, payload, status=pending); <code>GET /v1/inbox?status=pending</code>; <code>POST /v1/inbox/{id}/decision</code> → resumes the thread (<code>Command(resume=…)</code>) and marks the task <code>decided</code>.</li>
+<li><strong>Frontend:</strong> list + detail card; tool approvals show tool name &amp; args with <em>Approve / Edit args / Reject (with message)</em>; input interrupts render an RJSF form from <code>response_schema</code>.</li>
+<li><strong>Resume payload rules:</strong> tool approvals → <code>{"decisions": [{"type": "approve"} | {"type": "edit", "edited_action": {"name": ..., "args": {...}}} | {"type": "reject", "message": "..."}]}</code>; approval node → <code>{"approved": bool, "value": optional}</code>; input node → the form value.</li>
+<li><strong>AC:</strong> approving from the Inbox continues the run; the canvas of that thread updates. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<h3 id="m4-t5-timeline-history">M4-T5 Timeline &amp; history</h3>
+<ul>
+<li><strong>Steps:</strong> <code>GET /v1/threads/{id}/history</code> → bottom-dock scrubber (one tick per checkpoint, label = step + nodes); clicking a tick shows that checkpoint's state and highlights <code>next</code> nodes.</li>
+<li><strong>AC:</strong> scrubbing never mutates the thread. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m4-t6-state-inspector-edit">M4-T6 State inspector &amp; edit</h3>
+<ul>
+<li><strong>Steps:</strong> JSON viewer of state at the selected checkpoint; "Edit" → <code>POST /v1/threads/{id}/state {values, as_node}</code> → creates a new checkpoint (verified <code>aupdate_state</code>).</li>
+<li><strong>AC:</strong> editing a value shows a new checkpoint in history; continuing uses the edited value (full branch behaviour in M4-T7). <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m4-t7-fork-from-checkpoint-time-travel">M4-T7 Fork from checkpoint (time travel)</h3>
+<ul>
+<li><strong>Backend (verified patterns):</strong></li>
+<li><em>Replay</em> from a past checkpoint: <code>await graph.ainvoke(None, snapshot.config)</code>.</li>
+<li><em>Edit &amp; branch</em> (default "Fork" button): <code>new_cfg = await graph.aupdate_state(snapshot.config, {"urgency": "high"})</code> then <code>await graph.ainvoke(None, new_cfg)</code>. The edit is recorded as if written by the node that produced that checkpoint, so routers after it are <strong>re-evaluated</strong> (verified: a checkpoint written after <code>classify</code> + <code>urgency=high</code> continues into <code>escalate</code>). The thread keeps all checkpoints; the new branch becomes the latest state.</li>
+<li><em>Copy to a new thread</em> (optional): <code>await graph.aupdate_state({"configurable": {"thread_id": new}}, snapshot.values, as_node="__start__")</code> then <code>ainvoke(None, …)</code> — use when the user wants to keep the original thread's latest state untouched.</li>
+<li><strong>AC:</strong> Fork from the classify checkpoint with an edited value takes the other branch; history shows both branches (checkpoint <code>parent_config</code> links). <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m4-t8-breakpoints">M4-T8 Breakpoints</h3>
+<ul>
+<li><strong>Backend (verified):</strong> pass <code>interrupt_before=[names]</code> / <code>interrupt_after=[names]</code> to <code>astream</code> for <strong>debug runs only</strong>; continue with input <code>None</code>.</li>
+<li><strong>Frontend:</strong> click the node gutter to toggle a red dot; "Continue" button.</li>
+<li><strong>AC:</strong> run stops before the marked node; Continue proceeds. <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m4-t9-pinned-outputs-mock-mode">M4-T9 Pinned outputs &amp; mock mode</h3>
+<ul>
+<li><strong>Steps:</strong> pin = store last output delta for a node in <code>workflow.debug.pins</code>; interpreter wraps pinned nodes with <code>lambda state: pinned_delta</code> in debug runs; mock mode swaps models for <code>ToolFakeModel</code> with user-entered scripted replies.</li>
+<li><strong>AC:</strong> with a pinned classifier, runs never call the model (verified with a fake that raises if called). <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m4-t10-cancel-run">M4-T10 Cancel run</h3>
+<ul>
+<li><strong>Steps:</strong> keep <code>asyncio.Task</code> per run in a registry; <code>POST /v1/runs/{id}/cancel</code> cancels the task; status <code>cancelled</code>; UI stop button.</li>
+<li><strong>AC:</strong> cancelling mid-run stops token streaming within 1 s; the thread can be resumed from the last checkpoint. <strong>Estimate:</strong> 1.5 d</li>
+</ul>
+<h3 id="m4-t11-cost-latency-per-node">M4-T11 Cost &amp; latency per node</h3>
+<ul>
+<li><strong>Steps:</strong> from <code>messages</code> stream / final AI messages read <code>usage_metadata</code> (<code>input_tokens</code>, <code>output_tokens</code>); price from model catalog; per-node duration from STEP events; emit <code>CUSTOM ac.usage</code>; store totals on <code>run</code>.</li>
+<li><strong>AC:</strong> node cards show tokens, $, ms; run list shows totals. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m4-t12-memory-inspector-fr-mem-04-browsedelete">M4-T12 Memory inspector (FR-MEM-04, browse/delete)</h3>
+<ul>
+<li><strong>API:</strong> <code>GET /v1/memory/{space}/items?namespace=…&amp;q=…</code> (uses <code>store.asearch</code>), <code>DELETE /v1/memory/{space}/items/{key}</code>; UI table with search and delete; erasure for one user = delete all keys under their namespace prefix.</li>
+<li><strong>AC:</strong> deleting an item removes it from subsequent recalls. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<hr />
+<h2 id="m5-workspaces-scripts-secrets">M5 — Workspaces, scripts, secrets</h2>
+<h3 id="m5-t1-workspace-storage">M5-T1 Workspace storage</h3>
+<ul>
+<li><strong>Steps:</strong> one directory per project on a volume (<code>/data/workspaces/&lt;project_id&gt;</code>), initialised as a git repo (<code>git init</code> via <code>subprocess</code>); file API <code>GET/PUT/DELETE /v1/projects/{id}/files/{path}</code> with path traversal protection (<code>resolve()</code> must stay under the root).</li>
+<li><strong>AC:</strong> <code>../</code> paths rejected (test); files persist across restarts. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m5-t2-code-editor">M5-T2 Code editor</h3>
+<ul>
+<li><strong>Steps:</strong> <code>@monaco-editor/react</code> with file tree; Python syntax highlighting; save = PUT; basic diagnostics by running <code>ruff check --output-format=json</code> server-side on save (LSP is post-MVP).</li>
+<li><strong>AC:</strong> ruff errors appear as markers in the editor. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m5-t3-script-node-from-workspace">M5-T3 Script node from workspace</h3>
+<ul>
+<li><strong>Contract:</strong> <code>scripts/&lt;name&gt;.py</code> defines <code>def run(state: dict) -&gt; dict</code> (or <code>async def</code>); node config <code>import_path = "scripts.&lt;name&gt;:run"</code>; declared <code>reads/writes</code> validated against channels.</li>
+<li><strong>AC:</strong> editing the script and re-running uses the new code without restarting the server (<code>importlib.reload</code> in dev). <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m5-t4-sandbox-runner">M5-T4 Sandbox runner</h3>
+<ul>
+<li><strong>Goal:</strong> user code does not run inside the API process in hosted mode (review D-10).</li>
+<li><strong>Steps:</strong> <code>sandbox/docker_runner.py</code>: for each script call run <code>docker run --rm --network none --memory 512m --cpus 1 --read-only -v &lt;workspace&gt;:/ws:ro agentcanvas-sandbox:py312 python -m runner &lt;import_path&gt;</code> with JSON state on stdin and JSON update on stdout; timeout 30 s; build the <code>agentcanvas-sandbox</code> image with the same Python deps. Dev mode keeps in-process execution (setting <code>SCRIPT_EXECUTION=inprocess|docker</code>).</li>
+<li><strong>AC:</strong> a script trying to open a network socket fails in docker mode; timeouts produce <code>STEP_FINISHED status=error</code>. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<h3 id="m5-t5-custom-tools-from-the-workspace">M5-T5 Custom tools from the workspace</h3>
+<ul>
+<li><strong>Steps:</strong> scan <code>tools/*.py</code> with <code>ast</code> for functions decorated with <code>@tool</code>; register them as <code>tool.python</code> resource types in the palette (<code>import_path</code> = <code>tools.&lt;file&gt;:&lt;name&gt;</code>).</li>
+<li><strong>AC:</strong> adding a new <code>@tool</code> function makes it appear in the palette after save. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m5-t6-secrets-vault-secret-references">M5-T6 Secrets vault &amp; secret references</h3>
+<ul>
+<li><strong>Steps:</strong> <code>secret</code> table stores <code>name</code>, <code>ciphertext</code> (Fernet with key from <code>AGENTCANVAS_SECRET_KEY</code>; KMS in M8), <code>created_by</code>; API returns names only; config fields accept <code>{"$secret": "OPENAI_API_KEY"}</code>; <code>Resources</code> resolves secret refs at build time; validator E050 blocks literals that look like keys.</li>
+<li><strong>AC:</strong> secret values never appear in API responses, logs, generated code or SSE events (tests grep outputs). <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m5-t7-custom-node-sdk-fr-cn-0103">M5-T7 Custom node SDK (FR-CN-01…03)</h3>
+<ul>
+<li><strong>Contract:</strong> in <code>nodes/*.py</code> users write <code>@canvas_node(name="acme.upsert", label=…, category=…, inputs=[…], outputs=[…], config=PydanticModel)</code> over a function <code>(state_slice, cfg) -&gt; dict</code> (spec doc05 §3). The decorator only attaches metadata.</li>
+<li><strong>Discovery:</strong> AST scan of <code>nodes/*.py</code> (no import in the API process) → manifest (config schema from the Pydantic model via a sandboxed import in the runner) → palette entry with provenance badge "workspace".</li>
+<li><strong>Codegen:</strong> copy the file into the exported project; builder = <code>ac.script_node(import_path="nodes.&lt;file&gt;:&lt;fn&gt;")</code> with an adapter that passes <code>cfg</code>.</li>
+<li><strong>AC:</strong> a new custom node appears in the palette within 2 s of saving and runs in both interpreted and generated modes. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<hr />
+<h2 id="m6-export-versions-publish-mvp-release">M6 — Export, versions, publish (<strong>MVP release</strong>)</h2>
+<h3 id="m6-t1-versions-diff">M6-T1 Versions &amp; diff</h3>
+<ul>
+<li><strong>Steps:</strong> <code>POST /v1/workflows/{id}/versions {message}</code> snapshots IR + layout + workspace git commit hash into <code>workflow_version</code> (immutable, semver auto-increment); <code>GET /v1/workflows/{id}/versions/{a}/diff/{b}</code> returns added/removed/changed nodes/edges and per-field config diffs; UI colours changed nodes.</li>
+<li><strong>AC:</strong> diff of two versions highlights exactly the edited node. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m6-t2-project-packager">M6-T2 Project packager</h3>
+<ul>
+<li><strong>Output layout:</strong> <code>src/&lt;pkg&gt;/graph.py</code> (generated), <code>src/&lt;pkg&gt;/scripts|tools</code> (copied from workspace), <code>pyproject.toml</code> (pinned deps), <code>.env.example</code> (secret names), <code>README.md</code>, <code>Dockerfile</code>, <code>langgraph.json</code> (for users deploying to LangSmith: points to a module-level <code>graph = build_graph()</code> wrapper), <code>tests/test_smoke.py</code> (imports graph, draws mermaid).</li>
+<li><strong>Note:</strong> generated code imports <code>agentcanvas-runtime</code> (the node library as a small published package, Apache-2.0). Build it from <code>adapters/langchain</code> in this ticket.</li>
+<li><strong>AC:</strong> unzip → <code>uv sync &amp;&amp; uv run pytest</code> passes; <code>docker build .</code> succeeds. <strong>Estimate:</strong> 4 d</li>
+</ul>
+<h3 id="m6-t3-export-zip-git-push">M6-T3 Export (zip / git push)</h3>
+<ul>
+<li><strong>Steps:</strong> <code>GET /v1/workflows/{id}/export.zip</code>; optional push to a git remote with a deploy key (post-MVP UI).</li>
+<li><strong>AC:</strong> exported project runs with real models using <code>.env</code>. <strong>Estimate:</strong> 1 d</li>
+</ul>
+<h3 id="m6-t4-publish-to-the-runner">M6-T4 Publish to the runner</h3>
+<ul>
+<li><strong>Steps:</strong> "Publish" pins a version as <code>deployment</code> (table <code>deployment {workflow_id, version_id, env, api_key_hash}</code>); public endpoints <code>POST /v1/deployments/{id}/runs/stream</code> and <code>/threads/{id}/resume</code> authenticated by <code>Authorization: Bearer &lt;api key&gt;</code>; runs use the pinned version, not the draft.</li>
+<li><strong>Pre-publish checklist (FR-DEP-02):</strong> publish is blocked unless: no validation errors, all saved test cases pass (M6-T9), every <code>$secret</code> reference resolves in the target project.</li>
+<li><strong>AC:</strong> editing the draft does not change the published behaviour; rotating the key invalidates the old one; publishing with a failing test case is refused with a clear message. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m6-t5-webhook-cron-triggers">M6-T5 Webhook &amp; cron triggers</h3>
+<ul>
+<li><strong>Steps:</strong> <code>trigger</code> table; webhook <code>POST /v1/hooks/{trigger_id}</code> verifies HMAC-SHA256 signature header, maps body → workflow input via Jinja mapping; cron via APScheduler (<code>AsyncIOScheduler</code>) loading triggers at startup (single instance in MVP; leader-lock in Postgres advisory lock for multi-instance).</li>
+<li><strong>AC:</strong> invalid signature → 401; a cron every minute creates runs visible in the run list. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m6-t6-tracing-langsmith-otel">M6-T6 Tracing (LangSmith / OTel)</h3>
+<ul>
+<li><strong>Steps:</strong> if <code>LANGSMITH_TRACING=true</code>, runs are traced automatically by LangChain; add <code>config={"metadata": {"workflow_id":…, "canvas_version":…}, "tags": [...], "run_name": wf.name}</code> to every run; store trace URL on <code>run</code> (LangSmith run id from callbacks); "Open trace" link in UI.</li>
+<li><strong>AC:</strong> a run appears in LangSmith with node names equal to IR names. <strong>Estimate:</strong> 2 d</li>
+</ul>
+<h3 id="m6-t7-templates">M6-T7 Templates</h3>
+<ul>
+<li><strong>Steps:</strong> 5 templates as IR JSON in <code>registry/templates/</code>: Support triage, Research (map over sub-questions), RAG Q&amp;A (retriever tool), Approval workflow, Data extraction (structured output); "New from template" dialog.</li>
+<li><strong>AC:</strong> each template validates, runs with fake models in CI and with real models manually. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m6-t9-saved-test-cases-fr-eval-01">M6-T9 Saved test cases (FR-EVAL-01)</h3>
+<ul>
+<li><strong>Steps:</strong> "Save as test case" on any finished run stores <code>{input, expected_output?, expected_route?}</code> in <code>workflow.test_cases</code> (JSONB); "Run tests" executes all cases with the current draft (optionally mock mode) and shows pass/fail per case; assertions: exact match on selected channels, route taken, no errors.</li>
+<li><strong>AC:</strong> changing a router condition turns the affected case red. <strong>Estimate:</strong> 3 d</li>
+</ul>
+<h3 id="m6-t8-mvp-hardening-release">M6-T8 MVP hardening &amp; release</h3>
+<ul>
+<li><strong>Steps:</strong> error states for every screen, empty states, loading skeletons; docs site from this guide; release notes; tag <code>v0.1.0</code>.</li>
+<li><strong>AC:</strong> 10 design-partner users complete journey J1 (doc01 §2) unaided. <strong>Estimate:</strong> 5 d</li>
+</ul>
+<hr />
+<h2 id="m7-accounts-access">M7 — Accounts &amp; access</h2>
+<table>
+<thead>
+<tr>
+<th>Ticket</th>
+<th>Summary</th>
+<th style="text-align: right;">Est.</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M7-T1 OIDC login</td>
+<td>Authorization-code + PKCE in the SPA (<code>oidc-client-ts</code>); API validates JWT (issuer, audience, JWKS cache) with <code>pyjwt[crypto]</code>; dev user in fake mode. <strong>AC:</strong> API rejects missing/expired tokens with 401 problem+json.</td>
+<td style="text-align: right;">3 d</td>
+</tr>
+<tr>
+<td>M7-T2 Organisations &amp; projects</td>
+<td><code>organization</code>, <code>membership(user, org, role)</code>, <code>project</code>; every query filtered by org (repository layer adds <code>WHERE org_id = :org</code>). <strong>AC:</strong> user of org A cannot read org B's workflow (test).</td>
+<td style="text-align: right;">3 d</td>
+</tr>
+<tr>
+<td>M7-T3 Roles</td>
+<td><code>admin</code>, <code>builder</code>, <code>viewer</code> (+ <code>reviewer</code> for inbox); FastAPI dependency <code>require(role)</code>; UI hides forbidden actions. <strong>AC:</strong> viewer cannot run or edit (403).</td>
+<td style="text-align: right;">2 d</td>
+</tr>
+<tr>
+<td>M7-T4 Audit log</td>
+<td>append-only <code>audit_log</code> for edits, publishes, approvals, secret access; UI table with filters. <strong>AC:</strong> every approval is logged with actor and payload hash.</td>
+<td style="text-align: right;">2 d</td>
+</tr>
+</tbody>
+</table>
+<h2 id="m8-production-readiness">M8 — Production readiness</h2>
+<table>
+<thead>
+<tr>
+<th>Ticket</th>
+<th>Summary</th>
+<th style="text-align: right;">Est.</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M8-T1 Containers</td>
+<td>multi-stage Dockerfiles for api (uv) and web (nginx serving <code>dist/</code>); nginx <code>proxy_buffering off</code> for SSE routes.</td>
+<td style="text-align: right;">2 d</td>
+</tr>
+<tr>
+<td>M8-T2 Helm chart / compose prod</td>
+<td>api (N replicas), web, Postgres (managed), Redis; readiness <code>/healthz</code> (DB ping), liveness.</td>
+<td style="text-align: right;">3 d</td>
+</tr>
+<tr>
+<td>M8-T3 Observability</td>
+<td>OpenTelemetry for FastAPI + SQLAlchemy + httpx; Prometheus metrics (runs, errors, latency, tokens); dashboards.</td>
+<td style="text-align: right;">3 d</td>
+</tr>
+<tr>
+<td>M8-T4 Backups &amp; retention</td>
+<td>Postgres PITR; checkpoint TTL job (delete threads older than policy via <code>adelete_thread</code>); restore runbook tested.</td>
+<td style="text-align: right;">2 d</td>
+</tr>
+<tr>
+<td>M8-T5 Load test</td>
+<td>k6: 200 concurrent streaming runs with fake models; p95 event latency &lt; 250 ms.</td>
+<td style="text-align: right;">2 d</td>
+</tr>
+<tr>
+<td>M8-T6 Security review</td>
+<td>complete <a href="../10-security-checklist/">10-security-checklist.md</a>; fix findings; dependency scanning in CI.</td>
+<td style="text-align: right;">3 d</td>
+</tr>
+</tbody>
+</table>
+<h2 id="m9-after-mvp-ga-roadmap-follow-the-spec">M9 — After MVP (GA roadmap, follow the spec)</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Spec</th>
+<th>First ticket to write</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Evaluation studio</td>
+<td>doc01 §4.11</td>
+<td>datasets from saved runs + LangSmith experiment runner</td>
+</tr>
+<tr>
+<td>Multiplayer</td>
+<td>doc02 §4.2</td>
+<td>Yjs document mirroring the IR; server-side validation hook</td>
+</tr>
+<tr>
+<td>Persistence bindings (Redis/Mongo), RoutedStore, Memory Spaces UI</td>
+<td>doc08 §2–3</td>
+<td>binding table + conformance check</td>
+</tr>
+<tr>
+<td>Data Studio</td>
+<td>doc08 §5</td>
+<td>ER canvas reusing React Flow; SQLAlchemy codegen</td>
+</tr>
+<tr>
+<td>Learning loops</td>
+<td>doc09</td>
+<td>feedback capture + example bank</td>
+</tr>
+<tr>
+<td>MCP / A2A exposure, chat widget</td>
+<td>doc01 §4.14</td>
+<td>MCP endpoint per deployment</td>
+</tr>
+<tr>
+<td>Other frameworks</td>
+<td>doc12</td>
+<td>adapter SPI v1 + OpenAI Agents SDK adapter</td>
+</tr>
+<tr>
+<td>Copilot</td>
+<td>doc01 §4.15</td>
+<td>command-generating agent with validator in the loop</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

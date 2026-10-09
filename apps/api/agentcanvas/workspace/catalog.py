@@ -12,13 +12,14 @@ from typing import Any
 from agentcanvas.registry import NodeManifest, PortSpec
 
 TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+KEY = re.compile(r"^[a-z][a-z0-9_]{0,62}$")  # a workflow folder (store.workflow_key)
 
 
 @dataclass
 class Catalog:
-    tools: list[dict[str, Any]] = field(default_factory=list)  # {name, import_path, description}
+    tools: list[dict[str, Any]] = field(default_factory=list)  # {name, import_path, description, workflow}
     nodes: list[NodeManifest] = field(default_factory=list)
-    scripts: list[dict[str, Any]] = field(default_factory=list)  # {name, import_path}
+    scripts: list[dict[str, Any]] = field(default_factory=list)  # {name, import_path, workflow}
     handlers: list[dict[str, Any]] = field(default_factory=list)  # {type, filter, dedup_key, import_path, targets}
     problems: list[dict[str, str]] = field(default_factory=list)  # {path, message}
 
@@ -79,18 +80,31 @@ def _targets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     return out
 
 
+def _folders(root: Path) -> list[tuple[str | None, str, Path]]:
+    """(workflow key or None for shared code, folder kind, directory): the shared folders, then each workflow's."""
+    out: list[tuple[str | None, str, Path]] = [
+        (None, sub, root / sub) for sub in ("tools", "nodes", "scripts", "events")
+    ]
+    workflows = root / "flows"
+    if workflows.is_dir():
+        for d in sorted(p for p in workflows.iterdir() if p.is_dir() and KEY.match(p.name)):
+            out += [(d.name, sub, d / sub) for sub in ("tools", "nodes", "scripts")]
+    return out
+
+
 def scan(root: Path, *, import_code: bool = False) -> Catalog:
-    """Read tools/, nodes/, scripts/ and events/. `import_code` (trusted/dev) allows importing a custom node's
-    module to turn a Pydantic config model into a JSON Schema."""
+    """Read tools/, nodes/, scripts/ and events/, and each workflow's own tools/, nodes/ and scripts/ under
+    flows/<workflow>/ (S17). `import_code` (trusted/dev) allows importing a custom node's module to turn a
+    Pydantic config model into a JSON Schema. Tools and scripts carry `workflow`: None when shared."""
     cat = Catalog()
-    for sub in ("tools", "nodes", "scripts", "events"):
-        base = root / sub
+    for owner, sub, base in _folders(root):
         if not base.is_dir():
             continue
         for path in sorted(base.glob("*.py")):
             if path.name.startswith("_"):
                 continue
-            rel, module = path.relative_to(root).as_posix(), f"{sub}.{path.stem}"
+            rel = path.relative_to(root).as_posix()
+            module = rel.removesuffix(".py").replace("/", ".")
             try:
                 tree = ast.parse(path.read_text(), filename=rel)
             except SyntaxError as exc:
@@ -104,9 +118,10 @@ def scan(root: Path, *, import_code: bool = False) -> Catalog:
                     named = (
                         call.args[0].value if call and call.args and isinstance(call.args[0], ast.Constant) else None
                     )
-                    cat.tools.append(
-                        {"name": named or fn.name, "import_path": f"{module}:{fn.name}", "description": doc}
-                    )
+                    cat.tools.append({
+                        "name": named or fn.name, "import_path": f"{module}:{fn.name}", "description": doc,
+                        "workflow": owner,
+                    })  # fmt: skip
                 elif sub == "nodes" and "canvas_node" in decos and decos["canvas_node"] is not None:
                     meta = _kwargs(decos["canvas_node"])
                     try:
@@ -114,7 +129,9 @@ def scan(root: Path, *, import_code: bool = False) -> Catalog:
                     except Exception as exc:  # noqa: BLE001 - one bad node must not hide the others
                         cat.problems.append({"path": rel, "message": f"{fn.name}: {exc}"})
                 elif sub == "scripts" and fn.name == "run":
-                    cat.scripts.append({"name": path.stem, "import_path": f"{module}:run", "description": doc})
+                    cat.scripts.append(
+                        {"name": path.stem, "import_path": f"{module}:run", "description": doc, "workflow": owner}
+                    )
                 elif sub == "events" and "on" in decos and decos["on"] is not None:
                     call = decos["on"]
                     etype = call.args[0].value if call.args and isinstance(call.args[0], ast.Constant) else None

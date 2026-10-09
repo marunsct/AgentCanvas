@@ -1,9 +1,15 @@
-"""Workspace storage (M5-T1): one directory per project, a git repository, a file API that cannot escape it."""
+"""Workspace storage (M5-T1): one directory per project, a git repository, a file API that cannot escape it.
+
+S17: each workflow also has its own code folder, `flows/<workflow>/` with `scripts/`, `tools/` and `nodes/`
+(imported as `flows.<workflow>.scripts.<module>:<name>`); the folders at the root are the project's shared
+library, used by any workflow. Event handlers stay at the root: they start workflows, so they belong to the project.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +17,9 @@ from typing import Any
 
 MAX_FILE_BYTES = 1_000_000
 CODE_DIRS = ("scripts", "tools", "nodes", "events")
+WORKFLOWS_DIR = "flows"
+WORKFLOW_CODE_DIRS = ("scripts", "tools", "nodes")
+_KEY = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 HIDDEN = {".git", "__pycache__", ".venv", ".agentcanvas", ".ruff_cache"}
 TEXT_SUFFIXES = {".py", ".json", ".md", ".txt", ".toml", ".yaml", ".yml", ".jinja", ".j2", ".gitignore"}
 
@@ -24,7 +33,9 @@ SCAFFOLD: dict[str, str] = {
     "- `scripts/` — Python script nodes: `def run(state: dict) -> dict` (sync or async)\n"
     "- `tools/` — `@tool` functions; they appear in the palette under *Workspace tools*\n"
     "- `nodes/` — custom widgets: `@canvas_node(...)` from `agentcanvas.sdk`\n"
-    '- `events/` — event handlers: `@on("type")` from `agentcanvas.sdk`; schemas in `events/schemas/`\n',
+    '- `events/` — event handlers: `@on("type")` from `agentcanvas.sdk`; schemas in `events/schemas/`\n'
+    "- `flows/<workflow>/` — code that belongs to one workflow (its own `scripts/`, `tools/`, `nodes/`); "
+    "the folders above are shared by every workflow in the project\n",
     ".gitignore": "__pycache__/\n.venv/\n.agentcanvas/\n",
     "scripts/__init__.py": "",
     "scripts/example.py": '"""A script node: return the channels you want to update."""\n\n\n'
@@ -36,6 +47,19 @@ SCAFFOLD: dict[str, str] = {
     "events/__init__.py": "",
     "events/schemas/.keep": "",
 }
+
+
+def workflow_key(wf_id: str) -> str:
+    """The folder (and Python package) name of a workflow's own code: its id in lower case."""
+    key = wf_id.lower()
+    if not _KEY.match(key):
+        raise WorkspaceError(f"'{wf_id}' cannot name a workflow folder")
+    return key
+
+
+def workflow_dir(wf_id: str) -> str:
+    """`flows/<workflow>`, relative to the workspace root."""
+    return f"{WORKFLOWS_DIR}/{workflow_key(wf_id)}"
 
 
 @dataclass(frozen=True)
@@ -63,6 +87,20 @@ class Workspace:
             self._git("init", "-q")
             self._commit("create workspace")
         return self
+
+    def ensure_workflow(self, wf_id: str) -> str:
+        """Create `flows/<workflow>/` with its code folders (idempotent); returns its relative path."""
+        rel = workflow_dir(wf_id)
+        created = []
+        for name in ("__init__.py", f"{rel}/__init__.py", *(f"{rel}/{d}/__init__.py" for d in WORKFLOW_CODE_DIRS)):
+            p = self.root / (name if "/" in name else f"{WORKFLOWS_DIR}/{name}")
+            if not p.exists():
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("")
+                created.append(p)
+        if created:
+            self._commit(f"create {rel}")
+        return rel
 
     # ------------------------------------------------------------------ paths ----
     def resolve(self, rel: str) -> Path:
@@ -118,7 +156,7 @@ class Workspace:
     def revision(self) -> str:
         """Changes whenever workspace code changes (graphs built from old code are rebuilt)."""
         h = hashlib.sha256()
-        for d in CODE_DIRS:
+        for d in (*CODE_DIRS, WORKFLOWS_DIR):
             base = self.root / d
             if base.is_dir():
                 for p in sorted(base.rglob("*")):

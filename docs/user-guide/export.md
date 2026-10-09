@@ -45,6 +45,22 @@ across messages. Without one, the service keeps conversations in a SQLite file o
 | `tests/` | The saved test cases (with scripted model replies) and the service's own tests, all offline |
 | `workflow.ir.json` | The exported workflow; import it into AgentCanvas to see which version is deployed |
 | `src/<name>/graph.py`, `src/agentcanvas/` | The generated LangGraph code and the node library it uses |
+| `src/flows/<id>/…`, `src/scripts/…` and other workspace folders | Your workspace code that this workflow uses (below) |
+| `tests/test_workspace_code.py` | Checks that every code path the workflow names (`flows.<id>.scripts.x:run` …) imports inside the export |
+
+### Your workspace code in the export
+
+The export carries exactly the [Workspace](workspace.md) code the workflow uses, not the whole workspace:
+
+- the files its steps, tools and custom blocks name, from the workflow's own folder or the shared folders;
+- every workspace module those files import, found by following their `import` lines;
+- data files in the workflow's own folder (prompts, JSON, CSV …);
+- the Python packages listed in `requirements.txt` at the workspace root or in the workflow's folder, added to the
+  export's `pyproject.toml` (one line per package, like `rapidfuzz>=3`; options and URLs are skipped).
+
+Other workflows' code is left out. If the workflow names code that is not in the workspace (a deleted file, say),
+the export stops and names it, so a broken download never leaves AgentCanvas. `make test` runs
+`tests/test_workspace_code.py` with the other tests.
 
 ## Deploy, step by step
 

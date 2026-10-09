@@ -57,6 +57,13 @@ Notes on the Setup page under **AI Copilot** are read on every message: conventi
 ollama:llama3.3", "anything that emails customers needs an approval step"). The Copilot can propose a note too; it
 is added when you accept.
 
+## Help with code
+
+In the [Workspace](workspace.md#copilot-help-with-code), under any Python file, the Copilot writes code from a
+description, explains the file or the lines you selected, and fixes the problems ruff found. Its changes come as a
+diff you accept or reject; nothing is saved until you press **Save**. It uses the same model and privacy setting as
+the chat.
+
 ## Which model it uses
 
 Set this on the **Setup** page under **AI Copilot**:

@@ -1,0 +1,2677 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Visual agentic workflows compiled to LangGraph / LangChain / Deep Agents">
+      
+      
+      
+      
+        <link rel="prev" href="../08-testing-and-quality/">
+      
+      
+        <link rel="next" href="../10-security-checklist/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Deployment & operations - AgentCanvas</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#09-deployment-operations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="AgentCanvas" class="md-header__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AgentCanvas
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deployment & operations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="AgentCanvas" class="md-nav__button md-logo" aria-label="AgentCanvas" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AgentCanvas
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/marunsct/AgentCanvas" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/run-locally/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run on your computer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/beginner-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Beginner's guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and API keys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building on the canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/copilot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Copilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Block reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/run-and-debug/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running and debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspace, secrets and events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish and integrate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/agents-and-connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect to other agents and tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export and deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organisations, roles and policies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy and operate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Specification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../01-functional-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functional spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-technical-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-graph-ir-and-compiler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph IR & compiler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-node-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Node catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../05-workspaces-scripting-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces, scripting & events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../06-roadmap-risks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap & risks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-worked-example/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worked example
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-persistence-memory-data-modeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence & memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../09-self-improving-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-improving agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../15-concept-evolution-and-new-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concept & new features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-competitive-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Competitive roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-framework-coverage-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework coverage review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../14-deep-review-v0.6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review v0.6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_14" id="__nav_3_14_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    History
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../10-improvement-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Improvement plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-framework-agnostic-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework-agnostic plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../12-multi-framework-technical-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-framework technical spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../13-deep-review-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep review report (v0.5)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../00-concepts-primer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts primer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-environment-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-repository-and-conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository & conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-walking-skeleton-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walking skeleton
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-implementation-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-backend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-frontend-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-compiler-and-node-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler & node types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-testing-and-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment & operations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment & operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Environments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-build-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Build images
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-single-host-composeprodyml-small-teams-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Single host: compose.prod.yml (small teams, staging)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-kubernetes-the-helm-chart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Kubernetes: the Helm chart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-configuration-secrets-in-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Configuration &amp; secrets in production
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-backups-retention-disaster-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Backups, retention, disaster recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-release-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Release process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-runbooks-write-these-in-m8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Runbooks (write these in M8)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-security-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-troubleshooting-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12-traceability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traceability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../13-sprint-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sprint plan & execution log
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_16" id="__nav_4_16_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spikes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_16">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Spikes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spikes/SP-2-langsmith-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-2 LangSmith sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spikes/SP-3-v3-streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-3 v3 streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spikes/SP-4-server-runtime-hosting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SP-4 ServerRuntime hosting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../adr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Environments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-build-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Build images
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-single-host-composeprodyml-small-teams-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Single host: compose.prod.yml (small teams, staging)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-kubernetes-the-helm-chart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Kubernetes: the Helm chart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-configuration-secrets-in-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Configuration &amp; secrets in production
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-backups-retention-disaster-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Backups, retention, disaster recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-release-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Release process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-runbooks-write-these-in-m8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Runbooks (write these in M8)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="09-deployment-operations">09 — Deployment &amp; Operations</h1>
+<p>Files referenced here are in the repository's <a href="https://github.com/marunsct/AgentCanvas/tree/main/infra"><code>infra/</code></a> folder: <code>Dockerfile.api</code>, <code>Dockerfile.web</code>, <code>nginx.conf</code>, <code>compose.prod.yml</code>, <code>.env.prod.example</code>, the Helm chart <code>helm/agentcanvas/</code>, and <code>docker-compose.yml</code> (development services only).</p>
+<blockquote>
+<p>Verification status (S11): both images build, and <code>compose.prod.yml</code> comes up healthy with two API replicas behind nginx on Postgres; a run streams through nginx and both replicas serve. CI repeats this on every push (job <code>images</code>) and lints and renders the Helm chart.</p>
+</blockquote>
+<h2 id="1-environments">1. Environments</h2>
+<table>
+<thead>
+<tr>
+<th>Env</th>
+<th>Purpose</th>
+<th>Data</th>
+<th>Models</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dev</code></td>
+<td>laptops</td>
+<td>docker-compose Postgres/Redis</td>
+<td>fake server or personal keys</td>
+</tr>
+<tr>
+<td><code>ci</code></td>
+<td>tests</td>
+<td>ephemeral Postgres service</td>
+<td>fake models only</td>
+</tr>
+<tr>
+<td><code>staging</code></td>
+<td>pre-release checks, demos</td>
+<td>managed Postgres (separate DB)</td>
+<td>real keys with low spend limits</td>
+</tr>
+<tr>
+<td><code>prod</code></td>
+<td>customers</td>
+<td>managed Postgres with PITR</td>
+<td>real keys, per-project secrets</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-build-images">2. Build images</h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># from the repository root</span>
+docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>infra/Dockerfile.api<span class="w"> </span>-t<span class="w"> </span>agentcanvas-api:<span class="k">$(</span>git<span class="w"> </span>rev-parse<span class="w"> </span>--short<span class="w"> </span>HEAD<span class="k">)</span><span class="w"> </span>apps/api
+docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>infra/Dockerfile.web<span class="w"> </span>-t<span class="w"> </span>agentcanvas-web:<span class="k">$(</span>git<span class="w"> </span>rev-parse<span class="w"> </span>--short<span class="w"> </span>HEAD<span class="k">)</span><span class="w"> </span>.
+</code></pre></div>
+<ul>
+<li><strong>API image:</strong> multi-stage (uv builds the virtualenv; the runtime stage has no build tools), runs as uid 10001, includes <code>git</code> for project workspaces, logs JSON, and exposes <code>/healthz</code> (liveness) and <code>/readyz</code> (the database and the run store answer; 503 otherwise). <code>ruff</code> is a runtime dependency: the code generator formats output with it. On SIGTERM uvicorn lets open streams finish for up to 30 s.</li>
+<li><strong>Web image:</strong> nginx (unprivileged, port 8080) serves the built app and proxies <code>/api/</code> to <code>$API_UPSTREAM</code> (default <code>http://api:8000</code>) without buffering, so Server-Sent Events stream in real time. Hashed assets are cached for a year; the app shell is always revalidated.</li>
+<li>Base images are pinned by digest in the Dockerfiles; Dependabot proposes new digests weekly. To build from a mirror, replace the exact reference with BuildKit: <code>docker build --build-context 'python:3.12-slim@sha256:&lt;digest&gt;=docker-image://mirror.gcr.io/library/python@sha256:&lt;digest&gt;' …</code> (same digest: the mirror serves the same image).</li>
+</ul>
+<h2 id="3-single-host-composeprodyml-small-teams-staging">3. Single host: <code>compose.prod.yml</code> (small teams, staging)</h2>
+<div class="highlight"><pre><span></span><code>cp<span class="w"> </span>infra/.env.prod.example<span class="w"> </span>infra/.env.prod<span class="w">      </span><span class="c1"># fill in: database password, secret key, OIDC, provider keys</span>
+docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>infra/compose.prod.yml<span class="w"> </span>--env-file<span class="w"> </span>infra/.env.prod<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>--wait
+</code></pre></div>
+<p>It runs Postgres (with pgvector), a one-shot <code>migrate</code> service (<code>alembic upgrade head</code>) that must succeed before any API replica starts, <code>API_REPLICAS</code> API containers (2 by default) sharing one workspaces volume, and the web container on <code>WEB_PORT</code> (8080). Put a TLS-terminating proxy (Caddy, Traefik or a cloud load balancer) in front of <code>web</code> and keep <strong>response buffering off</strong> for <code>/api/*</code>.</p>
+<h2 id="4-kubernetes-the-helm-chart">4. Kubernetes: the Helm chart</h2>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>create<span class="w"> </span>secret<span class="w"> </span>generic<span class="w"> </span>agentcanvas-secrets<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--from-literal<span class="o">=</span><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://…<span class="w"> </span>--from-literal<span class="o">=</span><span class="nv">AGENTCANVAS_SECRET_KEY</span><span class="o">=</span>…<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--from-literal<span class="o">=</span><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>…
+helm<span class="w"> </span>install<span class="w"> </span>agentcanvas<span class="w"> </span>infra/helm/agentcanvas<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--set<span class="w"> </span>secrets.existingSecret<span class="o">=</span>agentcanvas-secrets<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--set<span class="w"> </span>config.oidc.issuer<span class="o">=</span>https://login.example.com/realms/acme<span class="w"> </span>--set<span class="w"> </span>config.oidc.audience<span class="o">=</span>agentcanvas-api<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--set<span class="w"> </span>config.oidc.clientId<span class="o">=</span>agentcanvas-web<span class="w"> </span>--set<span class="w"> </span>ingress.enabled<span class="o">=</span><span class="nb">true</span><span class="w"> </span>--set<span class="w"> </span>ingress.host<span class="o">=</span>agentcanvas.example.com
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Object</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Deployment …-api</code></td>
+<td>2 replicas by default; startup and liveness probes on <code>/healthz</code>, readiness on <code>/readyz</code>; rolling updates never drop below the replica count; <code>terminationGracePeriodSeconds: 60</code> and a 5 s <code>preStop</code> so open streams can finish; non-root, all capabilities dropped</td>
+</tr>
+<tr>
+<td><code>Deployment …-web</code></td>
+<td>nginx; 2 replicas; proxies <code>/api/</code> to the API service</td>
+</tr>
+<tr>
+<td><code>Job …-migrate-&lt;revision&gt;</code></td>
+<td><code>alembic upgrade head</code> as a <code>pre-install,pre-upgrade</code> hook, so new API pods never start against an old schema</td>
+</tr>
+<tr>
+<td><code>PersistentVolumeClaim …-workspaces</code></td>
+<td>project workspaces (git) shared by every API replica: needs a <strong>ReadWriteMany</strong> storage class (EFS, Filestore, Azure Files, NFS); kept on uninstall</td>
+</tr>
+<tr>
+<td><code>Ingress</code></td>
+<td>routes everything to the web service; annotations turn proxy buffering off and allow hour-long streams</td>
+</tr>
+<tr>
+<td><code>NetworkPolicy …-api</code></td>
+<td>only the web pods reach the API port</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td>never in values: name an existing Secret (<code>secrets.existingSecret</code>), for example one synced by External Secrets</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Several replicas are safe:</strong> runs persist in Postgres, a reconnecting client reads state via <code>GET /v1/threads/{id}</code>, so sticky sessions are not required. Each cron minute starts one run however many replicas tick: a scheduler claims the minute by moving the trigger's <code>last_fired</code> forward in a conditional update, and only the replica whose update matched starts the run.</p>
+<p><strong>Safe redeploy (FR-X-10).</strong> A rolling update never loses a run. On SIGTERM an API pod leaves the Service (<code>preStop</code>), uvicorn gives open streams 30 s, then the pod <em>drains</em>: <code>/readyz</code> answers 503 <code>{"status":"draining"}</code>, new runs get 503 with <code>Retry-After: 5</code>, and running runs get <code>AGENTCANVAS_DRAIN_GRACE_S</code> (20 s) to finish. Runs still going are stopped at their last checkpoint: they end <code>interrupted</code> with error code <code>redeploy</code> and <code>run.handover</code> set. Every replica looks for handed-over runs at startup and every <code>AGENTCANVAS_HANDOVER_INTERVAL_S</code> (10 s), claims each with a conditional update (one replica wins), and continues the conversation from its checkpoint on the version it was running. Keep 5 + 30 + drain grace below <code>terminationGracePeriodSeconds</code> (60) and compose's <code>stop_grace_period</code> (60 s). A step that was cut off runs again on the new pod, so steps with side effects should be idempotent (the same rule as retries). A pod killed without draining (OOM, a lost node) cannot hand its runs over, so each replica refreshes the heartbeat of its running runs on every hand-over tick; a run still <code>running</code> without a heartbeat for <code>AGENTCANVAS_ORPHAN_AFTER_S</code> (60 s) is marked <code>interrupted</code> and handed over the same way.</p>
+<p><strong>Publishing over running conversations.</strong> A deployment's conversations continue on its newest version only when that version can resume them: every state field keeps its type and reducer and every pause point (approval, human input, tool approval) keeps its step name and kind. Otherwise a conversation finishes on the version it started on (<code>run.workflow_version_id</code> shows which), and new conversations get the new version.</p>
+<p><strong>Client addresses.</strong> The audit log records the caller's IP from <code>X-Forwarded-For</code> only when the direct peer is a trusted proxy: set <code>FORWARDED_ALLOW_IPS</code> (uvicorn) to the proxies' addresses. The chart and <code>compose.prod.yml</code> use <code>*</code> because only the web pods can reach the API: the chart adds a NetworkPolicy that admits only them (<code>networkPolicy.enabled</code>), and compose publishes no API port. If you turn the policy off or expose the API another way, list the proxies instead.</p>
+<h2 id="5-configuration-secrets-in-production">5. Configuration &amp; secrets in production</h2>
+<ul>
+<li>Required env: <code>AGENTCANVAS_ENV=prod</code>, <code>DATABASE_URL</code>, <code>AGENTCANVAS_SECRET_KEY</code> (64+ random chars), <code>LANGGRAPH_AES_KEY</code> (encrypts checkpoints; with it set, use <code>EncryptedSerializer.from_pycryptodome_aes()</code> as the checkpointer <code>serde</code>), <code>AGENTCANVAS_AUTH_MODE=oidc</code> with <code>AGENTCANVAS_OIDC_ISSUER</code>, <code>AGENTCANVAS_OIDC_AUDIENCE</code> and <code>AGENTCANVAS_OIDC_CLIENT_ID</code>, <code>AGENTCANVAS_CORS_ORIGINS</code>. The API refuses to start in staging, prod or the hosted edition with <code>AUTH_MODE=dev</code>.</li>
+<li><strong>Sign-in (M7-T1).</strong> Register a public SPA client at your identity provider with redirect URI <code>https://&lt;app&gt;/auth/callback</code> and post-logout URI <code>https://&lt;app&gt;/</code>; the web app uses authorization code + PKCE. The API checks the access token's signature (JWKS from the issuer's discovery document, or <code>AGENTCANVAS_OIDC_JWKS_URL</code>), <code>iss</code>, <code>aud</code> and <code>exp</code>. The default scopes (<code>AGENTCANVAS_OIDC_SCOPES</code>) include <code>offline_access</code>, so the client gets a refresh token and renews the access token silently; allow refresh tokens for the client at the provider (or drop the scope to fall back to a hidden-iframe renewal, which browsers that block third-party cookies break). Optional: <code>AGENTCANVAS_OIDC_EMAIL_CLAIM</code>, <code>AGENTCANVAS_OIDC_TRUST_EMAIL=true</code> for providers that send no <code>email_verified</code> but own the email domain.</li>
+<li><strong>Database connections per API process:</strong> the control database pool keeps <code>AGENTCANVAS_DB_POOL_SIZE</code> (10) open and opens up to <code>AGENTCANVAS_DB_MAX_OVERFLOW</code> (20) more; checkpoints and memory use their own pool of <code>AGENTCANVAS_PERSISTENCE_POOL_SIZE</code> (20). Size Postgres <code>max_connections</code> (or PgBouncer) for replicas × (pool + overflow + persistence pool) plus migrations. Requests give their connection back when the response starts, so open streams hold none (M8-T5: 200 concurrent streams on two replicas, p95 time to first event 89 ms).</li>
+<li><strong>First admin.</strong> List one or more emails in <code>AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS</code> (JSON list); on their first verified sign-in they become admins of the default organisation (once: an admin removed later is not re-added). With sign-in on, the seeded development user loses its memberships at startup. Admins then invite everyone else from the Members page (<code>PUT /v1/org/members</code>).</li>
+<li><strong>Roles (M7-T3):</strong> <code>viewer</code> reads; <code>reviewer</code> also answers the Inbox; <code>builder</code> also builds, runs and publishes; <code>admin</code> also manages members and reads the audit log (<code>GET /v1/org/audit</code>, M7-T4).</li>
+<li><strong>Policies (FR-X-19).</strong> Admins add organisation rules on the Policies page (<code>/v1/org/policies</code>). A rule picks steps, resources or the whole workflow (<code>scope</code>, narrowed by a CEL <code>match</code>) and states what must hold (<code>require</code>, CEL). CEL sees <code>node</code> (<code>type</code>, <code>config</code>, <code>effects</code> with <code>effect</code>/<code>gated</code>, <code>ungated</code>, <code>models</code>, <code>tools</code>), <code>resource</code> (<code>type</code>, <code>config</code>, <code>used_by</code>), <code>workflow</code> (<code>nodes</code>, <code>resources</code>, <code>node_types</code>, <code>models</code>) and <code>env</code>. Examples: <code>node.effects.all(e, e.effect != "external_write" || e.gated)</code>; for <code>scope=resource</code>, <code>match: resource.type == "model.chat"</code>, <code>require: resource.config.model in ["anthropic:claude-sonnet-5-5"]</code> with <code>environments: ["prod"]</code>. Rules without environments apply in the editor and at every publish; rules with environments block publishing there and show as warnings in the editor. A rule that cannot be evaluated counts as broken. Steps and resources inside subgraphs are checked as well.</li>
+<li><strong>Long-term memory per organisation.</strong> Runs keep memories under the workflow's organisation (namespaces start with <code>org:&lt;id&gt;</code>), and the Memory inspector works inside the caller's organisation. On upgrade from v0.1.0, existing memories move to the default organisation once, at the first start; the API records that and never moves memories again. Deployment API end users are kept as <code>api:&lt;deployment&gt;:&lt;user_id&gt;</code>, apart from organisation members.</li>
+<li>Model provider keys are <strong>per project secrets</strong> (M5-T6), not process env vars.</li>
+<li><strong>Secrets at rest (envelope encryption).</strong> Project secrets and webhook signing secrets are encrypted with a random data key per organisation; the data key is stored wrapped by the master key in <code>AGENTCANVAS_KMS_KEY</code>: <code>file:/run/secrets/master.key</code> (32+ random characters), <code>aws:&lt;key ARN&gt;</code> (install <code>boto3</code>), <code>gcp:&lt;key resource name&gt;</code> (install <code>google-cloud-kms</code>), or empty to derive it from <code>AGENTCANVAS_SECRET_KEY</code> (development). <strong>Rotate</strong> the master key without downtime: deploy with the new key in <code>AGENTCANVAS_KMS_KEY</code> and the old one in <code>AGENTCANVAS_KMS_PREVIOUS_KEYS</code> (JSON list), run <code>python -m agentcanvas.security.kms rewrap</code> once (it also moves secrets written before v0.3.0 onto the data keys), then remove the old key.</li>
+<li><strong>Checkpoints at rest.</strong> Set <code>LANGGRAPH_AES_KEY</code> (exactly 32 characters) to encrypt conversation checkpoints with AES; checkpoints written before stay readable. The API logs <code>checkpoints.unencrypted</code> at startup in staging and prod without it.</li>
+<li><strong>Browser policy.</strong> The web image sends a Content-Security-Policy; sign-in calls the identity provider, so its origin (taken from <code>OIDC_ISSUER</code>, which compose and the chart pass from the API settings) is allowed in <code>connect-src</code>. If the token or keys endpoints live on another host, list those origins in <code>CSP_CONNECT_SRC</code> (chart: <code>web.cspConnectSrc</code>).</li>
+<li><strong>Rate limits.</strong> nginx limits the public deployment and webhook endpoints to 20 requests/s per client address (bursts of 40, then 429). The API also limits each caller per minute, counted in the database so the limits hold across replicas: <code>AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT</code> (120, per API key), <code>AGENTCANVAS_RATE_LIMIT_PER_WEBHOOK</code> (120, per trigger) and <code>AGENTCANVAS_RATE_LIMIT_PER_PROJECT</code> (600, all of a project's deployments and webhooks together); <code>AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT</code> overrides the per-key limit for a deployment environment (JSON, e.g. <code>{"dev": 30}</code>); 0 turns a limit off. Over a limit the API answers 429 with <code>Retry-After</code>.</li>
+</ul>
+<h2 id="6-observability">6. Observability</h2>
+<ul>
+<li><strong>Logs:</strong> JSON (structlog) to stdout in the images; ship with your platform's collector. Fields: <code>request_id</code>, <code>workflow_id</code>, <code>thread_id</code>, <code>run_id</code>, <code>level</code>, <code>event</code>, and <code>trace_id</code> / <code>span_id</code> inside a traced request.</li>
+<li><strong>Metrics:</strong> Prometheus at <code>GET /metrics</code> on each API pod (<code>AGENTCANVAS_METRICS_ENABLED</code>, on by default). The web image's nginx answers 404 for <code>/api/metrics</code>, so scrape the pods directly; the Helm chart adds <code>prometheus.io/*</code> pod annotations and lets the <code>monitoring</code> namespace through its NetworkPolicy (<code>observability.metrics.*</code>).</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Labels</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agentcanvas_runs_started_total</code></td>
+<td><code>origin</code> (user, trigger, event, test, api…)</td>
+<td>runs started</td>
+</tr>
+<tr>
+<td><code>agentcanvas_runs_finished_total</code></td>
+<td><code>origin</code>, <code>status</code> (success, interrupted, error, cancelled)</td>
+<td>runs finished or paused</td>
+</tr>
+<tr>
+<td><code>agentcanvas_run_duration_seconds</code></td>
+<td><code>status</code></td>
+<td>histogram of run duration</td>
+</tr>
+<tr>
+<td><code>agentcanvas_runs_active</code></td>
+<td></td>
+<td>runs in progress in this pod</td>
+</tr>
+<tr>
+<td><code>agentcanvas_tokens_total</code> / <code>agentcanvas_cost_usd_total</code></td>
+<td><code>direction</code></td>
+<td>model usage and cost</td>
+</tr>
+<tr>
+<td><code>agentcanvas_sse_clients</code></td>
+<td></td>
+<td>open run event streams</td>
+</tr>
+<tr>
+<td><code>agentcanvas_http_requests_total</code> / <code>agentcanvas_http_request_duration_seconds</code></td>
+<td><code>method</code>, <code>route</code> (template, never ids), <code>status</code></td>
+<td>HTTP traffic</td>
+</tr>
+<tr>
+<td><code>agentcanvas_online_score_mean</code></td>
+<td><code>deployment</code>, <code>evaluator</code></td>
+<td>mean online score over the evaluator's alert window (S13)</td>
+</tr>
+<tr>
+<td><code>agentcanvas_eval_alert_open</code></td>
+<td><code>deployment</code>, <code>evaluator</code>, <code>kind</code> (below, drop)</td>
+<td>1 while a drift alert is open; every pod refreshes it from the database once a minute</td>
+</tr>
+<tr>
+<td><code>agentcanvas_eval_alerts_total</code></td>
+<td><code>kind</code></td>
+<td>drift alerts opened</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Traces:</strong> OpenTelemetry spans for FastAPI, the control database (SQLAlchemy) and outgoing httpx calls when <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> is set (OTLP/HTTP; the standard <code>OTEL_*</code> variables configure it; Helm: <code>observability.otlpEndpoint</code>). Request spans carry <code>request.id</code>. LLM traces go to LangSmith when <code>LANGSMITH_TRACING=true</code> (runs tagged with <code>workflow_id</code>).</li>
+<li><strong>Dashboard and alerts:</strong> <code>infra/observability/grafana-dashboard.json</code> (import it and pick the Prometheus data source) and <code>infra/observability/alerts.yaml</code>: server errors above 5 % for 10 min, more than 20 % of runs failing, API p95 above 2 s (streams excluded), no API pod scraped, and an online evaluator in drift for 5 min (<code>AgentCanvasEvaluationDrift</code>, severity ticket).</li>
+<li><strong>Online evaluation (S13).</strong> Scoring of sampled deployment runs happens in each API pod after the response is sent (at 30 requests/s with every run scored, p95 rose from 42 to 52 ms on compose prod; lower the sampling rate for heavy traffic or LLM judges); an LLM judge's calls use the project's model keys and their cost is reported apart from run cost (the <em>Production</em> tab). LangSmith dataset sync uses the project secret <code>LANGSMITH_API_KEY</code>, else the server's environment variable of that name, and <code>LANGSMITH_ENDPOINT</code> for a self-hosted LangSmith.</li>
+</ul>
+<h2 id="7-backups-retention-disaster-recovery">7. Backups, retention, disaster recovery</h2>
+<ul>
+<li><strong>Retention (M8-T4).</strong> A job in every API pod deletes conversations (threads with their checkpoints, runs and decisions) that have been inactive longer than the organisation keeps them: <code>PUT /v1/org/settings {"retention_days": 30}</code> (admin; <code>null</code> = the server default <code>AGENTCANVAS_RETENTION_DAYS</code>, 90; <code>0</code> = keep forever). Conversations that are running or waiting for a person are never deleted. It checks every <code>AGENTCANVAS_RETENTION_INTERVAL_S</code> (1 h) and counts deletions in <code>agentcanvas_threads_expired_total</code>. The same job deletes audit-log rows older than <code>AGENTCANVAS_AUDIT_RETENTION_DAYS</code> (400; <code>0</code> keeps them forever) and, only when <code>AGENTCANVAS_MEMORY_RETENTION_DAYS</code> is set (off by default), long-term memories (and Deep Agent store files) not updated for that many days, in every organisation. Otherwise erase memories from the Memory inspector.</li>
+<li><strong>Managed Postgres:</strong> turn on point-in-time recovery (7 days or more). Restoring to a point in time is the provider's operation; then point <code>DATABASE_URL</code> at the restored instance and roll the API pods (the migration hook runs first).</li>
+<li><strong>Portable copy:</strong> <code>infra/scripts/backup.sh</code> writes a <code>pg_dump</code> (custom format) of the whole database: control tables, checkpoints and long-term memory. Run it nightly and keep the files off the database host. Workspaces live on their own volume (<code>/data/workspaces</code>, git repositories): back that volume up with your platform's snapshots.</li>
+<li><strong>Restore runbook</strong> (rehearsed on compose prod, 2026-10-05: a conversation deleted after the backup came back with its state; about 11 s for a small database):</li>
+<li><code>ENV_FILE=infra/.env.prod infra/scripts/restore.sh &lt;file.dump&gt;</code>. This stops <code>web</code> and <code>api</code>, recreates the database from the dump, runs migrations (a backup from an older release is brought up to date), and starts the API and web again.</li>
+<li>Check <code>GET /readyz</code>, sign in, and open a recent conversation.</li>
+<li>Runs that were in progress when the backup was taken show as running; cancel or resume them from the Run panel.</li>
+<li><strong>Drill</strong> quarterly: restore into a scratch environment, run the smoke checks above and record how long it took.</li>
+</ul>
+<h2 id="8-release-process">8. Release process</h2>
+<ol>
+<li>Merge to <code>main</code> → CI builds images tagged with the commit SHA.</li>
+<li>Deploy to staging automatically; run Playwright smoke tests against staging.</li>
+<li>Tag <code>vX.Y.Z</code> → promote the same images to prod (no rebuild); migrations run first.</li>
+<li>Rollback = redeploy the previous image tag; migrations must be backward compatible for one release (expand → migrate → contract).</li>
+</ol>
+<h2 id="9-runbooks-write-these-in-m8">9. Runbooks (write these in M8)</h2>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>First steps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Runs stuck "running"</td>
+<td>graceful restarts hand runs over (FR-X-10, §4); runs of a pod that was killed (OOM, node loss) are taken over by another pod after <code>AGENTCANVAS_ORPHAN_AFTER_S</code> (60 s) without a heartbeat (S12). If they stay <code>running</code>, check that at least one API pod is up, then cancel them from the Run panel</td>
+</tr>
+<tr>
+<td>SSE shows nothing until the end</td>
+<td>a proxy is buffering: check ingress/nginx <code>proxy_buffering off</code>, header <code>X-Accel-Buffering: no</code></td>
+</tr>
+<tr>
+<td>DB connection exhaustion</td>
+<td>lower pool size per replica; check long transactions; add PgBouncer. LangGraph's <code>AsyncPostgresSaver.from_conn_string</code> already connects with <code>autocommit=True, prepare_threshold=0</code> (no prepared statements, verified in source), so <strong>transaction pooling works for checkpoints</strong>; if you build your own psycopg pool for the saver, use the same three settings (<code>autocommit=True, prepare_threshold=0, row_factory=dict_row</code>). For SQLAlchemy + asyncpg behind transaction pooling set <code>connect_args={"statement_cache_size": 0}</code>.</td>
+</tr>
+<tr>
+<td>Model provider outage</td>
+<td>enable fallback models (ModelFallbackMiddleware) in affected workflows; show provider status banner</td>
+</tr>
+<tr>
+<td>Evaluation drift alert</td>
+<td>open the workflow's Evaluation page → <em>Production</em>: compare the hourly mean with the 7-day trend, open the lowest-scoring runs (their timelines are one click away), and send them to an annotation queue; a recent publish or a model provider change is the usual cause. The alert resolves by itself once the window's mean recovers</td>
+</tr>
+<tr>
+<td>Leaked secret</td>
+<td>revoke at provider, rotate secret in project, audit <code>audit_log</code> for <code>secret.read</code> events</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

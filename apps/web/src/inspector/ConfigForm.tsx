@@ -1,5 +1,6 @@
 /** Config form generated from a node type's JSON Schema (RJSF, M2-T7). Edits become merge-patch commands. */
 import Form from "@rjsf/core";
+import { BUTTON_TEMPLATES, withItemDefaults } from "../ui/rjsfTemplates";
 import { validator } from "../ui/validator";
 import { useMemo } from "react";
 import type { NodeManifest } from "../api/types";
@@ -17,13 +18,14 @@ export function ConfigForm({ element, manifest, isResource }: {
   element: IRNode | IRResource; manifest: NodeManifest; isResource: boolean;
 }) {
   const dispatch = useEditor((s) => s.dispatch);
-  const schema = manifest.config_schema as Record<string, unknown>;
+  const schema = useMemo(() => withItemDefaults(manifest.config_schema as Record<string, unknown>), [manifest.config_schema]);
   const uiSchema = useMemo(() => ({ ...uiSchemaFromFormats(schema), "ui:submitButtonOptions": { norender: true } }), [schema]);
   const config = (element.config ?? {}) as Record<string, unknown>;
 
   return (
     <Form
       schema={schema} uiSchema={uiSchema} formData={config} validator={validator} widgets={WIDGETS} fields={FIELDS}
+      templates={{ ButtonTemplates: BUTTON_TEMPLATES }}
       liveValidate showErrorList={false} noHtml5Validate idPrefix={`cfg_${element.id}`}
       onChange={(e) => {
         const patch = diffToMergePatch(config, (e.formData ?? {}) as Record<string, unknown>);

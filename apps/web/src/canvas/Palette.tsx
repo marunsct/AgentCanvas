@@ -1,5 +1,6 @@
 /** Node palette (M2-T4): categories from the registry, search, drag onto the canvas (or click to add). */
 import { useMemo, useState } from "react";
+import { useEditor } from "../editor/store";
 import { useMcpConnectors, useNodeTypes, useSetup, useWorkspaceCatalog } from "../api/queries";
 import type { McpConnector } from "../api/generated";
 import type { NodeManifest } from "../api/types";
@@ -18,7 +19,7 @@ interface WorkspaceItem {
 export function Palette() {
   const nodeTypes = useNodeTypes();
   const { data } = nodeTypes;
-  const catalog = useWorkspaceCatalog();
+  const catalog = useWorkspaceCatalog(useEditor((s) => s.workflowId));
   const connectors = useMcpConnectors();
   const [q, setQ] = useState("");
   for (const m of data ?? []) manifestCache.set(m.type, m);
@@ -39,11 +40,11 @@ export function Palette() {
     const needle = q.trim().toLowerCase();
     const items: WorkspaceItem[] = [
       ...(catalog.data?.tools ?? []).map((t) => ({
-        key: `tool:${t.import_path}`, type: "tool.python", label: t.name, hint: "workspace tool",
+        key: `tool:${t.import_path}`, type: "tool.python", label: t.name, hint: t.workflow ? "this workflow's tool" : "shared workspace tool",
         preset: { name: t.name, config: { import_path: t.import_path } },
       })),
       ...(catalog.data?.scripts ?? []).map((sc) => ({
-        key: `script:${sc.import_path}`, type: "core.script", label: sc.name, hint: "workspace script",
+        key: `script:${sc.import_path}`, type: "core.script", label: sc.name, hint: sc.workflow ? "this workflow's script" : "shared workspace script",
         preset: { name: sc.name, config: { import_path: sc.import_path } },
       })),
     ];
