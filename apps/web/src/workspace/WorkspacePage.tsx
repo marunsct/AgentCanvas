@@ -1,10 +1,15 @@
-/** Workspace (M5-T1/T2): the project's code — scripts, tools, custom nodes, events — with ruff diagnostics. */
+/** Workspace (M5-T1/T2): the project's code — scripts, tools, custom nodes, events — with ruff diagnostics.
+ *
+ * S17: opened from a workflow (`/workflows/:id/workspace`) it shows that workflow's own code folder and the shared
+ * code, offers a way back to the workflow, starter code for new files and the Copilot's help with code. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
-import { CodeEditor, type LintItem } from "./CodeEditor";
+import { CodeEditor, type EditorApi, type LintItem } from "./CodeEditor";
+import { CodeHelp } from "./CodeHelp";
+import { KIND_LABEL, starter } from "./starters";
 import { SecretsPanel } from "./SecretsPanel";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
@@ -28,11 +33,32 @@ const POLICY = "sandbox.json";
 const POLICY_TEMPLATE = `${JSON.stringify({ egress: [], inject: [], timeout_s: 30, memory_mb: 512 }, null, 2)}\n`;
 const enc = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
+interface FilesOut {
+  files: FileOut[];
+  folder: string | null;
+}
+
 export function WorkspacePage() {
   const qc = useQueryClient();
+  const { id: workflowId = null } = useParams();
   const [params, setParams] = useSearchParams();
   const selected = params.get("file");
-  const files = useQuery({ queryKey: ["files", PROJECT_ID], queryFn: () => apiFetch<FileOut[]>(`${base()}/files`) });
+  const workflow = useQuery({
+    queryKey: ["workflow-name", workflowId], enabled: Boolean(workflowId),
+    queryFn: () => apiFetch<{ name: string }>(`/workflows/${workflowId}`),
+  });
+  const files = useQuery({
+    queryKey: ["files", PROJECT_ID, workflowId],
+    queryFn: () => workflowId
+      ? apiFetch<FilesOut>(`${base()}/workflow-files/${encodeURIComponent(workflowId)}`)
+      : apiFetch<FileOut[]>(`${base()}/files`).then((list) => ({ files: list, folder: null })),
+  });
+  const folder = files.data?.folder ?? null;
+  const [own, shared] = useMemo(() => {
+    const all = files.data?.files ?? [];
+    return folder ? [all.filter((f) => f.path.startsWith(`${folder}/`)), all.filter((f) => !f.path.startsWith(`${folder}/`))] : [[], all];
+  }, [files.data, folder]);
+  const editorApi = useRef<EditorApi | null>(null);
   const file = useQuery({
     queryKey: ["file", PROJECT_ID, selected], enabled: Boolean(selected),
     queryFn: () => apiFetch<FileContent>(`${base()}/files/${enc(selected!)}`),
@@ -56,10 +82,15 @@ export function WorkspacePage() {
   const create = useMutation({
     mutationFn: ({ path, content = "" }: { path: string; content?: string }) =>
       apiFetch(`${base()}/files/${enc(path)}`, { method: "PUT", json: { content } }),
-    onSuccess: (_, { path }) => { setNewPath(""); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); setParams({ file: path }); },
+    onSuccess: (_, { path }) => {
+      setNewPath("");
+      void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
+      void qc.invalidateQueries({ queryKey: ["workspace-catalog"] });
+      setParams({ file: path });
+    },
   });
   const openPolicy = () => {
-    if (files.data?.some((f) => f.path === POLICY)) setParams({ file: POLICY });
+    if (files.data?.files.some((f) => f.path === POLICY)) setParams({ file: POLICY });
     else create.mutate({ path: POLICY, content: POLICY_TEMPLATE });
   };
   const remove = useMutation({
@@ -68,28 +99,55 @@ export function WorkspacePage() {
   });
   const dirty = draft !== null && draft !== file.data?.content;
   const doSave = () => { if (selected && draft !== null) save.mutate(draft); };
+  const newFile = (path: string) => create.mutate({ path, content: starter(path) });
+  const prefix = folder ? `${folder}/` : "";
+  const fileButton = (f: FileOut) => (
+    <li key={f.path}>
+      <button type="button" className={f.path === selected ? "active" : ""} onClick={() => setParams({ file: f.path })} title={f.path}>
+        {prefix && f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path}
+      </button>
+    </li>
+  );
 
   return (
     <div className="page workspace-page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Workspace</span><span className="spacer" /><ThemeSwitcher /></header>
+      <header className="topbar">
+        <Link to="/" className="brand">AgentCanvas</Link>
+        {workflowId ? (
+          <>
+            <span className="crumb">/ <Link to={`/workflows/${workflowId}`}>{workflow.data?.name ?? "workflow"}</Link> / Workspace</span>
+            <Link to={`/workflows/${workflowId}`} className="back-link" data-testid="back-to-workflow">
+              ← Back to {workflow.data?.name ?? "the workflow"}
+            </Link>
+          </>
+        ) : (
+          <><span className="crumb">/ Workspace</span><Link to="/" className="back-link" data-testid="back-home">← Back to workflows</Link></>
+        )}
+        <span className="spacer" /><ThemeSwitcher />
+      </header>
       <div className="workspace-layout">
         <aside aria-label="workspace files">
-          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) create.mutate({ path: newPath.trim() }); }}>
-            <input placeholder="scripts/new_step.py" value={newPath} onChange={(e) => setNewPath(e.target.value)} aria-label="new file path" />
-            <button type="submit">New</button>
+          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) newFile(newPath.trim()); }}>
+            <input placeholder={`${prefix}scripts/new_step.py`} value={newPath} onChange={(e) => setNewPath(e.target.value)} aria-label="new file path" />
+            <button type="submit">New file</button>
           </form>
+          <div className="row gap wrap" role="group" aria-label="start a new file">
+            {(["scripts", "tools", "nodes"] as const).map((k) => (
+              <button type="button" key={k} className="chip" onClick={() => setNewPath(`${prefix}${k}/`)}
+                title={`Start a ${KIND_LABEL[k].toLowerCase()} in ${prefix || "the shared "}${k}/`}>+ {KIND_LABEL[k]}</button>
+            ))}
+          </div>
           {create.error && <p className="error-text small">{(create.error as Error).message}</p>}
           <button type="button" className="link" onClick={openPolicy}>Sandbox policy</button>
           <QueryStatus q={files} what="workspace files" />
-          <ul className="file-tree">
-            {files.data?.map((f) => (
-              <li key={f.path}>
-                <button type="button" className={f.path === selected ? "active" : ""} onClick={() => setParams({ file: f.path })}>
-                  {f.path}
-                </button>
-              </li>
-            ))}
-          </ul>
+          {folder && (
+            <>
+              <h4 className="tree-head">This workflow's code <span className="muted small">{folder}/</span></h4>
+              <ul className="file-tree" aria-label="this workflow's files">{own.map(fileButton)}</ul>
+              <h4 className="tree-head">Shared code <span className="muted small">every workflow can use it</span></h4>
+            </>
+          )}
+          <ul className="file-tree" aria-label={folder ? "shared files" : "workspace files"}>{shared.map(fileButton)}</ul>
           <SecretsPanel />
         </aside>
         <section aria-label="editor">
@@ -104,15 +162,21 @@ export function WorkspacePage() {
                   Delete
                 </button>
               </div>
-              <CodeEditor path={selected} value={file.data.content} diagnostics={diagnostics} onChange={setDraft} onSave={doSave} />
+              <CodeEditor path={selected} value={file.data.content} diagnostics={diagnostics} onChange={setDraft} onSave={doSave} api={editorApi} />
               <ul className="lint-list" data-testid="lint">
                 {diagnostics.map((d, i) => <li key={i}><b>{d.code}</b> line {d.line}: {d.message}</li>)}
                 {diagnostics.length === 0 && <li className="muted">{selected.endsWith(".py") ? "ruff: no problems" : "no problems"}</li>}
               </ul>
               {save.error && <p className="error-text">{(save.error as Error).message}</p>}
+              {selected.endsWith(".py") && (
+                <CodeHelp workflowId={workflowId} path={selected} content={draft ?? file.data.content} diagnostics={diagnostics}
+                  selection={() => editorApi.current?.selection() ?? ""} onAccept={(code) => editorApi.current?.setText(code)} />
+              )}
             </>
           ) : (
-            <p className="muted">Pick a file. Scripts go in <code>scripts/</code>, tools in <code>tools/</code>, custom widgets in{" "}
+            <p className="muted">Pick a file, or start one with the buttons on the left.{" "}
+              {folder ? <>This workflow's own code goes in <code>{folder}/</code>; code in the shared folders is used by every workflow.{" "}</> : null}
+              Scripts go in <code>scripts/</code>, tools in <code>tools/</code>, custom blocks in{" "}
               <code>nodes/</code> and event handlers in <code>events/</code>.</p>
           )}
         </section>

@@ -110,7 +110,9 @@ async def test_export_zip_runs_its_own_tests(app, api_client, tmp_path):
         capture_output=True, text=True, timeout=240, check=False,
     )  # fmt: skip
     assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-2000:]
-    assert "6 passed" in proc.stdout  # vendored library, builds, the saved case; the service: auth, wait, stream
+    assert (
+        "7 passed" in proc.stdout
+    )  # vendored library, builds, the saved case, workspace code; the service: auth, wait, stream
 
 
 async def test_deploy_kit_for_every_target(api_client, tmp_path):

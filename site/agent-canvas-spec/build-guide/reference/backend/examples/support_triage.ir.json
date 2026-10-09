@@ -1,0 +1,41 @@
+{
+  "ir_version": "1.0",
+  "id": "wf_support_triage",
+  "name": "Support triage",
+  "state": {"channels": [
+    {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"},
+    {"name": "ticket",   "type": {"type": "string"}},
+    {"name": "urgency",  "type": {"type": "string"}},
+    {"name": "summary",  "type": {"type": "string"}},
+    {"name": "approved", "type": {"type": "boolean"}}
+  ]},
+  "resources": [
+    {"id": "r_fast",  "type": "model.chat", "name": "fast_model",  "config": {"model": "openai:gpt-5-mini", "temperature": 0}},
+    {"id": "r_smart", "type": "model.chat", "name": "smart_model", "config": {"model": "anthropic:claude-sonnet-5"}},
+    {"id": "r_send",  "type": "tool.python", "name": "send_reply", "config": {"import_path": "examples.tools:send_reply"}}
+  ],
+  "nodes": [
+    {"id": "n_cls",  "type": "core.llm", "name": "classify", "label": "Classify ticket",
+     "config": {"prompt": "Answer only 'high' or 'low'. How urgent is: {{ state.ticket }}", "output": "urgency"}},
+    {"id": "n_rt",   "type": "core.router", "name": "route_urgency",
+     "config": {"cases": [{"when": "state.urgency == \"high\"", "route": "high"}], "default": "normal"}},
+    {"id": "n_esc",  "type": "core.set", "name": "escalate",
+     "config": {"values": {"summary": "ESCALATED: {{ state.ticket }}"}}},
+    {"id": "n_ok",   "type": "core.approval", "name": "manager_approval",
+     "config": {"show": "summary", "output": "approved"}},
+    {"id": "n_ag",   "type": "core.agent", "name": "reply_drafter", "label": "Reply drafter",
+     "config": {"system_prompt": "Draft a short reply and send it with send_reply.", "approve_tools": ["send_reply"]}}
+  ],
+  "edges": [
+    {"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_cls"}},
+    {"id": "e2", "kind": "flow", "source": {"node": "n_cls"}, "target": {"node": "n_rt"}},
+    {"id": "e3", "kind": "flow", "source": {"node": "n_rt", "port": "route:high"},   "target": {"node": "n_esc"}},
+    {"id": "e4", "kind": "flow", "source": {"node": "n_rt", "port": "route:normal"}, "target": {"node": "n_ag"}},
+    {"id": "e5", "kind": "flow", "source": {"node": "n_esc"}, "target": {"node": "n_ok"}},
+    {"id": "e6", "kind": "flow", "source": {"node": "n_ok"},  "target": {"node": "END"}},
+    {"id": "e7", "kind": "flow", "source": {"node": "n_ag"},  "target": {"node": "END"}},
+    {"id": "w1", "kind": "wiring", "source": {"node": "r_fast"},  "target": {"node": "n_cls", "port": "model"}},
+    {"id": "w2", "kind": "wiring", "source": {"node": "r_smart"}, "target": {"node": "n_ag",  "port": "model"}},
+    {"id": "w3", "kind": "wiring", "source": {"node": "r_send"},  "target": {"node": "n_ag",  "port": "tools"}}
+  ]
+}

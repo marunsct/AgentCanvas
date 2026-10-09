@@ -21,7 +21,7 @@ def import_paths(ctx: ValidationContext) -> Iterator[Diagnostic]:
             yield error(
                 "E080",
                 f"'{el.name}': import path '{path}' must point into the workspace "
-                "(scripts.|tools.|nodes.<module>:<name>)",
+                "(scripts.|tools.|nodes.<module>:<name>, or flows.<workflow>.scripts.<module>:<name>)",
                 node_id=el.id,
                 path="config.import_path",
             )

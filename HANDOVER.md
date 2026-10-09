@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-09, sprint plan re-planned after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) (plan only, no code). Previous update: after Sprint 16 (v0.10.0) and the UI refresh ([#20](https://github.com/marunsct/AgentCanvas/pull/20)).
+- **Last updated:** 2026-10-09, after Sprint 17 (Workspace and editor fixes → v0.11.0). Previous update: the re-plan after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) ([#22](https://github.com/marunsct/AgentCanvas/pull/22)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,22 +14,22 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S16 Any framework as a node → v0.10.0** ([#21](https://github.com/marunsct/AgentCanvas/pull/21), merged `25be73e`): agents from nine frameworks, remote A2A agents and MCP tools as canvas steps; framework badges; Open Agent Spec import and export; a CI job that runs a real agent of each framework |
-| Before that | UI refresh with light, medium and dark themes (#20, merged `24a63fe`); S18 AI Copilot II → v0.8.0 and S19 Export deploy kit → v0.9.0 (#19) |
-| Version in code | API `0.10.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.10.0 (includes the UI refresh) |
-| Git tags | **none pushed.** v0.1.0 … v0.10.0 are all left to the owner (see §2) |
-| Next sprint | **S17 Workspace and editor fixes → v0.11.0** (backlog in [sprint plan §3](docs/agent-canvas-spec/build-guide/13-sprint-plan.md)), then S20 Framework foundation, S21 Design any agent, S22 Whole flows (preview); order in [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan). **Do not start until the owner says so** |
-| Work status | Nothing in progress. S16 merged in #21; the re-plan is docs only |
-| Open PRs | none after the re-plan PR |
+| Last sprint done | **S17 Workspace and editor fixes → v0.11.0** (the S17 PR): each workflow's own code in `flows/<workflow id>/` next to the shared root folders; exports bundle exactly the code a workflow uses (imports followed) with an import test; Copilot code help (write, explain, fix as a diff) and starter files in the Workspace; the Workspace at `/workflows/{id}/workspace` with a way back to the same spot on the canvas; labelled list buttons and empty new list items; a browser check for unlabelled buttons |
+| Before that | S16 Any framework as a node → v0.10.0 ([#21](https://github.com/marunsct/AgentCanvas/pull/21), merged `25be73e`); the re-plan (#22, merged `9140ef9`); UI refresh (#20, merged `24a63fe`) |
+| Version in code | API `0.11.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.11.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.11.0 are all left to the owner (see §2) |
+| Next sprint | **S20 Framework foundation → v0.12.0** (backlog in [sprint plan §3](docs/agent-canvas-spec/build-guide/13-sprint-plan.md)), then S21 Design any agent, S22 Whole flows (preview); order in [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan). **Do not start until the owner says so** |
+| Work status | S17 is in its PR, waiting for the owner to merge (no standing merge grant for S17) |
+| Open PRs | the S17 PR (`claude/project-thread-nz5vdj`) |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S16** (all green locally):
+**Test totals at the end of S17** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 464 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
-| Web unit (vitest) | 76 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 41 | see §5 |
+| API (pytest, Postgres) | 472 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| Web unit (vitest) | 79 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 44 | see §5 |
 | Real frameworks (S16) | 9 frameworks + Agent Spec check | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
@@ -164,7 +164,13 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.10.0 not created (owner).
+- **Release tags** v0.1.0 to v0.11.0 not created (owner).
+- **S17 limits:** event handlers and secrets stay per project; custom block types written in a workflow's folder are
+  registered for the whole project; editing a helper module does not reload the files that import it until they
+  change too; a workflow's folder is named after its id (`flows/wf_…/`), and code a workflow imports from another
+  workflow's folder is bundled but not shown in its Workspace. The per-workflow folder is `flows/`, not
+  `workflows/`, because LlamaIndex Workflows installs a top-level `workflows` package; keep new workspace root
+  folders clear of installed package names.
 - **GitHub Actions** had no runners from 2026-10-08 05:51Z (billing or spending limit, owner to fix); #20 and the
   S16 work were verified locally only.
 - **S16 limits:** a wrapped agent is a black box (its own tools are not gated one by one; declare its side effects);
@@ -206,7 +212,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | `7cca0c6` | v0.8.0, v0.9.0 |
 | UI refresh: themes, restyle, Copilot chat layout | #20 | `24a63fe` | (in v0.10.0) |
 | S16 Any framework as a node | #21 | `25be73e` | v0.10.0 |
-| Framework coverage review and re-plan (S17, S20–S36) | the re-plan PR | (after merge) | — |
+| Framework coverage review and re-plan (S17, S20–S36) | #22 | `9140ef9` | — |
+| S17 Workspace and editor fixes | the S17 PR | (after merge) | v0.11.0 |
 
 ## 11. Sprint-end checklist
 

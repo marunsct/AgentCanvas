@@ -1,5 +1,6 @@
 /** Decision card for a pending interrupt (build-guide/06 §9): tool approval, approval, or input request. */
 import Form from "@rjsf/core";
+import { BUTTON_TEMPLATES, withItemDefaults } from "../ui/rjsfTemplates";
 import { validator } from "../ui/validator";
 import { useState } from "react";
 
@@ -101,7 +102,7 @@ function InputRequest({ payload, onDecide, busy }: { payload: Record<string, unk
       {question && <p>{question}</p>}
       {typeof payload.error === "string" && <p className="error-text" role="alert">Please try again: {payload.error}</p>}
       {schema ? (
-        <Form schema={schema} validator={validator} onSubmit={(e) => onDecide(e.formData)} disabled={busy} />
+        <Form schema={withItemDefaults(schema)} validator={validator} templates={{ ButtonTemplates: BUTTON_TEMPLATES }} onSubmit={(e) => onDecide(e.formData)} disabled={busy} />
       ) : (
         <>
           <pre className="json">{JSON.stringify(payload, null, 2)}</pre>

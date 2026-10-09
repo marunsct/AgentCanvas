@@ -13,7 +13,8 @@
       src/<pkg>/server.py       `make_graph` (ServerRuntime factory) for LangGraph Server / `langgraph dev`
       src/<pkg>/__main__.py     `python -m <pkg> '{"input": ...}'`
       src/agentcanvas/...       the node library the generated code calls (vendored, Apache-2.0)
-      src/scripts|tools|nodes/  the workspace code at export time
+      src/scripts|tools|nodes|flows/   exactly the workspace code the workflow uses (imports followed, S17)
+      tests/test_workspace_code.py   every workspace import path the workflow names imports in the export
       tests/test_smoke.py       builds the graph; replays saved test cases that use mock models
       tests/test_service.py     the service answers the deployment API (offline)
 
@@ -33,7 +34,9 @@ from typing import Any
 from agentcanvas.adapters.langchain import deploykit
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.adapters.langchain.interop import FRAMEWORKS
+from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
 RUNTIME_FILES = [
@@ -50,7 +53,6 @@ RUNTIME_FILES = [
     "workspace/loader.py",
     "workspace/store.py",
 ]
-WORKSPACE_DIRS = ("scripts", "tools", "nodes", "events")
 PINNED = ["langgraph", "langchain", "langchain-core", "deepagents", "jsonschema", "cel-python", "jinja2", "httpx"]
 SERVICE = [  # the HTTP service and where it keeps conversations (S16)
     "fastapi", "uvicorn", "langgraph-checkpoint-sqlite", "aiosqlite", "langgraph-checkpoint-postgres", "psycopg",
@@ -133,8 +135,15 @@ def dependencies(wf: Workflow) -> list[str]:
     return deps
 
 
-def _pyproject(wf: Workflow, pkg: str, version: str) -> str:
-    deps = "".join(f'  "{d}",\n' for d in dependencies(wf))
+def _dist(requirement: str) -> str:
+    return re.split(r"[\[<>=!~ ]", requirement, maxsplit=1)[0].lower().replace("_", "-")
+
+
+def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str] | None = None) -> str:
+    """`extra`: requirements the workspace code declares (requirements.txt); the export's own pins win."""
+    pinned = dependencies(wf)
+    have = {_dist(d) for d in pinned}
+    deps = "".join(f"  {json.dumps(d)},\n" for d in [*pinned, *(r for r in extra or [] if _dist(r) not in have)])
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
@@ -304,6 +313,22 @@ async def test_saved_case(case):
 '''
 
 
+WORKSPACE_IMPORTS = '''"""The workspace code this workflow names is bundled and imports."""
+
+import importlib
+
+import pytest
+
+ENTRY_POINTS = {paths}
+
+
+@pytest.mark.parametrize("import_path", ENTRY_POINTS)
+def test_workspace_code_imports(import_path):
+    module, _, attr = import_path.partition(":")
+    assert hasattr(importlib.import_module(module), attr), import_path
+'''
+
+
 def _exportable_cases(wf: Workflow, cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Cases that run offline: every chat model mocked, no pinned outputs (the export has no debug pins)."""
     models = {name for name, _ in _models(wf)}
@@ -330,8 +355,9 @@ def package(
     secrets = sorted(_secret_names(wf.model_dump(mode="json")))
     cases = _exportable_cases(wf, test_cases or [])
     kit = deploykit.files(wf, deploykit.facts(wf, pkg, version, cases), deploykit.TARGETS[target])
+    found = bundle.collect(workspace, wf.id, wf.model_dump_json(), source) if workspace is not None else None
     files: dict[str, str | bytes] = {
-        "pyproject.toml": _pyproject(wf, pkg, version),
+        "pyproject.toml": _pyproject(wf, pkg, version, found.requirements if found else None),
         "README.md": _readme(wf, pkg, kit.pop("_readme_targets")),
         ".gitignore": ".venv/\n__pycache__/\n.env\ndata/\n",
         **kit,
@@ -351,12 +377,18 @@ def package(
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
     files["src/agentcanvas/adapters/__init__.py"] = ""  # the control plane's adapter registry is not needed
-    if workspace is not None:
-        for d in WORKSPACE_DIRS:
-            base = workspace / d
-            for p in sorted(base.rglob("*")) if base.is_dir() else []:
-                if p.is_file() and "__pycache__" not in p.parts:
-                    files[f"src/{p.relative_to(workspace).as_posix()}"] = p.read_bytes()
+    if workspace is not None:  # exactly the workspace code the workflow uses (S17), and a test that it imports
+        assert found is not None
+        if found.missing:
+            raise InvalidInput(
+                "the workflow uses code that is not in the workspace: "
+                + ", ".join(found.missing)
+                + "; create the file or fix the step's import path, then export again"
+            )
+        for rel in found.files:
+            files[f"src/{rel}"] = (workspace / rel).read_bytes()
+        if found.entry_points:
+            files["tests/test_workspace_code.py"] = WORKSPACE_IMPORTS.format(paths=json.dumps(found.entry_points))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, content in sorted(files.items()):

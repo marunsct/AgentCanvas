@@ -137,6 +137,35 @@ export type Detail1 = string;
 export type Items = string[];
 export type Name7 = string;
 export type Ok = boolean;
+export type Action1 = "write" | "explain" | "fix";
+/**
+ * the file as it is in the editor, unsaved edits included
+ */
+export type Content = string;
+/**
+ * what to write, or what to change
+ */
+export type Instruction = string;
+export type Path1 = string;
+/**
+ * ruff findings shown for the file
+ *
+ * @maxItems 50
+ */
+export type Problems1 = string[];
+/**
+ * the selected lines, when any
+ */
+export type Selection = string | null;
+/**
+ * the whole proposed file, to show as a diff; never saved here
+ */
+export type Code1 = string | null;
+export type Model = string;
+/**
+ * the Copilot's explanation, in plain words
+ */
+export type Text = string;
 /**
  * @minItems 1
  */
@@ -262,7 +291,7 @@ export type Id14 = string | null;
 export type Messages = {
   [k: string]: unknown;
 }[];
-export type Model = string | null;
+export type Model1 = string | null;
 export type Origin = string | null;
 /**
  * why the Copilot cannot answer yet, in plain words
@@ -294,7 +323,7 @@ export type Enabled1 = boolean;
 /**
  * provider:model when separate
  */
-export type Model1 = string | null;
+export type Model2 = string | null;
 /**
  * project conventions the Copilot always reads
  */
@@ -382,7 +411,7 @@ export type ApiKey1 = {
   [k: string]: string;
 } | null;
 export type BaseUrl1 = string | null;
-export type Model2 = string;
+export type Model3 = string;
 export type Active = boolean;
 export type CreatedAt8 = string;
 export type Endpoint1 = string;
@@ -394,7 +423,7 @@ export type VersionId1 = string;
 export type A = string;
 export type B = string;
 export type Added = string[];
-export type Path1 = string;
+export type Path2 = string;
 export type Fields1 = FieldChange[];
 export type Id20 = string;
 export type Name20 = string | null;
@@ -487,7 +516,7 @@ export type MaxTurns = number;
 /**
  * catalog model that plays the user
  */
-export type Model3 = string;
+export type Model4 = string;
 /**
  * who the user is and how they write
  */
@@ -586,19 +615,24 @@ export type Error3 = string | null;
 export type Ok1 = boolean;
 export type Comment3 = string;
 export type Rating = "up" | "down";
-export type Content = string;
-export type Code1 = string;
+export type Content1 = string;
+export type Code2 = string;
 export type Column = number;
 export type EndColumn = number;
 export type EndLine = number;
 export type Line = number;
 export type Message5 = string;
 export type Diagnostics2 = LintItem[];
-export type Path2 = string;
-export type Modified = number;
 export type Path3 = string;
+export type Modified = number;
+export type Path4 = string;
 export type Size = number;
-export type Content1 = string;
+export type Content2 = string;
+export type Files = FileOut[];
+/**
+ * the workflow's own code folder, when `workflow_id` was given
+ */
+export type Folder = string | null;
 /**
  * only runs that ended so (default: any)
  */
@@ -653,7 +687,7 @@ export type Detail3 = ValidationError[];
 /**
  * the file's text
  */
-export type Content2 = string;
+export type Content3 = string;
 export type Format = "csv" | "jsonl";
 export type Split4 = string | null;
 /**
@@ -770,7 +804,7 @@ export type Key = string;
 export type Namespace = string[];
 export type UpdatedAt5 = string | null;
 export type Mode2 = "build" | "ask";
-export type Text = string;
+export type Text1 = string;
 export type ContextWindow = number | null;
 export type Id33 = string;
 export type Label7 = string;
@@ -784,6 +818,10 @@ export type Vision = boolean;
 export type Namespace1 = string;
 export type Parts = string[];
 export type Name30 = string;
+/**
+ * create it in this workflow's own folder (S17)
+ */
+export type WorkflowId6 = string | null;
 export type Writes = string[];
 export type BuiltinTools = string[];
 export type Category1 = string;
@@ -1360,7 +1398,7 @@ export type Rubric1 =
       Criterion,
       Criterion
     ];
-export type WorkflowId6 = string;
+export type WorkflowId7 = string;
 export type Instructions2 = string | null;
 export type Name38 = string | null;
 export type ReviewersPerItem2 = number | null;
@@ -1405,7 +1443,7 @@ export type Stream2 = boolean;
 export type ThreadId9 = string | null;
 export type Diagnostics3 = LintItem[];
 export type Modified1 = number;
-export type Path4 = string;
+export type Path5 = string;
 export type Size1 = number;
 export type RunId7 = string;
 export type Scores4 = ScoreOut[];
@@ -1430,7 +1468,7 @@ export type Enabled5 = boolean;
 /**
  * provider:model when separate
  */
-export type Model4 = string | null;
+export type Model5 = string | null;
 /**
  * project conventions the Copilot always reads
  */
@@ -1452,7 +1490,7 @@ export type BaseUrl4 = string | null;
 /**
  * provider:model, e.g. ollama:llama3.3
  */
-export type Model5 = string;
+export type Model6 = string;
 export type Done1 = boolean;
 /**
  * the project secret the default model's key is read from
@@ -1499,7 +1537,7 @@ export type Id42 = string;
 export type Status14 = string;
 export type Title = string | null;
 export type UpdatedAt6 = string;
-export type WorkflowId7 = string;
+export type WorkflowId8 = string;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
 /**
@@ -1606,6 +1644,8 @@ export interface ApiSchemas {
   CatalogOut?: CatalogOut;
   Channel?: Channel;
   Check?: Check;
+  CodeHelpIn?: CodeHelpIn;
+  CodeHelpOut?: CodeHelpOut;
   CommandBatch?: CommandBatch;
   CommandResult?: CommandResult;
   Connect?: Connect;
@@ -1656,6 +1696,7 @@ export interface ApiSchemas {
   FileContent?: FileContent;
   FileOut?: FileOut;
   FileSave?: FileSave;
+  FilesOut?: FilesOut;
   FilterIn?: FilterIn;
   ForkRequest?: ForkRequest;
   FromRunIn?: FromRunIn;
@@ -2166,6 +2207,31 @@ export interface Check {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "CodeHelpIn".
+ */
+export interface CodeHelpIn {
+  action: Action1;
+  content?: Content;
+  instruction?: Instruction;
+  path: Path1;
+  problems?: Problems1;
+  selection?: Selection;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "CodeHelpOut".
+ */
+export interface CodeHelpOut {
+  code?: Code1;
+  model: Model;
+  text: Text;
+  usage?: Usage;
+}
+export interface Usage {
+  [k: string]: number;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "CommandBatch".
  */
 export interface CommandBatch {
@@ -2440,18 +2506,18 @@ export interface ConversationOut {
   pending?: Pending;
   proposals: Proposals;
   token_cap: TokenCap;
-  usage: Usage;
+  usage: Usage1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ModelInfoOut".
  */
 export interface ModelInfoOut {
-  model?: Model;
+  model?: Model1;
   origin?: Origin;
   problem?: Problem;
 }
-export interface Usage {
+export interface Usage1 {
   [k: string]: number;
 }
 /**
@@ -2463,7 +2529,7 @@ export interface CopilotSettings {
   ask_model?: AskModel;
   base_url?: BaseUrl;
   enabled?: Enabled1;
-  model?: Model1;
+  model?: Model2;
   notes?: Notes;
   privacy?: Privacy;
   source?: Source2;
@@ -2632,7 +2698,7 @@ export interface Value2 {
 export interface DefaultModel {
   api_key?: ApiKey1;
   base_url?: BaseUrl1;
-  model: Model2;
+  model: Model3;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2687,7 +2753,7 @@ export interface ElementChange {
 export interface FieldChange {
   after?: After1;
   before?: Before1;
-  path: Path1;
+  path: Path2;
 }
 export interface After1 {
   [k: string]: unknown;
@@ -2838,7 +2904,7 @@ export interface ExperimentIn {
 export interface Simulation {
   goal?: Goal;
   max_turns?: MaxTurns;
-  model: Model3;
+  model: Model4;
   persona: Persona;
   stop_phrase?: StopPhrase;
 }
@@ -2996,16 +3062,16 @@ export interface FeedbackIn {
  * via the `definition` "FileContent".
  */
 export interface FileContent {
-  content: Content;
+  content: Content1;
   diagnostics?: Diagnostics2;
-  path: Path2;
+  path: Path3;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "LintItem".
  */
 export interface LintItem {
-  code: Code1;
+  code: Code2;
   column: Column;
   end_column: EndColumn;
   end_line: EndLine;
@@ -3018,7 +3084,7 @@ export interface LintItem {
  */
 export interface FileOut {
   modified: Modified;
-  path: Path3;
+  path: Path4;
   size: Size;
 }
 /**
@@ -3026,7 +3092,15 @@ export interface FileOut {
  * via the `definition` "FileSave".
  */
 export interface FileSave {
-  content: Content1;
+  content: Content2;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FilesOut".
+ */
+export interface FilesOut {
+  files: Files;
+  folder?: Folder;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3138,7 +3212,7 @@ export interface Input4 {
  * via the `definition` "ImportIn".
  */
 export interface ImportIn {
-  content: Content2;
+  content: Content3;
   format: Format;
   /**
    * CSV only: columns -> fields
@@ -3385,7 +3459,7 @@ export interface Value3 {
  */
 export interface MessageIn {
   mode?: Mode2;
-  text: Text;
+  text: Text1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3417,6 +3491,7 @@ export interface NamespaceOut {
  */
 export interface NewScript {
   name: Name30;
+  workflow_id?: WorkflowId6;
   writes?: Writes;
 }
 /**
@@ -3701,7 +3776,7 @@ export interface QueueOut {
   reviewers_per_item?: ReviewersPerItem1;
   rubric: Rubric1;
   rules?: Rules;
-  workflow_id: WorkflowId6;
+  workflow_id: WorkflowId7;
 }
 /**
  * per criterion, 0-1, over items two or more people reviewed
@@ -3800,7 +3875,7 @@ export interface Input8 {
 export interface SavedFile {
   diagnostics?: Diagnostics3;
   modified: Modified1;
-  path: Path4;
+  path: Path5;
   size: Size1;
 }
 /**
@@ -3838,7 +3913,7 @@ export interface SettingsOut {
   ask_model?: AskModel1;
   base_url?: BaseUrl3;
   enabled?: Enabled5;
-  model?: Model4;
+  model?: Model5;
   notes?: Notes2;
   privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
@@ -3852,7 +3927,7 @@ export interface SettingsOut {
 export interface SetupIn {
   api_key?: ApiKey5;
   base_url?: BaseUrl4;
-  model: Model5;
+  model: Model6;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3982,7 +4057,7 @@ export interface ThreadOut {
   status: Status14;
   title: Title;
   updated_at: UpdatedAt6;
-  workflow_id: WorkflowId7;
+  workflow_id: WorkflowId8;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

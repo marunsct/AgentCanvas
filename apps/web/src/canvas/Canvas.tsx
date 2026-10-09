@@ -16,6 +16,7 @@ import { allNames, defaultsFromSchema, innerWorkflow, uniqueName } from "../ir/m
 import { useEditor } from "../editor/store";
 import { useCopilot } from "../copilot/copilot";
 import { useRun } from "../run/runStore";
+import { recallView, rememberView } from "../editor/viewMemory";
 import { useUi } from "../editor/ui";
 import { QueryStatus } from "../ui/QueryStatus";
 import { type Clip, copySelection, pasteCommands } from "./clipboard";
@@ -86,19 +87,30 @@ export function Canvas() {
   const lastHint = useRef<string | null>(null);
   const initialized = useNodesInitialized();
   const fitted = useRef(false);
+  // coming back from the Workspace: the zoom and position you left with (S17)
+  const restored = useRef(wf ? recallView(wf.id)?.viewport ?? null : null);
 
   // fit once, after React Flow has measured every node (fitting earlier zooms in on a partial graph)
   useEffect(() => {
     if (initialized && !fitted.current) {
       fitted.current = true;
-      void rf.fitView({ padding: 0.15, maxZoom: 1 });
+      if (restored.current) void rf.setViewport(restored.current);
+      else void rf.fitView({ padding: 0.15, maxZoom: 1 });
     }
   }, [initialized, rf]);
   // entering or leaving a subgraph shows a different graph: fit it once it is measured
   useEffect(() => {
+    if (restored.current) {
+      if (!drill.length) return; // the first render keeps the restored position
+      restored.current = null;
+    }
     const t = setTimeout(() => void rf.fitView({ padding: 0.2, maxZoom: 1, duration: 200 }), 60);
     return () => clearTimeout(t);
   }, [drill, rf]);
+  useEffect(() => () => { // leaving the editor (only once the canvas was shown: not React's dev double mount)
+    const { workflowId, selected: sel, drill: inside } = useEditor.getState();
+    if (fitted.current && workflowId && !inside.length) rememberView(workflowId, { viewport: rf.getViewport(), selected: sel });
+  }, [rf]);
 
   // "Convert to subgraph" (M2-T13): the server computes the refactoring; it lands as ordinary, undoable commands
   useEffect(() => {

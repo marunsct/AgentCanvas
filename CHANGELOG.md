@@ -2,6 +2,22 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.11.0 — Workspace and editor fixes (not tagged yet)
+
+### Added
+- **Each workflow has its own code.** The Workspace opened from a workflow (`/workflows/{id}/workspace`) shows that workflow's files (`flows/<id>/scripts/`, `tools/`, `nodes/`) and, separately, the shared files every workflow can use (`scripts/`, `tools/`, … at the workspace root, unchanged). **+ Create the code file** on a Script step now writes into the workflow's own folder (`flows.<id>.scripts.<file>:run`); the palette shows only this workflow's tools and scripts and the shared ones. `GET /v1/projects/{id}/workflow-files/{wf_id}`; the catalog takes `workflow_id`.
+- **Workspace code imports other workspace code** (`from scripts.textutil import shout`, `from .helpers import x`) the same way in a run, in the sandbox and in an export.
+- **Copilot help in the code editor.** Under a Python file: describe what the code should do and **Write with Copilot**, **Explain** the file or the selected lines, or **Fix** the problems ruff found. Changes come as a diff to **Accept** (an unsaved, undoable edit) or **Reject**; nothing is saved without you. Uses the project's Copilot model and privacy setting. `POST /v1/workflows/{id}/copilot/code`.
+- **Starter files.** **New file** and the "+ Script step", "+ Tool for the AI" and "+ Custom block" chips start from working code for that kind of file.
+- **A way back.** The Workspace says which workflow it belongs to and has **← Back to *workflow name***; going back (or the browser's Back button) returns to the same block selected and the same canvas position.
+
+### Changed
+- **Exports bundle exactly the code the workflow uses**: its own folder's code, the shared modules it imports (found by following imports), data files in its folder, and the packages in `requirements.txt` (workspace root or the workflow's folder). Other workflows' code is left out. A generated `tests/test_workspace_code.py` checks that every code path the workflow names imports inside the export, and an export whose code is missing from the workspace stops with a message naming it.
+
+### Fixed
+- **List fields in block settings** (such as "Tools that need approval" in the AI agent block) showed empty buttons and a new item failed with `Instance type "null" is invalid`. The buttons now read **+ Add**, **Remove**, **↑ Up** and **↓ Down**, and a new item starts empty. The same applies to decision cards in the Inbox.
+- **Every button has a label**: Undo and Redo got names, and a browser check fails on any visible button without one, on every editor tab, dock panel and page.
+
 ## v0.10.0 — Any framework as a node, and a UI refresh (not tagged yet)
 
 ### Added

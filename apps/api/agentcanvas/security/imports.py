@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import os
 
-WORKSPACE_IMPORT_PREFIXES = ("scripts.", "tools.", "nodes.", "events.")
+# shared code at the workspace root, and each workflow's own code under flows/<workflow>/ (S17)
+WORKSPACE_IMPORT_PREFIXES = ("scripts.", "tools.", "nodes.", "events.", "flows.")
 DEV_ONLY_IMPORT_PREFIXES = ("examples.",)  # demo code: importable only in dev/test (review v0.6 V-10)
 
 

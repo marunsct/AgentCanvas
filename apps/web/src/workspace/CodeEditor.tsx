@@ -6,7 +6,7 @@ import { Compartment, EditorState, type Text } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap } from "@codemirror/view";
 import { basicSetup, EditorView } from "codemirror";
-import { useEffect, useRef } from "react";
+import { type MutableRefObject, useEffect, useRef } from "react";
 import { resolved, useTheme } from "../theme/theme";
 
 /** One Dark in the medium and dark themes, the default (light) look otherwise. */
@@ -34,8 +34,15 @@ export function toDiagnostics(doc: Text, items: LintItem[]): Diagnostic[] {
   });
 }
 
-export function CodeEditor({ path, value, diagnostics, onChange, onSave }: {
+/** What the page can do with the open editor (the Copilot reads the selection and puts accepted code in). */
+export interface EditorApi {
+  selection: () => string;
+  setText: (text: string) => void;
+}
+
+export function CodeEditor({ path, value, diagnostics, onChange, onSave, api }: {
   path: string; value: string; diagnostics: LintItem[]; onChange: (text: string) => void; onSave: () => void;
+  api?: MutableRefObject<EditorApi | null>;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -58,7 +65,19 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave }: {
         ],
       }),
     });
-    return () => view.current?.destroy();
+    if (api) {
+      api.current = {
+        selection: () => {
+          const v = view.current;
+          return v ? v.state.selection.ranges.map((r) => v.state.sliceDoc(r.from, r.to)).join("\n").trim() : "";
+        },
+        setText: (text) => {
+          const v = view.current;
+          if (v) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text } }); // an undoable edit
+        },
+      };
+    }
+    return () => { view.current?.destroy(); if (api) api.current = null; };
     // a new editor per file; `value` is only the initial text
   }, [path]);
 

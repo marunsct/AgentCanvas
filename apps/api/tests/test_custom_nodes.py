@@ -81,6 +81,7 @@ def test_catalog_scan_reads_source_without_importing(tmp_path):
         "name": "lookup_order",
         "import_path": "tools.orders:lookup_order",
         "description": "Look up an order by id.",
+        "workflow": None,  # shared code (S17)
     }
     assert [m.type for m in cat.nodes] == ["acme.score", "acme.tag"]
     assert cat.nodes[0].impl == "nodes.acme:score" and cat.nodes[0].provenance == "workspace"
