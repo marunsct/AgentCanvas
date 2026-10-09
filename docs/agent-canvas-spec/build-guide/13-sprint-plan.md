@@ -44,7 +44,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S17** | 2 | Workspace and editor fixes → v0.11.0 | owner's findings 2026-10-09, §3 below | — | 14 | A workspace per workflow, exports bundle its code, a way back to the canvas, Copilot in the code editor, every button labelled (✅ done) |
 | **S20** | 2 | Framework foundation → v0.12.0 | [doc 17](../17-framework-coverage-review.md), doc 12 WS0 | — | 20 | Adapter interface v2, adapter per workflow, `engine` per node, framework picker, portability check, conformance kit (✅ done) |
 | **S21** | 2 | Design any agent → v0.13.0 | doc 17 | — | 22 | The canvas Agent block builds a native agent in nine frameworks; mixed flows run and export (✅ done) |
-| **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to CrewAI, OpenAI Agents, AutoGen and LangGraph through Agent Spec (preview) |
+| **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to LangGraph, WayFlow and OpenAI Agents through Agent Spec (preview) (✅ done) |
 | **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
 | **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
 | **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare |
@@ -507,7 +507,7 @@ drawn agent, plus the exported project's own tests. Deviations:
   separate page, and no new template was added: the S16 framework templates already show mixed flows, and a template
   pinned to one framework would fail on servers without it.
 
-### S22 — Whole flows, preview → v0.14.0 (backlog, not started)
+### S22 — Whole flows, preview → v0.14.0 (✅ done)
 
 | # | Item | Role | Days | Acceptance |
 |---|------|------|-----:|------------|
@@ -516,6 +516,30 @@ drawn agent, plus the exported project's own tests. Deviations:
 | 3 | Gaps report | R | 2 | What each bridge cannot express is listed in the export and in the portability panel |
 | 4 | Export dialog | F | 2 | Framework choice in the export dialog with preview labels |
 | 5 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-09).** `agentcanvas/bridges/` (gaps and the export), `bridges/kit/flowkit.py` (the runner inside the
+export), `api/v1/bridges.py`, the Framework choice and gaps list in the Export box, `tests/test_bridges.py`,
+`e2e/s22.spec.ts`, and `smoke_frameworks.py bridge_<target>` (three new jobs in the `frameworks` CI matrix), which
+ran locally against the real packages: every template exports and its own tests pass on each framework; 4 run end to
+end on LangGraph and WayFlow, 2 on the OpenAI Agents SDK. Deviations:
+- **Targets.** pyagentspec 26.3.1 has no CrewAI loader, and its AutoGen and Microsoft Agent Framework loaders take
+  single agents, not flows, so those are listed as not offered (a single agent goes to any of nine frameworks with
+  S21's export). WayFlow, the Agent Spec reference runtime, takes their place, so flows run on three frameworks:
+  LangGraph, WayFlow and OpenAI Agents SDK (whose generated code takes AI steps, agents and simple paths only).
+- **"5 templates on 3 frameworks"** became 4 on LangGraph and WayFlow and 2 on OpenAI Agents: the other templates
+  use routers with rules, steps side by side, memory or loops over a list, which Agent Spec cannot say; their
+  exports list that in `GAPS.md`, leave a function to write in `steps.py`, and still pass their load test.
+- **No P-diagnostic for the bridge.** The gaps show in the Export box and in `GAPS.md` rather than in Problems: they
+  depend on the chosen export, not on the workflow being wrong.
+- Fixes to the Agent Spec export that any runtime needed: tool steps read the state their settings use, typed
+  agents output their answer, end outputs have defaults, the conversation is not a flow input, and prompts with
+  template logic are reported. Both loaders ignore a question's text, so the runner shows it as a message first.
+
+**Review (2026-10-09).** A review of the sprint's code before merging fixed: a step named after a Python keyword
+(`global`) broke `steps.py` (its function is now `global_`); models with their own secret used the provider's key
+variable; tool steps missed state used with filters or nested fields; Ollama models had no `/v1` on the OpenAI
+Agents path; the Export box hid a failed framework lookup and named every version's download the same. Left as is:
+end outputs of unusual types (enums, unions) get a `null` default, which both loaders accept.
 
 ### S18 — AI Copilot II and debug assistant → v0.8.0
 

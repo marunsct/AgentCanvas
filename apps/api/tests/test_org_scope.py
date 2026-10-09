@@ -108,6 +108,7 @@ CHILD_PARAMS = {
     "policy_id": "PolicyRepo.require filters by the caller's organisation",
     "user_id": "member routes act on the caller's organisation only",
     "org_id": "/me/invitations: the caller's own invitations only",
+    "target": "a framework name, not a stored object (S22 bridge export)",
     "node_id": "an Agent block inside {wf_id}'s workflow (S21)",
     "proposal_id": "a Copilot proposal looked up within the caller's conversation about {wf_id}",
 }

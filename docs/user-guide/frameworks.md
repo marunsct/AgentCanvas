@@ -85,3 +85,10 @@ and exports only the workflow file. Use it to try the framework picker, not in p
 
 For developers: a new framework implements the adapter core, declares what else it can do in a manifest, and must
 pass the conformance kit (`apps/api/agentcanvas/conformance`); see ADR 0018.
+
+## A whole workflow on another framework (preview)
+
+The Export box (Versions tab) can also write a whole workflow for LangGraph through Agent Spec, WayFlow or the
+OpenAI Agents SDK, and lists first what does not carry over. See
+[Export a whole workflow to another framework](export.md#export-a-whole-workflow-to-another-framework-preview).
+

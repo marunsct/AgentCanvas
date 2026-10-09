@@ -32,6 +32,31 @@ Or call `GET /v1/workflows/{id}/export.zip?target=<target>&version=<x.y.z>`, and
 A database is needed when the workflow pauses for people (approvals, questions), keeps memories, or continues chats
 across messages. Without one, the service keeps conversations in a SQLite file on one machine.
 
+## Export a whole workflow to another framework (preview)
+
+In the Export box, **Framework** also offers **LangGraph (through Agent Spec)**, **WayFlow** and **OpenAI Agents
+SDK**, marked *preview*. These write the workflow as an [Open Agent Spec](https://oracle.github.io/agent-spec) flow
+and let that framework's own Agent Spec loader run it, so you get a project for that framework instead of the
+AgentCanvas service.
+
+Before you download, the box lists what does not carry over:
+
+- **Before it runs there**: things the other framework cannot do with this workflow. Typical ones are routers
+  whose rules are more than `state.x == "value"`, steps that run side by side, and steps that only AgentCanvas
+  runs (memory, loops over a list, connectors). A step of the last kind is left for you as a function in
+  `steps.py`; "Set values" steps are written for you. OpenAI Agents SDK flows take only AI steps, agents and
+  simple paths.
+- **What works differently**: for example an agent's tools are not carried over, approvals become plain
+  questions, and runs, history and traces stay in the other framework.
+
+The download holds `flow.json`, a runner (`main.py`, `flowkit.py`), `steps.py`, pinned packages, a README,
+`GAPS.md` with the same list, and tests that run the flow against a fake model server (`uv run pytest`, no key
+needed).
+
+Not offered: AutoGen and Microsoft Agent Framework (their Agent Spec loaders take single agents, not flows) and
+CrewAI (no Agent Spec loader). To take a single AI agent to any of nine frameworks, use **Export as … project** in
+the agent's settings instead (see [Choosing a framework](frameworks.md#design-an-agent-in-any-agent-framework)).
+
 ## What is in the download
 
 | Path | What it is |
