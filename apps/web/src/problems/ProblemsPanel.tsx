@@ -25,9 +25,8 @@ export function ProblemsPanel() {
           </button>
         )}
       </div>
-      {diagnostics.length === 0 ? (
-        <p className="muted ok-text">No problems — the workflow can run.</p>
-      ) : (
+      {counts.error + counts.warning === 0 && <p className="muted ok-text">No problems — the workflow can run.</p>}
+      {diagnostics.length > 0 && (
         <ul>
           {diagnostics.map((d, i) => {
             const el = d.node_id && wf ? findElement(wf, d.node_id) : undefined;

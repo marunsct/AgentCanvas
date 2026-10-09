@@ -29,7 +29,7 @@ updated one wins; fix the other in the same PR.
 |---|---|---|
 | API (pytest, Postgres) | 505 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
 | Web unit (vitest) | 81 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 44 | see §5 |
+| Browser journeys (Playwright, prod build under the prod CSP) | 45 | see §5 |
 | Real frameworks (S16) | 9 frameworks + Agent Spec check | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
