@@ -26,7 +26,8 @@ Target frameworks: **LangChain 1.4.3+ (`langchain[mcp]`), LangGraph 1.2.12+, Dee
 | 13 | [13-deep-review-report.md](./13-deep-review-report.md) | Deep review v0.4 → v0.5: verified API errors, runtime pitfalls, contradictions, decisions (ADRs), scope changes |
 | 14 | [14-deep-review-v0.6.md](./14-deep-review-v0.6.md) | Deep review v0.5 → v0.6: current versions, new verified pitfalls (async-only timeouts, MCP extra, DeltaChannel storage), `ServerRuntime` factories, unused upstream features, new security rules, ADRs 0012–0017 |
 | 15 | [15-concept-evolution-and-new-features.md](./15-concept-evolution-and-new-features.md) | The concept revisited: three contracts, the seven-rung WYSIWYG ladder, language decision, positioning, **events-as-code** for Workspaces, new requirements FR-X-01…24 |
-| 16 | [16-competitive-roadmap.md](./16-competitive-roadmap.md) | Similar products, market gaps, multi-framework tiers and the approved value-first sprint order S15–S32 |
+| 16 | [16-competitive-roadmap.md](./16-competitive-roadmap.md) | Similar products, market gaps, multi-framework tiers and the sprint order S15–S36 (re-planned 2026-10-09) |
+| 17 | [17-framework-coverage-review.md](./17-framework-coverage-review.md) | What the canvas can design per framework today, gaps against "design in any framework, mix them", and the re-plan the owner adopted |
 | **BG** | [**build-guide/**](./build-guide/README.md) | **Start here to build the product:** concepts primer, environment setup, walking-skeleton tutorial with tested reference code (backend + canvas), milestone/ticket plan M0–M9, **sprint plan (S0–S12)**, backend/frontend/compiler guides, testing, deployment, security checklist, FAQ, traceability |
 
 Requirement IDs: `FR-` functional, `NFR-` non-functional, `TR-` technical. Priority: **P0** (MVP), **P1** (GA), **P2** (later).

@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-08, after Sprint 16 (Any framework as a node → v0.10.0) and the UI refresh ([#20](https://github.com/marunsct/AgentCanvas/pull/20)).
+- **Last updated:** 2026-10-09, sprint plan re-planned after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) (plan only, no code). Previous update: after Sprint 16 (v0.10.0) and the UI refresh ([#20](https://github.com/marunsct/AgentCanvas/pull/20)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,13 +14,13 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S16 Any framework as a node → v0.10.0** (the S16 PR, on branch `claude/project-thread-m3m03g`): agents from nine frameworks, remote A2A agents and MCP tools as canvas steps; framework badges; Open Agent Spec import and export; a CI job that runs a real agent of each framework |
+| Last sprint done | **S16 Any framework as a node → v0.10.0** ([#21](https://github.com/marunsct/AgentCanvas/pull/21), merged `25be73e`): agents from nine frameworks, remote A2A agents and MCP tools as canvas steps; framework badges; Open Agent Spec import and export; a CI job that runs a real agent of each framework |
 | Before that | UI refresh with light, medium and dark themes (#20, merged `24a63fe`); S18 AI Copilot II → v0.8.0 and S19 Export deploy kit → v0.9.0 (#19) |
 | Version in code | API `0.10.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.10.0 (includes the UI refresh) |
 | Git tags | **none pushed.** v0.1.0 … v0.10.0 are all left to the owner (see §2) |
-| Next sprint | **S17 Ship to users → v0.11.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)), then S20 onward. Ask the owner before starting it |
-| Work status | S16 PR open, waiting for the owner to merge (no merge grant for S16) |
-| Open PRs | the S16 PR |
+| Next sprint | **S17 Workspace and editor fixes → v0.11.0** (backlog in [sprint plan §3](docs/agent-canvas-spec/build-guide/13-sprint-plan.md)), then S20 Framework foundation, S21 Design any agent, S22 Whole flows (preview); order in [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan). **Do not start until the owner says so** |
+| Work status | Nothing in progress. S16 merged in #21; the re-plan is docs only |
+| Open PRs | none after the re-plan PR |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
 **Test totals at the end of S16** (all green locally):
@@ -51,6 +51,11 @@ These come from the owner in the project chat; they override defaults.
 - **Before each sprint:** review the whole codebase for errors and fix them first. **After each sprint:** an
   end-to-end review (API and browser flows), fix, then merge.
 - **Handover** (2026-10-08): keep this file updated at the end of every sprint.
+- **Re-plan** (2026-10-09): the owner expects the canvas to *design* flows in any widely used framework and mix
+  frameworks in one flow, not only run other frameworks' agents. They adopted the [framework coverage
+  review](docs/agent-canvas-spec/17-framework-coverage-review.md): S17 = their workspace and editor findings, then
+  S20–S22 framework design, old S17–S32 moved to S23–S36. They said to merge the plan PR but **not to start
+  implementation yet**.
 - **UI refresh and S16** (2026-10-08): the owner asked for a modern UI with light, medium and dark themes (done in
   #20), then "merge the pr and start the next sprint" (S16). #20 was merged on local checks while Actions had no
   runners, on the owner's explicit choice. Beyond S16, ask before starting the next sprint and before merging.
@@ -200,7 +205,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | Handover document | #18 | `9c9ef6e` | — |
 | S18 AI Copilot II and debug assistant + S19 Export deploy kit | #19 | `7cca0c6` | v0.8.0, v0.9.0 |
 | UI refresh: themes, restyle, Copilot chat layout | #20 | `24a63fe` | (in v0.10.0) |
-| S16 Any framework as a node | the S16 PR | (after merge) | v0.10.0 |
+| S16 Any framework as a node | #21 | `25be73e` | v0.10.0 |
+| Framework coverage review and re-plan (S17, S20–S36) | the re-plan PR | (after merge) | — |
 
 ## 11. Sprint-end checklist
 

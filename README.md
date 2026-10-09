@@ -115,4 +115,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S19: Export deploy kit (v0.9.0) | ✅ done (#19, built ahead of S16–S17) |
 | UI refresh: light, medium and dark themes | ✅ done (#20) |
 | S16: Any framework as a node (v0.10.0) | ✅ done |
-| S17, S20–S32: ship to users, Knowledge Studio, framework adapters | ⏸ next; value-first order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S17: Workspace and editor fixes (v0.11.0) | ⏸ next; backlog in the [sprint plan](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
+| S20–S22: framework foundation, design any agent in nine frameworks, whole flows (preview) | ⏸ planned after the [framework coverage review](docs/agent-canvas-spec/17-framework-coverage-review.md) |
+| S23–S36: ship to users, Knowledge Studio, framework flows, mixed-flow export | ⏸ planned; order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

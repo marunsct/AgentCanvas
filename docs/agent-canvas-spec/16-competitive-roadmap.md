@@ -1,5 +1,9 @@
-# 16 — Competitive Roadmap (S15–S32)
+# 16 — Competitive Roadmap (S15–S36)
 
+> **Re-planned 2026-10-09** at the owner's request after the [framework coverage review (doc 17)](17-framework-coverage-review.md):
+> framework design and mixed-framework flows move ahead of Ship to users and RAG, and the owner's builder fixes
+> become S17. §7 is the current order; §6 keeps the original scoring for reference.
+>
 > Approved by the owner on 2026-10-07. This order replaces the S15–S19 plan from the Copilot plan v2 and the
 > "S20+ GA backlog" row of the [sprint plan](build-guide/13-sprint-plan.md). Live, editable copy:
 > [AgentCanvas competitive roadmap](https://claude.ai/code/artifact/1d2f1388-cc14-4200-9681-623e5e065bba) (Claude Doc).
@@ -14,10 +18,11 @@ S16, before full per-framework authoring lands.
 - **Ranking rule:** each candidate gets a value score (1–5, from the market gaps in §3) and an effort in sprints;
   the plan runs the highest value per sprint first, with a +1 bump for multi-framework work because it is the
   product's core promise.
-- **Multi-framework in three tiers:** every framework gets Interop in S16; the most-used frameworks then get full
-  canvas authoring and code export one by one, in order of adoption (§4).
+- **Multi-framework in three tiers:** every framework gets Interop in S16; from S20–S22 (re-plan of 2026-10-09)
+  the canvas designs single agents in every framework and mixes them in one flow, then the most-used frameworks get
+  whole-flow authoring and code export one by one, in order of adoption (§4).
 - **Unique feature it unlocks:** compile one workflow to two or more frameworks and compare quality, cost and latency
-  side by side in Evaluation Studio (S21). No competitor found offers this.
+  side by side in Evaluation Studio (S25). No competitor found offers this.
 - Every sprint keeps the standing rule: review the whole codebase for errors first, merge when done, version tags are
   left to the owner.
 
@@ -62,18 +67,24 @@ step debugging · **Full** — authoring plus live debugging, approvals, persist
 | Framework | Interop | Authoring or Full | Sprint | Why this order |
 |---|---|---|---|---|
 | LangChain / LangGraph / Deep Agents | Done | Full, done | — | Most real-world usage |
-| OpenAI Agents SDK | S16 | Full (agent tier) | S21 | Large user base; smallest adapter; unlocks convert-and-compare |
-| Pydantic AI and Agno | S16 | Authoring | S24 | Fast-growing, cheap at Authoring tier; Agno is new to the adapter list |
-| CrewAI | S16 | Full for Flows, Authoring for Crews | S25–S26 | Biggest multi-agent community; moved ahead of Microsoft and ADK |
-| Google ADK | S16 | Full | S27–S28 | Enterprise reach through Google Cloud |
-| Strands and LlamaIndex Workflows | S16 | Authoring | S29 | Smaller share; LlamaIndex pairs with Knowledge Studio |
-| Microsoft Agent Framework (AutoGen's successor) | S16 | Full | S30–S31 | Covers AutoGen users and .NET-leaning enterprises |
-| Mastra (TypeScript) | S16 via MCP or A2A | Authoring | S32 | Needs a Node.js sidecar host |
-| Claude Agent SDK, AG2, others | S16 | Interop only | S16 | Wrapped or remote is enough until demand shows |
+| OpenAI Agents SDK | S16 | Agent design S21; flows and Full (agent tier) S25 | S21, S25 | Large user base; smallest adapter; unlocks convert-and-compare |
+| Pydantic AI and Agno | S16 | Agent design S21; flows Authoring S32 | S21, S32 | Fast-growing, cheap at Authoring tier; Agno is new to the adapter list |
+| CrewAI | S16 | Agent design S21; Full for Flows, Authoring for Crews S27 | S21, S27 | Biggest multi-agent community; moved ahead of Microsoft and ADK |
+| Google ADK | S16 | Agent design S21; flows Full S29–S30 | S21, S29–S30 | Enterprise reach through Google Cloud |
+| Strands and LlamaIndex Workflows | S16 | Agent design S21; flows Authoring S35 | S21, S35 | Smaller share; LlamaIndex pairs with Knowledge Studio |
+| Microsoft Agent Framework (AutoGen's successor) | S16 | Agent design S21; flows Authoring, Full later | S21, S33–S34 | Covers AutoGen users and .NET-leaning enterprises |
+| Mastra (TypeScript) | S16 via MCP or A2A | Authoring | S36 | Needs a Node.js sidecar host |
+| Claude Agent SDK | S16 | Agent design S21 | S21 |
+| AG2, smolagents, Semantic Kernel, Haystack, DSPy, Vercel AI SDK, .NET and Java frameworks | S16 | Interop only (wrapped, A2A or MCP) until users ask | — | Wrapped or remote is enough until demand shows |
 
 - **Portable core plus native extras:** core blocks compile to any framework; framework-only blocks are marked, and a
   portability check says which frameworks a workflow can target.
-- **Convert and compare:** from S21, one click recompiles a workflow for another framework and Evaluation Studio runs
+- **Mixed flows (S21, S28):** each agent on the canvas picks its framework; the flow runs in the LangGraph host with
+  the other frameworks' agents in process (A2A for other languages), and S28 exports and deploys such a flow as one
+  project with typed boundaries between the parts.
+- **Full depth only for the top three** (OpenAI Agents SDK, CrewAI, Google ADK); the rest stop at Authoring until
+  users ask, because each adapter spec sizes Full at 12–24 team-weeks.
+- **Convert and compare:** from S25, one click recompiles a workflow for another framework and Evaluation Studio runs
   both on the same dataset.
 - **Same platform services for all:** runs, inbox, triggers, versions, evals, policies and deployments stay
   framework-neutral, so each adapter inherits them.
@@ -90,7 +101,7 @@ step debugging · **Full** — authoring plus live debugging, approvals, persist
 
 ## 6. Value per sprint
 
-Score = (value + bump) / effort in sprints. Value scores are judgement calls from §3, not measured data.
+Original scoring of 2026-10-07, with the sprint numbers of that plan (see §7 for the current numbers). Score = (value + bump) / effort in sprints. Value scores are judgement calls from §3, not measured data.
 
 | Sprint | Theme | Value | Bump | Effort | Score |
 |---|---|---:|---:|---:|---:|
@@ -114,32 +125,44 @@ Ties are broken by earlier owner decisions (Copilot II and the deploy kit keep t
 
 ## 7. Sprint plan
 
+Current order (re-planned 2026-10-09, [doc 17](17-framework-coverage-review.md)). Release numbers follow merge order;
+the ones below assume each sprint merges in this order.
+
 | Sprint | Release | Theme | Scope | Done when |
 |---|---|---|---|---|
 | S14 | v0.6.0 | AI Copilot I | ✅ merged in #15, including target-framework awareness | — |
-| S15 | v0.7.0 | Open doors | ✅ merged in #17. Deployments as MCP tools and A2A agents (old S17, essentials); MCP connector gallery with about 30 one-click servers (Slack, GitHub, Google Drive, Postgres, browser, search); trace export over OpenTelemetry to Langfuse, Phoenix and Datadog | A workflow is callable from Claude Desktop; 30 connectors pass a smoke test |
-| S16 | v0.10.0 | Any framework as a node | ✅ done. Wrapped Agent node with generated wrappers for OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands, LlamaIndex, Microsoft Agent Framework and Claude Agent SDK; remote A2A agent node; MCP agent node; Agent Spec import and export; framework badge on each node | An agent from each of the nine frameworks runs in a canvas workflow with approvals and traces |
-| S17 | v0.11.0 | Ship to users | Embeddable chat widget and shareable app page per deployment; guardrails block pack (PII redaction, prompt-injection check, moderation, output schema check); template gallery with 25 use-case templates | A deployment is usable by a non-developer from a link; each guardrail has eval cases |
-| S18 | v0.8.0 | AI Copilot II and debug assistant | ✅ merged in #19, ahead of S16–S17 (its draft predated the reorder). Old S15 scope: configure, test, debug and fix | The Copilot tests, debugs and fixes workflows |
-| S19 | v0.9.0 | Export deploy kit | ✅ merged in #19, ahead of S16–S17. Old S16 scope: environment-aware export, four guides, `make doctor`/`make smoke` | Exports are deployable codebases with prerequisites, setup and deploy guides |
-| S20 | v0.12.0 | Knowledge Studio | Document upload and web or Drive ingestion, chunking options, hybrid search on pgvector, citations, retrieval evals | A RAG template beats a baseline on a retrieval eval set |
-| S21 | v0.13.0 | OpenAI Agents SDK adapter | Full agent tier per its adapter spec; portability check; convert-and-compare in Evaluation Studio | One template compiles to both frameworks and compares in one experiment |
-| S22 | v0.14.0 | Model gateway and cost controls | Fallback models, per-workflow budgets, response caching, cost alerts | A budget stops a run; a provider outage fails over |
-| S23 | v0.15.0 | Onboarding and switching | Old S18–S19 beginner items merged (Playground, Simple mode, galleries, Push to GitHub); importers from Langflow, Flowise and n8n JSON | A Langflow export opens and runs on the canvas |
-| S24 | v0.16.0 | Pydantic AI and Agno | Authoring tier | Templates compile and deploy on both |
-| S25–S26 | v0.17.0 | CrewAI adapter | Full for Flows, Authoring for Crews | Conformance suite passes on the portable set |
-| S27–S28 | v0.18.0 | Google ADK adapter | Full | Conformance suite passes |
-| S29 | v0.19.0 | Strands and LlamaIndex Workflows | Authoring tier | Templates compile and deploy on both |
-| S30–S31 | v0.20.0 | Microsoft Agent Framework | Full | Conformance suite passes |
-| S32 | v0.21.0 | Mastra | Authoring tier with a Node.js sidecar host | A TypeScript project exports and runs |
+| S15 | v0.7.0 | Open doors | ✅ merged in #17. Deployments as MCP tools and A2A agents; MCP connector gallery with about 30 one-click servers; trace export over OpenTelemetry to Langfuse, Phoenix and Datadog | A workflow is callable from Claude Desktop; 30 connectors pass a smoke test |
+| S18 | v0.8.0 | AI Copilot II and debug assistant | ✅ merged in #19 | The Copilot tests, debugs and fixes workflows |
+| S19 | v0.9.0 | Export deploy kit | ✅ merged in #19 | Exports are deployable codebases with prerequisites, setup and deploy guides |
+| S16 | v0.10.0 | Any framework as a node | ✅ merged in #21. Wrapped Agent step for nine frameworks; remote A2A and MCP agent steps; Agent Spec import and export; framework badges | An agent from each of the nine frameworks runs in a canvas workflow with approvals and traces |
+| **S17** | v0.11.0 | **Workspace and editor fixes** (owner's findings, 2026-10-09) | A workspace per workflow (plus a shared project library); exports bundle exactly the code the workflow uses; a way back from the Workspace to the workflow; Copilot help in the code editor; every button labelled, starting with the list fields in the AI agent block | A beginner opens a block's code, writes a tool with the Copilot's help, goes back to the canvas, and the export runs with that code; an automated check finds no unlabelled button |
+| **S20** | v0.12.0 | **Framework foundation** | Adapter interface v2 (required core plus optional abilities; model calls moved out of the framework adapter); the runtime picks the adapter per workflow; IR v1.2 with an `engine` per node; framework picker in the editor; portability check (P001–P004) and badges; shared conformance kit | A toy second adapter passes the conformance kit; the editor shows what blocks a workflow from each framework |
+| **S21** | v0.13.0 | **Design any agent** | The canvas Agent block compiles to a native agent in each of the nine frameworks (instructions, model, tools incl. MCP, HTTP and Python, structured output), chosen per block; mixed flows run in the LangGraph host with approvals and traces; a single agent exports as a native project per framework | A flow with an OpenAI, a CrewAI and an ADK agent, all drawn on the canvas, runs and exports; each agent also exports alone and runs with its framework's own runner |
+| **S22** | v0.14.0 | **Whole flows, preview** | Agent Spec bridge: portable flows export to CrewAI, OpenAI Agents, AutoGen and LangGraph through pyagentspec, tested in CI, marked preview | 5 templates export and run on 3 frameworks |
+| S23 | v0.15.0 | Ship to users (was S17) | Embeddable chat widget and shareable app page per deployment; guardrails block pack (PII redaction, prompt-injection check, moderation, output schema check); template gallery with 25 use-case templates | A deployment is usable by a non-developer from a link; each guardrail has eval cases |
+| S24 | v0.16.0 | Knowledge Studio (was S20) | Document upload and web or Drive ingestion, chunking options, hybrid search on pgvector, citations, retrieval evals | A RAG template beats a baseline on a retrieval eval set |
+| S25 | v0.17.0 | OpenAI Agents SDK flows (was S21) | Flow tier and Full agent tier per its adapter spec, on the S20 foundation; convert-and-compare in Evaluation Studio | One template compiles to both frameworks and compares in one experiment |
+| S26 | v0.18.0 | Model gateway and cost controls (was S22) | Fallback models, per-workflow budgets, response caching, cost alerts | A budget stops a run; a provider outage fails over |
+| S27 | v0.19.0 | CrewAI flows (was S25–S26, moved up) | Full for Flows, Authoring for Crews; CrewAI-only blocks | Conformance suite passes on the portable set |
+| S28 | v0.20.0 | Mixed-flow export (new, doc 12 WS7) | Typed contracts between framework parts; one deployable project holding several frameworks (deploy kit installs and vendors each); A2A for parts in other languages | A mixed template deploys with the deploy kit and passes `make smoke` |
+| S29–S30 | v0.21.0 | Google ADK flows (was S27–S28) | Full | Conformance suite passes |
+| S31 | v0.22.0 | Onboarding and switching (was S23) | Beginner items (Playground, Simple mode, galleries, Push to GitHub); importers from Langflow, Flowise and n8n JSON | A Langflow export opens and runs on the canvas |
+| S32 | v0.23.0 | Pydantic AI and Agno flows (was S24) | Authoring tier | Templates compile and deploy on both |
+| S33–S34 | v0.24.0 | Microsoft Agent Framework flows (was S30–S31) | Authoring tier; Full later if users ask | Conformance suite passes on the portable set |
+| S35 | v0.25.0 | Strands and LlamaIndex Workflows flows (was S29) | Authoring tier | Templates compile and deploy on both |
+| S36 | v0.26.0 | Mastra (was S32) | Authoring tier with a Node.js sidecar host | A TypeScript project exports and runs |
 
-Later, if demand shows: real-time co-editing, two-way Git sync, Data Studio, learning loops, and a hosted cloud trial.
+The S17 number now holds the owner's workspace and editor fixes; the old S17 "Ship to users" is S23. Later, if
+demand shows: real-time co-editing, two-way Git sync, Data Studio, learning loops, a hosted cloud trial, and
+authoring for the long-tail frameworks in §4.
 
 ## 8. Risks and open questions
 
 - **Framework churn:** pinned versions per adapter, nightly upstream checks, adapter versions separate from the core.
 - **Estimates:** the adapter specs size each adapter for a team over 12–24 weeks; one or two sprints here assume the
   pace of S9–S14 and may stretch.
+- **Re-plan cost (2026-10-09):** Ship to users and Knowledge Studio move back six and four sprints to make room for
+  S17 and S20–S22.
 - **Interop is not authoring:** wrapped agents are black boxes on the canvas (no per-step debugging inside them); docs
   and badges must say so.
 - **Open question:** a hosted cloud trial is the biggest adoption lever but means running paid infrastructure. Owner's

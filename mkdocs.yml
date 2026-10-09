@@ -50,6 +50,7 @@ nav:
       - Self-improving agents: agent-canvas-spec/09-self-improving-agents.md
       - Concept & new features: agent-canvas-spec/15-concept-evolution-and-new-features.md
       - Competitive roadmap: agent-canvas-spec/16-competitive-roadmap.md
+      - Framework coverage review: agent-canvas-spec/17-framework-coverage-review.md
       - Deep review v0.6: agent-canvas-spec/14-deep-review-v0.6.md
       - History:
           - Improvement plan: agent-canvas-spec/10-improvement-plan.md
