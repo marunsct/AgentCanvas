@@ -32,12 +32,14 @@ from typing import Any
 
 from agentcanvas.adapters.langchain import deploykit
 from agentcanvas.adapters.langchain.codegen import one_line
+from agentcanvas.adapters.langchain.interop import FRAMEWORKS
 from agentcanvas.ir.models import Workflow
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
 RUNTIME_FILES = [
     "__init__.py",
     "adapters/langchain/__init__.py",
+    "adapters/langchain/interop.py",
     "adapters/langchain/nodes.py",
     "adapters/langchain/testing.py",
     "expr.py",
@@ -97,6 +99,15 @@ def _models(wf: Workflow) -> list[tuple[str, str]]:
     return out
 
 
+def _frameworks(wf: Workflow) -> set[str]:
+    """Frameworks of the wrapped agents (`agent.framework` steps), subgraphs included."""
+    out = {str(n.config.get("framework")) for n in wf.nodes if n.type == "agent.framework"}
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            out |= _frameworks(wf.subworkflow(n))
+    return out & set(FRAMEWORKS)
+
+
 def _version(dist: str) -> str | None:
     try:
         return metadata.version(dist)
@@ -110,6 +121,10 @@ def dependencies(wf: Workflow) -> list[str]:
         v = _version(dist)
         extra = {"langchain": "[mcp]", "psycopg": "[binary]", "uvicorn": "[standard]"}.get(dist, "")
         deps.append(f"{dist}{extra}=={v}" if v else f"{dist}{extra}")
+    for framework in sorted(_frameworks(wf)):  # wrapped agents: their framework, at the version CI tests
+        pkg = FRAMEWORKS[framework].package
+        if pkg and pkg not in deps:
+            deps.append(pkg)
     for _, model in _models(wf):
         pkg = PROVIDERS.get(model.partition(":")[0], (None, None))[0]
         if pkg and not any(d.startswith(pkg) for d in deps):

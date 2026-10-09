@@ -1,0 +1,475 @@
+{
+ "component_type": "Flow",
+ "id": "66fb30bf-3cf7-4a28-b193-2b5ee4a0ff4c",
+ "name": "Support desk",
+ "description": null,
+ "metadata": {},
+ "inputs": [
+  {
+   "title": "request",
+   "type": "string"
+  }
+ ],
+ "outputs": [
+  {
+   "title": "category",
+   "type": "string"
+  }
+ ],
+ "start_node": {
+  "$component_ref": "d308655a-6eef-4210-9d52-99ad37ad4f63"
+ },
+ "nodes": [
+  {
+   "$component_ref": "d308655a-6eef-4210-9d52-99ad37ad4f63"
+  },
+  {
+   "$component_ref": "1112c6ea-3775-405b-b870-43f22665c155"
+  },
+  {
+   "$component_ref": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1"
+  },
+  {
+   "$component_ref": "367af254-e859-4a6c-a471-b43a1a47ec5b"
+  },
+  {
+   "$component_ref": "bb7d7bed-1c5f-4d0c-b5cf-f3b68798978c"
+  },
+  {
+   "$component_ref": "be99d532-bfc9-415d-9351-12585fd6985a"
+  },
+  {
+   "$component_ref": "8a3facb0-8acc-499d-a558-8b3f660172b5"
+  },
+  {
+   "$component_ref": "c3ae876c-801f-48fe-ba56-f7cc4516426a"
+  }
+ ],
+ "control_flow_connections": [
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "3eed7853-9c13-4725-b23d-8c8ac79abfdb",
+   "name": "c1",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "d308655a-6eef-4210-9d52-99ad37ad4f63"
+   },
+   "from_branch": null,
+   "to_node": {
+    "$component_ref": "1112c6ea-3775-405b-b870-43f22665c155"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "1563ff7a-bce6-4aed-be63-dc77ac2190aa",
+   "name": "c2",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "1112c6ea-3775-405b-b870-43f22665c155"
+   },
+   "from_branch": null,
+   "to_node": {
+    "$component_ref": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "4cc71e3d-f7dd-4b1a-8003-48fe34252726",
+   "name": "c3",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1"
+   },
+   "from_branch": "question",
+   "to_node": {
+    "$component_ref": "367af254-e859-4a6c-a471-b43a1a47ec5b"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "dffeb9f5-68b0-426c-a932-2449e13046b7",
+   "name": "c4",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1"
+   },
+   "from_branch": "billing",
+   "to_node": {
+    "$component_ref": "bb7d7bed-1c5f-4d0c-b5cf-f3b68798978c"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "b5baa0a5-b281-4410-b3b2-adca8efebd01",
+   "name": "c5",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1"
+   },
+   "from_branch": "default",
+   "to_node": {
+    "$component_ref": "be99d532-bfc9-415d-9351-12585fd6985a"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "253278a8-ea0b-482d-ac70-37aca61f236e",
+   "name": "c6",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "be99d532-bfc9-415d-9351-12585fd6985a"
+   },
+   "from_branch": null,
+   "to_node": {
+    "$component_ref": "8a3facb0-8acc-499d-a558-8b3f660172b5"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "b7810007-6194-42f8-b5e8-288d081239e2",
+   "name": "c7",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "367af254-e859-4a6c-a471-b43a1a47ec5b"
+   },
+   "from_branch": null,
+   "to_node": {
+    "$component_ref": "c3ae876c-801f-48fe-ba56-f7cc4516426a"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "aa8fcb27-abdb-43ad-a107-0eac4c4ecad3",
+   "name": "c8",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "bb7d7bed-1c5f-4d0c-b5cf-f3b68798978c"
+   },
+   "from_branch": null,
+   "to_node": {
+    "$component_ref": "c3ae876c-801f-48fe-ba56-f7cc4516426a"
+   }
+  },
+  {
+   "component_type": "ControlFlowEdge",
+   "id": "f1631428-ff66-427a-85db-2595551bebf8",
+   "name": "c9",
+   "description": null,
+   "metadata": {},
+   "from_node": {
+    "$component_ref": "8a3facb0-8acc-499d-a558-8b3f660172b5"
+   },
+   "from_branch": null,
+   "to_node": {
+    "$component_ref": "c3ae876c-801f-48fe-ba56-f7cc4516426a"
+   }
+  }
+ ],
+ "data_flow_connections": [
+  {
+   "component_type": "DataFlowEdge",
+   "id": "592fc9b6-4a2a-45b4-b168-84d555e22144",
+   "name": "d1",
+   "description": null,
+   "metadata": {},
+   "source_node": {
+    "$component_ref": "d308655a-6eef-4210-9d52-99ad37ad4f63"
+   },
+   "source_output": "request",
+   "destination_node": {
+    "$component_ref": "1112c6ea-3775-405b-b870-43f22665c155"
+   },
+   "destination_input": "request"
+  },
+  {
+   "component_type": "DataFlowEdge",
+   "id": "87457aa4-e640-4bc9-a288-0cdd924d4856",
+   "name": "d2",
+   "description": null,
+   "metadata": {},
+   "source_node": {
+    "$component_ref": "1112c6ea-3775-405b-b870-43f22665c155"
+   },
+   "source_output": "category",
+   "destination_node": {
+    "$component_ref": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1"
+   },
+   "destination_input": "branching_mapping_key"
+  },
+  {
+   "component_type": "DataFlowEdge",
+   "id": "190a0932-8773-431b-90d3-68b48390af44",
+   "name": "d3",
+   "description": null,
+   "metadata": {},
+   "source_node": {
+    "$component_ref": "d308655a-6eef-4210-9d52-99ad37ad4f63"
+   },
+   "source_output": "request",
+   "destination_node": {
+    "$component_ref": "be99d532-bfc9-415d-9351-12585fd6985a"
+   },
+   "destination_input": "request"
+  },
+  {
+   "component_type": "DataFlowEdge",
+   "id": "4ae3d32e-e6a6-4616-8b08-4667c23722e9",
+   "name": "d4",
+   "description": null,
+   "metadata": {},
+   "source_node": {
+    "$component_ref": "be99d532-bfc9-415d-9351-12585fd6985a"
+   },
+   "source_output": "details",
+   "destination_node": {
+    "$component_ref": "8a3facb0-8acc-499d-a558-8b3f660172b5"
+   },
+   "destination_input": "details"
+  },
+  {
+   "component_type": "DataFlowEdge",
+   "id": "699c12a1-eabd-464a-9a01-e1757d636178",
+   "name": "d5",
+   "description": null,
+   "metadata": {},
+   "source_node": {
+    "$component_ref": "1112c6ea-3775-405b-b870-43f22665c155"
+   },
+   "source_output": "category",
+   "destination_node": {
+    "$component_ref": "c3ae876c-801f-48fe-ba56-f7cc4516426a"
+   },
+   "destination_input": "category"
+  }
+ ],
+ "$referenced_components": {
+  "1112c6ea-3775-405b-b870-43f22665c155": {
+   "component_type": "LlmNode",
+   "id": "1112c6ea-3775-405b-b870-43f22665c155",
+   "name": "Classify Request",
+   "description": null,
+   "metadata": {},
+   "inputs": [
+    {
+     "title": "request",
+     "type": "string"
+    }
+   ],
+   "outputs": [
+    {
+     "title": "category",
+     "type": "string"
+    }
+   ],
+   "branches": [
+    "next"
+   ],
+   "llm_config": {
+    "component_type": "OllamaConfig",
+    "id": "775d047e-60c9-4bd0-a5a4-9b54fc5b14e5",
+    "name": "Local Llama",
+    "description": null,
+    "metadata": {},
+    "model_id": "llama3.3",
+    "api_type": "chat_completions",
+    "url": "http://localhost:11434",
+    "api_key": null,
+    "default_generation_parameters": null
+   },
+   "prompt_template": "One word, question or other: {{request}}"
+  },
+  "d308655a-6eef-4210-9d52-99ad37ad4f63": {
+   "component_type": "StartNode",
+   "id": "d308655a-6eef-4210-9d52-99ad37ad4f63",
+   "name": "Start",
+   "description": null,
+   "metadata": {},
+   "inputs": [
+    {
+     "title": "request",
+     "type": "string"
+    }
+   ],
+   "outputs": [
+    {
+     "title": "request",
+     "type": "string"
+    }
+   ],
+   "branches": [
+    "next"
+   ]
+  },
+  "341697eb-8f5d-4467-98ff-2ecf33b1b9c1": {
+   "component_type": "BranchingNode",
+   "id": "341697eb-8f5d-4467-98ff-2ecf33b1b9c1",
+   "name": "Route",
+   "description": null,
+   "metadata": {},
+   "inputs": [
+    {
+     "description": "Next branch name in the flow",
+     "title": "branching_mapping_key",
+     "type": "string"
+    }
+   ],
+   "outputs": [],
+   "branches": [
+    "billing",
+    "default",
+    "question"
+   ],
+   "mapping": {
+    "question": "question",
+    "billing": "billing"
+   }
+  },
+  "be99d532-bfc9-415d-9351-12585fd6985a": {
+   "component_type": "InputMessageNode",
+   "id": "be99d532-bfc9-415d-9351-12585fd6985a",
+   "name": "Ask",
+   "description": null,
+   "metadata": {},
+   "inputs": [
+    {
+     "title": "request",
+     "type": "string"
+    }
+   ],
+   "outputs": [
+    {
+     "title": "details",
+     "type": "string"
+    }
+   ],
+   "branches": [
+    "next"
+   ],
+   "message": "What do you mean by {{request}}?"
+  },
+  "8a3facb0-8acc-499d-a558-8b3f660172b5": {
+   "component_type": "OutputMessageNode",
+   "id": "8a3facb0-8acc-499d-a558-8b3f660172b5",
+   "name": "Say",
+   "description": null,
+   "metadata": {},
+   "inputs": [
+    {
+     "title": "details",
+     "type": "string"
+    }
+   ],
+   "outputs": [],
+   "branches": [
+    "next"
+   ],
+   "message": "Thanks: {{details}}"
+  },
+  "c3ae876c-801f-48fe-ba56-f7cc4516426a": {
+   "component_type": "EndNode",
+   "id": "c3ae876c-801f-48fe-ba56-f7cc4516426a",
+   "name": "End",
+   "description": null,
+   "metadata": {},
+   "inputs": [
+    {
+     "title": "category",
+     "type": "string"
+    }
+   ],
+   "outputs": [
+    {
+     "title": "category",
+     "type": "string"
+    }
+   ],
+   "branches": [],
+   "branch_name": "next"
+  },
+  "367af254-e859-4a6c-a471-b43a1a47ec5b": {
+   "component_type": "AgentNode",
+   "id": "367af254-e859-4a6c-a471-b43a1a47ec5b",
+   "name": "Answer",
+   "description": null,
+   "metadata": {},
+   "inputs": [],
+   "outputs": [],
+   "branches": [
+    "next"
+   ],
+   "agent": {
+    "component_type": "Agent",
+    "id": "871b1883-8f07-479d-9db4-c287ee07a0ef",
+    "name": "helper",
+    "description": null,
+    "metadata": {},
+    "inputs": [],
+    "outputs": [],
+    "llm_config": {
+     "component_type": "OpenAiConfig",
+     "id": "5e1673bb-78a2-4f06-8298-a02b4852b1a4",
+     "name": "GPT",
+     "description": null,
+     "metadata": {},
+     "model_id": "gpt-5.5",
+     "api_type": "chat_completions",
+     "api_key": null,
+     "default_generation_parameters": null
+    },
+    "system_prompt": "Answer briefly.",
+    "tools": [],
+    "toolboxes": [],
+    "human_in_the_loop": true
+   }
+  },
+  "bb7d7bed-1c5f-4d0c-b5cf-f3b68798978c": {
+   "component_type": "AgentNode",
+   "id": "bb7d7bed-1c5f-4d0c-b5cf-f3b68798978c",
+   "name": "Billing desk",
+   "description": null,
+   "metadata": {},
+   "inputs": [],
+   "outputs": [],
+   "branches": [
+    "next"
+   ],
+   "agent": {
+    "component_type": "A2AAgent",
+    "id": "e906b41f-864c-4d2a-9289-70eb084f503e",
+    "name": "billing",
+    "description": null,
+    "metadata": {},
+    "inputs": [],
+    "outputs": [],
+    "agent_url": "https://billing.example.com/.well-known/agent-card.json",
+    "connection_config": {
+     "component_type": "A2AConnectionConfig",
+     "id": "b96c901d-b7bc-4913-a539-75194ffa149d",
+     "name": "conn",
+     "description": null,
+     "metadata": {},
+     "timeout": 90.0,
+     "headers": null,
+     "verify": true,
+     "key_file": null,
+     "cert_file": null,
+     "ssl_ca_cert": null
+    },
+    "session_parameters": {
+     "timeout": 60.0,
+     "poll_interval": 2.0,
+     "max_retries": 5
+    }
+   }
+  }
+ },
+ "agentspec_version": "25.4.2"
+}

@@ -481,6 +481,14 @@ class Resources:
             return self._overrides[name]
         return middleware(type_, config, models=models, tools=tools)
 
+    @property
+    def http_transport(self) -> Any:
+        return self._http_transport
+
+    def resolve(self, value: Any) -> Any:
+        """A config value with `{"$secret": name}` replaced by the project's secret."""
+        return self._resolve(value)
+
     def _resolve(self, value: Any) -> Any:
         if isinstance(value, dict) and "$secret" in value:
             key = value["$secret"]

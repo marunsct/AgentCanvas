@@ -24,6 +24,11 @@ export const EFFECT_ICONS: Record<string, [string, string]> = {
 function Badges({ data }: { data: CanvasData }) {
   return (
     <span className="badges">
+      {data.framework && (
+        <span className="badge framework" title={data.framework.title} data-testid={`framework-${data.name}`}>
+          {data.framework.text}
+        </span>
+      )}
       {data.blast && (
         <span className={`badge blast${data.blast.ungated ? " err" : ""}`} data-testid={`blast-${data.name}`}
           title={`${data.blast.effects.map((e) => EFFECT_ICONS[e]?.[1] ?? e).join(", ")}${data.blast.ungated ? " — no human approval before it" : ""}`}>

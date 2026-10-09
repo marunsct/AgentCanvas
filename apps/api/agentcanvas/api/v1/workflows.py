@@ -10,8 +10,11 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import agentspec
 from agentcanvas.adapters import get_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
+from agentcanvas.errors import InvalidInput
+from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
 from agentcanvas.services.workflows import WorkflowService, WorkflowView
 from agentcanvas.settings import Settings
@@ -164,6 +167,47 @@ async def validate_workflow(wf_id: str, svc: WorkflowService = Depends(service))
 async def get_code(wf_id: str, svc: WorkflowService = Depends(service)) -> str:
     view = await svc.get(wf_id)
     return get_adapter(view.workflow.framework).generate(view.workflow, svc.registry(view.row.project_id))
+
+
+# ------------------------------------------------------------------ Agent Spec (S16) ----
+class AgentSpecExport(BaseModel):
+    spec: dict[str, Any]
+    report: list[str]
+
+
+class AgentSpecImport(BaseModel):
+    spec: dict[str, Any]
+    name: str | None = Field(None, min_length=1, max_length=200)
+
+
+class AgentSpecImported(WorkflowOut):
+    report: list[str]
+
+
+@router.get("/workflows/{wf_id}/agent-spec", response_model=AgentSpecExport)
+async def export_agent_spec(wf_id: str, svc: WorkflowService = Depends(service)) -> AgentSpecExport:
+    """The workflow as an Open Agent Spec flow, with what Agent Spec cannot express."""
+    view = await svc.get(wf_id)
+    spec, report = agentspec.export_flow(view.workflow, view.row.layout)
+    return AgentSpecExport(spec=spec, report=report)
+
+
+@router.post("/projects/{project_id}/workflows/agent-spec", response_model=AgentSpecImported, status_code=201)
+async def import_agent_spec(
+    project_id: str,
+    body: AgentSpecImport,
+    response: Response,
+    svc: WorkflowService = Depends(service),
+    user: CurrentUser = Depends(current_user),
+) -> AgentSpecImported:
+    """A new workflow from an Open Agent Spec flow or agent."""
+    try:
+        ir, report, layout = agentspec.import_flow(body.spec, wf_id=new_id("wf"), name=body.name)
+    except agentspec.AgentSpecError as exc:
+        raise InvalidInput(str(exc)) from exc
+    view = await svc.create_from_ir(project_id, ir, layout, user.id)
+    response.headers["Location"] = f"/v1/workflows/{view.row.id}"
+    return AgentSpecImported(**_out(view, response).model_dump(), report=report)
 
 
 # ------------------------------------------------------------------ refactorings (M2-T13) ----

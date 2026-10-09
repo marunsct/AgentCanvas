@@ -1,0 +1,71 @@
+{
+  "type": "agent.mcp",
+  "kind": "runtime",
+  "label": "Remote agent (MCP)",
+  "category": "AI",
+  "icon": "plug",
+  "color": "#4B5563",
+  "description": "Calls one tool of an MCP server as a step, for example an agent published as an MCP tool. Plug an “App connector (MCP)” block into its tools input and name the tool.",
+  "inputs": [
+    {
+      "name": "tools",
+      "type": "Tool",
+      "required": true,
+      "multi": true,
+      "description": "The MCP server (App connector) whose tool this step calls."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go when the agent has answered: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "tool",
+      "output"
+    ],
+    "properties": {
+      "tool": {
+        "type": "string",
+        "title": "Tool",
+        "minLength": 1,
+        "description": "The tool's name, as “Browse tools” on the connector lists it."
+      },
+      "arguments": {
+        "type": "object",
+        "title": "Arguments",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "default": {},
+        "description": "The tool's arguments; each value may insert data with {{ state.<field> }}."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save the answer in",
+        "format": "channel",
+        "description": "The data field that receives the agent's answer. Choose `messages` to add it to the chat."
+      },
+      "approve": {
+        "type": "boolean",
+        "title": "Ask a person before it runs",
+        "default": false,
+        "description": "Pause with an approval card showing what will be sent; a rejection skips the agent."
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "interrupts": true,
+  "side_effects": [
+    "spend",
+    "external_write"
+  ],
+  "stability": "beta"
+}

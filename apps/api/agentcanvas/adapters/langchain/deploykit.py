@@ -129,7 +129,9 @@ TARGETS: dict[str, Target] = {
             [MAKE, PYTHON, UV,
              Tool("gcloud", ["gcloud", "--version"], "builds and deploys on Google Cloud",
                   "https://cloud.google.com/sdk/docs/install")],
-            [("GCP_PROJECT", "your Google Cloud project id"), ("GCP_REGION", "the region, e.g. europe-west1")],
+            [("GCP_PROJECT", "your Google Cloud project id"), ("GCP_REGION", "the region, e.g. europe-west1"),
+             ("GCP_SERVICE_ACCOUNT", "optional: the account the service runs as (default: the project's compute "
+              "account); the deploy lets it read the secrets")],
             "Cloud SQL for PostgreSQL (DATABASE_URL)", True,
             "1 CPU / 1 GiB per instance, 0 to 5 instances, 80 concurrent requests each.",
         ),
@@ -482,6 +484,8 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregi
 gcloud artifacts repositories describe "$REPO" --location "$GCP_REGION" --project "$GCP_PROJECT" >/dev/null 2>&1 ||
   gcloud artifacts repositories create "$REPO" --repository-format docker --location "$GCP_REGION" --project "$GCP_PROJECT"
 gcloud builds submit --tag "$IMAGE" --project "$GCP_PROJECT" .
+# the service runs as this account; it must be able to read the secrets below
+SA=${{GCP_SERVICE_ACCOUNT:-$(gcloud projects describe "$GCP_PROJECT" --format 'value(projectNumber)')-compute@developer.gserviceaccount.com}}
 for var in {" ".join(stored)}; do
   name="{slug}-$(echo "$var" | tr 'A-Z_' 'a-z-')"
   value="${{!var:-}}"
@@ -489,10 +493,12 @@ for var in {" ".join(stored)}; do
   gcloud secrets describe "$name" --project "$GCP_PROJECT" >/dev/null 2>&1 ||
     gcloud secrets create "$name" --replication-policy automatic --project "$GCP_PROJECT"
   printf %s "$value" | gcloud secrets versions add "$name" --data-file=- --project "$GCP_PROJECT" >/dev/null
+  gcloud secrets add-iam-policy-binding "$name" --member "serviceAccount:$SA" \\
+    --role roles/secretmanager.secretAccessor --project "$GCP_PROJECT" >/dev/null
 done
 gcloud run deploy {slug} --image "$IMAGE" --region "$GCP_REGION" --project "$GCP_PROJECT" \\
   --port 8000 --cpu 1 --memory 1Gi --min-instances 0 --max-instances 5 --concurrency 80 --timeout 600 \\
-  --allow-unauthenticated --set-secrets "{sets}"
+  --allow-unauthenticated --service-account "$SA" --set-secrets "{sets}"
 echo "Deployed. Next: make smoke URL=$(gcloud run services describe {slug} --region "$GCP_REGION" \\
   --project "$GCP_PROJECT" --format 'value(status.url)')"
 """,
@@ -570,13 +576,15 @@ echo "Deployed {slug} ($REVISION). Point your load balancer at port 8000, then: 
 """,
         }
     # azure
-    secret_args = " ".join(f'{v.lower().replace("_", "-")}="${{{v}:-unset}}"' for v in stored)
+    secret_args = " ".join(
+        f'{v.lower().replace("_", "-")}="${{{v}:-unset}}"' for v in stored
+    )  # unset: DATABASE_URL only
     env_args = " ".join(f"{v}=secretref:{v.lower().replace('_', '-')}" for v in stored)
     return {
         "deploy/azure/deploy.sh": f"""#!/usr/bin/env bash
 # Build in Azure Container Registry and run on Azure Container Apps; settings become app secrets (docs/3-DEPLOY.md).
 set -euo pipefail
-{_load_env_sh()}for v in AZ_RESOURCE_GROUP AZ_ACR_NAME AZ_CONTAINERAPP_ENV; do
+{_load_env_sh()}for v in AZ_RESOURCE_GROUP AZ_ACR_NAME AZ_CONTAINERAPP_ENV {" ".join(secret_vars)}; do
   [ -n "${{!v:-}}" ] || {{ echo "set $v in .env"; exit 1; }}
 done
 IMAGE="$AZ_ACR_NAME.azurecr.io/{slug}:${{TAG:-$(date +%Y%m%d-%H%M%S)}}"

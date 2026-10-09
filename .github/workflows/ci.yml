@@ -45,6 +45,29 @@ jobs:
       - run: uv sync --frozen
       - run: uv run python scripts/smoke_mcp_gallery.py
 
+  frameworks:  # S16: a real agent from each framework runs as a canvas step against a fake model server
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:  # versions match interop.FRAMEWORKS (what exports install); extras pick the OpenAI client
+          - { check: openai_agents, with: "openai-agents==0.23.1" }
+          - { check: crewai, with: "crewai==1.15.25" }
+          - { check: google_adk, with: "google-adk==2.11.0 litellm" }
+          - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.54.0" }
+          - { check: agno, with: "agno==3.1.1 openai" }
+          - { check: strands, with: "strands-agents[openai]==1.58.1" }
+          - { check: llamaindex, with: "llama-index-workflows==2.25.0" }
+          - { check: microsoft_agent_framework, with: "agent-framework-core==1.20.0 agent-framework-openai" }
+          - { check: claude_agent_sdk, with: "claude-agent-sdk==0.2.164" }
+          - { check: agentspec, with: "pyagentspec==26.3.1" }
+    defaults: { run: { working-directory: apps/api } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --frozen
+      - run: uv run $(printf -- '--with %s ' ${{ matrix.with }}) python scripts/smoke_frameworks.py ${{ matrix.check }}
+
   web:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/web } }

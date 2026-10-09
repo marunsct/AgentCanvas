@@ -6,6 +6,7 @@ import { apiFetch } from "../api/client";
 import { signInEnabled, signOut } from "../api/auth";
 import { PROJECT_ID, useSetup, useTemplates, useWorkflows } from "../api/queries";
 import { can, ME } from "../api/session";
+import { AgentSpecImport, type ImportOut } from "../release/AgentSpec";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
@@ -16,6 +17,13 @@ export function HomePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [name, setName] = useState("");
+  const [imported, setImported] = useState<ImportOut | null>(null);
+  const onImported = (out: ImportOut) => {
+    void qc.invalidateQueries({ queryKey: ["workflows"] });
+    // a file AgentCanvas wrote comes back exactly: open it; otherwise show what was approximated first
+    if (out.report.every((r) => r.startsWith("Restored exactly"))) navigate(`/workflows/${out.id}`);
+    else setImported(out);
+  };
   const create = useMutation({
     mutationFn: (body: { name: string; template?: string }) =>
       apiFetch<{ id: string }>(`/projects/${PROJECT_ID}/workflows`, { method: "POST", json: body }),
@@ -81,6 +89,15 @@ export function HomePage() {
           ))}
         </div>
         {create.error && <p className="error-text">{(create.error as Error).message}</p>}
+        <h3>…or bring one from another agent framework</h3>
+        <AgentSpecImport projectId={PROJECT_ID} onDone={onImported} />
+        {imported && (
+          <div className="notes small" data-testid="agentspec-notes">
+            <p>Imported <b>{imported.name}</b>. Check these before running it:</p>
+            <ul>{imported.report.map((r) => <li key={r}>{r}</li>)}</ul>
+            <Link to={`/workflows/${imported.id}`} className="button primary">Open {imported.name}</Link>
+          </div>
+        )}
       </section>
       </>}
       <section>

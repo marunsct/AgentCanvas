@@ -1,0 +1,104 @@
+{
+  "type": "agent.a2a",
+  "kind": "runtime",
+  "label": "Remote agent (A2A)",
+  "category": "AI",
+  "icon": "globe",
+  "color": "#0891B2",
+  "description": "Asks an agent running elsewhere over the Agent2Agent protocol (A2A), whatever framework it uses. Paste its Agent Card address. When the remote agent needs more information, the run pauses and asks a person.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go when the agent has answered: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "url",
+      "output"
+    ],
+    "properties": {
+      "url": {
+        "type": "string",
+        "title": "Agent address",
+        "format": "uri",
+        "pattern": "^https?://",
+        "description": "The Agent Card URL (…/.well-known/agent-card.json) or the agent's A2A endpoint."
+      },
+      "prompt": {
+        "type": "string",
+        "title": "What to send the agent",
+        "format": "prompt",
+        "default": "",
+        "description": "The agent's input. Insert data with {{ state.<field> }}. Leave empty to send the latest chat message."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save the answer in",
+        "format": "channel",
+        "description": "The data field that receives the agent's answer. Choose `messages` to add it to the chat."
+      },
+      "headers": {
+        "type": "object",
+        "title": "Headers",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string",
+              "title": "Value"
+            },
+            {
+              "type": "object",
+              "title": "Secret",
+              "required": [
+                "$secret"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "$secret": {
+                  "type": "string",
+                  "title": "Secret name"
+                }
+              }
+            }
+          ]
+        },
+        "description": "Sent with every request, e.g. Authorization. Use a secret for keys."
+      },
+      "approve": {
+        "type": "boolean",
+        "title": "Ask a person before it runs",
+        "default": false,
+        "description": "Pause with an approval card showing what will be sent; a rejection skips the agent."
+      },
+      "allow_private_network": {
+        "type": "boolean",
+        "title": "Allow private network",
+        "default": false,
+        "description": "Allow addresses on a private or local network (an agent inside your company). Off: such addresses are refused."
+      },
+      "timeout": {
+        "type": "number",
+        "title": "Time limit (seconds)",
+        "default": 120,
+        "minimum": 1,
+        "maximum": 3600
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "template_fields": [
+    "prompt"
+  ],
+  "interrupts": true,
+  "side_effects": [
+    "spend",
+    "external_write"
+  ],
+  "stability": "beta"
+}

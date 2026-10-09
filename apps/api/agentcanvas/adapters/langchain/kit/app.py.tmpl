@@ -273,6 +273,7 @@ app = FastAPI(title=KIT["name"], version=KIT["version"], lifespan=lifespan)
 async def authorised(authorization: str | None = Header(None)) -> None:
     token = (authorization or "").removeprefix("Bearer ").strip()
     keys = [k.strip() for k in os.environ.get("API_KEYS", "").split(",") if k.strip()]
+    keys = [k for k in keys if k.lower() not in ("unset", "none", "changeme")]  # placeholders are never keys
     if not token or not any(hmac.compare_digest(token, k) for k in keys):
         raise HTTPException(401, "a valid API key is required (Authorization: Bearer <key>)")
 
