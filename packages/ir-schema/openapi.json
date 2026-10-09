@@ -813,6 +813,79 @@
         "title": "Breakpoints",
         "type": "object"
       },
+      "BridgeOut": {
+        "properties": {
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/GapOut"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Packages",
+            "type": "array"
+          },
+          "preview": {
+            "default": true,
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "boolean"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "summary",
+          "packages",
+          "runs",
+          "gaps"
+        ],
+        "title": "BridgeOut",
+        "type": "object"
+      },
+      "BridgesOut": {
+        "properties": {
+          "not_offered": {
+            "items": {
+              "$ref": "#/components/schemas/NotOfferedOut"
+            },
+            "title": "Not Offered",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/BridgeOut"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets",
+          "not_offered"
+        ],
+        "title": "BridgesOut",
+        "type": "object"
+      },
       "BucketOut": {
         "properties": {
           "evaluator": {
@@ -3798,6 +3871,24 @@
         "title": "FromTestCasesIn",
         "type": "object"
       },
+      "GapOut": {
+        "properties": {
+          "blocks": {
+            "title": "Blocks",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blocks",
+          "text"
+        ],
+        "title": "GapOut",
+        "type": "object"
+      },
       "GateIn": {
         "properties": {
           "dataset_id": {
@@ -5369,6 +5460,24 @@
           }
         },
         "title": "NodePolicies",
+        "type": "object"
+      },
+      "NotOfferedOut": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "why"
+        ],
+        "title": "NotOfferedOut",
         "type": "object"
       },
       "Observation": {
@@ -8752,7 +8861,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.13.0"
+    "version": "0.14.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -18283,6 +18392,172 @@
           }
         ],
         "summary": "Get Blast Radius",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/bridges": {
+      "get": {
+        "description": "The other frameworks a whole workflow can be exported to through Agent Spec, and what does not carry over.",
+        "operationId": "list_bridges_v1_workflows__wf_id__bridges_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BridgesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Bridges",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/bridges/{target}/export.zip": {
+      "get": {
+        "description": "The workflow as a project for `target` (preview): flow.json, a runner, steps.py, README, GAPS.md and tests.",
+        "operationId": "bridge_export_v1_workflows__wf_id__bridges__target__export_zip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target",
+            "required": true,
+            "schema": {
+              "title": "Target",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bridge Export",
         "tags": [
           "workflows"
         ]

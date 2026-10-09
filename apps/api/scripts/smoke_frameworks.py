@@ -344,11 +344,52 @@ def check_export(framework: str) -> None:
             print(f"{framework}: export ({mode}) tests pass")
 
 
+# ------------------------------------------------------------------ S22: whole flows through Agent Spec ----
+BRIDGE_RUNS = {  # templates whose export must run end to end on each framework (the others stop at a listed gap)
+    "langgraph": {"chat_assistant", "classify_and_route", "data_extraction", "ticket_triage"},
+    "wayflow": {"chat_assistant", "classify_and_route", "data_extraction", "ticket_triage"},
+    "openai_agents": {"chat_assistant", "data_extraction"},
+}
+
+
+def check_bridge(target: str) -> None:
+    """Every template exported for `target`: each export's own tests pass, and the expected ones really run."""
+    import subprocess
+
+    from agentcanvas import bridges
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.workflows import TEMPLATES
+
+    ran = set()
+    for path in sorted(TEMPLATES.glob("*.ir.json")):
+        wf = Workflow.model_validate(json.loads(path.read_text()))
+        name = path.name.removesuffix(".ir.json")
+        runs = not any(g.blocks for g in bridges.gaps(wf, target))
+        with tempfile.TemporaryDirectory() as out:
+            files = bridges.export_files(wf, target)
+            for rel, content in files.items():
+                (Path(out) / rel).parent.mkdir(parents=True, exist_ok=True)
+                (Path(out) / rel).write_text(content)
+            root = Path(out) / next(iter(files)).split("/")[0]
+            cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-rs", "tests"]
+            r = subprocess.run(cmd, cwd=root, check=False, capture_output=True, text=True)
+        if r.returncode:
+            raise SystemExit(f"bridge {target}: {name}'s export tests failed\n{r.stdout[-4000:]}{r.stderr[-2000:]}")
+        if runs:
+            ran.add(name)
+        print(f"bridge {target}: {name} {'runs' if runs else 'exports (a gap blocks running)'}")
+    if missing := BRIDGE_RUNS[target] - ran:
+        raise SystemExit(f"bridge {target}: expected these templates to run: {sorted(missing)}")
+
+
 def main() -> None:
     which = sys.argv[1:] or [*AGENTS, "agentspec"]
     for name in which:
         if name == "agentspec":
             check_agentspec()
+            continue
+        if name.startswith("bridge_"):
+            check_bridge(name.removeprefix("bridge_"))
             continue
         if name not in AGENTS:
             raise SystemExit(f"unknown framework '{name}' (choose from {', '.join(AGENTS)} or agentspec)")

@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-09, after Sprint 21 (Design any agent → v0.13.0). Previous update: after Sprint 20 (Framework foundation → v0.12.0, [#24](https://github.com/marunsct/AgentCanvas/pull/24)).
+- **Last updated:** 2026-10-09, after Sprint 22 (Whole flows, preview → v0.14.0). Previous update: after Sprint 21 (Design any agent → v0.13.0, [#25](https://github.com/marunsct/AgentCanvas/pull/25)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,23 +14,23 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S21 Design any agent → v0.13.0** (the S21 PR): an AI agent block designed as a native agent of nine agent frameworks (`agentcanvas/designs/`: one code writer per framework, golden files in `tests/golden/agents/`); it runs inside the LangGraph host through a local model bridge (`adapters/langchain/bridge.py`, OpenAI and Anthropic APIs backed by the canvas model); code view and per-agent export with its own tests (`designs/export.py`, `designs/kit/`); whole-workflow exports carry the agents; P005/P006; manifest ability `agent_designs`; editor picker groups and a designed-agent panel |
-| Before that | S20 Framework foundation → v0.12.0 ([#24](https://github.com/marunsct/AgentCanvas/pull/24), merged `e92f164`); S17 Workspace and editor fixes → v0.11.0 (#23, merged `cd8c770`) |
-| Version in code | API `0.13.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.13.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.13.0 are all left to the owner (see §2) |
-| Next sprint | **S22 Whole flows, preview → v0.14.0** (backlog in [sprint plan §3](docs/agent-canvas-spec/build-guide/13-sprint-plan.md)), then S23 onward in [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan) |
-| Work status | S21 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks |
-| Open PRs | the S21 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S22 Whole flows, preview → v0.14.0** (the S22 PR): a whole workflow exports to LangGraph (through Agent Spec), WayFlow or the OpenAI Agents SDK as a project around its Agent Spec flow (`agentcanvas/bridges/`, runner `bridges/kit/flowkit.py`), with a gaps report in the Export box and `GAPS.md`; `GET /v1/workflows/{id}/bridges`, `…/bridges/{target}/export.zip`; Agent Spec export fixes; CI jobs `bridge_<target>` |
+| Before that | S21 Design any agent → v0.13.0 ([#25](https://github.com/marunsct/AgentCanvas/pull/25), merged `f308699`); S20 Framework foundation → v0.12.0 (#24, merged `e92f164`) |
+| Version in code | API `0.14.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.14.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.14.0 are all left to the owner (see §2) |
+| Next sprint | **S23 Ship to users → v0.15.0** (was S17; [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)), then S24 onward |
+| Work status | S22 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks |
+| Open PRs | the S22 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S21** (all green locally):
+**Test totals at the end of S22** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 525 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| API (pytest, Postgres) | 534 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
 | Web unit (vitest) | 82 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 46 | see §5 |
-| Real frameworks (S16, S21) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; + Agent Spec check | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
+| Browser journeys (Playwright, prod build under the prod CSP) | 47 | see §5 |
+| Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
@@ -89,6 +89,8 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   adapters/langchain/deploykit.py, kit/   export deploy kit: service template, guides, doctor/smoke/gate (S19)
   adapters/langchain/interop.py   agents from other frameworks, remote A2A and MCP agents as steps (S16; vendored into exports)
   agentspec.py             Open Agent Spec export/import (S16), pure dict mapping, no pyagentspec at runtime
+  designs/                 S21: an Agent block as native code for 9 agent frameworks; export.py + kit/ (per-agent project)
+  bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
   ir/, validation/         Graph IR v1.1 and the validator
@@ -173,7 +175,14 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.13.0 not created (owner).
+- **Release tags** v0.1.0 to v0.14.0 not created (owner).
+- **S22 limits (preview):** whole-flow exports go through Agent Spec, so routers with rules beyond `state.x == "v"`,
+  steps side by side, subflows, and steps only AgentCanvas runs (memory, map, connectors; written by hand in
+  `steps.py`) block running there; agents lose their tools; approvals become text questions; nothing reports back
+  to AgentCanvas. CrewAI (no loader), AutoGen and Microsoft Agent Framework (agents only) are not offered. The
+  OpenAI Agents SDK path uses code pyagentspec generates at start-up, which takes AI steps, agents and simple
+  paths only, with one model client for all models. `pyagentspec[langgraph]` and `wayflowcore` cannot be installed
+  together (anyio pins), so each export installs one.
 - **S21 limits:** designed agents run only on the LangGraph host (ability `agent_designs`); their model calls go
   through the local bridge, so a framework's provider-specific features (hosted tools, built-in web search, prompt
   caching knobs) are not used; add-ons (middleware) and tool kinds other than workspace Python, HTTP and MCP are
@@ -184,7 +193,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   the Claude Agent SDK must be tested under `env -i` (the session's own Claude env vars leak into its CLI).
 - **S20 limits:** model and tool resolution (`Resources`) is still the LangChain adapter's object handed to every
   adapter, and long-term memory, MCP browsing and judges stay on the host adapter; a block's `engine` is recorded
-  and checked but the block runs on the workflow's framework (mixed runs come with S22); the conformance kit has no
+  and checked; S21 made an Agent block designed for an agent framework run as that framework; the conformance kit has no
   tool-calling agent, subgraph or cross-process resume cases yet; Echo is a demo (in-memory pauses, no deploy kit).
 - **S17 limits:** event handlers and secrets stay per project; custom block types written in a workflow's folder are
   registered for the whole project; editing a helper module does not reload the files that import it until they
@@ -236,7 +245,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | Framework coverage review and re-plan (S17, S20–S36) | #22 | `9140ef9` | — |
 | S17 Workspace and editor fixes | #23 | `cd8c770` | v0.11.0 |
 | S20 Framework foundation | #24 | `e92f164` | v0.12.0 |
-| S21 Design any agent | the S21 PR | (after merge) | v0.13.0 |
+| S21 Design any agent | #25 | `f308699` | v0.13.0 |
+| S22 Whole flows, preview | the S22 PR | (after merge) | v0.14.0 |
 
 ## 11. Sprint-end checklist
 

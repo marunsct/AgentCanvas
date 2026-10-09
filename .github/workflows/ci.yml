@@ -61,6 +61,10 @@ jobs:
           - { check: microsoft_agent_framework, with: "agent-framework-core==1.20.0 agent-framework-openai==1.16.0" }
           - { check: claude_agent_sdk, with: "claude-agent-sdk==0.2.164" }
           - { check: agentspec, with: "pyagentspec==26.3.1" }
+          # S22: whole workflows through Agent Spec (preview); versions match bridges.TARGETS
+          - { check: bridge_langgraph, with: "pyagentspec[langgraph]==26.3.1 jinja2" }
+          - { check: bridge_wayflow, with: "wayflowcore==26.3.1 jinja2" }
+          - { check: bridge_openai_agents, with: "pyagentspec==26.3.1 openai-agents==0.23.1" }
     defaults: { run: { working-directory: apps/api } }
     steps:
       - uses: actions/checkout@v7

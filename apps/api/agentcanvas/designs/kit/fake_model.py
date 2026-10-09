@@ -1,8 +1,8 @@
 """A fake model server for the exported agent's tests: no API key or network needed.
 
 It speaks the OpenAI chat-completions and Anthropic messages APIs (both with streaming) and answers
-"pong: <the last user text>". Asked for a typed answer (a JSON Schema response format, or an answer tool such as
-`Answer` or `final_result`), it fills the schema with that text instead.
+"pong: <the last user text>". Asked for a typed answer (a JSON Schema response format, an answer tool such as
+`Answer` or `final_result`, or a tool the request requires), it fills the schema with that text instead.
 """
 
 from __future__ import annotations
@@ -54,6 +54,15 @@ def _answered(messages: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _forced(choice: Any) -> str | None:
+    """The tool the request makes the model call: its name, "*" for any tool, or None."""
+    if choice in ("required", "any") or (isinstance(choice, dict) and choice.get("type") == "any"):
+        return "*"
+    if isinstance(choice, dict):
+        return (choice.get("function") or {}).get("name") or choice.get("name")
+    return None
+
+
 class Fake(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:  # quiet
         pass
@@ -97,8 +106,9 @@ class Fake(BaseHTTPRequestHandler):
         schema = (fmt.get("json_schema") or {}).get("schema") or fmt.get("schema")
         if schema:
             return json.dumps(example(schema, text)), None
+        forced = _forced(body.get("tool_choice"))
         for name, params in tools:
-            if name in ANSWER_TOOLS and not _answered(messages):
+            if (name in ANSWER_TOOLS or forced in (name, "*")) and not _answered(messages):
                 return "", {"id": "call_answer", "name": name, "args": example(params, text)}
         return text, None
 

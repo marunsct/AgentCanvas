@@ -2,6 +2,17 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.14.0 — Whole flows, preview (not tagged yet)
+
+### Added
+- **Export a whole workflow to another framework (preview).** The Export box has a **Framework** choice: besides the AgentCanvas service, **LangGraph (through Agent Spec)**, **WayFlow** and **OpenAI Agents SDK**. The workflow is written as an Open Agent Spec flow and that framework's own Agent Spec loader runs it. The download holds `flow.json`, a runner, `steps.py` for the steps only AgentCanvas runs ("Set values" steps are written for you), pinned packages, a README, `GAPS.md` and tests against a fake model server. `GET /v1/workflows/{id}/bridges`, `GET /v1/workflows/{id}/bridges/{target}/export.zip`.
+- **Gaps report.** Before downloading, the Export box lists what stops the workflow from running on that framework and what works differently there; the same list ships in `GAPS.md`.
+- **CI runs the exports for real**: every template exported to each framework; the exports' own tests pass, and 4 templates run end to end on LangGraph and WayFlow, 2 on the OpenAI Agents SDK.
+
+### Changed
+- Agent Spec export: steps AgentCanvas runs read the state their settings use, a typed agent's answer is its output, outputs that a path may skip have defaults, the conversation is no longer a flow input, and prompts with template logic are listed in the report.
+- The fake model server in exported tests also calls a tool the request requires.
+
 ## v0.13.0 — Design any agent (not tagged yet)
 
 ### Added

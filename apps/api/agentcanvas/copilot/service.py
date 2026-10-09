@@ -75,7 +75,9 @@ def framework_note(framework: str) -> str:
             " An AI agent block (core.agent) can also be designed as a native agent of another framework by setting "
             f"its `engine` to one of: {names}. It then runs as that framework's own code, still using the "
             "workflow's model, and exports as that framework's project. Suggest it when the person wants an agent "
-            "in a particular framework; P005 says what that framework cannot take (middleware, other tool kinds)."
+            "in a particular framework; P005 says what that framework cannot take (middleware, other tool kinds). "
+            "A whole workflow can also be exported (preview, through Agent Spec) to LangGraph, WayFlow or the OpenAI "
+            "Agents SDK from the Export box; it lists what does not carry over before the download."
         )
     return note
 

@@ -11,6 +11,7 @@ from agentcanvas.api.deps import current_user, org_scope, role_policy
 from agentcanvas.api.v1 import (
     annotation,
     auth,
+    bridges,
     catalog,
     copilot,
     datasets,
@@ -43,6 +44,7 @@ signed_in.include_router(org.router)
 signed_in.include_router(projects.router)
 signed_in.include_router(workflows.router)
 signed_in.include_router(designs.router)
+signed_in.include_router(bridges.router)
 signed_in.include_router(copilot.router)
 signed_in.include_router(runs.router)
 signed_in.include_router(tools.router)

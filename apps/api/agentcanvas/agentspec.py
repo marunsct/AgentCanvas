@@ -12,6 +12,7 @@ functions over dicts: no LangChain, no pyagentspec (the CI ``frameworks`` job ch
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from typing import Any
@@ -21,6 +22,7 @@ from agentcanvas.ir.models import IDENT, RESERVED_NAMES, Workflow
 VERSION = "25.4.2"  # 25.4.2 adds A2AAgent; nothing here needs a later one
 _NS = uuid.UUID("6b1f3c0e-6a0e-4f5e-9a51-6167656e7473")
 _STATE_VAR = re.compile(r"\{\{\s*state\.([a-z][a-z0-9_]*)\s*\}\}")
+_STATE_REF = re.compile(r"\bstate\.([a-z][a-z0-9_]*)")  # any use: filters, fields of fields, loops
 _SPEC_VAR = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 _EQUALS = re.compile(r'^\s*state\.([a-z][a-z0-9_]*)\s*==\s*"([^"\\]*)"\s*$')
 _LOCAL = {
@@ -90,7 +92,7 @@ class _Exporter:
             model = str(r.config.get("model", ""))
             provider, _, model_id = model.partition(":")
             url = r.config.get("base_url") or _LOCAL.get(provider)
-            meta = {"agentcanvas": {"model": model}}
+            meta = {"agentcanvas": {"model": model, "resource": r.name}}
             if provider == "openai":
                 cfg = self.comp("OpenAiConfig", r.id, r.name, model_id=model_id)
                 if url:
@@ -129,19 +131,26 @@ class _Exporter:
             names = list(dict.fromkeys(_STATE_VAR.findall(prompt)))
             out_name = str(cfg.get("output", "generated_text"))
             self.outputs[n.id] = [out_name]
+            if "{%" in prompt or "state." in _STATE_VAR.sub("", prompt):
+                self.report.append(f"AI step '{n.name}': its prompt uses template logic (loops, filters or fields of "
+                                   "fields) that Agent Spec prompts cannot express; only plain {{ state.x }} "
+                                   "values are filled in.")  # fmt: skip
             return self.comp(
                 "LlmNode", n.id, n.name, **base,
                 inputs=[self.channel_type(v) for v in names], outputs=[self.text(out_name)],
                 llm_config=model, prompt_template=_STATE_VAR.sub(r"{{\1}}", prompt),
             )  # fmt: skip
         if n.type in ("core.agent", "agent.deep") and needs_model():
+            schema = cfg.get("response_format") if n.type == "core.agent" else None
+            typed = [{**schema, "title": "structured_response"}] if isinstance(schema, dict) and schema else []
+            self.outputs[n.id] = ["structured_response"] if typed else []
             agent = self.comp(
-                "Agent", f"{n.id}/agent", n.name, inputs=[], outputs=[], llm_config=model,
+                "Agent", f"{n.id}/agent", n.name, inputs=[], outputs=typed, llm_config=model,
                 system_prompt=str(cfg.get("system_prompt") or cfg.get("instructions") or ""), tools=[],
             )  # fmt: skip
             self.report.append(f"Agent '{n.name}': its tools and middleware are not exported (Agent Spec lists tools "
                                "per agent; wire them again in the target runtime).")  # fmt: skip
-            return self.comp("AgentNode", n.id, n.name, **base, inputs=[], outputs=[], agent=agent)
+            return self.comp("AgentNode", n.id, n.name, **base, inputs=[], outputs=typed, agent=agent)
         if n.type == "agent.a2a":
             conn = self.comp("A2AConnectionConfig", f"{n.id}/conn", f"{n.name}_connection",
                              timeout=float(cfg.get("timeout", 120)), headers=None, verify=True,
@@ -189,13 +198,14 @@ class _Exporter:
                              inputs=[{"title": "branching_mapping_key", "type": "string"}])  # fmt: skip
         writes = _writes(n)
         self.outputs[n.id] = writes
+        reads = [self.channel_type(v) for v in _reads(n)]  # S22: the state its settings refer to, as tool inputs
         tool = self.comp(
             "ServerTool", f"{n.id}/tool", n.name, description=n.label or n.type, metadata=meta,
-            inputs=[], outputs=[self.channel_type(w) for w in writes], requires_confirmation=False,
+            inputs=reads, outputs=[self.channel_type(w) for w in writes], requires_confirmation=False,
         )  # fmt: skip
         if n.type not in ("core.set", "core.script"):
             self.report.append(f"Step '{n.name}' ({n.type}) is a tool the host runtime must provide.")
-        return self.comp("ToolNode", n.id, n.name, **base, inputs=[], outputs=tool["outputs"], tool=tool)
+        return self.comp("ToolNode", n.id, n.name, **base, inputs=reads, outputs=tool["outputs"], tool=tool)
 
     def run(self) -> tuple[dict[str, Any], list[str]]:
         wf = self.wf
@@ -205,10 +215,14 @@ class _Exporter:
             c.name for c in wf.state.channels if c.io == "inout" and c.name in (wf.settings.input_channels or [])
         ]
         outs = wf.settings.output_channels or [c.name for c in wf.state.channels if c.io == "out"]
+        # the conversation is implicit in Agent Spec (agents read and write it), not a flow input or output
+        chat = {c.name for c in wf.state.channels if c.reducer == "add_messages"}
+        ins, outs = [c for c in ins if c not in chat], [c for c in outs if c not in chat]
         start = self.comp("StartNode", "START", "start", inputs=[self.channel_type(c) for c in ins],
                           outputs=[self.channel_type(c) for c in ins], branches=["next"])  # fmt: skip
-        end = self.comp("EndNode", "END", "end", inputs=[self.channel_type(c) for c in outs],
-                        outputs=[self.channel_type(c) for c in outs], branches=[], branch_name="next")  # fmt: skip
+        # a path may end without writing every output: each gets a default so runtimes accept the flow (S22)
+        ends = [{**self.channel_type(c), "default": _empty(self.channel_type(c))} for c in outs]
+        end = self.comp("EndNode", "END", "end", inputs=ends, outputs=ends, branches=[], branch_name="next")
         self.outputs[start["id"]] = ins
         spec_id = {"START": start["id"], "END": end["id"]}
         nodes = [start]
@@ -301,6 +315,17 @@ def _scrub(x: Any, report: list[str], where: str = "") -> Any:
         else:
             out[k] = _scrub(v, report, where)
     return out
+
+
+def _empty(schema: dict[str, Any]) -> Any:
+    return {"string": "", "array": [], "object": {}, "boolean": False, "integer": 0, "number": 0}.get(
+        str(schema.get("type"))
+    )
+
+
+def _reads(n: Any) -> list[str]:
+    """State fields a step's settings refer to (`{{ state.x }}`), in order of first use."""
+    return list(dict.fromkeys(_STATE_REF.findall(json.dumps(n.config, default=str))))
 
 
 def _writes(n: Any) -> list[str]:
