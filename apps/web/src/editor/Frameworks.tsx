@@ -1,6 +1,10 @@
-/** S20: which framework a workflow (and an AI block) is designed for, and what each installed framework can run. */
-import { useMemo } from "react";
-import { useFrameworks } from "../api/queries";
+/** S20: which framework a workflow (and an AI block) is designed for, and what each installed framework can run.
+ * S21: an Agent block can also be designed as a native agent of an agent framework (OpenAI Agents, CrewAI, ...). */
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { apiDownload, apiFetch, ApiError } from "../api/client";
+import { useAgentFrameworks, useFrameworks } from "../api/queries";
+import type { AgentCodeOut } from "../api/types";
 import type { IRNode } from "../ir/model";
 import { ENGINE_TYPES, portability } from "../ir/portability";
 import { useEditor } from "./store";
@@ -29,7 +33,10 @@ export function FrameworkBadges() {
   const wf = useEditor((s) => s.wf);
   const select = useEditor((s) => s.select);
   const { data: frameworks = [] } = useFrameworks();
-  const fits = useMemo(() => (wf ? portability(wf, frameworks) : []), [wf, frameworks]);
+  const { data: agents = [] } = useAgentFrameworks();
+  const fits = useMemo(
+    () => (wf ? portability(wf, frameworks, new Set(agents.map((a) => a.id))) : []), [wf, frameworks, agents],
+  );
   if (!wf || fits.length === 0) return null;
   return (
     <div className="framework-badges" role="list" aria-label="frameworks this workflow can run on">
@@ -57,18 +64,89 @@ export function EnginePicker({ node }: { node: IRNode }) {
   const framework = useEditor((s) => s.wf?.framework ?? "langchain");
   const dispatch = useEditor((s) => s.dispatch);
   const { data: frameworks = [] } = useFrameworks();
-  if (!ENGINE_TYPES.has(node.type) || (frameworks.length < 2 && !node.engine)) return null;
+  const { data: agents = [] } = useAgentFrameworks();
+  const agentChoices = node.type === "core.agent" ? agents : [];
+  if (!ENGINE_TYPES.has(node.type) || (frameworks.length < 2 && agentChoices.length === 0 && !node.engine)) return null;
   const workflowLabel = frameworks.find((f) => f.id === framework)?.label ?? framework;
+  const known = !node.engine || frameworks.some((f) => f.id === node.engine) || agentChoices.some((a) => a.id === node.engine);
+  const others = frameworks.filter((f) => f.id !== framework || node.engine === f.id);
   return (
     <label>
       Designed for
       <select aria-label="block framework" value={node.engine ?? ""}
         onChange={(e) => dispatch([{ op: "UpdateNode", id: node.id, patch: { engine: e.target.value || null } }])}>
         <option value="">Same as the workflow ({workflowLabel})</option>
-        {frameworks.filter((f) => f.id !== framework || node.engine === f.id).map((f) => (
-          <option key={f.id} value={f.id}>{f.label}</option>
-        ))}
+        {!known && <option value={node.engine ?? ""}>{node.engine} (not available)</option>}
+        {others.length > 0 && (
+          <optgroup label="Workflow frameworks">
+            {others.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </optgroup>
+        )}
+        {agentChoices.length > 0 && (
+          <optgroup label="Agent frameworks (generated as that framework's own code)">
+            {agentChoices.map((a) => (
+              <option key={a.id} value={a.id}>{a.label}{a.installed ? "" : " (not installed here)"}</option>
+            ))}
+          </optgroup>
+        )}
       </select>
     </label>
+  );
+}
+
+/** S21: an Agent block designed for an agent framework: what it runs as, its code, and a project to take away. */
+export function DesignedAgent({ node }: { node: IRNode }) {
+  const workflowId = useEditor((s) => s.workflowId);
+  const irHash = useEditor((s) => s.irHash);
+  const { data: agents = [] } = useAgentFrameworks();
+  const [showCode, setShowCode] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const fw = agents.find((a) => a.id === node.engine);
+  const code = useQuery({
+    queryKey: ["agent-code", workflowId, node.id, irHash],
+    queryFn: () => apiFetch<AgentCodeOut>(`/workflows/${workflowId}/agents/${node.id}/code`),
+    enabled: Boolean(workflowId && fw),
+    retry: false,
+  });
+  if (node.type !== "core.agent" || !fw) return null;
+  const data = code.data;
+  const exportBlocked = (data?.export_problems.length ?? 0) > 0;
+  const download = () => {
+    setExportError(null);
+    apiDownload(`/workflows/${workflowId}/agents/${node.id}/export.zip`, `${node.name}-${fw.id}.zip`)
+      .catch((e: unknown) => setExportError(e instanceof ApiError ? e.message : String(e)));
+  };
+  return (
+    <section className="designed-agent" aria-label="designed agent">
+      <p className="muted">
+        Runs as an agent built with <b>{fw.label}</b> ({fw.packages.join(", ")}). Its model calls still go through this
+        workflow&apos;s model, so runs are traced and costed as usual.
+        {!fw.installed && " This server does not have it installed, so runs here will fail until it is."}
+      </p>
+      {data && data.problems.length > 0 && (
+        <ul className="diag-list">
+          {data.problems.map((p) => <li key={p} className="error">{p}</li>)}
+        </ul>
+      )}
+      {code.error && <p className="error">{code.error instanceof ApiError ? code.error.message : String(code.error)}</p>}
+      <div className="row gap">
+        <button type="button" aria-expanded={showCode} onClick={() => setShowCode((v) => !v)}>
+          {showCode ? "Hide" : "View"} {fw.label} code
+        </button>
+        <button type="button" disabled={!data || exportBlocked} onClick={download}
+          title={exportBlocked ? data?.export_problems.join("\n") : "A runnable project with pinned packages, a README and tests"}>
+          Export as {fw.label} project
+        </button>
+      </div>
+      {exportBlocked && data && data.problems.length === 0 && (
+        <ul className="diag-list">
+          {data.export_problems.map((p) => <li key={p} className="warning">{p}</li>)}
+        </ul>
+      )}
+      {exportError && <p className="error">{exportError}</p>}
+      {showCode && (code.isFetching && !data ? <p className="muted">Generating…</p> : data && (
+        <pre className="code designed-code" aria-label={`${fw.label} code`}>{data.code}</pre>
+      ))}
+    </section>
   );
 }

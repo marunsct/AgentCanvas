@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { apiFetch } from "./client";
 import { can } from "./session";
-import type { AdapterManifest, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
+import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
 import type { McpConnector } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
@@ -72,6 +72,13 @@ export function useManifests(): Map<string, NodeManifest> {
 /** The frameworks this server can run workflows on (S20): abilities and which blocks each runs. */
 export function useFrameworks() {
   return useQuery({ queryKey: ["frameworks"], queryFn: () => apiFetch<AdapterManifest[]>("/frameworks"), staleTime: Infinity });
+}
+
+/** Frameworks an Agent block can be designed for, in their own code (S21). */
+export function useAgentFrameworks() {
+  return useQuery({
+    queryKey: ["agent-frameworks"], queryFn: () => apiFetch<AgentFrameworkOut[]>("/agent-frameworks"), staleTime: Infinity,
+  });
 }
 
 export function useModels() {

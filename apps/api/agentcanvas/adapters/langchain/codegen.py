@@ -14,6 +14,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from agentcanvas import designs
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
@@ -50,7 +51,12 @@ def generate(wf: Workflow, *, format_code: bool = True, registry: Registry | Non
         raise WorkflowHasErrors("; ".join(f"{d['code']} {d['message']}" for d in errors), errors=errors)
     plan = lower(wf, registry)
     source = _env.get_template("graph.py.j2").render(
-        plan=plan, options=_options, refs=_refs, sub_fn=_sub_fn, sub_prefix=_sub_prefix
+        plan=plan,
+        options=_options,
+        refs=_refs,
+        sub_fn=_sub_fn,
+        sub_prefix=_sub_prefix,
+        agent_frameworks=designs.AGENT_FRAMEWORKS,
     )
     return ruff_format(source) if format_code else source
 

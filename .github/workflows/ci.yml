@@ -45,20 +45,20 @@ jobs:
       - run: uv sync --frozen
       - run: uv run python scripts/smoke_mcp_gallery.py
 
-  frameworks:  # S16: a real agent from each framework runs as a canvas step against a fake model server
+  frameworks:  # S16/S21: real agents from each framework, wrapped and drawn on the canvas, against fake models
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:  # versions match interop.FRAMEWORKS (what exports install); extras pick the OpenAI client
+        include:  # versions match interop.FRAMEWORKS and designs.AGENT_FRAMEWORKS (what exports install)
           - { check: openai_agents, with: "openai-agents==0.23.1" }
           - { check: crewai, with: "crewai==1.15.25" }
-          - { check: google_adk, with: "google-adk==2.11.0 litellm" }
+          - { check: google_adk, with: "google-adk==2.11.0 litellm==1.104.2" }
           - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.54.0" }
-          - { check: agno, with: "agno==3.1.1 openai" }
+          - { check: agno, with: "agno==3.1.1 openai==2.54.0" }
           - { check: strands, with: "strands-agents[openai]==1.58.1" }
-          - { check: llamaindex, with: "llama-index-workflows==2.25.0" }
-          - { check: microsoft_agent_framework, with: "agent-framework-core==1.20.0 agent-framework-openai" }
+          - { check: llamaindex, with: "llama-index-workflows==2.25.0 llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1" }
+          - { check: microsoft_agent_framework, with: "agent-framework-core==1.20.0 agent-framework-openai==1.16.0" }
           - { check: claude_agent_sdk, with: "claude-agent-sdk==0.2.164" }
           - { check: agentspec, with: "pyagentspec==26.3.1" }
     defaults: { run: { working-directory: apps/api } }

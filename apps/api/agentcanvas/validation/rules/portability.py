@@ -6,14 +6,20 @@ be one that framework can run, natively or by emulation, as its manifest (`regis
 * P001 error — the framework is not installed, or cannot run this block (or the block cannot have an engine).
 * P002 warning — the framework only emulates this block.
 * P003 info — with more than one framework installed: which others this workflow could move to, and what blocks it.
-* P004 info — a block is designed for another framework than the workflow's; it runs on the workflow's framework
-  until mixed-framework flows arrive.
+* P004 info — a block is designed for another installed framework than the workflow's; it runs on the workflow's
+  framework.
+* P005 error — an Agent block designed for another agent framework (S21) uses something that framework cannot take.
+* P006 warning — that agent framework is not installed on this server, so the block's runs fail.
+
+An Agent block may name an agent framework (`designs.AGENT_FRAMEWORKS`, e.g. OpenAI Agents SDK) as its engine: the
+workflow's framework then runs it as a step in that framework's own code, if it can (the `agent_designs` ability).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 
+from agentcanvas import designs
 from agentcanvas.registry import adapters
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule, warning
 
@@ -45,6 +51,9 @@ def framework_runs_every_block(ctx: ValidationContext) -> Iterator[Diagnostic]:
             continue
         if n.type not in ENGINE_TYPES:
             yield error("P001", f"only AI blocks can name a framework of their own, not '{n.type}'", node_id=n.id)
+            continue
+        if n.engine in designs.AGENT_FRAMEWORKS:
+            yield from _designed(ctx, n, target)
             continue
         engine = installed.get(n.engine)
         if engine is None:
@@ -79,3 +88,23 @@ def portability_summary(ctx: ValidationContext) -> Iterator[Diagnostic]:
             parts.append(f"{p['label']}: blocked by {names}")
     ready = sum(p["ok"] for p in others) + 1
     yield info("P003", f"runs on {ready} of {len(installed)} installed frameworks ({'; '.join(parts)})")
+
+
+def _designed(ctx: ValidationContext, n, target: adapters.AdapterManifest) -> Iterator[Diagnostic]:
+    """An Agent block designed for another agent framework (S21)."""
+    fw = designs.AGENT_FRAMEWORKS[str(n.engine)]
+    if n.type not in designs.DESIGN_TYPES:
+        yield error("P001", f"only Agent blocks can be designed for {fw.label}", node_id=n.id)
+        return
+    if not target.has("agent_designs"):
+        yield error("P001", f"{target.label} cannot run agents designed for {fw.label}", node_id=n.id)
+        return
+    for problem in designs.problems(fw.id, designs.design_for(ctx.wf, n)):
+        yield error("P005", problem, node_id=n.id)
+    if not designs.installed(fw.id):
+        yield warning(
+            "P006",
+            f"{fw.label} is not installed on this server, so this agent's runs stop with an error",
+            node_id=n.id,
+            hint=f"Install {' '.join(fw.packages)} on the server, or export the agent to run it elsewhere.",
+        )

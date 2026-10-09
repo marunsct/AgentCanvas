@@ -262,6 +262,7 @@ def test_the_copilot_knows_the_target_framework():
 
     assert "LangGraph" in framework_note("langchain")
     assert "no adapter" in framework_note("crewai")
+    assert "CrewAI (`crewai`)" in framework_note("langchain")  # S21: agents designed for other frameworks
 
 
 def test_a_turn_keeps_decisions_taken_meanwhile():

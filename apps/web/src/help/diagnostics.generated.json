@@ -162,7 +162,15 @@
     },
     "P004": {
       "what": "This block is designed for a different framework than the rest of the workflow.",
-      "fix": "Nothing to do for now: it runs on the workflow's framework until mixed-framework flows arrive. Choose “Same as the workflow” in the block's settings to clear it."
+      "fix": "Nothing to do for now: it runs on the workflow's framework. Choose “Same as the workflow” in the block's settings to clear it."
+    },
+    "P005": {
+      "what": "This Agent block is designed for another framework, and that framework cannot take part of it (add-ons, a kind of tool, or the structured output).",
+      "fix": "Remove what the message names, or choose “Same as the workflow” under Designed for so LangGraph runs the agent."
+    },
+    "P006": {
+      "what": "This Agent block is designed for a framework that is not installed on this server, so its runs stop with an error.",
+      "fix": "Ask an admin to install the package the message names on the server, or export the agent and run it where the framework is installed."
     },
     "W001": {
       "what": "These steps form a loop with no way out, so it would only stop at the safety limit.",

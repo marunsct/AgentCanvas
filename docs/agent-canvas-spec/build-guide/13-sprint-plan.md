@@ -43,7 +43,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S19** | 2 | Export deploy kit → v0.9.0 | export as a service | — | 24 | Exports are deployable codebases with prerequisites, setup and deploy guides (✅ done, built ahead of S16–S17) |
 | **S17** | 2 | Workspace and editor fixes → v0.11.0 | owner's findings 2026-10-09, §3 below | — | 14 | A workspace per workflow, exports bundle its code, a way back to the canvas, Copilot in the code editor, every button labelled (✅ done) |
 | **S20** | 2 | Framework foundation → v0.12.0 | [doc 17](../17-framework-coverage-review.md), doc 12 WS0 | — | 20 | Adapter interface v2, adapter per workflow, `engine` per node, framework picker, portability check, conformance kit (✅ done) |
-| **S21** | 2 | Design any agent → v0.13.0 | doc 17 | — | 22 | The canvas Agent block builds a native agent in nine frameworks; mixed flows run and export |
+| **S21** | 2 | Design any agent → v0.13.0 | doc 17 | — | 22 | The canvas Agent block builds a native agent in nine frameworks; mixed flows run and export (✅ done) |
 | **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to CrewAI, OpenAI Agents, AutoGen and LangGraph through Agent Spec (preview) |
 | **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
 | **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
@@ -468,7 +468,7 @@ missed the S17 pages; both fixed. Deviations from the plan:
 - Echo is a demo engine: off unless `AGENTCANVAS_ADAPTERS` names it, paused runs in memory, export is the workflow
   file only, and the LangGraph deploy kit refuses its workflows with a plain message.
 
-### S21 — Design any agent → v0.13.0 (backlog, not started)
+### S21 — Design any agent → v0.13.0 (✅ done)
 
 | # | Item | Role | Days | Acceptance |
 |---|------|------|-----:|------------|
@@ -479,6 +479,33 @@ missed the S17 pages; both fixed. Deviations from the plan:
 | 5 | Copilot builds for a framework | B | 2 | The Copilot proposes engine choices and explains portability problems |
 | 6 | Real-framework CI | D | 1 | The `frameworks` job runs every drawn agent, mixed flow and single-agent export against the fake model server |
 | 7 | Docs | all | 1 | User guide "Mixing frameworks", templates, changelog, handover |
+
+**Review (2026-10-09).** A review of the sprint's own code before merging found and fixed: exported tool settings
+were written as JSON (`true`/`null`) instead of Python; boolean enums in answer shapes did the same; field names
+such as `model_config` or `str` broke the answer classes (now P005); two workspace tools with the same function name
+became one in an export; two designed agents with the same name in different subflows overwrote each other's export
+file (now refused with a message); after resume an approval could apply to a different tool call if the model
+answered differently (it now only applies to the exact call shown); bridges of closed event loops kept their
+sockets; the bridge read a request body before checking its key; the exported web API tool did not refuse private
+addresses.
+
+**Done (2026-10-09).** Every item met its acceptance in `test_designs.py` (golden files for all nine frameworks,
+design wiring, P005/P006, both bridge APIs, approvals, the API and exports), `e2e/s21.spec.ts`, and
+`scripts/smoke_frameworks.py`, which ran locally against all nine real packages: plain, typed and approval runs of a
+drawn agent, plus the exported project's own tests. Deviations:
+- **Model bridge instead of native model clients.** Each framework talks to a local, per-run endpoint that speaks
+  the OpenAI or Anthropic API and answers with the canvas model wired into the block. That keeps every catalog
+  model (local ones included), mocks, recordings, traces and costs working for every framework without per-framework
+  model code. Exports call the real provider directly.
+- **Approvals rerun the step.** A tool that needs approval pauses the run through the inbox; on resume the agent step
+  starts again from its beginning. Frameworks' own tool-approval hooks are not used.
+- **Structured output differs by framework** (native response formats, an answer tool, or parsing the final JSON);
+  P005 flags a schema a framework cannot take.
+- Only the LangGraph adapter can host designed agents (new ability `agent_designs`); other workflow frameworks show
+  them as blockers. Tools are workspace Python, HTTP and MCP tools; add-ons (middleware) and other tool kinds are P005.
+- The user guide covers this in "Choosing a framework" (§ Design an agent in any agent framework) rather than a
+  separate page, and no new template was added: the S16 framework templates already show mixed flows, and a template
+  pinned to one framework would fail on servers without it.
 
 ### S22 — Whole flows, preview → v0.14.0 (backlog, not started)
 

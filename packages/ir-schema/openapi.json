@@ -11,7 +11,8 @@
                 "time_travel",
                 "memory_store",
                 "mcp_inspect",
-                "breakpoints"
+                "breakpoints",
+                "agent_designs"
               ],
               "type": "string"
             },
@@ -164,6 +165,86 @@
           "reference"
         ],
         "title": "AddToDataset",
+        "type": "object"
+      },
+      "AgentCodeOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "export_problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Export Problems",
+            "type": "array"
+          },
+          "framework": {
+            "title": "Framework",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "framework",
+          "label",
+          "code",
+          "problems",
+          "export_problems"
+        ],
+        "title": "AgentCodeOut",
+        "type": "object"
+      },
+      "AgentFrameworkOut": {
+        "properties": {
+          "api": {
+            "title": "Api",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "installed": {
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Packages",
+            "type": "array"
+          },
+          "structured_output": {
+            "title": "Structured Output",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "packages",
+          "api",
+          "structured_output",
+          "installed"
+        ],
+        "title": "AgentFrameworkOut",
         "type": "object"
       },
       "AgentSpecExport": {
@@ -8671,7 +8752,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.12.0"
+    "version": "0.13.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8721,6 +8802,67 @@
         "summary": "Readyz",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/v1/agent-frameworks": {
+      "get": {
+        "description": "Frameworks an Agent block can be designed for: generated in that framework's own code (S21).",
+        "operationId": "list_agent_frameworks_v1_agent_frameworks_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentFrameworkOut"
+                  },
+                  "title": "Response List Agent Frameworks V1 Agent Frameworks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agent Frameworks",
+        "tags": [
+          "workflows"
         ]
       }
     },
@@ -17585,6 +17727,271 @@
           }
         ],
         "summary": "Export Agent Spec",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/agents/{node_id}/code": {
+      "get": {
+        "description": "An Agent block as a native agent for `framework` (default: the block's engine): the code that runs.",
+        "operationId": "agent_code_v1_workflows__wf_id__agents__node_id__code_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCodeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agent Code",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/agents/{node_id}/code.py": {
+      "get": {
+        "operationId": "agent_code_file_v1_workflows__wf_id__agents__node_id__code_py_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agent Code File",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/agents/{node_id}/export.zip": {
+      "get": {
+        "description": "One Agent block as a native project for its framework: runner, pinned packages, README and tests.",
+        "operationId": "agent_export_v1_workflows__wf_id__agents__node_id__export_zip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agent Export",
         "tags": [
           "workflows"
         ]

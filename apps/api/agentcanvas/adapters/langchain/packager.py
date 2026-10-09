@@ -31,6 +31,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from agentcanvas import designs
 from agentcanvas.adapters.langchain import deploykit
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.adapters.langchain.interop import FRAMEWORKS
@@ -42,6 +43,7 @@ API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
 RUNTIME_FILES = [
     "__init__.py",
     "adapters/langchain/__init__.py",
+    "adapters/langchain/bridge.py",
     "adapters/langchain/interop.py",
     "adapters/langchain/nodes.py",
     "adapters/langchain/testing.py",
@@ -110,6 +112,15 @@ def _frameworks(wf: Workflow) -> set[str]:
     return out & set(FRAMEWORKS)
 
 
+def designed_agents(wf: Workflow) -> list[tuple[Workflow, Any]]:
+    """(workflow, node) of every Agent block designed for another framework (S21), subgraphs included."""
+    out = [(wf, n) for n in wf.nodes if n.type in designs.DESIGN_TYPES and n.engine in designs.AGENT_FRAMEWORKS]
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            out += designed_agents(wf.subworkflow(n))
+    return out
+
+
 def _version(dist: str) -> str | None:
     try:
         return metadata.version(dist)
@@ -127,6 +138,10 @@ def dependencies(wf: Workflow) -> list[str]:
         pkg = FRAMEWORKS[framework].package
         if pkg and pkg not in deps:
             deps.append(pkg)
+    for _, node in designed_agents(wf):  # agents designed for another framework: its packages, as CI tests them
+        for pkg in designs.AGENT_FRAMEWORKS[str(node.engine)].packages:
+            if pkg not in deps:
+                deps.append(pkg)
     for _, model in _models(wf):
         pkg = PROVIDERS.get(model.partition(":")[0], (None, None))[0]
         if pkg and not any(d.startswith(pkg) for d in deps):
@@ -376,6 +391,18 @@ def package(
     }
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
+    designed = designed_agents(wf)
+    if designed:  # each in its framework's own code (S21), as the Agent block's code view shows it
+        files[f"src/{pkg}/agents/__init__.py"] = '"""Agents designed on the canvas for other frameworks."""\n'
+        for owner, node in designed:
+            if f"src/{pkg}/agents/{node.name}.py" in files:
+                raise InvalidInput(
+                    f"two agents designed for other frameworks are both named '{node.name}' (one is in a subflow); "
+                    "rename one so each gets its own file in the export"
+                )
+            files[f"src/{pkg}/agents/{node.name}.py"] = designs.generate(
+                str(node.engine), designs.design_for(owner, node)
+            )
     files["src/agentcanvas/adapters/__init__.py"] = ""  # the control plane's adapter registry is not needed
     if workspace is not None:  # exactly the workspace code the workflow uses (S17), and a test that it imports
         assert found is not None

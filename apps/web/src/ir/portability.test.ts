@@ -30,4 +30,13 @@ describe("portability", () => {
     expect(b.blockers.map((x) => x.name)).toEqual(["c"]);
     expect(b.emulated.map((x) => x.name)).toEqual(["b"]);
   });
+
+  it("blocks frameworks without the agent_designs ability on designed agents (S21)", () => {
+    const lcd = { ...lc, abilities: ["agent_designs"] } as unknown as AdapterManifest;
+    const wf = { nodes: [{ id: "n1", type: "core.agent", name: "a", engine: "crewai", config: {} }], resources: [] };
+    const all = { ...echo, nodes: { "*": "native" } } as unknown as AdapterManifest;
+    const [a, b] = portability(wf as never, [lcd, all], new Set(["crewai"]));
+    expect(a.ok).toBe(true);
+    expect(b.blockers.map((x) => x.name)).toEqual(["a"]);
+  });
 });

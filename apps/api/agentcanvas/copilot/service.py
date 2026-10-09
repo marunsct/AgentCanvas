@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from agentcanvas import designs
 from agentcanvas.copilot.pack import Pack
 from agentcanvas.copilot.settings import ResolvedModel
 from agentcanvas.copilot.tools import READ_ONLY, TOOLS, ToolContext, compact_workflow, result_text, run_tool
@@ -64,10 +65,19 @@ def framework_note(framework: str) -> str:
     """Which framework the workflow targets, so the Copilot's advice and changes fit what that framework runs."""
     m = adapter_manifests.all_manifests().get(framework)
     what = f"{m.label}: {m.description}" if m else f"'{framework}', which this AgentCanvas has no adapter for"
-    return (
+    note = (
         f"Target framework: {what}. Only use blocks and settings the registry offers for it, and when the person "
         "asks about code, exports or deployment, answer for this framework."
     )
+    if m and "agent_designs" in m.abilities:
+        names = ", ".join(f"{f.label} (`{f.id}`)" for f in designs.AGENT_FRAMEWORKS.values())
+        note += (
+            " An AI agent block (core.agent) can also be designed as a native agent of another framework by setting "
+            f"its `engine` to one of: {names}. It then runs as that framework's own code, still using the "
+            "workflow's model, and exports as that framework's project. Suggest it when the person wants an agent "
+            "in a particular framework; P005 says what that framework cannot take (middleware, other tool kinds)."
+        )
+    return note
 
 
 def _now() -> str:
