@@ -14,25 +14,24 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S22 Whole flows, preview → v0.14.0** (the S22 PR): a whole workflow exports to LangGraph (through Agent Spec), WayFlow or the OpenAI Agents SDK as a project around its Agent Spec flow (`agentcanvas/bridges/`, runner `bridges/kit/flowkit.py`), with a gaps report in the Export box and `GAPS.md`; `GET /v1/workflows/{id}/bridges`, `…/bridges/{target}/export.zip`; Agent Spec export fixes; CI jobs `bridge_<target>` |
-| Since then | **Milestone review after S20–S22** (the review PR): a whole-codebase review found 19 bugs (exports that could run injected code, private-network access in the hosted edition, the release gate's code evaluators, stale secrets on other replicas, editor and workspace state, client address spoofing behind nginx); all fixed, see CHANGELOG "Unreleased" |
-| Before that | S22 #26 merged `9e741e3`; S21 Design any agent → v0.13.0 ([#25](https://github.com/marunsct/AgentCanvas/pull/25), merged `f308699`); S20 Framework foundation → v0.12.0 (#24, merged `e92f164`) |
-| Version in code | API `0.14.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.14.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.14.0 are all left to the owner (see §2) |
-| Next sprint | **S23 Ship to users → v0.15.0** (was S17; [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)), then S24 onward |
-| Work status | the review fixes are in their PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S23 starts |
-| Open PRs | the review PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S23 Ship to users → v0.15.0** (the S23 PR): share a published deployment as a public chat page (`/s/<token>`, `services/share.py`, `api/v1/share.py`, `web/src/share/`) or a chat button on any site (`apps/web/public/widget.js`); four safety blocks `guard.pii`, `guard.injection`, `guard.moderation`, `guard.schema` (`agentcanvas/guardrails.py`, eval cases in `registry/guardrails/*.cases.json`); a gallery of 25 templates (`metadata.gallery`, `web/src/app/TemplateGallery.tsx`) |
+| Before that | Milestone review after S20–S22, 19 fixes ([#27](https://github.com/marunsct/AgentCanvas/pull/27), merged `54d2673`); S22 Whole flows → v0.14.0 (#26, `9e741e3`); S21 Design any agent → v0.13.0 (#25, `f308699`) |
+| Version in code | API `0.15.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.15.0 (it also holds the review fixes) |
+| Git tags | **none pushed.** v0.1.0 … v0.15.0 are all left to the owner (see §2) |
+| Next sprint | **S24 Knowledge Studio → v0.16.0** (was S20; [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): ingestion, hybrid search, citations, retrieval evals |
+| Work status | S23 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S24 starts |
+| Open PRs | the S23 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S22** (all green locally):
+**Test totals at the end of S23** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 534 passed, 1 skipped, 1 xfail (known upstream canary); 548 after the milestone review | see §5 |
-| Web unit (vitest) | 82 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 47 | see §5 |
+| API (pytest, Postgres) | 652 passed, 1 xfail (known upstream canary) | see §5 |
+| Web unit (vitest) | 88 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 50 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 7 templates × 5 passed | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
+| Exported templates, each export's own tests | 25 templates (local target run for all 18 new ones) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -91,6 +90,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   adapters/langchain/interop.py   agents from other frameworks, remote A2A and MCP agents as steps (S16; vendored into exports)
   agentspec.py             Open Agent Spec export/import (S16), pure dict mapping, no pyagentspec at runtime
   designs/                 S21: an Agent block as native code for 9 agent frameworks; export.py + kit/ (per-agent project)
+  guardrails.py            S23: decision logic of the safety blocks (shipped in exports); evals in registry/guardrails/
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
@@ -178,7 +178,23 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.14.0 not created (owner).
+- **Release tags** v0.1.0 to v0.15.0 not created (owner).
+- **S23 limits:** a share link is the credential (stored in plain text so builders can copy it again; regenerate
+  it if logs leak, since it appears in URL paths); `/s/` pages can be framed by any site (no allowed-origins list,
+  the page is static); abuse protection is the deployment's and project's rate limits plus nginx's per-IP limit, so
+  a busy public link can use up the limit API-key callers share; visitors see streamed text from every AI step
+  while a run is going, then the extracted answer; no history after a reload; the page sends one text field, so
+  workflows with other required inputs fail with a generic error; the widget panel has a fixed size and no
+  postMessage. Safety blocks: the fixed checks are pattern lists that new wording or other languages beat (the
+  moderation phrase list is a fallback, not a moderator) and the model path's quality is not measured in CI; PII
+  misses 7-digit local phone numbers, SSNs without separators and spelled-out emails, counts `1.2.3.4` as an IP,
+  hashes without salt, and searches custom patterns in the first 100,000 characters; redacting in place is wrong
+  for list fields. Bridges and Agent Spec treat safety blocks as gaps; Echo does not run them. Templates: keep them
+  single-path (pyagentspec cannot load parallel branches); a new template needs an INPUTS entry in
+  `tests/test_templates.py`, a category from `services/workflows.GALLERY_CATEGORIES`, a line in
+  `docs/user-guide/templates.md` and a pass of the bridge smoke checks; web_research is the only template that
+  calls out (Wikipedia), behind an approval. Playwright uses fixed ports 8000/5173 and `apps/api/agentcanvas.db`,
+  so only one e2e run at a time.
 - **S22 limits (preview):** whole-flow exports go through Agent Spec, so routers with rules beyond `state.x == "v"`,
   steps side by side, subflows, and steps only AgentCanvas runs (memory, map, connectors; written by hand in
   `steps.py`) block running there; agents lose their tools; approvals become text questions; nothing reports back
@@ -250,7 +266,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S20 Framework foundation | #24 | `e92f164` | v0.12.0 |
 | S21 Design any agent | #25 | `f308699` | v0.13.0 |
 | S22 Whole flows, preview | #26 | `9e741e3` | v0.14.0 |
-| Milestone review after S20–S22 (19 fixes) | the review PR | (after merge) | (in v0.15.0) |
+| Milestone review after S20–S22 (19 fixes) | #27 | `54d2673` | (in v0.15.0) |
+| S23 Ship to users | the S23 PR | (after merge) | v0.15.0 |
 
 ## 11. Sprint-end checklist
 

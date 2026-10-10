@@ -119,4 +119,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S20: Framework foundation (v0.12.0) | ✅ done: a framework per workflow, badges for where it can run, adapter interface v2, conformance kit |
 | S21: Design any agent (v0.13.0) | ✅ done: an AI agent block designed as a native agent in nine frameworks, with its code and a native export |
 | S22: Whole flows, preview (v0.14.0) | ✅ done: export a whole workflow to LangGraph, WayFlow or OpenAI Agents through Agent Spec, with a gaps report |
-| S23–S36: ship to users, Knowledge Studio, framework flows, mixed-flow export | ⏸ next (S23); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| Milestone review after S20–S22 | ✅ done (#27): 19 fixes |
+| S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates |
+| S24–S36: Knowledge Studio, framework flows, mixed-flow export, importers | ⏸ next (S24); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
