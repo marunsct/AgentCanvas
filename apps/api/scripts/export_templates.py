@@ -1,8 +1,8 @@
 """Export every starter template to every deploy target (S16 CI): `python scripts/export_templates.py <dir>`.
 
 Writes <dir>/<target>/<template>/<project>/ so CI can lint the deploy files, run each export's own tests and
-deploy some of them for real; and <dir>/openai_agents/<template>/<project>/ and <dir>/crewai/<template>/<project>/ for
-every template the OpenAI Agents SDK (S25) and CrewAI (S27) can run.
+deploy some of them for real; and <dir>/<framework>/<template>/<project>/ for every template the OpenAI Agents SDK
+(S25), CrewAI (S27) and Google ADK (S29) can run.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def main(out: Path) -> None:
             _, data = get_adapter(wf.framework).package(wf, default_registry(), target=target, version="1.0.0")
             zipfile.ZipFile(io.BytesIO(data)).extractall(out / target / f.name.removesuffix(".ir.json"))
     counts = {}
-    for framework in ("openai_agents", "crewai"):  # S25, S27: each template the framework can run, as its project
+    for framework in ("openai_agents", "crewai", "google_adk"):  # S25, S27, S29: each template it can run, as a project
         adapter, counts[framework] = get_adapter(framework), 0
         for f in files:
             wf = Workflow.model_validate({**json.loads(f.read_text()), "framework": framework})
@@ -42,7 +42,7 @@ def main(out: Path) -> None:
             counts[framework] += 1
     print(
         f"exported {len(files)} templates to {len(TARGETS)} targets, {counts['openai_agents']} to the OpenAI Agents "
-        f"SDK and {counts['crewai']} to CrewAI, in {out}"
+        f"SDK, {counts['crewai']} to CrewAI and {counts['google_adk']} to Google ADK, in {out}"
     )
 
 

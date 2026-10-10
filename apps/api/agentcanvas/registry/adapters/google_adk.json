@@ -1,0 +1,39 @@
+{
+  "id": "google_adk",
+  "label": "Google ADK",
+  "framework": "google-adk 2.11.0",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes a native Google ADK 2 graph workflow: a function node for each block, wired with ADK's edges, route dicts and JoinNodes, with ADK Agents (LiteLLM models) for the AI blocks. Any catalog model works, and tool calls can wait for a person's approval. Runs need ADK installed on the server (`make framework FW=google_adk`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "python"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "native",
+    "core.join": "native",
+    "core.llm": "native",
+    "core.agent": "native",
+    "core.approval": "native",
+    "core.human_input": "native",
+    "model.chat": "native",
+    "tool.python": "native",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "a function node that returns the fields it sets",
+    "core.router": "a function node that yields Event(route=...) with the same CEL rules; the workflow's edges map each route to its blocks",
+    "core.join": "a JoinNode that waits for every branch, then the block",
+    "core.llm": "a LiteLLM call with the block's model",
+    "core.agent": "an ADK Agent (instructions, model, tools, output_schema) run as a dynamic node; tools named in 'Ask before using' wait for a person, and the agent's turn runs again up to that call when they answer",
+    "core.approval": "the node yields ADK's RequestInput; the run continues from the saved fields when a person answers",
+    "core.human_input": "the node yields ADK's RequestInput and asks again when an answer does not fit",
+    "core.script": "your workspace function is called from the workflow",
+    "knowledge.search": "the workflow searches the knowledge base; exports search its file with the built-in embedder",
+    "mw.model_call_limit": "a before_model_callback that stops the run after that many model calls in one turn of the agent"
+  }
+}

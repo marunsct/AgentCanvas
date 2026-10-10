@@ -16,7 +16,7 @@ export default defineConfig({
     {
       command: "uv run uvicorn agentcanvas.dev.fake_server:app --port 8000",
       cwd: "../api",
-      env: { AGENTCANVAS_ADAPTERS: "langchain,echo,openai_agents,crewai" }, // S20, S25, S27: frameworks to switch to
+      env: { AGENTCANVAS_ADAPTERS: "langchain,echo,openai_agents,crewai,google_adk" }, // S20, S25, S27, S29: frameworks to switch to
       url: "http://localhost:8000/healthz",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
