@@ -175,6 +175,15 @@ async def export_zip(
 ) -> Response:
     """The workflow (draft, or `?version=`) as a deployable Python project with the deploy kit for `target`
     (M6-T2/T3, S16)."""
+    _, name, data = await _export(request, session, svc, wf_id, version, target)
+    return Response(
+        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
+    )
+
+
+async def _export(
+    request: Request, session: AsyncSession, svc: WorkflowService, wf_id: str, version: str | None, target: str
+) -> tuple[Any, str, bytes]:
     view, wf, semver = await _export_source(session, svc, wf_id, version)
     cases = [
         {"name": c.name, "input": c.input, "context": c.context, "mocks": c.mocks, "pins": c.pins, "expect": c.expect}
@@ -195,9 +204,53 @@ async def export_zip(
             if (kb := await ks.find(view.row.project_id, name)) is not None:
                 files[name] = await ks.export(kb)
         data = knowledge.bundle(data, files) if files else data
-    return Response(
-        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
-    )
+    return view, name, data
+
+
+class GitHubPushIn(BaseModel):
+    repo: str = Field(description="owner/name of the repository", max_length=200)
+    branch: str = Field(min_length=1, max_length=200, description="created from the default branch if it is new")
+    folder: str = Field("", max_length=200, description="where the export goes in the repository ('' = the root)")
+    message: str | None = Field(None, max_length=2000, description="the commit message")
+    token_secret: str = Field("GITHUB_TOKEN", pattern=r"^[A-Za-z_][A-Za-z0-9_]*$", description="project secret")
+    version: str | None = None
+    target: ExportTarget = "local"
+
+
+class GitHubPushOut(BaseModel):
+    commit: str
+    url: str
+    branch: str
+    created_branch: bool
+    files: int
+
+
+@router.post("/workflows/{wf_id}/github", response_model=GitHubPushOut)
+async def push_to_github(
+    wf_id: str,
+    body: GitHubPushIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    svc: WorkflowService = Depends(service),
+) -> GitHubPushOut:
+    """Push the export (as `export.zip` would download it) to a GitHub repository as one commit (S31)."""
+    from agentcanvas.services import github
+
+    github.check(body.repo, body.branch, body.folder.strip("/"))
+    view, _, data = await _export(request, session, svc, wf_id, body.version, body.target)
+    token = request.app.state.projects.secrets.get(view.row.project_id, {}).get(body.token_secret)
+    if not token:
+        raise InvalidInput(
+            f"add a project secret named {body.token_secret} holding a GitHub token with Contents read and write "
+            "on the repository"
+        )
+    label = f"version {body.version}" if body.version else "the draft"
+    pushed = await github.push(
+        github.files_of(data), repo=body.repo, branch=body.branch, folder=body.folder.strip("/"),
+        message=body.message or f"{view.row.name}: export of {label} from AgentCanvas", token=token,
+        transport=getattr(request.app.state, "github_transport", None),
+    )  # fmt: skip
+    return GitHubPushOut(**vars(pushed))
 
 
 # ---------------------------------------------------------------------------------------------- test cases ----
