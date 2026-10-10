@@ -102,7 +102,7 @@ export function RunPanel() {
         <p className="muted small" data-testid="run-usage">
           Run: {formatMetrics({
             tokens: run.usage.input_tokens + run.usage.output_tokens, cost: run.usage.cost_usd, priced: run.usage.priced,
-            ms: run.durationMs ?? undefined,
+            ms: run.durationMs ?? undefined, cached: run.usage.cache_hits, backups: run.usage.fallbacks,
           })}
           {!run.usage.priced && <span title="a model has no catalog price"> (cost incomplete)</span>}
         </p>

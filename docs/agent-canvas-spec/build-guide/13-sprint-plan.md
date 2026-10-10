@@ -48,7 +48,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates (✅ done) |
 | **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals (✅ done) |
 | **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare (✅ done) |
-| **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
+| **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts (✅ done) |
 | **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
 | **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries |
 | **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full |
@@ -550,6 +550,30 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S26 — Model gateway and cost controls → v0.18.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Backup models | B | 2 | A model block names backups; a failing provider fails over on every framework and in exports; cost counts the model that answered |
+| 2 | Answer cache | B | 2 | An identical request within the block's time is answered from the cache at no cost; counted per run |
+| 3 | Day and month budgets | B | 2 | All runs of a workflow per UTC day and month; a spent budget stops runs and refuses new ones |
+| 4 | Cost alerts | B | 1 | Raised once per workflow, period and share; event, log, metric and Prometheus rule |
+| 5 | Spending in the editor | F | 2 | Budget fields, alert shares, today's and this month's spend; cached and backup answers in the run panel |
+| 6 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** `adapters/langchain/gateway.py` (`GatewayModel`, `AnswerCache`; vendored into LangGraph
+exports), `Resources.model` wraps a block that has `fallbacks` or `cache_ttl`, the usage tracker counts the inner
+call of the model that answered and records what the gateway did, `FallbackModel` in the SDK runtime for SDK
+exports, `daily_max_cost_usd` / `monthly_max_cost_usd` / `alert_at` on the IR budget, the runner's period spend and
+cost alerts (`cost_alert`, migration `e7a1c5f9b3d6`), `GET /v1/workflows/{id}/spend`, W016, the Spending box and
+budget fields in the workflow settings, `tests/test_gateway.py`, `e2e/s26.spec.ts`. Exit met: a provider outage
+fails over on LangGraph and on the OpenAI Agents SDK (`test_a_provider_outage_fails_over`, the primary pointed at
+an address nothing listens on), and a day budget stops a run and refuses the next one, with its alerts raised once
+(`test_a_day_budget_stops_runs_and_raises_alerts_once`). Deviations: the answer cache lives in each server's memory
+(per project, 1,000 answers), so replicas do not share it and a restart empties it; SDK exports keep backups but not
+the cache; runs still going count toward day and month spend once they finish, so runs started together can go a
+little over; the older `mw.model_fallback` add-on stays for LangGraph agents.
 
 ### S25 — OpenAI Agents SDK flows → v0.17.0 (✅ done)
 

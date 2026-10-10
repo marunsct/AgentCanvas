@@ -9,6 +9,7 @@ export type ProviderInfo = G.ProviderInfo;
 export type AdapterManifest = G.AdapterManifest;
 export type AgentFrameworkOut = G.AgentFrameworkOut;
 export type AgentCodeOut = G.AgentCodeOut;
+export type SpendOut = G.SpendOut;
 export type SetupOut = G.SetupOut;
 export type TemplateInfo = G.TemplateInfo;
 export type WorkflowSummary = G.WorkflowSummary;

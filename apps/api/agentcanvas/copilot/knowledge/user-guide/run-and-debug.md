@@ -56,8 +56,10 @@ Pins and mocks only affect runs started from the editor, never published deploym
 
 ## Cost and budgets
 
-Each step shows tokens and latency; the run panel shows totals. Set a [budget](canvas.md#budgets) to stop runs
-that exceed tokens, cost or time.
+Each step shows tokens and latency; the run panel shows totals, how many answers came from a model's cache
+(*cached*) and how many a backup model gave (*by backup model*). Set a [budget](canvas.md#budgets) to stop runs
+that exceed tokens, cost or time, or a day or month budget for all runs of the workflow; a cost alert shows as a
+warning in the run that crossed it.
 
 ## Tracing
 

@@ -216,6 +216,10 @@
       "what": "The cost limit cannot count this model, because its price is unknown.",
       "fix": "Use a token limit instead, or a model with a known price."
     },
+    "W016": {
+      "what": "This backup model is already tried before it, so it adds nothing when the model fails.",
+      "fix": "Pick a backup model from another provider."
+    },
     "W018": {
       "what": "Something inside this group of steps needs attention.",
       "fix": "Double-click the group to look inside."

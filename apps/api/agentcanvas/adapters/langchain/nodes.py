@@ -57,6 +57,7 @@ from typing_extensions import TypedDict
 
 from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
+from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.expr import eval_condition, render_template
 from agentcanvas.security.imports import is_script_path
 from agentcanvas.workspace.loader import load_attr
@@ -292,6 +293,9 @@ def tag_model(model: Any, model_id: str | None, resource: str | None = None) -> 
     return model
 
 
+GATEWAY_KEYS = ("fallbacks", "cache_ttl")  # model block settings of the model gateway (S26), not the client's
+BACKUP_KEYS = ("temperature", "max_tokens", "timeout")  # settings a block's backup models share with it
+
 # Model providers (the `provider:` prefix of a model id). Kept in step with registry/providers.json (tested).
 # PROVIDER_KEYS: the env variable that holds a provider's API key; a project secret of the same name is used when the
 # model's config sets no `api_key`. OPENAI_COMPATIBLE: local or hosted servers that speak the OpenAI API, created
@@ -401,6 +405,7 @@ class Resources:
         # hosted edition: tools and agents reach public addresses only, whatever allow_private_network says
         self.public_only = False
         self._cache: OrderedDict[str, Any] = OrderedDict()  # model clients, least recently used first
+        self.answers = AnswerCache()  # models' cached answers (S26), shared by this project's runs
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
         # the server's knowledge bases (S24): (name, query, mode=, top_k=, min_score=) -> results; None = files
@@ -414,12 +419,35 @@ class Resources:
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
-        params = {k: self._resolve(v) for k, v in config.items() if k != "model"}
-        model_id, params = chat_model_args(config["model"], params, self._secrets)
-        model = self._cache[key] = tag_model(init_chat_model(model_id, **params), config["model"], name)
+        params = {k: self._resolve(v) for k, v in config.items() if k not in ("model", *GATEWAY_KEYS)}
+        model_id, args = chat_model_args(config["model"], params, self._secrets)
+        shared = {k: v for k, v in params.items() if k in BACKUP_KEYS}  # backups use their provider's own key
+
+        def backup(model: str) -> BaseChatModel:
+            backup_id, backup_args = chat_model_args(model, shared, self._secrets)
+            return init_chat_model(backup_id, **backup_args)
+
+        model = tag_model(init_chat_model(model_id, **args), config["model"])
+        model = self._cache[key] = tag_model(self.gateway(config, model, backup), config["model"], name)
         while len(self._cache) > MODEL_CACHE_SIZE:
             self._cache.popitem(last=False)  # edited configs would otherwise keep old clients (and keys) forever
         return model
+
+    def gateway(
+        self, config: dict[str, Any], model: BaseChatModel, backup: Callable[[str], BaseChatModel]
+    ) -> BaseChatModel:
+        """The model with its block's backup models and answer cache (S26), or the model itself if it has neither."""
+        backups = [str(b) for b in config.get("fallbacks") or [] if b]
+        ttl = config.get("cache_ttl")
+        if not backups and not ttl:
+            return model
+        return GatewayModel(
+            models=[model, *(tag_model(backup(b), b) for b in backups)],
+            names=[str(config["model"]), *backups],
+            settings=_config_key(config),
+            cache_ttl=ttl,
+            answers=self.answers,
+        )
 
     def tool(self, name: str, config: dict[str, Any], type_: str = "tool.python") -> Any:
         """A tool (or, for `mcp.server`, the list of tools loaded by `load_mcp`), tagged with its resource name so

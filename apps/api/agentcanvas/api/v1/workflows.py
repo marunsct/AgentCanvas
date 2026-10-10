@@ -8,15 +8,18 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas import agentspec
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
+from agentcanvas.db.models import CostAlert, Run, Thread
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
 from agentcanvas.registry.adapters import portability
+from agentcanvas.runtime.runner import periods
 from agentcanvas.services.workflows import WorkflowService, WorkflowView
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic
@@ -187,6 +190,69 @@ async def get_portability(wf_id: str, svc: WorkflowService = Depends(service)) -
     """For each installed framework (S20): can this workflow move to it, and which blocks stop or bend it."""
     view = await svc.get(wf_id)
     return portability(view.workflow)
+
+
+# ------------------------------------------------------------------ spending (S26) ----
+class SpendPeriod(BaseModel):
+    period: str  # "day" | "month" (UTC)
+    period_start: str
+    spent_usd: float
+    limit_usd: float | None
+    runs: int
+    tokens: int
+    cache_hits: int  # model answers taken from the answer cache
+    fallbacks: int  # model calls a backup model answered
+
+
+class CostAlertOut(BaseModel):
+    id: str
+    period: str
+    period_start: str
+    share: float
+    spent_usd: float
+    limit_usd: float
+    message: str
+    run_id: str | None
+    created_at: datetime
+
+
+class SpendOut(BaseModel):
+    day: SpendPeriod
+    month: SpendPeriod
+    alerts: list[CostAlertOut]
+
+
+@router.get("/workflows/{wf_id}/spend", response_model=SpendOut)
+async def get_spend(
+    wf_id: str, svc: WorkflowService = Depends(service), session: AsyncSession = Depends(get_session)
+) -> dict[str, Any]:
+    """What the workflow's runs spent today and this month (UTC), against its day and month budgets, and its latest
+    cost alerts (S26)."""
+    view = await svc.get(wf_id)
+    budget = view.workflow.settings.budget
+    limits = {"day": budget.daily_max_cost_usd if budget else None,
+              "month": budget.monthly_max_cost_usd if budget else None}  # fmt: skip
+    out: dict[str, Any] = {}
+    for period, (label, start) in periods().items():
+        q = (
+            select(
+                func.count(Run.id), func.coalesce(func.sum(Run.tokens_in + Run.tokens_out), 0),
+                func.coalesce(func.sum(Run.cost_usd), 0), func.coalesce(func.sum(Run.cache_hits), 0),
+                func.coalesce(func.sum(Run.fallbacks), 0),
+            )
+            .join(Thread, Thread.id == Run.thread_id)
+            .where(Thread.workflow_id == wf_id, Run.started_at >= start)
+        )  # fmt: skip
+        runs, tokens, cost, hits, fallbacks = (await session.execute(q)).one()
+        out[period] = SpendPeriod(
+            period=period, period_start=label, spent_usd=round(float(cost), 6), limit_usd=limits[period],
+            runs=int(runs), tokens=int(tokens), cache_hits=int(hits), fallbacks=int(fallbacks),
+        )  # fmt: skip
+    alerts = await session.scalars(
+        select(CostAlert).where(CostAlert.workflow_id == wf_id).order_by(CostAlert.created_at.desc()).limit(20)
+    )
+    out["alerts"] = [CostAlertOut.model_validate(a, from_attributes=True) for a in alerts]
+    return out
 
 
 # ------------------------------------------------------------------ Agent Spec (S16) ----

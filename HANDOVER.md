@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-10, after Sprint 25 (OpenAI Agents SDK flows → v0.17.0). Previous update: after Sprint 24 (Knowledge Studio → v0.16.0, [#29](https://github.com/marunsct/AgentCanvas/pull/29)).
+- **Last updated:** 2026-10-10, after Sprint 26 (Model gateway and cost controls → v0.18.0). Previous update: after Sprint 25 (OpenAI Agents SDK flows → v0.17.0, [#30](https://github.com/marunsct/AgentCanvas/pull/30)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,22 +14,22 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S25 OpenAI Agents SDK flows → v0.17.0** (the S25 PR): the `openai_agents` adapter (`adapters/openai_agents/`: `codegen.py` writes a workflow as SDK code, `runtime.py` runs it and is vendored into exports, `packager.py` exports an SDK project, `ServerHost` gives steps canvas models through the model bridge and canvas tools as SDK function tools), manifest `registry/adapters/openai_agents.json`, offered by default; convert and compare: `framework` on experiment targets and a per-target framework picker in Evaluation Studio; `?framework=` on the code view |
-| Before that | S24 Knowledge Studio → v0.16.0 ([#29](https://github.com/marunsct/AgentCanvas/pull/29), merged `2db7871`); S23 Ship to users → v0.15.0 (#28, `820312e`); milestone review after S20–S22, 19 fixes (#27, `54d2673`) |
-| Version in code | API `0.17.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.17.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.17.0 are all left to the owner (see §2) |
-| Next sprint | **S26 Model gateway and cost controls → v0.18.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
-| Work status | S25 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S26 starts |
-| Open PRs | the S25 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S26 Model gateway and cost controls → v0.18.0** (the S26 PR): `adapters/langchain/gateway.py` (`GatewayModel`: backup models and the answer cache of a model block, used by `Resources.model` when the block sets `fallbacks` or `cache_ttl`; vendored into LangGraph exports), `FallbackModel` in the SDK runtime for SDK exports, day and month budgets with cost alerts in the runner (`period_limits`, `_cost_alerts`, table `cost_alert`), `GET /v1/workflows/{id}/spend`, W016, Spending box in the workflow settings |
+| Before that | S25 OpenAI Agents SDK flows → v0.17.0 ([#30](https://github.com/marunsct/AgentCanvas/pull/30), merged `2e2eeb5`); S24 Knowledge Studio → v0.16.0 (#29, `2db7871`); S23 Ship to users → v0.15.0 (#28, `820312e`) |
+| Version in code | API `0.18.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.18.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.18.0 are all left to the owner (see §2) |
+| Next sprint | **S27 CrewAI flows → v0.19.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
+| Work status | S26 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S27 starts |
+| Open PRs | the S26 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S25** (all green locally):
+**Test totals at the end of S26** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 737 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd) | see §5 |
-| Web unit (vitest) | 92 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 54 | see §5 |
+| API (pytest, Postgres) | 761 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd) | see §5 |
+| Web unit (vitest) | 94 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 55 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 26 templates on LangGraph, and (S25) the 22 the OpenAI Agents SDK can run as SDK projects in `<dir>/openai_agents/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
@@ -92,6 +92,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   designs/                 S21: an Agent block as native code for 9 agent frameworks; export.py + kit/ (per-agent project)
   guardrails.py            S23: decision logic of the safety blocks (shipped in exports); evals in registry/guardrails/
   knowledge_search.py      S24: chunking, built-in embedder, BM25/cosine/hybrid search, retrieval metrics (shipped in exports)
+  adapters/langchain/gateway.py   S26: model gateway (backup models, answer cache) of a model block; vendored into exports
   adapters/openai_agents/  S25: workflows as OpenAI Agents SDK code (codegen.py), its runtime (runtime.py, vendored into exports), packager.py
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
@@ -180,7 +181,12 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.17.0 not created (owner).
+- **Release tags** v0.1.0 to v0.18.0 not created (owner).
+- **S26 limits:** the answer cache lives in each API instance's memory (per project, 1,000 answers): replicas do not
+  share it and a restart empties it; OpenAI Agents SDK exports keep backup models but not the cache. Day and month
+  spend counts runs once they finish, so runs started together can go a little over a day or month budget; periods
+  are UTC. A backup model takes the block's temperature, output limit and timeout but not its address or key (its
+  provider's own key is used). The older `mw.model_fallback` add-on stays for LangGraph agents.
 - **S25 limits:** the OpenAI Agents SDK adapter declares no optional abilities: no saved history, state editing,
   replay, breakpoints or long-term memory, and a paused run lives in the API process's memory as JSON (a restart or
   a second API replica loses it; exports keep it in `.runs/`). An edited tool call is sent back to the agent to make
@@ -288,7 +294,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | Milestone review after S20–S22 (19 fixes) | #27 | `54d2673` | (in v0.15.0) |
 | S23 Ship to users | #28 | `820312e` | v0.15.0 |
 | S24 Knowledge Studio | #29 | `2db7871` | v0.16.0 |
-| S25 OpenAI Agents SDK flows | the S25 PR | (after merge) | v0.17.0 |
+| S25 OpenAI Agents SDK flows | #30 | `2e2eeb5` | v0.17.0 |
+| S26 Model gateway and cost controls | the S26 PR | (after merge) | v0.18.0 |
 
 ## 11. Sprint-end checklist
 

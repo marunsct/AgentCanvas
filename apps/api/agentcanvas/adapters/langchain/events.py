@@ -116,6 +116,7 @@ class UsageTracker(BaseCallbackHandler):
         self.names = names
         self._calls: dict[UUID, tuple[str | None, str | None]] = {}
         self._resources: dict[UUID, str] = {}
+        self._gateways: set[UUID] = set()  # model gateway runs (S26)
         self._records: list[dict[str, Any]] = []
         self._replies: list[dict[str, Any]] = []  # FR-X-13: what each model resource answered, in order
         self._tool_calls: dict[UUID, dict[str, Any]] = {}
@@ -129,6 +130,8 @@ class UsageTracker(BaseCallbackHandler):
             f"{md['ls_provider']}:{md['ls_model_name']}" if md.get("ls_provider") and md.get("ls_model_name") else None
         )
         self._calls[run_id] = (self.names.get(str(node)), model)
+        if md.get("ac_gateway"):  # S26: its inner calls report the usage, of the model that answered
+            self._gateways.add(run_id)
         if md.get("ac_resource"):
             self._resources[run_id] = str(md["ac_resource"])
 
@@ -141,6 +144,15 @@ class UsageTracker(BaseCallbackHandler):
             calls = [{"name": c["name"], "args": c.get("args", {})} for c in getattr(message, "tool_calls", []) or []]
             reply = {"content": content, "tool_calls": calls} if calls else content
             self._replies.append({"resource": resource, "canvas_node_id": node_id, "reply": reply})
+        if run_id in self._gateways:
+            self._gateways.discard(run_id)
+            note = (getattr(message, "response_metadata", None) or {}).get("ac_gateway") or {}
+            if note.get("cached") or note.get("failed"):  # what the gateway did, as a usage record without tokens
+                self._records.append(
+                    {"canvas_node_id": node_id, "model": note.get("model") or model, "input_tokens": 0,
+                     "output_tokens": 0, "cached": bool(note.get("cached")), "failed": note.get("failed") or []}
+                )  # fmt: skip
+            return
         tokens_in = tokens_out = 0
         for gens in response.generations:
             for g in gens:
@@ -157,6 +169,7 @@ class UsageTracker(BaseCallbackHandler):
 
     def on_llm_error(self, error: BaseException, *, run_id: UUID, **kw: Any) -> None:
         self._calls.pop(run_id, None)
+        self._gateways.discard(run_id)
         self._resources.pop(run_id, None)
 
     def on_tool_start(self, serialized: Any, input_str: str, *, run_id: UUID, **kw: Any) -> None:

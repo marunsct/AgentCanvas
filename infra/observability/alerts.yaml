@@ -40,3 +40,16 @@ groups:
         annotations:
           summary: "Online evaluator {{ $labels.evaluator }} drifted ({{ $labels.kind }}) on deployment {{ $labels.deployment }}"
           runbook: docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md#9-runbooks
+      - alert: AgentCanvasCostAlert
+        # a workflow's spending reached a share of its day or month budget (S26); the app lists the alert too
+        expr: sum by (period) (increase(agentcanvas_cost_alerts_total[15m])) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: "A workflow reached a cost alert on its {{ $labels.period }} budget (see the workflow's Spending panel)"
+      - alert: AgentCanvasModelFailover
+        # backup models are answering: a model provider is failing (S26)
+        expr: sum(rate(agentcanvas_model_fallbacks_total[10m])) > 0.05
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: Backup models are answering model calls; a model provider may be down

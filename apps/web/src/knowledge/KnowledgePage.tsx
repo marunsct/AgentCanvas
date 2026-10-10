@@ -55,7 +55,7 @@ export function KnowledgePage() {
               onChange={(e) => setName(suggestName(e.target.value))} />
             <button type="submit" disabled={!NAME_PATTERN.test(name) || create.isPending}>Create</button>
           </form>
-          {!hasSample && (
+          {kbs.isSuccess && !hasSample && ( // not while the list loads: the sample may be there already
             <button type="button" data-testid="load-sample" disabled={create.isPending}
               onClick={() => create.mutate({ sample: "handbook" })}>
               Load the sample handbook
