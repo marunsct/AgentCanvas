@@ -1,0 +1,154 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_document_qa",
+  "name": "Document Q&A",
+  "description": "Answers a question about a document you paste in (a contract, a manual, a policy): it first quotes the relevant passages, then answers only from them.",
+  "state": {
+    "channels": [
+      {
+        "name": "document",
+        "io": "in",
+        "description": "The text to ask about"
+      },
+      {
+        "name": "question",
+        "io": "in"
+      },
+      {
+        "name": "quotes",
+        "io": "out",
+        "description": "Passages copied from the document"
+      },
+      {
+        "name": "answer",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_quotes",
+      "type": "core.llm",
+      "name": "find_quotes",
+      "label": "Find relevant passages",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Copy, word for word, up to three passages from the document that help answer the question. If none do, reply NONE.\n\nQuestion: {{ state.question }}\n\nDocument:\n{{ state.document }}",
+        "output": "quotes"
+      }
+    },
+    {
+      "id": "n_answer",
+      "type": "core.llm",
+      "name": "answer",
+      "label": "Answer from the passages",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Answer the question using only these passages and quote them. If the passages are NONE or do not answer it, say the document does not say.\n\nPassages:\n{{ state.quotes }}\n\nQuestion: {{ state.question }}",
+        "output": "answer"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_quotes"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_quotes"
+      },
+      "target": {
+        "node": "n_answer"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_answer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_quotes",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_answer",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": [
+        "documents",
+        "q&a",
+        "grounded"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "document": "Either party may end this agreement with 30 days' written notice. Fees already paid are not refunded.",
+        "question": "How do I cancel, and do I get my money back?"
+      }
+    }
+  }
+}

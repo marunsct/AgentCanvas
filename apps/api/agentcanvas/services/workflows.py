@@ -49,6 +49,26 @@ def with_default_model(doc: Any, default: dict[str, Any]) -> Any:
     return out
 
 
+GALLERY = "gallery"  # a template's `metadata.gallery`: category, tags, difficulty, sample_input (S23)
+GALLERY_CATEGORIES = (
+    "Getting started", "Customer support", "Content", "Sales", "Data extraction", "Research", "HR", "Engineering",
+    "Operations",
+)  # fmt: skip
+
+
+def template_gallery(doc: dict[str, Any]) -> dict[str, Any]:
+    """The gallery metadata of a template document ({} when it has none)."""
+    g = (doc.get("metadata") or {}).get(GALLERY)
+    return g if isinstance(g, dict) else {}
+
+
+def without_gallery(doc: dict[str, Any]) -> dict[str, Any]:
+    """A template document as a workflow: the gallery metadata only describes the template, so it is dropped."""
+    out = {k: v for k, v in doc.items() if k != "metadata"}
+    meta = {k: v for k, v in (doc.get("metadata") or {}).items() if k != GALLERY}
+    return {**out, "metadata": meta} if meta else out
+
+
 def list_templates(settings: Settings) -> dict[str, dict[str, Any]]:
     dirs = [TEMPLATES] + ([DEV_TEMPLATES] if settings.env in ("dev", "test") else [])
     out: dict[str, dict[str, Any]] = {}
@@ -103,6 +123,7 @@ class WorkflowService:
             doc = list_templates(self.settings).get(template)
             if doc is None:
                 raise NotFound(f"template '{template}' not found")
+            doc = without_gallery(doc)
             default = (project.settings or {}).get("default_model")
             if default:
                 doc = with_default_model(doc, default)

@@ -73,6 +73,47 @@ Through the web server (production setups) the same paths are under `/api/`. The
 key, per webhook and per project (`429` with `Retry-After` when exceeded). Full, interactive API reference:
 `http://localhost:8000/docs` in development.
 
+## Share as an app or a chat widget
+
+Once a workflow is published, people who are not developers can use it from a link. On the **Versions** tab, open
+**Share as an app or a chat widget** under the deployment.
+
+1. Tick **Anyone with the link can chat with this deployment**. Sharing starts switched off.
+2. Give the page a **Title**, a **Greeting** (the first thing visitors read) and up to six **Suggested questions**
+   (one per line; visitors click one to start). Press **Save**.
+3. **Copy link** and send it to people, or **Open the page** to try it yourself. The page works on phones and
+   follows the visitor's light or dark setting.
+
+Visitors need no account. Each message they send runs the published version, and the answer streams in as it is
+written. **New conversation** starts over. Thumbs up and down go to the run's feedback, like feedback sent through
+the API (a thumbs-down can put the run in an annotation queue). If the workflow pauses for a person (an approval or
+a question), the visitor sees the question and answers it in the chat (**Yes** / **No** for approvals).
+
+**Put a chat button on your website.** Paste the snippet shown under **Chat widget** before `</body>` on any page:
+
+```html
+<script src="https://your-agentcanvas.example.com/widget.js" data-share="sh_…" async></script>
+```
+
+A round chat button appears in the bottom-right corner; it opens the same chat in a small panel. Optional
+attributes: `data-label` (the button's name), `data-position="left"` and `data-color` (any CSS colour).
+
+**Which input gets the message.** The visitor's message goes to the workflow's text input: one named like
+`message`, `question`, `query` or `input` if there is one, else a chat message list (`messages`), else its only
+text input. The share box says which one it picked. The answer shown is the last assistant message, else an output
+field such as `answer`, `reply` or `response`, else the only text output.
+
+**Keep in mind.**
+
+- The link is the key. Anyone who has it can chat, and their runs count against the deployment's usage limits.
+  Share it only with the people it is meant for. The page never shows your workflow, its keys or its secrets.
+- **New link** makes a new address. The old link stops working at once, and so do conversations started on it.
+  Switching sharing off, or unpublishing the deployment, closes the page too.
+- Visitors only ever see their own conversations. Each browser gets its own random visitor id; you see their runs
+  in **Runs**, with the end user `share:<deployment>:<visitor>` (useful for per-user memory).
+- Any website can show the chat panel, so the widget does not limit which sites embed it.
+- Messages a visitor sends are not kept in their browser: reloading the page starts a new conversation.
+
 ## Triggers
 
 On the Versions tab:

@@ -1,0 +1,133 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_onboarding_buddy",
+  "name": "Onboarding buddy",
+  "description": "A chat assistant for new hires that answers from your handbook excerpts and never repeats email addresses people paste in. Replace the sample handbook with yours.",
+  "state": {
+    "channels": [
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "storage": "delta"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "chat_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 10
+      }
+    },
+    {
+      "id": "r_pii",
+      "type": "mw.pii",
+      "name": "hide_emails",
+      "config": {
+        "pii_type": "email",
+        "strategy": "redact"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_agent",
+      "type": "core.agent",
+      "name": "buddy",
+      "label": "Onboarding buddy",
+      "config": {
+        "system_prompt": "You are a friendly onboarding buddy for new employees at Acme. Answer from the handbook below; if it does not cover the question, suggest asking their manager or #people-team. Keep answers short.\n\nHandbook:\n- Laptops are handed out on day one by IT (2nd floor).\n- Payroll runs on the 25th of each month.\n- Holidays: 25 days a year; request them in the HR portal at least two weeks ahead.\n- Expenses: submit receipts within 30 days in the finance app."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_agent"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_agent"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w3",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "middleware"
+      },
+      "order": 0
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_pii"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "middleware"
+      },
+      "order": 1
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "HR",
+      "tags": [
+        "chatbot",
+        "onboarding",
+        "privacy"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "When do I get paid, and how do I book holidays?"
+          }
+        ]
+      }
+    }
+  }
+}

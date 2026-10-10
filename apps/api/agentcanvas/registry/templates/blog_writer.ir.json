@@ -1,0 +1,270 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_blog_writer",
+  "name": "Blog post writer",
+  "description": "Outline, then draft, then an editor's review: a rejected draft is revised and comes back for review until the editor approves it.",
+  "state": {
+    "channels": [
+      {
+        "name": "topic",
+        "io": "in"
+      },
+      {
+        "name": "audience",
+        "io": "in",
+        "description": "Who the post is for"
+      },
+      {
+        "name": "outline"
+      },
+      {
+        "name": "draft",
+        "io": "out"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        }
+      },
+      {
+        "name": "status",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_outline",
+      "type": "core.llm",
+      "name": "write_outline",
+      "label": "Outline",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a blog post outline about {{ state.topic }} for {{ state.audience }}: a working title and 4 to 6 section headings, each with a one-line note.",
+        "output": "outline"
+      }
+    },
+    {
+      "id": "n_draft",
+      "type": "core.llm",
+      "name": "write_draft",
+      "label": "First draft",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a blog post of about 600 words that follows this outline. Use short paragraphs and end with a clear call to action.\n\nOutline:\n{{ state.outline }}",
+        "output": "draft"
+      }
+    },
+    {
+      "id": "n_review",
+      "type": "core.approval",
+      "name": "editor_review",
+      "label": "Editor review",
+      "config": {
+        "show": "draft",
+        "output": "approved"
+      }
+    },
+    {
+      "id": "n_gate",
+      "type": "core.router",
+      "name": "approved_gate",
+      "label": "Approved?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.approved == true",
+            "route": "yes"
+          }
+        ],
+        "default": "revise"
+      }
+    },
+    {
+      "id": "n_revise",
+      "type": "core.llm",
+      "name": "revise_draft",
+      "label": "Revise draft",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "An editor sent this draft back. Rewrite it to be clearer, more concrete and better structured, keeping to the outline.\n\nOutline:\n{{ state.outline }}\n\nDraft:\n{{ state.draft }}",
+        "output": "draft"
+      }
+    },
+    {
+      "id": "n_done",
+      "type": "core.set",
+      "name": "mark_ready",
+      "label": "Ready to publish",
+      "config": {
+        "values": {
+          "status": "ready to publish"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_outline"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_outline"
+      },
+      "target": {
+        "node": "n_draft"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_draft"
+      },
+      "target": {
+        "node": "n_review"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_review"
+      },
+      "target": {
+        "node": "n_gate"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:yes"
+      },
+      "target": {
+        "node": "n_done"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:revise"
+      },
+      "target": {
+        "node": "n_revise"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_revise"
+      },
+      "target": {
+        "node": "n_review"
+      }
+    },
+    {
+      "id": "e8",
+      "kind": "flow",
+      "source": {
+        "node": "n_done"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w9",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_outline",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w10",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_draft",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w11",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_revise",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Content",
+      "tags": [
+        "writing",
+        "review loop",
+        "human approval"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "topic": "Why small teams should automate their weekly reporting",
+        "audience": "operations managers"
+      }
+    }
+  }
+}

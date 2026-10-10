@@ -24,7 +24,7 @@ READS = {"GET", "HEAD", "OPTIONS"}
 # public run calls (volume), checks that change nothing, and canvas positions (cosmetic)
 SKIPPED = {
     "api_run_wait", "api_run_stream", "webhook", "check_expression", "validate_workflow", "inspect_mcp", "dry_run",
-    "set_layout",
+    "set_layout", "share_run_stream",
 }  # fmt: skip
 # path parameters, most specific first: the first one present is the row's target
 TARGETS = ("interrupt_id", "run_id", "thread_id", "trigger_id", "dep_id", "ex_id", "ds_id", "evaluator_id", "exp_id",

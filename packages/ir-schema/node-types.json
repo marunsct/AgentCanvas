@@ -2606,6 +2606,502 @@
     "docs": null
   },
   {
+    "type": "guard.moderation",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Check for harmful content",
+    "category": "Safety",
+    "icon": "shield",
+    "color": "#DC2626",
+    "description": "Rates text for harmful content (violence, hate, harassment, self-harm, sexual, illegal activities) and flags it or stops the run. Plug in an AI model for real judgement; without one it uses a fixed list of phrases.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Optional but recommended: the AI model that rates the text. Without one, a fixed list of phrases is used."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go after the check: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "title": "Text to check",
+          "format": "channel",
+          "default": "messages",
+          "description": "The data field to check. For the conversation (messages) the newest message is checked."
+        },
+        "on_fail": {
+          "enum": [
+            "stop",
+            "flag"
+          ],
+          "title": "When it fails",
+          "default": "stop",
+          "description": "stop = end the run with an error that says why; flag = carry on and save the verdict for a later step to branch on."
+        },
+        "flag_output": {
+          "type": "string",
+          "title": "Save yes/no in",
+          "format": "channel",
+          "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+        },
+        "report_output": {
+          "type": "string",
+          "title": "Save the details in",
+          "format": "channel",
+          "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+        },
+        "categories": {
+          "type": "array",
+          "title": "Categories to block",
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "violence",
+            "hate",
+            "harassment",
+            "self_harm",
+            "sexual",
+            "illegal"
+          ],
+          "items": {
+            "enum": [
+              "violence",
+              "hate",
+              "harassment",
+              "self_harm",
+              "sexual",
+              "illegal"
+            ]
+          },
+          "description": "violence, hate, harassment, self_harm, sexual, illegal (illegal activities)."
+        },
+        "threshold": {
+          "type": "number",
+          "title": "Sensitivity threshold",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "A category fails the check when its score (0 to 1) reaches this."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "flag_output",
+      "report_output"
+    ],
+    "read_fields": [
+      "input"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
+    "type": "guard.injection",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Check for prompt injection",
+    "category": "Safety",
+    "icon": "shield",
+    "color": "#DC2626",
+    "description": "Checks text for prompt injection: attempts to override the AI's instructions, fake system messages, hidden or encoded instructions, and requests for secrets. Uses fixed checks; plug in an AI model to also ask it.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Optional: an AI model that also judges the text. The check fails when either the fixed checks or the model flag it."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go after the check: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "title": "Text to check",
+          "format": "channel",
+          "default": "messages",
+          "description": "The data field to check. For the conversation (messages) the newest message is checked."
+        },
+        "on_fail": {
+          "enum": [
+            "stop",
+            "flag"
+          ],
+          "title": "When it fails",
+          "default": "stop",
+          "description": "stop = end the run with an error that says why; flag = carry on and save the verdict for a later step to branch on."
+        },
+        "flag_output": {
+          "type": "string",
+          "title": "Save yes/no in",
+          "format": "channel",
+          "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+        },
+        "report_output": {
+          "type": "string",
+          "title": "Save the details in",
+          "format": "channel",
+          "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+        },
+        "threshold": {
+          "type": "number",
+          "title": "Sensitivity threshold",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "The check fails when the risk score (0 to 1) reaches this. Lower catches more but has more false alarms."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "flag_output",
+      "report_output"
+    ],
+    "read_fields": [
+      "input"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
+    "type": "guard.schema",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Check the output format",
+    "category": "Safety",
+    "icon": "shield",
+    "color": "#DC2626",
+    "description": "Checks that a data field (or the newest message) is JSON matching the format you describe, e.g. an AI reply that must have a summary and a priority. Can ask an AI model to fix it once.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Optional: the AI model that fixes invalid data when \u201cLet the AI fix it once\u201d is on."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go after the check: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "schema"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "title": "Text to check",
+          "format": "channel",
+          "default": "messages",
+          "description": "The data field to check. For the conversation (messages) the newest message is checked."
+        },
+        "on_fail": {
+          "enum": [
+            "stop",
+            "flag"
+          ],
+          "title": "When it fails",
+          "default": "stop",
+          "description": "stop = end the run with an error that says why; flag = carry on and save the verdict for a later step to branch on."
+        },
+        "flag_output": {
+          "type": "string",
+          "title": "Save yes/no in",
+          "format": "channel",
+          "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+        },
+        "report_output": {
+          "type": "string",
+          "title": "Save the details in",
+          "format": "channel",
+          "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+        },
+        "schema": {
+          "type": "object",
+          "title": "Expected format (JSON Schema)",
+          "format": "json_schema",
+          "description": "The shape the data must have, e.g. an object with a required string field summary."
+        },
+        "repair": {
+          "type": "boolean",
+          "title": "Let the AI fix it once",
+          "default": false,
+          "description": "When the data does not match, ask the plugged-in AI model to correct it once before failing."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the checked data in",
+          "format": "channel",
+          "description": "Optional: a field that receives the parsed JSON data when it is valid."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output",
+      "flag_output",
+      "report_output"
+    ],
+    "read_fields": [
+      "input"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
+    "type": "guard.pii",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Hide personal data",
+    "category": "Safety",
+    "icon": "shield",
+    "color": "#DC2626",
+    "description": "Finds personal data (emails, phone and card numbers, IBANs, IP addresses, US social security numbers, your own patterns) in a data field and hides it, flags it or stops the run. Lists what kinds it found, never the values.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go after the check: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "title": "Text to check",
+          "format": "channel",
+          "default": "messages",
+          "description": "The data field to check. For the conversation (messages) the newest message is checked."
+        },
+        "on_fail": {
+          "enum": [
+            "redact",
+            "flag",
+            "stop"
+          ],
+          "title": "When it fails",
+          "default": "redact",
+          "description": "redact = hide what was found and carry on; flag = change nothing and save the verdict; stop = end the run with an error."
+        },
+        "flag_output": {
+          "type": "string",
+          "title": "Save yes/no in",
+          "format": "channel",
+          "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+        },
+        "report_output": {
+          "type": "string",
+          "title": "Save the details in",
+          "format": "channel",
+          "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+        },
+        "types": {
+          "type": "array",
+          "title": "What to look for",
+          "uniqueItems": true,
+          "default": [
+            "email",
+            "phone",
+            "credit_card",
+            "iban",
+            "ip_address",
+            "us_ssn"
+          ],
+          "items": {
+            "enum": [
+              "email",
+              "phone",
+              "credit_card",
+              "iban",
+              "ip_address",
+              "us_ssn"
+            ]
+          },
+          "description": "email, phone, credit_card (checked with the Luhn test), iban, ip_address, us_ssn."
+        },
+        "custom_patterns": {
+          "type": "array",
+          "title": "Your own patterns",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "pattern"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Name",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "description": "e.g. order_id; shown as [REDACTED_ORDER_ID]."
+              },
+              "pattern": {
+                "type": "string",
+                "title": "Pattern (regex)",
+                "format": "regex",
+                "minLength": 1
+              }
+            }
+          },
+          "description": "Optional regular expressions for your own kinds of personal data, e.g. AB-\\d{6} for order ids."
+        },
+        "strategy": {
+          "enum": [
+            "redact",
+            "mask",
+            "hash"
+          ],
+          "title": "How to hide it",
+          "default": "redact",
+          "description": "redact = [REDACTED_EMAIL]; mask = keep the last 4 characters (****-1111); hash = a short fingerprint, the same for the same value."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the cleaned text in",
+          "format": "channel",
+          "description": "Optional: leave empty to clean the field in place (the message itself, for messages)."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "input",
+      "output",
+      "flag_output",
+      "report_output"
+    ],
+    "read_fields": [
+      "input"
+    ],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [
+      "pii_read"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "mcp.server",
     "version": "1.0.0",
     "kind": "resource",

@@ -160,6 +160,11 @@ jobs:
           curl -fsSI "http://localhost:8080$asset" | grep -qi "immutable"
           curl -fsSI http://localhost:8080/ | grep -i "content-security-policy" | grep -q "connect-src 'self' https://login.example.com;"
           curl -fsSI http://localhost:8080/ | grep -qi "frame-ancestors 'self'"
+          # S23: share-link chat pages may be framed by any site (the chat widget); the widget loader is JavaScript
+          curl -fsSI http://localhost:8080/s/sh_ci | grep -qi "frame-ancestors \*"
+          test -z "$(curl -fsSI http://localhost:8080/s/sh_ci | grep -i x-frame-options)"
+          curl -fsS http://localhost:8080/s/sh_ci | grep -qi "<!doctype html>"
+          curl -fsSI http://localhost:8080/widget.js | grep -qi "content-type: application/javascript"
           curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
           docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001

@@ -1,4 +1,5 @@
-/** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with rotate / unpublish. */
+/** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with rotate / unpublish, and their
+ * share links (S23). */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
@@ -6,6 +7,7 @@ import type { Check, DeploymentOut, PublishOut } from "../api/generated";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
+import { ShareSection } from "./ShareSection";
 
 export function PublishSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
@@ -94,6 +96,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
               {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
             {d.active && <ConnectSection deployment={d} apiKey={key?.deployment === d.id ? key.key : undefined} />}
+            {d.active && can("builder") && <ShareSection deployment={d} />}
           </li>
         ))}
       </ul>

@@ -88,5 +88,23 @@
       },
       "order": 0
     }
-  ]
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Getting started",
+      "tags": [
+        "chatbot",
+        "agent"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "What can you help me with?"
+          }
+        ]
+      }
+    }
+  }
 }

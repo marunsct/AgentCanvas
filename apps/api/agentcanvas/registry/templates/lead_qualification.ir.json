@@ -1,0 +1,286 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_lead_qualification",
+  "name": "Lead qualification",
+  "description": "Scores an inbound lead (need, budget, timeline) as structured output; hot leads get a drafted first email, the rest go to the nurture list.",
+  "state": {
+    "channels": [
+      {
+        "name": "lead",
+        "io": "in",
+        "description": "The form submission or email from the prospect"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "private",
+        "description": "The conversation the agent reads"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "out"
+      },
+      {
+        "name": "next_step",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 10
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "brief_scorer",
+      "label": "Hand over the lead",
+      "config": {
+        "values": {
+          "messages": "Qualify this inbound lead.\n\n{{ state.lead }}"
+        }
+      }
+    },
+    {
+      "id": "n_score",
+      "type": "core.agent",
+      "name": "score_lead",
+      "label": "Score the lead",
+      "config": {
+        "system_prompt": "You qualify B2B sales leads. Judge the need, budget, authority and timeline from what the lead says; never guess facts that are not there. Hot = clear need, budget and a timeline under 3 months.",
+        "response_format": {
+          "title": "LeadScore",
+          "type": "object",
+          "required": [
+            "score",
+            "tier"
+          ],
+          "properties": {
+            "company": {
+              "type": "string"
+            },
+            "need": {
+              "type": "string"
+            },
+            "budget": {
+              "type": "string"
+            },
+            "timeline": {
+              "type": "string"
+            },
+            "score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "hot",
+                "warm",
+                "cold"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n_rt",
+      "type": "core.router",
+      "name": "route_tier",
+      "label": "Hot lead?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.structured_response.tier == \"hot\"",
+            "route": "hot"
+          }
+        ],
+        "default": "nurture"
+      }
+    },
+    {
+      "id": "n_email",
+      "type": "core.llm",
+      "name": "draft_outreach",
+      "label": "Draft first email",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a short, personal first email to this lead proposing a 20-minute call this week. Refer to what they need.\n\nLead:\n{{ state.lead }}\n\nQualification:\n{{ state.structured_response }}",
+        "output": "next_step"
+      }
+    },
+    {
+      "id": "n_nurture",
+      "type": "core.set",
+      "name": "add_to_nurture",
+      "label": "Add to nurture list",
+      "config": {
+        "values": {
+          "next_step": "Added to the nurture sequence."
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_score"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_score"
+      },
+      "target": {
+        "node": "n_rt"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:hot"
+      },
+      "target": {
+        "node": "n_email"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:nurture"
+      },
+      "target": {
+        "node": "n_nurture"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_email"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_nurture"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w8",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_score",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w9",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_email",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w10",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_score",
+        "port": "middleware"
+      },
+      "order": 0
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Sales",
+      "tags": [
+        "leads",
+        "scoring",
+        "structured output",
+        "routing"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "lead": "Hi, I'm the ops lead at Northwind (120 people). We need to automate invoice approvals before our audit in 6 weeks; budget is approved. Can we talk?"
+      }
+    }
+  }
+}

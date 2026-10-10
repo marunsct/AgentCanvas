@@ -214,5 +214,18 @@
       "category",
       "reply"
     ]
+  },
+  "metadata": {
+    "gallery": {
+      "category": "Getting started",
+      "tags": [
+        "routing",
+        "classification"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "request": "Where is my order?"
+      }
+    }
   }
 }

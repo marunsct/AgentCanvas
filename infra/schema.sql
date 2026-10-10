@@ -67,6 +67,19 @@ CREATE TABLE deployment (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE deployment_share (                 -- S23: public share link and chat widget of a deployment
+  deployment_id text PRIMARY KEY REFERENCES deployment(id) ON DELETE CASCADE,
+  token         text NOT NULL UNIQUE,             -- sh_<random>: a capability link; regenerate to revoke
+  enabled       boolean NOT NULL DEFAULT false,
+  title         text NOT NULL DEFAULT '',
+  greeting      text NOT NULL DEFAULT '',
+  suggestions   jsonb NOT NULL DEFAULT '[]',
+  input_field   text,                             -- NULL: picked from the workflow's inputs
+  updated_by    text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE thread (
   id            text PRIMARY KEY,                 -- th_<ulid> (== LangGraph thread_id)
   workflow_id   text NOT NULL REFERENCES workflow(id) ON DELETE CASCADE,
@@ -78,6 +91,14 @@ CREATE TABLE thread (
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX thread_workflow_idx ON thread(workflow_id, updated_at DESC);
+
+CREATE TABLE share_thread (                     -- S23: conversations visitors of a share link started
+  thread_id     text PRIMARY KEY REFERENCES thread(id) ON DELETE CASCADE,
+  deployment_id text NOT NULL REFERENCES deployment(id) ON DELETE CASCADE,
+  visitor_hash  text NOT NULL,                    -- sha256 of the visitor's browser secret
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_share_thread_deployment_id ON share_thread(deployment_id);
 
 CREATE TABLE run (
   id            text PRIMARY KEY,                 -- run_<ulid>

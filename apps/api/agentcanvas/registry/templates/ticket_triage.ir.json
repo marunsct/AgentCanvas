@@ -219,5 +219,19 @@
         "port": "model"
       }
     }
-  ]
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Customer support",
+      "tags": [
+        "tickets",
+        "routing",
+        "human approval"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "ticket": "The website is down and customers cannot pay!"
+      }
+    }
+  }
 }

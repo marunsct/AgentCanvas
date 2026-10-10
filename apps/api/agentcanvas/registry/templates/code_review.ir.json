@@ -1,0 +1,195 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_code_review",
+  "name": "Code review assistant",
+  "description": "Reviews a diff from two angles (bugs and security, then readability and tests) and writes one review comment.",
+  "state": {
+    "channels": [
+      {
+        "name": "diff",
+        "io": "in",
+        "description": "A unified diff or a code snippet"
+      },
+      {
+        "name": "change_goal",
+        "io": "in",
+        "description": "What the change is meant to do"
+      },
+      {
+        "name": "bugs"
+      },
+      {
+        "name": "suggestions"
+      },
+      {
+        "name": "review",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_bugs",
+      "type": "core.llm",
+      "name": "find_bugs",
+      "label": "Bugs and security",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "You are a careful senior reviewer. List correctness bugs, security problems and missing error handling in this change, most serious first, each with the line and a suggested fix. Reply 'No blocking issues.' if there are none.\n\nGoal: {{ state.change_goal }}\n\n{{ state.diff }}",
+        "output": "bugs"
+      }
+    },
+    {
+      "id": "n_style",
+      "type": "core.llm",
+      "name": "suggest_improvements",
+      "label": "Readability and tests",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Suggest at most five improvements to the readability, naming and test coverage of this change. Skip nitpicks.\n\n{{ state.diff }}",
+        "output": "suggestions"
+      }
+    },
+    {
+      "id": "n_write",
+      "type": "core.llm",
+      "name": "write_review",
+      "label": "Write the review",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write one pull-request review comment: a one-line verdict (approve or request changes), then the blocking issues, then the optional suggestions.\n\nBlocking issues:\n{{ state.bugs }}\n\nSuggestions:\n{{ state.suggestions }}",
+        "output": "review"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_bugs"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_bugs"
+      },
+      "target": {
+        "node": "n_style"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_style"
+      },
+      "target": {
+        "node": "n_write"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_write"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_bugs",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w6",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_style",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w7",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Engineering",
+      "tags": [
+        "code review",
+        "security",
+        "developer tools"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "diff": "-    return items[0]\n+    return items[0] if items else None",
+        "change_goal": "Avoid a crash on empty lists"
+      }
+    }
+  }
+}

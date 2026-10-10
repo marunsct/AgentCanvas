@@ -15,6 +15,7 @@ const PoliciesPage = lazy(() => import("./PoliciesPage").then((m) => ({ default:
 const MembersPage = lazy(() => import("./MembersPage").then((m) => ({ default: m.MembersPage })));
 const EvaluationPage = lazy(() => import("../evaluation/EvaluationPage").then((m) => ({ default: m.EvaluationPage })));
 const SetupPage = lazy(() => import("./SetupPage").then((m) => ({ default: m.SetupPage })));
+const SharePage = lazy(() => import("../share/SharePage").then((m) => ({ default: m.SharePage })));
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 
 // one retry: an unreachable API shows its error (with a Retry button) in seconds, not after three back-offs
@@ -25,6 +26,10 @@ function NotFound() {
 }
 
 export function App() {
+  // S23: a share link's chat page (/s/<token>) is public: no sign-in, no project, none of the app around it
+  if (location.pathname.startsWith("/s/")) {
+    return <Suspense fallback={<p className="share-loading" role="status">Loading…</p>}><SharePage /></Suspense>;
+  }
   return (
     <AuthGate>
     <QueryClientProvider client={queryClient}>

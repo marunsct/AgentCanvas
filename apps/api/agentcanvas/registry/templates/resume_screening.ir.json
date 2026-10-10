@@ -1,0 +1,292 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_resume_screening",
+  "name": "Resume screening",
+  "description": "Compares a resume with a job description (skills and experience only) as structured output; a recruiter approves the recommendation before anything happens.",
+  "state": {
+    "channels": [
+      {
+        "name": "job_description",
+        "io": "in"
+      },
+      {
+        "name": "resume",
+        "io": "in"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "private",
+        "description": "The conversation the agent reads"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "out"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "out"
+      },
+      {
+        "name": "decision",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 10
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "hand_over",
+      "label": "Hand over the documents",
+      "config": {
+        "values": {
+          "messages": "Job description:\n{{ state.job_description }}\n\nResume:\n{{ state.resume }}"
+        }
+      }
+    },
+    {
+      "id": "n_screen",
+      "type": "core.agent",
+      "name": "screen_resume",
+      "label": "Screen the resume",
+      "config": {
+        "system_prompt": "You screen resumes against a job description. Judge only job-relevant skills and experience; ignore names, age, gender, nationality, photos and other personal characteristics. Give specific evidence.",
+        "response_format": {
+          "title": "Screening",
+          "type": "object",
+          "required": [
+            "match_score",
+            "strengths",
+            "gaps",
+            "recommendation"
+          ],
+          "properties": {
+            "match_score": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "strengths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "recommendation": {
+              "type": "string",
+              "enum": [
+                "interview",
+                "maybe",
+                "decline"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n_review",
+      "type": "core.approval",
+      "name": "recruiter_review",
+      "label": "Recruiter review",
+      "config": {
+        "show": "structured_response",
+        "output": "approved"
+      }
+    },
+    {
+      "id": "n_gate",
+      "type": "core.router",
+      "name": "approved_gate",
+      "label": "Approved?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.approved == true",
+            "route": "yes"
+          }
+        ],
+        "default": "no"
+      }
+    },
+    {
+      "id": "n_go",
+      "type": "core.set",
+      "name": "accept_recommendation",
+      "label": "Accept recommendation",
+      "config": {
+        "values": {
+          "decision": "Recruiter accepted: {{ state.structured_response.recommendation }}"
+        }
+      }
+    },
+    {
+      "id": "n_no",
+      "type": "core.set",
+      "name": "manual_decision",
+      "label": "Decide manually",
+      "config": {
+        "values": {
+          "decision": "Recruiter will decide manually"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_screen"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_screen"
+      },
+      "target": {
+        "node": "n_review"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_review"
+      },
+      "target": {
+        "node": "n_gate"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:yes"
+      },
+      "target": {
+        "node": "n_go"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:no"
+      },
+      "target": {
+        "node": "n_no"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_go"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e8",
+      "kind": "flow",
+      "source": {
+        "node": "n_no"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w9",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_screen",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w10",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_screen",
+        "port": "middleware"
+      },
+      "order": 0
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "HR",
+      "tags": [
+        "recruiting",
+        "structured output",
+        "human approval"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "job_description": "Backend engineer: Python, PostgreSQL, 3+ years building APIs.",
+        "resume": "5 years as a Python developer; built REST APIs with FastAPI and Django on PostgreSQL."
+      }
+    }
+  }
+}

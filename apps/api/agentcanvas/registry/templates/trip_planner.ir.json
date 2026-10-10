@@ -1,0 +1,146 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_trip_planner",
+  "name": "Travel itinerary planner",
+  "description": "Plans a day-by-day itinerary within your budget from a short trip description, then writes a packing list for it.",
+  "state": {
+    "channels": [
+      {
+        "name": "trip_request",
+        "io": "in",
+        "description": "Where, when, budget and what you enjoy"
+      },
+      {
+        "name": "itinerary",
+        "io": "out"
+      },
+      {
+        "name": "packing_list",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_plan",
+      "type": "core.llm",
+      "name": "plan_itinerary",
+      "label": "Plan the itinerary",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Plan a day-by-day itinerary for this trip: a morning, afternoon and evening suggestion for each day with rough costs, staying within the budget. Mention anything that must be booked in advance.\n\n{{ state.trip_request }}",
+        "output": "itinerary"
+      }
+    },
+    {
+      "id": "n_pack",
+      "type": "core.llm",
+      "name": "packing_list",
+      "label": "Packing list",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a short packing checklist for this trip.\n\n{{ state.itinerary }}",
+        "output": "packing_list"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_plan"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_plan"
+      },
+      "target": {
+        "node": "n_pack"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_pack"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_plan",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_pack",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Operations",
+      "tags": [
+        "travel",
+        "planning"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "trip_request": "3 days in Lisbon in May for a conference, budget 600 EUR, I like food and walking."
+      }
+    }
+  }
+}

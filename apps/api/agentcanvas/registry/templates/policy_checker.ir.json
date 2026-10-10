@@ -1,0 +1,245 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_policy_checker",
+  "name": "Policy compliance check",
+  "description": "Checks a document against your rules, quoting every passage that breaks one. Anything that is not clearly compliant goes to a reviewer.",
+  "state": {
+    "channels": [
+      {
+        "name": "policy",
+        "io": "in",
+        "description": "The rules to check against, one per line"
+      },
+      {
+        "name": "document",
+        "io": "in",
+        "description": "The text to check"
+      },
+      {
+        "name": "findings",
+        "io": "out"
+      },
+      {
+        "name": "verdict",
+        "io": "out",
+        "description": "compliant | issues"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "out"
+      },
+      {
+        "name": "status",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_check",
+      "type": "core.llm",
+      "name": "check_rules",
+      "label": "Check each rule",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Check the document against each rule of the policy. For every broken rule, name the rule and quote the passage that breaks it. If nothing is broken, say so.\n\nPolicy:\n{{ state.policy }}\n\nDocument:\n{{ state.document }}",
+        "output": "findings"
+      }
+    },
+    {
+      "id": "n_verdict",
+      "type": "core.llm",
+      "name": "decide_verdict",
+      "label": "Compliant?",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Answer with one word, compliant or issues: does this review report any broken rule?\n\n{{ state.findings }}",
+        "output": "verdict"
+      }
+    },
+    {
+      "id": "n_rt",
+      "type": "core.router",
+      "name": "route_verdict",
+      "label": "Route",
+      "config": {
+        "cases": [
+          {
+            "when": "state.verdict == \"compliant\"",
+            "route": "compliant"
+          }
+        ],
+        "default": "issues"
+      }
+    },
+    {
+      "id": "n_ok",
+      "type": "core.set",
+      "name": "mark_compliant",
+      "label": "Mark compliant",
+      "config": {
+        "values": {
+          "status": "compliant"
+        }
+      }
+    },
+    {
+      "id": "n_review",
+      "type": "core.approval",
+      "name": "compliance_review",
+      "label": "Reviewer decides",
+      "config": {
+        "show": "findings",
+        "output": "approved"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_check"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_check"
+      },
+      "target": {
+        "node": "n_verdict"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_verdict"
+      },
+      "target": {
+        "node": "n_rt"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:compliant"
+      },
+      "target": {
+        "node": "n_ok"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:issues"
+      },
+      "target": {
+        "node": "n_review"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_ok"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_review"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w8",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_check",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w9",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_verdict",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Operations",
+      "tags": [
+        "compliance",
+        "review",
+        "human approval"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "policy": "1. No prices in marketing emails.\n2. Always include an unsubscribe link.",
+        "document": "Spring sale! Everything 20% off, from $9.99. Shop now."
+      }
+    }
+  }
+}

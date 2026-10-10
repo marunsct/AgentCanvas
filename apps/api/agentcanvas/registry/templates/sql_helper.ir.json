@@ -1,0 +1,159 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_sql_helper",
+  "name": "SQL query helper",
+  "description": "Drafts a SQL query that answers a question about your tables and explains it in plain English. It never connects to a database: you review and run the query yourself.",
+  "state": {
+    "channels": [
+      {
+        "name": "table_schema",
+        "io": "in",
+        "description": "CREATE TABLE statements or a list of tables and columns"
+      },
+      {
+        "name": "question",
+        "io": "in"
+      },
+      {
+        "name": "dialect",
+        "io": "in",
+        "description": "For example PostgreSQL, MySQL, BigQuery"
+      },
+      {
+        "name": "sql",
+        "io": "out"
+      },
+      {
+        "name": "explanation",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_sql",
+      "type": "core.llm",
+      "name": "write_query",
+      "label": "Write the query",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write one {{ state.dialect }} SELECT query that answers the question, using only the tables and columns in the schema. Reply with the SQL only. If the schema cannot answer the question, reply with a SQL comment saying what is missing.\n\nSchema:\n{{ state.table_schema }}\n\nQuestion: {{ state.question }}",
+        "output": "sql"
+      }
+    },
+    {
+      "id": "n_explain",
+      "type": "core.llm",
+      "name": "explain_query",
+      "label": "Explain the query",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Explain in at most four bullet points what this query does and what it assumes. Warn if it could be slow on large tables.\n\n{{ state.sql }}",
+        "output": "explanation"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_sql"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_sql"
+      },
+      "target": {
+        "node": "n_explain"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_explain"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_sql",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_explain",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Engineering",
+      "tags": [
+        "sql",
+        "analytics",
+        "data"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "table_schema": "orders(id, customer_id, total, created_at)\ncustomers(id, name, country)",
+        "question": "Revenue per country last month",
+        "dialect": "PostgreSQL"
+      }
+    }
+  }
+}

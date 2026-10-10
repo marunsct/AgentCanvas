@@ -1,0 +1,160 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_translation_glossary",
+  "name": "Translation with glossary",
+  "description": "Translates text into another language using your glossary for brand and product terms, then checks that every glossary term was used.",
+  "state": {
+    "channels": [
+      {
+        "name": "text",
+        "io": "in",
+        "description": "The text to translate"
+      },
+      {
+        "name": "target_language",
+        "io": "in"
+      },
+      {
+        "name": "glossary",
+        "io": "in",
+        "description": "One term per line: source term = translation"
+      },
+      {
+        "name": "translation",
+        "io": "out"
+      },
+      {
+        "name": "qa_notes",
+        "io": "out",
+        "description": "Glossary terms the translation missed"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_tr",
+      "type": "core.llm",
+      "name": "translate",
+      "label": "Translate",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Translate the text into {{ state.target_language }}. Always use the glossary translation for the terms it lists, keep formatting and placeholders such as {name} unchanged, and reply with the translation only.\n\nGlossary:\n{{ state.glossary }}\n\nText:\n{{ state.text }}",
+        "output": "translation"
+      }
+    },
+    {
+      "id": "n_qa",
+      "type": "core.llm",
+      "name": "check_terms",
+      "label": "Check glossary terms",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "List every glossary term that the translation does not translate as the glossary says, or reply 'All glossary terms used.'\n\nGlossary:\n{{ state.glossary }}\n\nSource:\n{{ state.text }}\n\nTranslation:\n{{ state.translation }}",
+        "output": "qa_notes"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_tr"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_tr"
+      },
+      "target": {
+        "node": "n_qa"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_qa"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_tr",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_qa",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Content",
+      "tags": [
+        "translation",
+        "localisation",
+        "quality check"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "text": "Start your free trial of Acme Cloud today. Your workspace is ready, {name}!",
+        "target_language": "German",
+        "glossary": "free trial = kostenlose Testphase\nworkspace = Arbeitsbereich"
+      }
+    }
+  }
+}

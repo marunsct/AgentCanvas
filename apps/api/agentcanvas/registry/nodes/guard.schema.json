@@ -1,0 +1,88 @@
+{
+  "type": "guard.schema",
+  "kind": "runtime",
+  "label": "Check the output format",
+  "category": "Safety",
+  "icon": "shield",
+  "color": "#DC2626",
+  "description": "Checks that a data field (or the newest message) is JSON matching the format you describe, e.g. an AI reply that must have a summary and a priority. Can ask an AI model to fix it once.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": false,
+      "description": "Optional: the AI model that fixes invalid data when \u201cLet the AI fix it once\u201d is on."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go after the check: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "input",
+      "schema"
+    ],
+    "properties": {
+      "input": {
+        "type": "string",
+        "title": "Text to check",
+        "format": "channel",
+        "default": "messages",
+        "description": "The data field to check. For the conversation (messages) the newest message is checked."
+      },
+      "on_fail": {
+        "enum": [
+          "stop",
+          "flag"
+        ],
+        "title": "When it fails",
+        "default": "stop",
+        "description": "stop = end the run with an error that says why; flag = carry on and save the verdict for a later step to branch on."
+      },
+      "flag_output": {
+        "type": "string",
+        "title": "Save yes/no in",
+        "format": "channel",
+        "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+      },
+      "report_output": {
+        "type": "string",
+        "title": "Save the details in",
+        "format": "channel",
+        "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+      },
+      "schema": {
+        "type": "object",
+        "title": "Expected format (JSON Schema)",
+        "format": "json_schema",
+        "description": "The shape the data must have, e.g. an object with a required string field summary."
+      },
+      "repair": {
+        "type": "boolean",
+        "title": "Let the AI fix it once",
+        "default": false,
+        "description": "When the data does not match, ask the plugged-in AI model to correct it once before failing."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save the checked data in",
+        "format": "channel",
+        "description": "Optional: a field that receives the parsed JSON data when it is valid."
+      }
+    }
+  },
+  "read_fields": [
+    "input"
+  ],
+  "channel_fields": [
+    "output",
+    "flag_output",
+    "report_output"
+  ]
+}

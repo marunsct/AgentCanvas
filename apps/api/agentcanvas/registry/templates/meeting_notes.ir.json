@@ -1,0 +1,228 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_meeting_notes",
+  "name": "Meeting notes and action items",
+  "description": "Turns a meeting transcript into a summary, decisions and action items (owner, task, due date) as structured output, then drafts the follow-up email.",
+  "state": {
+    "channels": [
+      {
+        "name": "transcript",
+        "io": "in",
+        "description": "The meeting transcript or rough notes"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "private",
+        "description": "The conversation the agent reads"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "out"
+      },
+      {
+        "name": "follow_up_email",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 10
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "hand_over",
+      "label": "Hand over the transcript",
+      "config": {
+        "values": {
+          "messages": "Summarise this meeting.\n\n{{ state.transcript }}"
+        }
+      }
+    },
+    {
+      "id": "n_notes",
+      "type": "core.agent",
+      "name": "take_notes",
+      "label": "Take notes",
+      "config": {
+        "system_prompt": "You turn meeting transcripts into concise notes. Only list action items someone actually agreed to do; use null for an unknown owner or due date.",
+        "response_format": {
+          "title": "MeetingNotes",
+          "type": "object",
+          "required": [
+            "summary",
+            "action_items"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "Two or three sentences"
+            },
+            "decisions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "action_items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "owner": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "task": {
+                    "type": "string"
+                  },
+                  "due_date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "ISO date"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n_email",
+      "type": "core.llm",
+      "name": "write_follow_up",
+      "label": "Draft follow-up email",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a short follow-up email to the attendees from these meeting notes: the summary, the decisions, then the action items as a list with owners and due dates.\n\n{{ state.structured_response }}",
+        "output": "follow_up_email"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_notes"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_notes"
+      },
+      "target": {
+        "node": "n_email"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_email"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_notes",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w6",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_email",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w7",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_notes",
+        "port": "middleware"
+      },
+      "order": 0
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Data extraction",
+      "tags": [
+        "meetings",
+        "action items",
+        "structured output"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "transcript": "Ana: Let's ship the beta on 3 March. Ben: OK, I'll finish the onboarding emails by Friday. Ana: Chen, can you book the launch webinar? Chen: Yes, next week."
+      }
+    }
+  }
+}

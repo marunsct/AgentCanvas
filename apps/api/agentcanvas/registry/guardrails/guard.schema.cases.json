@@ -1,0 +1,223 @@
+{
+  "type": "guard.schema",
+  "description": "Text the Check the output format block must accept (valid) or flag against the schema in config.",
+  "config": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "priority"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    },
+    "on_fail": "flag"
+  },
+  "cases": [
+    {
+      "id": "schema_01",
+      "input": {
+        "text": "{\"summary\": \"Printer broken\", \"priority\": \"high\"}"
+      },
+      "reference": {
+        "flagged": false
+      },
+      "metadata": {
+        "case": "schema_01"
+      }
+    },
+    {
+      "id": "schema_02",
+      "input": {
+        "text": "Here is the result:\n```json\n{\"summary\": \"Late delivery\", \"priority\": \"low\"}\n```"
+      },
+      "reference": {
+        "flagged": false
+      },
+      "metadata": {
+        "case": "schema_02",
+        "note": "JSON in a code block"
+      }
+    },
+    {
+      "id": "schema_03",
+      "input": {
+        "text": "Sure! {\"summary\": \"Refund request\", \"priority\": \"medium\"} Let me know if you need more."
+      },
+      "reference": {
+        "flagged": false
+      },
+      "metadata": {
+        "case": "schema_03",
+        "note": "JSON inside text"
+      }
+    },
+    {
+      "id": "schema_04",
+      "input": {
+        "text": "  {\"priority\": \"high\", \"summary\": \"Order missing\"}  "
+      },
+      "reference": {
+        "flagged": false
+      },
+      "metadata": {
+        "case": "schema_04"
+      }
+    },
+    {
+      "id": "schema_05",
+      "input": {
+        "text": "{\"summary\": \"Use {braces} freely\", \"priority\": \"low\"}"
+      },
+      "reference": {
+        "flagged": false
+      },
+      "metadata": {
+        "case": "schema_05",
+        "note": "braces inside a string"
+      }
+    },
+    {
+      "id": "schema_06",
+      "input": {
+        "text": "{\"summary\": \"Two objects\", \"priority\": \"low\"} and also {\"other\": 1}"
+      },
+      "reference": {
+        "flagged": false
+      },
+      "metadata": {
+        "case": "schema_06",
+        "note": "the first JSON value is checked"
+      }
+    },
+    {
+      "id": "schema_07",
+      "input": {
+        "text": "{\"summary\": \"x\", \"priority\": \"urgent\"}"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_07",
+        "note": "value not allowed"
+      }
+    },
+    {
+      "id": "schema_08",
+      "input": {
+        "text": "{\"summary\": \"Missing priority\"}"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_08",
+        "note": "required field missing"
+      }
+    },
+    {
+      "id": "schema_09",
+      "input": {
+        "text": "{\"summary\": \"\", \"priority\": \"low\"}"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_09",
+        "note": "empty text"
+      }
+    },
+    {
+      "id": "schema_10",
+      "input": {
+        "text": "{\"summary\": \"Extra\", \"priority\": \"low\", \"extra\": 1}"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_10",
+        "note": "field not allowed"
+      }
+    },
+    {
+      "id": "schema_11",
+      "input": {
+        "text": "{summary: \"x\", priority: \"low\"}"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_11",
+        "note": "not valid JSON"
+      }
+    },
+    {
+      "id": "schema_12",
+      "input": {
+        "text": "[{\"summary\": \"In a list\", \"priority\": \"low\"}]"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_12",
+        "note": "a list instead of an object"
+      }
+    },
+    {
+      "id": "schema_13",
+      "input": {
+        "text": "{\"summary\": 42, \"priority\": \"low\"}"
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_13",
+        "note": "wrong type"
+      }
+    },
+    {
+      "id": "schema_14",
+      "input": {
+        "text": "The ticket is about a broken printer, high priority."
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_14",
+        "note": "plain text"
+      }
+    },
+    {
+      "id": "schema_15",
+      "input": {
+        "text": ""
+      },
+      "reference": {
+        "flagged": true
+      },
+      "metadata": {
+        "case": "schema_15",
+        "note": "nothing to check"
+      }
+    }
+  ]
+}

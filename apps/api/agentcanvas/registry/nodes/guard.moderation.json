@@ -1,0 +1,101 @@
+{
+  "type": "guard.moderation",
+  "kind": "runtime",
+  "label": "Check for harmful content",
+  "category": "Safety",
+  "icon": "shield",
+  "color": "#DC2626",
+  "description": "Rates text for harmful content (violence, hate, harassment, self-harm, sexual, illegal activities) and flags it or stops the run. Plug in an AI model for real judgement; without one it uses a fixed list of phrases.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": false,
+      "description": "Optional but recommended: the AI model that rates the text. Without one, a fixed list of phrases is used."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go after the check: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "input"
+    ],
+    "properties": {
+      "input": {
+        "type": "string",
+        "title": "Text to check",
+        "format": "channel",
+        "default": "messages",
+        "description": "The data field to check. For the conversation (messages) the newest message is checked."
+      },
+      "on_fail": {
+        "enum": [
+          "stop",
+          "flag"
+        ],
+        "title": "When it fails",
+        "default": "stop",
+        "description": "stop = end the run with an error that says why; flag = carry on and save the verdict for a later step to branch on."
+      },
+      "flag_output": {
+        "type": "string",
+        "title": "Save yes/no in",
+        "format": "channel",
+        "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+      },
+      "report_output": {
+        "type": "string",
+        "title": "Save the details in",
+        "format": "channel",
+        "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+      },
+      "categories": {
+        "type": "array",
+        "title": "Categories to block",
+        "uniqueItems": true,
+        "minItems": 1,
+        "default": [
+          "violence",
+          "hate",
+          "harassment",
+          "self_harm",
+          "sexual",
+          "illegal"
+        ],
+        "items": {
+          "enum": [
+            "violence",
+            "hate",
+            "harassment",
+            "self_harm",
+            "sexual",
+            "illegal"
+          ]
+        },
+        "description": "violence, hate, harassment, self_harm, sexual, illegal (illegal activities)."
+      },
+      "threshold": {
+        "type": "number",
+        "title": "Sensitivity threshold",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "description": "A category fails the check when its score (0 to 1) reaches this."
+      }
+    }
+  },
+  "read_fields": [
+    "input"
+  ],
+  "channel_fields": [
+    "flag_output",
+    "report_output"
+  ]
+}
