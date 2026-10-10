@@ -195,7 +195,7 @@ def test_supported_templates_generate_valid_python(name):
 
 
 def test_most_templates_run_on_the_sdk():
-    assert len(TEMPLATE_SUPPORT) >= 20, TEMPLATE_SUPPORT
+    assert len(TEMPLATE_SUPPORT) >= 22, TEMPLATE_SUPPORT
 
 
 # ------------------------------------------------------------------ export ----
@@ -363,3 +363,35 @@ async def test_a_target_on_a_framework_that_cannot_run_the_workflow_is_refused(a
     assert r.status_code == 422 and "cannot run 'agent.deep' blocks" in r.text
     r = await api_client.post(url, json={"dataset_id": ds["id"], "targets": [{"framework": "nope"}]})
     assert r.status_code == 422 and "no framework 'nope'" in r.text
+
+
+def test_an_agent_designed_for_the_sdk_is_native_in_an_sdk_flow():
+    from agentcanvas.registry import default_registry
+    from agentcanvas.validation import validate
+
+    data = _agent_wf().model_dump(mode="json")
+    data["nodes"][0]["engine"] = "openai_agents"
+    found = {(d.code, d.node_id) for d in validate(Workflow.model_validate(data), default_registry())}
+    assert not [f for f in found if f[0] in ("P001", "P004", "P005")], found
+
+
+@pytest.mark.parametrize("name", TEMPLATE_SUPPORT)
+async def test_supported_templates_run_on_the_sdk(app, api_client, name):
+    """Every template the SDK can run does, end to end, with the demo model (like `test_templates` on LangGraph)."""
+    from test_templates import INPUTS
+
+    from agentcanvas.testing import DemoResources
+
+    demo = DemoResources()
+    app.state.resources_factory = lambda thread_id, wf: demo
+    P = "/v1/projects/prj_default"
+    if name == "knowledge_qa":
+        assert (await api_client.post(f"{P}/knowledge", json={"sample": "handbook"})).status_code == 201
+        demo.knowledge = app.state.projects.knowledge.for_project("prj_default")
+    wf = (await api_client.post(f"{P}/workflows", json={"name": name, "template": name})).json()
+    ir = {**wf["ir"], "framework": "openai_agents"}
+    r = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})
+    assert r.status_code == 200 and not [d for d in r.json()["diagnostics"] if d["severity"] == "error"], r.text
+    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text
+    last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
+    assert last["type"] == "RUN_FINISHED", last

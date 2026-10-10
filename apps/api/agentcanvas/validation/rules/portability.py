@@ -47,10 +47,12 @@ def framework_runs_every_block(ctx: ValidationContext) -> Iterator[Diagnostic]:
             how = target.notes.get(el.type, "it behaves differently there")
             yield warning("P002", f"{target.label} only emulates '{el.type}': {how}", node_id=el.id)
     for n in wf.nodes:
-        if n.engine is None or n.engine == wf.framework:  # e.g. an OpenAI agent in an OpenAI Agents SDK flow
+        if n.engine is None:
             continue
         if n.type not in ENGINE_TYPES:
             yield error("P001", f"only AI blocks can name a framework of their own, not '{n.type}'", node_id=n.id)
+            continue
+        if n.engine == wf.framework:  # e.g. an OpenAI agent in an OpenAI Agents SDK flow: native there
             continue
         if n.engine in designs.AGENT_FRAMEWORKS:
             yield from _designed(ctx, n, target)

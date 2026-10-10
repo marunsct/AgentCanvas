@@ -219,7 +219,7 @@ jobs:
           done
           for t in "$EXPORTS"/aws/*/*/deploy/aws/task-definition.json; do python3 -m json.tool "$t" >/dev/null; done
       - name: Each export passes its own tests (uv sync with the exported pins)
-        run: for d in "$EXPORTS"/local/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
+        run: for d in "$EXPORTS"/local/*/* "$EXPORTS"/openai_agents/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
         run: |

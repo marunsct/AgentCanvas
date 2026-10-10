@@ -1,8 +1,15 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. Today that is **LangGraph** (LangChain's graph runtime), which runs every block in the palette. More frameworks
-arrive in the next releases; the editor already shows which ones a workflow could move to.
+for. A server offers two:
+
+- **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
+  long-term memory and breakpoints. New workflows use it.
+- **OpenAI Agents SDK** runs AI steps, AI agents (tools, approvals, typed answers), paths, wait-for-all, approvals,
+  questions, Python steps and knowledge search as OpenAI Agents SDK code. See
+  [Run a workflow on the OpenAI Agents SDK](#run-a-workflow-on-the-openai-agents-sdk).
+
+More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
 
 ## Pick the workflow's framework
 
@@ -66,8 +73,42 @@ which tools need approval, and an answer shape. What changes:
   answer lands in the block's `structured_response` output.
 
 Each framework takes a little less than LangGraph does: add-ons (middleware) and the more unusual tool kinds cannot
-be wired into a designed agent, and P005 says which. Only the LangGraph framework can run designed agents today,
-so other workflow frameworks show them as blocks they cannot run.
+be wired into a designed agent, and P005 says which. Only the LangGraph framework can run agents designed for other
+frameworks today, so other workflow frameworks show them as blocks they cannot run; in a workflow on the OpenAI
+Agents SDK, an agent designed for the OpenAI Agents SDK is simply one of its own agents.
+
+## Run a workflow on the OpenAI Agents SDK
+
+Pick **OpenAI Agents SDK** as the workflow's framework (click empty canvas, then **Framework**). Its badge says
+whether every block can run there; the ones that cannot are listed with P001.
+
+- **The code is SDK code.** The Code tab shows the workflow as a Python module: an `Agent` for each AI block, a
+  function for each other block (marked `@canvas-node` so clicking a block finds its code), and a `FLOW` that says
+  which step follows which. A run executes exactly that module.
+- **Any model.** The canvas model blocks reach the SDK through AgentCanvas, so Anthropic, Gemini, local models and
+  scripted test replies all work, and runs are traced, costed and recorded as usual.
+- **Tools and approvals.** Python tools wired into an AI agent become SDK function tools. A tool listed under
+  *Tools that need approval* pauses the run with the SDK's own approval; approve, reject, or edit the arguments (the
+  SDK runs a call as the model made it, so an edit is sent back to the agent, which makes the call again with your
+  arguments, and that call runs without asking twice).
+- **Typed answers** become the agent's `output_type`, and the answer lands in `structured_response`.
+- **Call limits.** A *Model call limit* add-on becomes the agent's `max_turns`; when it is reached the agent stops
+  with a note (or the run fails, if the add-on says so).
+- **What it does not have.** No saved conversation history, state editing, replay or breakpoints, and a paused run
+  is kept in the server's memory (a restart forgets it). Planning agents, maps, subflows, memory blocks, HTTP and MCP
+  tools, guard blocks and other add-ons stay on LangGraph for now.
+- **Export.** The Versions tab exports an OpenAI Agents SDK project: the flow, the small runtime it needs, a
+  command-line runner (`python -m <name> '{"input": {...}}'`; a paused run is saved in `.runs/` and continued with
+  `{"thread_id": ..., "resume": <answer>}`), each model block reached over its provider's OpenAI-compatible API, and
+  tests that replay the saved test cases with the SDK's scripted model. No LangChain inside.
+
+### Convert and compare
+
+To see how a workflow does on the other framework before switching, run an experiment with a target on it. In the
+Evaluation page, **Experiments** tab, give a target **on OpenAI Agents SDK** (or click **+ Compare on the other
+frameworks**), and run: each example runs on both, and the results grid shows scores, tokens, cost and latency side
+by side. The draft itself does not change. The API takes `"framework"` on a target, and `GET
+/v1/workflows/{id}/code?framework=openai_agents` previews the converted code.
 
 ## What each framework can do
 
@@ -75,6 +116,8 @@ Some features need the framework's help: reading and editing a conversation's sa
 from an earlier step, long-term memory, browsing an app connector's tools, and breakpoints. When a workflow's
 framework cannot do one of them, AgentCanvas says so plainly instead of failing; switch the workflow to LangGraph
 to use it.
+
+Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default `langchain,openai_agents`).
 
 ## The Echo demo engine
 

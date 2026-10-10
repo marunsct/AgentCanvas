@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExperimentOut, ExperimentResultOut } from "../api/generated";
-import { compare, grid, passed } from "./compare";
+import { compare, frameworksToCompare, grid, passed } from "./compare";
 
 const result = (example_id: string, target: number, ok: boolean, position = 0): ExperimentResultOut => ({
   id: `exr_${example_id}_${target}`, target, example_id, position, status: "done", run_id: null, thread_id: null,
@@ -35,5 +35,15 @@ describe("evaluation helpers", () => {
     expect(c.improved).toEqual(["b"]);
     expect(c.regressed).toEqual(["a"]);
     expect(compare(experiment(0.25, 0), [], experiment(0.75, 1), []).passRate.delta).toBe(1);
+  });
+});
+
+describe("frameworksToCompare", () => {
+  const fws = [{ id: "langchain" }, { id: "openai_agents" }, { id: "echo" }];
+  const t = (framework = "") => ({ framework, version: "", overrides: "", label: "" });
+  it("adds one target per framework not yet covered, the workflow's own counting as covered", () => {
+    expect(frameworksToCompare(fws, "langchain", [t()]).map((x) => x.framework)).toEqual(["openai_agents", "echo"]);
+    expect(frameworksToCompare(fws, "langchain", [t(), t("echo")]).map((x) => x.framework)).toEqual(["openai_agents"]);
+    expect(frameworksToCompare(fws, "openai_agents", [t(), t("langchain"), t("echo")])).toEqual([]);
   });
 });

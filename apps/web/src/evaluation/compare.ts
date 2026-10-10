@@ -81,3 +81,11 @@ export const KIND_CONFIG: Record<string, unknown> = {
   pairwise: { model: "anthropic:claude-haiku-4-5", rubric: "Which answer is more helpful and correct?" },
   retrieval: { channel: "passages", k: 3, metric: "recall", match_by: "source" },
 };
+
+/** Convert and compare (S25): one target per installed framework the experiment does not run on yet. */
+export function frameworksToCompare<T extends { framework: string; version: string; overrides: string; label: string }>(
+  frameworks: { id: string }[], own: string, targets: T[],
+): { framework: string; version: string; overrides: string; label: string }[] {
+  const covered = new Set(targets.map((t) => t.framework || own));
+  return frameworks.filter((f) => !covered.has(f.id)).map((f) => ({ framework: f.id, version: "", overrides: "", label: "" }));
+}

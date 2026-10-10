@@ -2,6 +2,21 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.17.0 — OpenAI Agents SDK flows (not tagged yet)
+
+### Added
+- **OpenAI Agents SDK as a workflow framework.** Pick it in the workflow settings and the workflow is generated as OpenAI Agents SDK code (`openai-agents` 0.23.1): an `Agent` per AI step and AI agent, a function per block, and a `FLOW` of what follows what, run in supersteps like the canvas draws it. A run executes the generated module. Runs on the SDK: AI steps, AI agents (Python tools, tool approvals with approve, reject and edit, typed answers, model call limits as `max_turns`), model blocks of any catalog provider (through the model bridge, so usage, cost, scripted replies and recordings work as on LangGraph), Set values, Choose a path, Wait for all, Approval, Ask a person, Python steps and Search knowledge. It passes the 12-case conformance kit; 20 of the 26 templates run on it.
+- **Export to an OpenAI Agents SDK project:** the flow, the runtime it needs (vendored, no LangChain), a host that reaches each model over its provider's OpenAI-compatible API, a command-line runner that saves a paused run in `.runs/` and continues it, knowledge bases, workspace code, and tests that replay saved test cases with the SDK's scripted model (`uv run pytest`, no keys).
+- **Convert and compare in Evaluation Studio.** An experiment target can run on another framework (`"framework"` on a target; **on OpenAI Agents SDK** or **+ Compare on the other frameworks** in the Experiments tab): the same workflow and dataset run on LangGraph and the SDK side by side, with scores, tokens, cost and latency per target. CI runs the Classify and route template on both in one experiment and checks equal answers, paths and token counts.
+- `GET /v1/workflows/{id}/code?framework=…` previews a workflow's code converted to another installed framework.
+
+### Changed
+- Servers offer LangGraph and the OpenAI Agents SDK by default (`AGENTCANVAS_ADAPTERS=langchain,openai_agents`); `openai-agents==0.23.1` is now an API dependency.
+- An AI block designed for the workflow's own framework is native there (no P001 for an OpenAI agent in an OpenAI Agents SDK flow).
+
+### Fixed
+- Agents designed for other frameworks (S21) failed to generate when an answer-shape field had a nullable type such as `["string", "null"]`; such fields are now optional.
+
 ## v0.16.0 — Knowledge Studio (not tagged yet)
 
 ### Added

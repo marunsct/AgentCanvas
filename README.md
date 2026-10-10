@@ -122,4 +122,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | Milestone review after S20–S22 | ✅ done (#27): 19 fixes |
 | S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates |
 | S24: Knowledge Studio (v0.16.0) | ✅ done: knowledge bases from files, web pages and text; hybrid search with citations; the Search knowledge block; retrieval evals |
-| S25–S36: framework flows, model gateway, mixed-flow export, importers | ⏸ next (S25); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S25: OpenAI Agents SDK flows (v0.17.0) | ✅ done: workflows run and export as OpenAI Agents SDK code (agents, tools, approvals, typed answers); convert and compare in one experiment |
+| S26–S36: model gateway, framework flows, mixed-flow export, importers | ⏸ next (S26); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

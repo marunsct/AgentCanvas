@@ -195,6 +195,30 @@ def _demo_value(schema: dict[str, Any], name: str = "", asked: str = "") -> Any:
     )
 
 
+def demo_answer(schema: dict[str, Any], asked: str = "") -> Any:
+    """A value the demo model gives for a typed answer: the first choice of each enum, demo values elsewhere
+    (`$ref`, `anyOf` and nullable types as the OpenAI Agents SDK and other frameworks send them)."""
+    defs = schema.get("$defs") or schema.get("definitions") or {}
+
+    def value(s: dict[str, Any], name: str = "") -> Any:
+        if "$ref" in s:
+            s = defs.get(str(s["$ref"]).rsplit("/", 1)[-1], {})
+        for key in ("anyOf", "oneOf"):
+            if key in s:
+                options = [o for o in s[key] if o.get("type") != "null"] or s[key]
+                return value(options[0], name)
+        if "enum" in s:
+            return s["enum"][0]
+        t = s.get("type", "string")
+        if isinstance(t, list):
+            t = next((x for x in t if x != "null"), "string")
+        if t == "object":
+            return {k: value(v, k) for k, v in (s.get("properties") or {}).items()}
+        return _demo_value({**s, "type": t}, name, asked)
+
+    return value(schema)
+
+
 class DemoResources(Resources):
     """Every chat model resolves to the stateless demo model; tools stay real (workspace code)."""
 

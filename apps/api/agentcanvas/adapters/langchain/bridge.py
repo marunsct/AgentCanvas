@@ -113,6 +113,10 @@ class ModelBridge:
         self, entry: _Entry, messages: list[BaseMessage], tools: list[dict[str, Any]], schema: dict[str, Any] | None
     ) -> AIMessage:
         model = entry.model
+        if schema is not None and not tools and getattr(model, "_llm_type", "") == "agentcanvas-demo":
+            from agentcanvas.adapters.langchain.testing import _last_human, demo_answer
+
+            return AIMessage(content=json.dumps(demo_answer(schema, _last_human(messages))))
         if schema is not None and not tools and not _scripted(model):
             out = await model.with_structured_output(schema, include_raw=True).ainvoke(messages, config=entry.config)
             raw = out.get("raw") if isinstance(out, dict) else None
