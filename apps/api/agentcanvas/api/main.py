@@ -107,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.after_hooks.append(app.state.events.on_run_finished)
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
+            runner.alert_hooks.append(observability.cost_alert)
             # tests check drift after every score; servers at most every few seconds per evaluator
             app.state.online = OnlineScorer(db, runner, drift_every_s=0 if settings.env == "test" else 10.0)
             runner.finish_hooks.append(app.state.online.on_run_finished)
@@ -156,7 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.17.0", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.18.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

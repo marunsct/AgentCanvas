@@ -12,6 +12,7 @@ instance for every thread: it answers from simple prompt rules and calls the fir
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -233,6 +234,8 @@ class DemoResources(Resources):
         if name == "copilot":
             return DemoCopilotModel()
         model_id = str(config.get("model", "demo"))
-        if name not in self._demos:
-            self._demos[name] = tag_model(DemoChatModel(), model_id, name)
-        return self._demos[name]
+        key = f"{name}:{json.dumps(config, sort_keys=True, default=str)}"
+        if key not in self._demos:
+            demo = tag_model(DemoChatModel(), model_id)
+            self._demos[key] = tag_model(self.gateway(config, demo, lambda _: DemoChatModel()), model_id, name)
+        return self._demos[key]

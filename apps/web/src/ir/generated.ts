@@ -58,6 +58,16 @@ export type MaxCostUsd = number | null;
 export type MaxSeconds = number | null;
 export type ThreadMaxTokens = number | null;
 export type ThreadMaxCostUsd = number | null;
+export type DailyMaxCostUsd = number | null;
+export type MonthlyMaxCostUsd = number | null;
+export type AlertAt =
+  | []
+  | [number]
+  | [number, number]
+  | [number, number, number]
+  | [number, number, number, number]
+  | [number, number, number, number, number]
+  | null;
 export type TraceRedact = string[];
 
 export interface Workflow {
@@ -202,6 +212,9 @@ export interface Budget {
   max_seconds?: MaxSeconds;
   thread_max_tokens?: ThreadMaxTokens;
   thread_max_cost_usd?: ThreadMaxCostUsd;
+  daily_max_cost_usd?: DailyMaxCostUsd;
+  monthly_max_cost_usd?: MonthlyMaxCostUsd;
+  alert_at?: AlertAt;
 }
 export interface Metadata1 {
   [k: string]: unknown;

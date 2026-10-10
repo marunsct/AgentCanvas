@@ -225,7 +225,8 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `W002` | warning | MCP tool with `destructive_hint` not behind approval (from the tools cached by "Browse tools") |
 | `W003` | warning | Channel written but never read |
 | `W013` | warning | Join with fewer than two incoming branches (S5) |
-| `W015` | warning | USD budget set but a model has no catalog price (its calls are not counted) (S6) |
+| `W015` | warning | USD budget set but a model (or one of its backup models) has no catalog price (its calls are not counted) (S6, S26) |
+| `W016` | warning | A model block's backup model repeats the block's own model or an earlier backup (S26) |
 | `W010` | warning | Model deprecated / not in environment allow-list |
 | `W020` | warning | Prompt > N tokens without caching-capable model |
 | `I001` | info | Consider `LLMToolSelectorMiddleware` (> 20 tools on an agent) |

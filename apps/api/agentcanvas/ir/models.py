@@ -209,6 +209,9 @@ class Edge(_Base):
 
 
 # -------------------------------------------------------------- workflow ----
+DEFAULT_ALERTS = (0.8,)
+
+
 class Budget(_Base):
     """Spending limits (FR-X-15), enforced by the runner from the models' reported usage."""
 
@@ -217,6 +220,22 @@ class Budget(_Base):
     max_seconds: float | None = Field(default=None, gt=0)  # per run, wall clock
     thread_max_tokens: int | None = Field(default=None, ge=1)  # all runs of a thread together
     thread_max_cost_usd: float | None = Field(default=None, gt=0)
+    # S26: all runs of the workflow together, per UTC day and calendar month (needs catalog prices)
+    daily_max_cost_usd: float | None = Field(default=None, gt=0, exclude_if=lambda v: v is None)
+    monthly_max_cost_usd: float | None = Field(default=None, gt=0, exclude_if=lambda v: v is None)
+    # shares of the day and month limits that raise a cost alert; None = DEFAULT_ALERTS
+    alert_at: list[float] | None = Field(default=None, max_length=5, exclude_if=lambda v: v is None)
+
+    @field_validator("alert_at")
+    @classmethod
+    def _shares(cls, v: list[float] | None) -> list[float] | None:
+        if v is not None and any(not 0 < x <= 1 for x in v):
+            raise ValueError("alert shares must be between 0 and 1, e.g. 0.8 for 80%")
+        return sorted(set(v)) if v is not None else None
+
+    def alerts(self) -> list[float]:
+        """The shares of the day and month limits that raise an alert; reaching a limit always does."""
+        return sorted({*(DEFAULT_ALERTS if self.alert_at is None else self.alert_at), 1.0})
 
 
 class WorkflowSettings(_Base):

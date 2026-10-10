@@ -38,6 +38,9 @@ RUN_DURATION = Histogram(
 RUNS_ACTIVE = Gauge("agentcanvas_runs_active", "Runs in progress in this process")
 TOKENS = Counter("agentcanvas_tokens_total", "Model tokens", ["direction"])
 COST = Counter("agentcanvas_cost_usd_total", "Model cost in US dollars (priced models only)")
+MODEL_CACHE_HITS = Counter("agentcanvas_model_cache_hits_total", "Model answers taken from the answer cache")
+MODEL_FALLBACKS = Counter("agentcanvas_model_fallbacks_total", "Model calls a backup model answered")
+COST_ALERTS = Counter("agentcanvas_cost_alerts_total", "Workflow cost alerts raised", ["period"])
 SSE_CLIENTS = Gauge("agentcanvas_sse_clients", "Open run event streams")
 HTTP_REQUESTS = Counter("agentcanvas_http_requests_total", "HTTP requests", ["method", "route", "status"])
 HTTP_DURATION = Histogram(
@@ -76,6 +79,12 @@ async def run_finished(h: RunHandle, status: str, _error: str | None, _interrupt
     TOKENS.labels(direction="input").inc(h.usage.get("input_tokens", 0))
     TOKENS.labels(direction="output").inc(h.usage.get("output_tokens", 0))
     COST.inc(h.usage.get("cost_usd", 0.0))
+    MODEL_CACHE_HITS.inc(h.usage.get("cache_hits", 0))
+    MODEL_FALLBACKS.inc(h.usage.get("fallbacks", 0))
+
+
+def cost_alert(alert: Any) -> None:
+    COST_ALERTS.labels(period=alert.period).inc()
 
 
 async def counted_stream(stream: AsyncIterator[str]) -> AsyncIterator[str]:

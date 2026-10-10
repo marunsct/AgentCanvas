@@ -7,6 +7,8 @@ export interface NodeMetrics {
   tokens: number;
   cost: number;
   priced: boolean;
+  cached?: number; // S26: answers from the model gateway's cache
+  backups?: number; // S26: answers from a backup model
   ms: number;
 }
 
@@ -87,7 +89,7 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         const interrupts = [...s.interrupts.filter((i) => i.id !== intr.id), intr];
         return { interrupts, interrupt: interrupts[0] };
       }
-      if (ev.name === "ac.warning") return { warnings: [...s.warnings, String(ev.value.message ?? "")] };
+      if (ev.name === "ac.warning" || ev.name === "ac.cost_alert") return { warnings: [...s.warnings, String(ev.value.message ?? "")] };
       if (ev.name === "ac.rubric") {
         const v = ev.value;
         const node = ev.canvas_node_id ?? null;
@@ -105,8 +107,13 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         const m = s.metrics[id] ?? ZERO;
         const cost = typeof ev.value.cost_usd === "number" ? ev.value.cost_usd : null;
         const tokens = Number(ev.value.input_tokens ?? 0) + Number(ev.value.output_tokens ?? 0);
+        // S26: what the model gateway did: answered from its cache, or through a backup model
+        const gateway: Partial<NodeMetrics> = {};
+        if (ev.value.cached) gateway.cached = (m.cached ?? 0) + 1;
+        if (Array.isArray(ev.value.failed) && ev.value.failed.length) gateway.backups = (m.backups ?? 0) + 1;
         return {
-          metrics: { ...s.metrics, [id]: { ...m, tokens: m.tokens + tokens, cost: m.cost + (cost ?? 0), priced: m.priced && cost !== null } },
+          metrics: { ...s.metrics, [id]: { ...m, tokens: m.tokens + tokens, cost: m.cost + (cost ?? 0), priced: m.priced && cost !== null,
+            ...gateway } },
         };
       }
       return {};
@@ -121,10 +128,12 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
 }
 
 /** "1.2k tok · $0.0031 · 850 ms" (cost omitted when no model had a price). */
-export function formatMetrics(m: { tokens: number; cost: number; priced: boolean; ms?: number }): string {
+export function formatMetrics(m: { tokens: number; cost: number; priced: boolean; ms?: number; cached?: number; backups?: number }): string {
   const parts: string[] = [];
   if (m.tokens) parts.push(`${m.tokens >= 1000 ? `${(m.tokens / 1000).toFixed(1)}k` : m.tokens} tok`);
   if (m.tokens && (m.cost > 0 || m.priced)) parts.push(`$${m.cost < 0.01 ? m.cost.toFixed(4) : m.cost.toFixed(2)}${m.priced ? "" : "+"}`);
   if (m.ms) parts.push(m.ms >= 1000 ? `${(m.ms / 1000).toFixed(1)} s` : `${m.ms} ms`);
+  if (m.cached) parts.push(`${m.cached} cached`);
+  if (m.backups) parts.push(`${m.backups} by backup model`);
   return parts.join(" · ");
 }

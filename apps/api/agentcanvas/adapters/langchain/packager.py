@@ -44,6 +44,7 @@ RUNTIME_FILES = [
     "__init__.py",
     "adapters/langchain/__init__.py",
     "adapters/langchain/bridge.py",
+    "adapters/langchain/gateway.py",
     "adapters/langchain/interop.py",
     "adapters/langchain/nodes.py",
     "adapters/langchain/testing.py",

@@ -43,6 +43,19 @@ channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** 
 A budget stops a run that spends too much: maximum tokens, cost (USD, from catalog prices) or seconds per run,
 and maximum tokens or cost per thread (all runs of a conversation together).
 
+A workflow can also have a **day** and a **month** budget in USD: all its runs together, per UTC day and calendar
+month (editor runs, deployments, schedules and experiments alike). When the workflow has spent its day or month
+budget, runs stop and new runs do not start until the next day or month. **Alert at** raises a cost alert when
+spending reaches a share of the day or month budget (80% unless you set other percents, e.g. `50, 90`); reaching the
+budget always raises one. Each alert is raised once per period: it shows in the run that crossed it, under
+**Spending** in the workflow settings, in the server log and as the `agentcanvas_cost_alerts_total` metric (the
+Prometheus rules in `infra/observability/alerts.yaml` turn it into a ticket).
+
+**Spending** under the budget shows what the workflow's runs spent today and this month, against the budgets, with
+the number of runs, model answers taken from the cache and calls a backup model answered (see
+[Models](models.md#backup-models-and-reusing-answers)). Runs still going count once they finish, so runs started
+together can go a little over a day or month budget.
+
 ## Structure: subgraphs and frames
 
 - **⧉ Subgraph** (or ⌘G) turns the selected steps into one *Subgraph* step with its own state. Input channels

@@ -58,6 +58,26 @@ can still use another key (a second account, a customer's key) through its own s
 Keys are stored encrypted, never shown again, and masked as `***` in run events and traces. Exported projects read
 them from environment variables with the same names (listed in the export's `.env.example`).
 
+## Backup models and reusing answers
+
+Two settings of an **AI model** block form its model gateway. They work on every framework (LangGraph and the
+OpenAI Agents SDK) and for every step and agent the block powers.
+
+- **Backup models:** when the block's model fails (the provider is down, out of quota, too slow for the block's
+  timeout), the same request goes to each backup in order and the first answer wins. A streamed answer fails over
+  only before its first word. Each backup uses its provider's own key (the project secret or server variable named
+  after the provider, see above) and the block's temperature, output limit and timeout; it does not take the block's
+  address or key. Pick backups from other providers, so one outage does not stop both (the editor warns about a
+  backup that repeats the model, W016). Cost is counted for the model that answered.
+- **Reuse answers for (s):** an identical request (same messages, tools and settings) within that many seconds gets
+  the stored answer without calling the provider, at no cost. Good for steps whose answer should not change, such as
+  classifying or extracting; leave it empty for creative writing. Cached answers live in the server's memory, per
+  project, up to 1,000 of them, and are gone after a server restart.
+
+The run panel and the workflow's **Spending** count cached answers and answers from backups. Exported LangGraph
+projects keep both settings; OpenAI Agents SDK exports keep the backup models but not the cache. The older **Backup
+models** add-on block (`mw.model_fallback`) still works for agents on LangGraph.
+
 ## The first-run screen
 
 Open it from **Choose a model** on Home (until setup is done) or **Model** in the top bar.

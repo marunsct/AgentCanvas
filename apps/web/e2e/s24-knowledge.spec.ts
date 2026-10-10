@@ -9,9 +9,10 @@ test("load the sample knowledge base, search it, add a document and reindex", as
   await expect(page).toHaveURL(/\/knowledge$/);
   await expect(page.getByRole("heading", { name: "Knowledge", exact: true })).toBeVisible();
 
-  const sample = page.getByTestId("load-sample");
-  if (await sample.isVisible()) await sample.click();  // the database is shared by every e2e run
   const nav = page.getByRole("navigation", { name: "knowledge bases" });
+  const sample = page.getByTestId("load-sample");
+  await expect(sample.or(nav.getByRole("button", { name: /^handbook/ }))).toBeVisible();  // the list has loaded
+  if (await sample.isVisible()) await sample.click();  // the database is shared by every e2e run
   await nav.getByRole("button", { name: /^handbook/ }).click();
   const kb = page.getByRole("region", { name: "knowledge base handbook" });
   await expect(kb.getByTestId("kb-counts")).toContainText("22 documents");

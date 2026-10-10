@@ -41,6 +41,7 @@ PREFIXES = {
     "ann",  # a reviewer's annotation of a queue item
     "kb",  # knowledge base (S24)
     "kdoc",  # knowledge document
+    "cal",  # cost alert (S26)
 }
 
 

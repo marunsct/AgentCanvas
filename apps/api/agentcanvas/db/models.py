@@ -226,6 +226,9 @@ class Run(Base):
     tokens_in: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), server_default=text("0"), default=Decimal(0))
+    # S26 model gateway: model answers taken from the answer cache, and model calls a backup model answered
+    cache_hits: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    fallbacks: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     trace_url: Mapped[str | None] = mapped_column(Text)
     # run context (Runtime.context) — resumes reuse it: LangGraph does not checkpoint the context, and a
     # reviewer resuming someone else's run must not become the run's user (per-user memory namespaces)
@@ -527,6 +530,26 @@ class EvalAlert(Base):
     baseline: Mapped[float | None] = mapped_column(Float)  # the trailing mean ("drop")
     created_at: Mapped[datetime] = _now()
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CostAlert(Base):
+    """A workflow's spending reached a share of its day or month budget (S26): raised once per period and share."""
+
+    __tablename__ = "cost_alert"
+    __table_args__ = (
+        UniqueConstraint("workflow_id", "period", "period_start", "share", name="cost_alert_once"),
+        Index("cost_alert_workflow_idx", "workflow_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
+    run_id: Mapped[str | None] = mapped_column(Text)  # the run whose spending crossed it
+    period: Mapped[str] = mapped_column(Text)  # "day" | "month"
+    period_start: Mapped[str] = mapped_column(String(10))  # UTC "2026-10-10" (day) or "2026-10" (month)
+    share: Mapped[float] = mapped_column(Float)  # of the limit; 1.0 = the limit was reached and runs stop
+    spent_usd: Mapped[float] = mapped_column(Float)
+    limit_usd: Mapped[float] = mapped_column(Float)
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
 
 
 class AnnotationQueue(Base):

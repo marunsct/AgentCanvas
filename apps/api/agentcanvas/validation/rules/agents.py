@@ -199,18 +199,40 @@ def _permissions(n: Node) -> Iterator[Diagnostic]:
 
 @rule
 def cost_budget_prices(ctx: ValidationContext) -> Iterator[Diagnostic]:
-    """W015: a USD budget can only count models whose catalog entry has prices."""
+    """W015: a USD budget can only count models whose catalog entry has prices (backup models included)."""
     b = ctx.wf.settings.budget
-    if b is None or (b.max_cost_usd is None and b.thread_max_cost_usd is None):
+    limits = (b.max_cost_usd, b.thread_max_cost_usd, b.daily_max_cost_usd, b.monthly_max_cost_usd) if b else ()
+    if all(v is None for v in limits):
         return
     for r in ctx.wf.resources:
         if r.type != "model.chat":
             continue
-        info = ctx.registry.model(str(r.config.get("model", "")))
-        if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
-            yield warning(
-                "W015",
-                f"'{r.name}' has no catalog price, so the USD budget does not count its calls",
-                node_id=r.id,
-                hint="set price_in_per_mtok / price_out_per_mtok in the model catalog, or use a token budget",
-            )
+        for model in [r.config.get("model", ""), *(r.config.get("fallbacks") or [])]:
+            info = ctx.registry.model(str(model))
+            if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
+                which = f"'{r.name}'" if model == r.config.get("model") else f"the backup model {model} of '{r.name}'"
+                yield warning(
+                    "W015",
+                    f"{which} has no catalog price, so the USD budget does not count its calls",
+                    node_id=r.id,
+                    hint="set price_in_per_mtok / price_out_per_mtok in the model catalog, or use a token budget",
+                )
+
+
+@rule
+def backup_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W016: a model block's backup models (S26) should differ from it and from each other."""
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        seen = {str(r.config.get("model", ""))}
+        for i, model in enumerate(r.config.get("fallbacks") or []):
+            if model in seen:
+                yield warning(
+                    "W016",
+                    f"the backup model {model} of '{r.name}' is already tried before it",
+                    node_id=r.id,
+                    path=f"config.fallbacks[{i}]",
+                    hint="pick a model from another provider, so an outage of one does not stop both",
+                )
+            seen.add(str(model))

@@ -2,6 +2,24 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.18.0 — Model gateway and cost controls (not tagged yet)
+
+### Added
+- **Backup models** on every AI model block (`fallbacks`): when the block's model fails (provider down, out of quota, too slow), the same request goes to each backup in order and the first answer wins; a streamed answer fails over before its first token. Backups use their provider's own key and the block's temperature, output limit and timeout. Works on LangGraph and on the OpenAI Agents SDK (through the model bridge), in exported LangGraph projects (the gateway is vendored) and in exported SDK projects (`FallbackModel`). Usage and cost are counted for the model that answered.
+- **Answer cache** on every AI model block (`cache_ttl`, "Reuse answers for (s)"): an identical request (messages, tools and settings; message ids ignored) within the time gets the stored answer without calling the provider, at no cost. One cache per project in the server's memory (1,000 answers).
+- **Day and month budgets** for a workflow (`daily_max_cost_usd`, `monthly_max_cost_usd`): all its runs together per UTC day and calendar month; a run that spends the rest stops with `budget_exceeded`, and no new run starts until the next period.
+- **Cost alerts** (`alert_at`, default 80%; reaching the budget always alerts): raised once per workflow, period and share across runs and servers (table `cost_alert`), shown as a warning in the run that crossed it (`ac.cost_alert` event), under **Spending** in the workflow settings, in the server log and as `agentcanvas_cost_alerts_total`; Prometheus rules `AgentCanvasCostAlert` and `AgentCanvasModelFailover`.
+- **Spending** in the workflow settings and `GET /v1/workflows/{id}/spend`: today's and this month's spend against the budgets, runs, tokens, cached answers and backup answers, and the latest cost alerts. The run panel and each step show cached and backup answers.
+- Validation: W016 (a backup repeats the model or an earlier backup); W015 now also covers backup models and day and month budgets.
+- Metrics `agentcanvas_model_cache_hits_total`, `agentcanvas_model_fallbacks_total`.
+
+### Changed
+- Migration `e7a1c5f9b3d6` (`run.cache_hits`, `run.fallbacks`, table `cost_alert`).
+- Run usage (`RUN_FINISHED.usage`) carries `cache_hits` and `fallbacks`.
+
+### Fixed
+- The Knowledge page showed **Load the sample handbook** for a moment while its list loaded, even when the sample was already there.
+
 ## v0.17.0 — OpenAI Agents SDK flows (not tagged yet)
 
 ### Added

@@ -2015,6 +2015,67 @@
         "title": "CopilotSettings",
         "type": "object"
       },
+      "CostAlertOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "limit_usd": {
+            "title": "Limit Usd",
+            "type": "number"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "share": {
+            "title": "Share",
+            "type": "number"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "period",
+          "period_start",
+          "share",
+          "spent_usd",
+          "limit_usd",
+          "message",
+          "run_id",
+          "created_at"
+        ],
+        "title": "CostAlertOut",
+        "type": "object"
+      },
       "CreateWorkflow": {
         "properties": {
           "name": {
@@ -8299,6 +8360,85 @@
         "title": "Simulation",
         "type": "object"
       },
+      "SpendOut": {
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/CostAlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "day": {
+            "$ref": "#/components/schemas/SpendPeriod"
+          },
+          "month": {
+            "$ref": "#/components/schemas/SpendPeriod"
+          }
+        },
+        "required": [
+          "day",
+          "month",
+          "alerts"
+        ],
+        "title": "SpendOut",
+        "type": "object"
+      },
+      "SpendPeriod": {
+        "properties": {
+          "cache_hits": {
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "fallbacks": {
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "limit_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Usd"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "number"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "period_start",
+          "spent_usd",
+          "limit_usd",
+          "runs",
+          "tokens",
+          "cache_hits",
+          "fallbacks"
+        ],
+        "title": "SpendPeriod",
+        "type": "object"
+      },
       "StateEdit": {
         "properties": {
           "as_node": {
@@ -9796,7 +9936,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.17.0"
+    "version": "0.18.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -22795,6 +22935,72 @@
         "summary": "Start Run",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/spend": {
+      "get": {
+        "description": "What the workflow's runs spent today and this month (UTC), against its day and month budgets, and its latest\ncost alerts (S26).",
+        "operationId": "get_spend_v1_workflows__wf_id__spend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpendOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Spend",
+        "tags": [
+          "workflows"
         ]
       }
     },

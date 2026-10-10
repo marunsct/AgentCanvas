@@ -32,20 +32,26 @@ RUNTIME_FILES = ["expr.py", "knowledge_search.py", "adapters/openai_agents/runti
 PINNED = ["jsonschema", "cel-python", "jinja2", "pydantic"]
 
 
-def model_specs(wf: Workflow) -> dict[str, dict[str, str]]:
+def model_specs(wf: Workflow) -> dict[str, dict[str, Any]]:
     """Each model block as the export reaches it: model name, OpenAI-compatible address and the key's variable."""
     out = {}
     for r in wf.resources:
         if r.type != "model.chat":
             continue
-        provider, _, name = str(r.config.get("model", "")).partition(":")
-        key = r.config.get("api_key")
-        out[r.name] = {
-            "model": name,
-            "base_url": r.config.get("base_url") or designs.OPENAI_URLS.get(provider) or "http://localhost:8000/v1",
-            "key_env": key["$secret"] if isinstance(key, dict) else designs.KEY_ENVS.get(provider, "MODEL_API_KEY"),
-        }
+        out[r.name] = _spec(str(r.config.get("model", "")), r.config.get("base_url"), r.config.get("api_key"))
+        backups = [_spec(str(b), None, None) for b in r.config.get("fallbacks") or [] if b]
+        if backups:  # S26: tried in order when the block's own model fails
+            out[r.name]["fallbacks"] = backups
     return out
+
+
+def _spec(model: str, base_url: Any, key: Any) -> dict[str, str]:
+    provider, _, name = model.partition(":")
+    return {
+        "model": name,
+        "base_url": base_url or designs.OPENAI_URLS.get(provider) or "http://localhost:8000/v1",
+        "key_env": key["$secret"] if isinstance(key, dict) else designs.KEY_ENVS.get(provider, "MODEL_API_KEY"),
+    }
 
 
 def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str]) -> str:
@@ -73,7 +79,7 @@ asyncio_mode = "auto"
 '''
 
 
-def _readme(wf: Workflow, pkg: str, models: dict[str, dict[str, str]]) -> str:
+def _readme(wf: Workflow, pkg: str, models: dict[str, dict[str, Any]]) -> str:
     env = "\n".join(
         f"| `{name}` | `{m['model']}` | `{m['base_url']}` | `{m['key_env']}` | `{name.upper()}_MODEL`, "
         f"`{name.upper()}_BASE_URL` |"
@@ -101,7 +107,8 @@ uv run python -m {pkg} '{{"thread_id": "t1", "resume": {{"approved": true}}}}'
 ## Models
 
 Each model block reaches its provider over the OpenAI chat-completions API (any provider with such an endpoint,
-local servers included). Override the model or address per block with the variables in the last column.
+local servers included). Override the model or address per block with the variables in the last column. A block with
+backup models tries them in order when its own model fails; the answer cache of the canvas is not exported.
 
 | Block | Model | Address | Key variable | Overrides |
 |---|---|---|---|---|
@@ -130,8 +137,9 @@ from agents import FunctionTool, OpenAIChatCompletionsModel, function_tool
 from openai import AsyncOpenAI
 
 from agentcanvas import knowledge_search as ks
+from agentcanvas.adapters.openai_agents.runtime import FallbackModel
 
-MODELS: dict[str, dict[str, str]] = {models}
+MODELS: dict[str, dict[str, Any]] = {models}
 TOOLS: dict[str, str] = {tools}
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 
@@ -154,7 +162,18 @@ class Host:
             base_url=os.environ.get(f"{{env}}_BASE_URL") or os.environ.get("MODEL_BASE_URL") or spec["base_url"],
             api_key=os.environ.get(spec["key_env"]) or "not-needed",
         )
-        return OpenAIChatCompletionsModel(model=os.environ.get(f"{{env}}_MODEL") or spec["model"], openai_client=client)
+        name = os.environ.get(f"{{env}}_MODEL") or spec["model"]
+        model = OpenAIChatCompletionsModel(model=name, openai_client=client)
+        if not spec.get("fallbacks"):
+            return model
+        backups = [
+            OpenAIChatCompletionsModel(
+                model=b["model"],
+                openai_client=AsyncOpenAI(base_url=b["base_url"], api_key=os.environ.get(b["key_env"]) or "not-needed"),
+            )
+            for b in spec["fallbacks"]
+        ]
+        return FallbackModel([model, *backups])  # backup models, tried in order when this one fails
 
     def tools(self, resources: list[str], approve: list[str], step: str) -> list[Any]:
         out = []
@@ -350,7 +369,8 @@ def package(
             "the workflow uses code that is not in the workspace: " + ", ".join(found.missing)
             + "; create the file or fix the step's import path, then export again"
         )  # fmt: skip
-    keys = sorted({m["key_env"] for m in models.values()} | _secret_names(wf.model_dump(mode="json")))
+    backup_keys = {b["key_env"] for m in models.values() for b in m.get("fallbacks", [])}
+    keys = sorted({m["key_env"] for m in models.values()} | backup_keys | _secret_names(wf.model_dump(mode="json")))
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, pkg, version, found.requirements if found else []),
         "README.md": _readme(wf, pkg, models),

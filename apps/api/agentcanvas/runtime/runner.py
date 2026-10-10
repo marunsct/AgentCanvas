@@ -16,10 +16,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
-from agentcanvas.db.models import InterruptTask, Run, RunScore, Thread
+from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, Thread
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -47,8 +48,10 @@ class RunHandle:
     status: str = "running"
     finished_at: float | None = None
     usage: dict[str, Any] = field(
-        default_factory=lambda: {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "priced": True}
-    )
+        default_factory=lambda: {
+            "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "priced": True, "cache_hits": 0, "fallbacks": 0,
+        }
+    )  # fmt: skip
     workflow_name: str = ""
     # "event": started by an event handler (its lifecycle events are not re-delivered); "test": a saved test case
     origin: str = "user"
@@ -62,6 +65,7 @@ class RunHandle:
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
     trace_redact: list[str] = field(default_factory=list)  # the workflow's fields that never reach a trace
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
+    alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
@@ -132,20 +136,68 @@ def price(model_id: str | None, tokens_in: int, tokens_out: int) -> float | None
     return (tokens_in * info.price_in_per_mtok + tokens_out * info.price_out_per_mtok) / 1_000_000
 
 
-def check_budget(budget: Budget | None, usage: dict[str, Any], before: tuple[int, float]) -> None:
-    """Raise BudgetExceeded when this run (or the thread including earlier runs) is over a limit."""
+@dataclass
+class Spent:
+    """What was spent before a run: by its thread's earlier runs, and by all the workflow's runs today and this
+    month (UTC; runs still going count once they finish)."""
+
+    thread_tokens: int = 0
+    thread_cost: float = 0.0
+    day_cost: float = 0.0
+    month_cost: float = 0.0
+
+
+def periods(now: datetime | None = None) -> dict[str, tuple[str, datetime]]:
+    """The current budget periods (UTC): name -> (label, start)."""
+    day = (now or datetime.now(UTC)).replace(hour=0, minute=0, second=0, microsecond=0)
+    month = day.replace(day=1)
+    return {"day": (day.strftime("%Y-%m-%d"), day), "month": (month.strftime("%Y-%m"), month)}
+
+
+def period_limits(budget: Budget | None, before: Spent, cost: float) -> list[tuple[str, float, float]]:
+    """(period, limit, spent including this run) of each day or month limit the budget sets."""
+    if budget is None:
+        return []
+    out = [("day", budget.daily_max_cost_usd, before.day_cost + cost),
+           ("month", budget.monthly_max_cost_usd, before.month_cost + cost)]  # fmt: skip
+    return [(p, limit, spent) for p, limit, spent in out if limit is not None]
+
+
+def check_budget(budget: Budget | None, usage: dict[str, Any], before: Spent) -> None:
+    """Raise BudgetExceeded when this run (or its thread, or the workflow today or this month) is over a limit."""
     if budget is None:
         return
     tokens, cost = usage["input_tokens"] + usage["output_tokens"], usage["cost_usd"]
     limits = [
         (budget.max_tokens, tokens, "tokens for this run"),
         (budget.max_cost_usd, cost, "USD for this run"),
-        (budget.thread_max_tokens, before[0] + tokens, "tokens for this conversation"),
-        (budget.thread_max_cost_usd, before[1] + cost, "USD for this conversation"),
+        (budget.thread_max_tokens, before.thread_tokens + tokens, "tokens for this conversation"),
+        (budget.thread_max_cost_usd, before.thread_cost + cost, "USD for this conversation"),
     ]
+    for period, limit, spent in period_limits(budget, before, cost):
+        if spent >= limit:  # an exhausted day or month does not start new runs
+            raise BudgetExceeded(f"budget exceeded: {spent:g} of {limit:g} USD for this workflow this {period}")
     for limit, used, what in limits:
         if limit is not None and used > limit:
             raise BudgetExceeded(f"budget exceeded: {used:g} of {limit:g} {what}")
+
+
+async def workflow_spend(s: Any, workflow_id: str, *, exclude_run: str | None = None) -> tuple[float, float]:
+    """USD the workflow's runs spent today and this month (UTC)."""
+    p = periods()
+    day, month = p["day"][1], p["month"][1]
+    q = (
+        select(
+            func.coalesce(func.sum(case((Run.started_at >= day, Run.cost_usd), else_=0)), 0),
+            func.coalesce(func.sum(Run.cost_usd), 0),
+        )
+        .join(Thread, Thread.id == Run.thread_id)
+        .where(Thread.workflow_id == workflow_id, Run.started_at >= month)
+    )
+    if exclude_run is not None:
+        q = q.where(Run.id != exclude_run)
+    today, this_month = (await s.execute(q)).one()
+    return float(today), float(this_month)
 
 
 class Runner:
@@ -171,6 +223,7 @@ class Runner:
         # called once it is done and its thread free (event delivery: run.completed / run.failed / interrupt.raised,
         # sdk.emit events), so a handler can start the thread's next run and no caller waits for handlers
         self.after_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
+        self.alert_hooks: list[Callable[[CostAlert], Any]] = []  # S26: called on each new cost alert (metrics)
         # called when a run starts (metrics)
         self.start_hooks: list[Callable[[RunHandle], None]] = []
         # awaited before a run starts (the project's secrets, reloaded when another instance changed them)
@@ -370,7 +423,7 @@ class Runner:
         budget = spec.workflow.settings.budget
         events: Any = None  # the adapter's async generator (closed in `finally`)
         try:
-            before = await self._thread_spend(spec.thread_id, h.run_id) if budget else (0, 0.0)
+            before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
             events = self.adapter_for(spec.workflow).execute(spec, resources)
@@ -378,6 +431,7 @@ class Runner:
                 async for raw in events:
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
                         await self._emit(h, self._priced(h, raw))
+                        await self._cost_alerts(h, budget, before)
                         check_budget(budget, h.usage, before)
                         continue
                     ev = raw
@@ -477,6 +531,8 @@ class Runner:
                         tokens_in=h.usage["input_tokens"],
                         tokens_out=h.usage["output_tokens"],
                         cost_usd=h.usage["cost_usd"],
+                        cache_hits=h.usage["cache_hits"],
+                        fallbacks=h.usage["fallbacks"],
                         recording=_recording(h, status),
                         handover=h.drained,
                     )
@@ -505,7 +561,12 @@ class Runner:
     def _priced(self, h: RunHandle, raw: dict[str, Any]) -> dict[str, Any]:
         """Add the cost to a usage event and to the run's totals."""
         v = dict(raw["value"])
-        v["cost_usd"] = price(v.get("model"), v["input_tokens"], v["output_tokens"])
+        if v.get("cached"):  # the model gateway answered from its cache (S26)
+            h.usage["cache_hits"] += 1
+        if v.get("failed"):  # ... or a backup model answered
+            h.usage["fallbacks"] += 1
+        has_tokens = v["input_tokens"] or v["output_tokens"]
+        v["cost_usd"] = price(v.get("model"), v["input_tokens"], v["output_tokens"]) if has_tokens else 0.0
         h.usage["input_tokens"] += v["input_tokens"]
         h.usage["output_tokens"] += v["output_tokens"]
         if v["cost_usd"] is None:
@@ -514,14 +575,53 @@ class Runner:
             h.usage["cost_usd"] += v["cost_usd"]
         return {**raw, "value": v}
 
-    async def _thread_spend(self, thread_id: str, run_id: str) -> tuple[int, float]:
-        """Tokens and USD spent by the thread's earlier runs."""
+    async def _spent(self, h: RunHandle, budget: Budget) -> Spent:
+        """What the run's thread, and its workflow today and this month, spent before it."""
         async with self.db.sessionmaker() as s:
             q = select(
                 func.coalesce(func.sum(Run.tokens_in + Run.tokens_out), 0), func.coalesce(func.sum(Run.cost_usd), 0)
-            ).where(Run.thread_id == thread_id, Run.id != run_id)
+            ).where(Run.thread_id == h.thread_id, Run.id != h.run_id)
             tokens, cost = (await s.execute(q)).one()
-        return int(tokens), float(cost)
+            out = Spent(thread_tokens=int(tokens), thread_cost=float(cost))
+            if budget.daily_max_cost_usd or budget.monthly_max_cost_usd:
+                out.day_cost, out.month_cost = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
+        return out
+
+    async def _cost_alerts(self, h: RunHandle, budget: Budget | None, before: Spent) -> None:
+        """Raise the cost alerts (S26) this run's spending crosses: once per workflow, period and share, however many
+        runs and servers cross it together."""
+        if budget is None:
+            return
+        for period, limit, spent in period_limits(budget, before, h.usage["cost_usd"]):
+            for share in budget.alerts():
+                if spent < limit * share or (period, share) in h.alerted:
+                    continue
+                h.alerted.add((period, share))
+                label = periods()[period][0]
+                what = "reached its" if share >= 1 else f"used {share:.0%} of its"
+                message = f"{h.workflow_name or h.workflow_id} {what} {period} budget: {spent:.4g} of {limit:g} USD"
+                alert = CostAlert(
+                    id=new_id("cal"), workflow_id=h.workflow_id, run_id=h.run_id, period=period, period_start=label,
+                    share=share, spent_usd=spent, limit_usd=limit, message=message,
+                )  # fmt: skip
+                try:
+                    async with self.db.sessionmaker() as s:
+                        s.add(alert)
+                        await s.commit()
+                except IntegrityError:
+                    continue  # another run raised it first
+                except Exception:
+                    log.exception("cost_alert.save_failed", run_id=h.run_id)
+                    continue
+                log.warning("cost_alert", workflow_id=h.workflow_id, period=period, share=share, spent_usd=spent)
+                for hook in self.alert_hooks:
+                    try:
+                        hook(alert)
+                    except Exception:
+                        log.exception("cost_alert.hook_failed", run_id=h.run_id)
+                value = {"period": period, "period_start": label, "share": share, "spent_usd": round(spent, 6),
+                         "limit_usd": limit, "message": message}  # fmt: skip
+                await self._emit(h, {"type": "CUSTOM", "name": "ac.cost_alert", "value": value})
 
     def _evict(self) -> None:
         finished = [rid for rid, h in self.handles.items() if h.done.is_set()]

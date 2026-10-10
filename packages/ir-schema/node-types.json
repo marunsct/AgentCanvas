@@ -807,7 +807,7 @@
     "category": "AI models",
     "icon": "cpu",
     "color": "#1D4ED8",
-    "description": "The AI \u201cbrain\u201d (Claude, GPT, Gemini, a local model\u2026) that AI steps use to think and write. One model block can power several steps. Technical: init_chat_model(\"provider:model\").",
+    "description": "The AI \u201cbrain\u201d (Claude, GPT, Gemini, a local model\u2026) that AI steps use to think and write. One model block can power several steps. Can fall back to backup models and reuse answers to repeated requests. Technical: init_chat_model(\"provider:model\").",
     "inputs": [],
     "outputs": [
       {
@@ -870,6 +870,24 @@
           },
           "format": "secret_ref",
           "description": "A project secret holding the key. Empty: the project secret or server variable named after the provider (e.g. OPENAI_API_KEY)"
+        },
+        "fallbacks": {
+          "type": "array",
+          "title": "Backup models",
+          "items": {
+            "type": "string",
+            "format": "model",
+            "pattern": "^[a-z0-9_\\-]+:.+$"
+          },
+          "maxItems": 5,
+          "description": "If this model fails (the service is down, out of quota, too slow), the same request goes to these models in order. Each uses its provider's own key (the project secret or server variable named after the provider) and this block's temperature, output limit and timeout."
+        },
+        "cache_ttl": {
+          "type": "integer",
+          "title": "Reuse answers for (s)",
+          "minimum": 1,
+          "maximum": 2592000,
+          "description": "Answer an identical request (same messages, tools and settings) from the cache for this many seconds, without calling the provider and at no cost. Empty: never reuse answers. Best for steps whose answer should not change, such as classifying or extracting."
         }
       }
     },

@@ -12,6 +12,8 @@ export interface Usage {
   output_tokens: number;
   cost_usd: number;
   priced: boolean; // false when a model had no catalog price (the cost is then a lower bound)
+  cache_hits?: number; // S26: model answers taken from the answer cache
+  fallbacks?: number; // S26: model calls a backup model answered
 }
 
 export type RunEvent = { seq?: number } & (

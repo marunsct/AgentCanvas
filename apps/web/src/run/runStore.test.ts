@@ -47,6 +47,22 @@ describe("usage and latency (M4-T11)", () => {
   });
 });
 
+describe("model gateway and cost alerts (S26)", () => {
+  it("counts cached and backup answers per node and shows cost alerts as warnings", () => {
+    let s = { ...useRun.getState() };
+    const step = (e: Parameters<typeof reduce>[1]) => { s = { ...s, ...reduce(s, e) }; };
+    step({ type: "RUN_STARTED", threadId: "t", workflowId: "w" });
+    step({ type: "CUSTOM", name: "ac.usage", value: { canvas_node_id: "n1", input_tokens: 0, output_tokens: 0, cost_usd: 0, cached: true, failed: [] } });
+    step({ type: "CUSTOM", name: "ac.usage", value: { canvas_node_id: "n1", input_tokens: 10, output_tokens: 5, cost_usd: 0.001 } });
+    step({ type: "CUSTOM", name: "ac.usage", value: { canvas_node_id: "n1", input_tokens: 0, output_tokens: 0, cost_usd: 0, cached: false,
+      failed: [{ model: "openai:gpt-5-mini", error: "down" }] } });
+    expect(s.metrics.n1).toMatchObject({ tokens: 15, cached: 1, backups: 1 });
+    expect(formatMetrics(s.metrics.n1)).toBe("15 tok · $0.0010 · 1 cached · 1 by backup model");
+    step({ type: "CUSTOM", name: "ac.cost_alert", value: { message: "g used 80% of its day budget: 0.8 of 1 USD" } });
+    expect(s.warnings).toEqual(["g used 80% of its day budget: 0.8 of 1 USD"]);
+  });
+});
+
 describe("rubric rounds", () => {
   it("shows each grading round live and keeps its verdict", () => {
     const s = useRun.getState();

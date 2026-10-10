@@ -22,7 +22,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
-from agents import Agent, MaxTurnsExceeded, Runner, RunState, set_tracing_disabled
+from agents import Agent, MaxTurnsExceeded, Model, Runner, RunState, set_tracing_disabled
 from jsonschema import Draft202012Validator
 
 from agentcanvas.expr import eval_condition, render_template
@@ -55,6 +55,35 @@ class Host(Protocol):
     ) -> list[dict[str, Any]]: ...
 
     async def script(self, import_path: str, state: dict[str, Any]) -> dict[str, Any]: ...
+
+
+class FallbackModel(Model):
+    """A model block with backup models (S26): a call that fails goes to the next model in order, and the first
+    answer wins. A streamed answer fails over only before its first event."""
+
+    def __init__(self, models: list[Any]):
+        self.models = models
+
+    async def get_response(self, *args: Any, **kwargs: Any) -> Any:
+        for i, model in enumerate(self.models):
+            try:
+                return await model.get_response(*args, **kwargs)
+            except Exception:
+                if i == len(self.models) - 1:
+                    raise
+        raise AssertionError("unreachable")
+
+    async def stream_response(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+        for i, model in enumerate(self.models):
+            started = False
+            try:
+                async for event in model.stream_response(*args, **kwargs):
+                    started = True
+                    yield event
+                return
+            except Exception:
+                if started or i == len(self.models) - 1:
+                    raise
 
 
 class Interrupted(Exception):
