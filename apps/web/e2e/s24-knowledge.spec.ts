@@ -23,7 +23,7 @@ test("load the sample knowledge base, search it, add a document and reindex", as
   await kb.getByRole("radio", { name: "Keywords" }).click();
   await kb.getByLabel("search question").fill("expense reimbursement receipts");
   await kb.getByRole("button", { name: "Search" }).click();
-  await expect(kb.getByTestId("kb-result").first()).toContainText("Expenses");
+  await expect(kb.getByTestId("kb-result").first()).toContainText("[1] Travel and expense reimbursement");
 
   // a knowledge base of your own: paste text, see its chunks, change the chunking, reindex
   const name = `notes-${Date.now().toString(36)}`;
@@ -35,7 +35,7 @@ test("load the sample knowledge base, search it, add a document and reindex", as
   await mine.getByLabel("text", { exact: true }).fill("Water the ferns on Mondays.\n\nThe cactus needs water once a month.");
   await mine.getByRole("button", { name: "Add text" }).click();
   await expect(mine.getByTestId("kb-document")).toHaveCount(1);
-  await mine.getByRole("button", { name: "Office plants" }).click();
+  await mine.getByRole("button", { name: "Office plants", exact: true }).click();
   await expect(mine.getByTestId("kb-chunks")).toContainText("Water the ferns");
 
   await mine.getByLabel("chunking strategy").selectOption("sentences");
@@ -51,7 +51,7 @@ test("load the sample knowledge base, search it, add a document and reindex", as
   await expect(nav.getByRole("button", { name: new RegExp(`^${name}`) })).toHaveCount(0);
 });
 
-test("the Search knowledge block is in the palette's Knowledge category", async ({ page }) => {
+test("the Ask your documents template opens with its Search knowledge block", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("template-knowledge_qa").click();
   await expect(page).toHaveURL(/\/workflows\/wf_/);

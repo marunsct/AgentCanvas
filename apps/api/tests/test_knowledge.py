@@ -298,6 +298,8 @@ async def test_search_block_runs_on_the_server_and_ships_in_exports(api_client, 
     assert shipped and any(n.endswith("src/agentcanvas/knowledge_search.py") for n in z.namelist())
     (tmp_path / "handbook.jsonl").write_bytes(z.read(shipped[0]))
     code = next(n for n in z.namelist() if n.endswith("/graph.py"))
+    lacking = zipfile.ZipFile(io.BytesIO((await api_client.get(f"/v1/workflows/{missing}/export.zip")).content))
+    assert not [n for n in lacking.namelist() if "/knowledge/" in n]  # still exports; its search says what is missing
     assert "ac.knowledge_search_node(" in z.read(code).decode()
 
     # the exported runtime searches the shipped file the same way the server does

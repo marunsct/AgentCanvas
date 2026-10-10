@@ -307,10 +307,13 @@ class KnowledgeService:
             raise NotFound(f"knowledge base '{kb_id}' not found")
         return kb
 
-    async def by_name(self, project_id: str, name: str) -> KnowledgeBase:
-        kb = await self.s.scalar(
+    async def find(self, project_id: str, name: str) -> KnowledgeBase | None:
+        return await self.s.scalar(
             select(KnowledgeBase).where(KnowledgeBase.project_id == project_id, KnowledgeBase.name == name)
         )
+
+    async def by_name(self, project_id: str, name: str) -> KnowledgeBase:
+        kb = await self.find(project_id, name)
         if kb is None:
             raise NotFound(f"knowledge base '{name}' not found in this project; add it on the Knowledge page")
         return kb

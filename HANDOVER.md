@@ -27,11 +27,11 @@ updated one wins; fix the other in the same PR.
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 652 passed, 1 xfail (known upstream canary) | see §5 |
-| Web unit (vitest) | 88 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 50 | see §5 |
+| API (pytest, Postgres) | 669 passed, 1 xfail (known upstream canary); the Docker sandbox test needs a running dockerd | see §5 |
+| Web unit (vitest) | 91 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 52 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 25 templates (local target run for all 18 new ones) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
+| Exported templates, each export's own tests | 26 templates (S24: `knowledge_qa` exported with the sample knowledge base; its tests pass and the export searches `src/knowledge/handbook.jsonl`) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements

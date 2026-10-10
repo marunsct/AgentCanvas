@@ -76,7 +76,7 @@ export function KnowledgePage() {
             </button>
           ))}
         </nav>
-        {current && <KnowledgeBase kb={current} builder={builder} onChange={refresh} onDeleted={() => { setSelected(null); refresh(); }} />}
+        {current && <KnowledgeBase key={current.id} kb={current} builder={builder} onChange={refresh} onDeleted={() => { setSelected(null); refresh(); }} />}
       </div>
     </div>
   );
@@ -94,6 +94,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [refused, setRefused] = useState<string[]>([]);
+  const [adding, setAdding] = useState(kb.documents === 0);
   const done = () => { onChange(); void qc.invalidateQueries({ queryKey: ["knowledge", "docs", kb.id] }); };
   const upload = useMutation({
     mutationFn: (files: File[]) => {
@@ -159,7 +160,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
       <SearchTester base={base} />
 
       {builder && (
-        <details className="kb-add" open={kb.documents === 0}>
+        <details className="kb-add" open={adding} onToggle={(e) => setAdding(e.currentTarget.open)}>
           <summary>Add documents</summary>
           <div className="kb-add-grid">
             <label className="kb-drop">

@@ -62,9 +62,7 @@ def upgrade() -> None:
         "knowledge_chunk",
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("kb_id", sa.String(), sa.ForeignKey("knowledge_base.id", ondelete="CASCADE"), nullable=False),
-        sa.Column(
-            "doc_id", sa.String(), sa.ForeignKey("knowledge_document.id", ondelete="CASCADE"), nullable=False
-        ),
+        sa.Column("doc_id", sa.String(), sa.ForeignKey("knowledge_document.id", ondelete="CASCADE"), nullable=False),
         sa.Column("ordinal", sa.Integer(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("page", sa.Integer(), nullable=True),

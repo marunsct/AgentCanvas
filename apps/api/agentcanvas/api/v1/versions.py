@@ -190,8 +190,11 @@ async def export_zip(
     )
     if used := knowledge.used_knowledge_bases(wf.model_dump(mode="json")):  # S24: ship the knowledge bases it searches
         ks = knowledge.KnowledgeService(session)
-        files = {name: await ks.export(await ks.by_name(view.row.project_id, name)) for name in sorted(used)}
-        data = knowledge.bundle(data, files)
+        files = {}
+        for name in sorted(used):  # one the project lacks is left out: the export's search then says it is missing
+            if (kb := await ks.find(view.row.project_id, name)) is not None:
+                files[name] = await ks.export(kb)
+        data = knowledge.bundle(data, files) if files else data
     return Response(
         data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
     )
