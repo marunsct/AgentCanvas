@@ -59,6 +59,9 @@ class TargetIn(BaseModel):
     overrides: dict[str, dict[str, Any]] = Field(
         default_factory=dict, description="resource or step (id or name) -> config values to replace"
     )
+    framework: str | None = Field(
+        default=None, max_length=64, description="the framework this target runs on (S25); None: the workflow's own"
+    )
 
 
 def apply_overrides(wf: Workflow, overrides: dict[str, dict[str, Any]]) -> Workflow:

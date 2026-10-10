@@ -52,6 +52,8 @@ def framework_runs_every_block(ctx: ValidationContext) -> Iterator[Diagnostic]:
         if n.type not in ENGINE_TYPES:
             yield error("P001", f"only AI blocks can name a framework of their own, not '{n.type}'", node_id=n.id)
             continue
+        if n.engine == wf.framework:  # e.g. an OpenAI agent in an OpenAI Agents SDK flow: native there
+            continue
         if n.engine in designs.AGENT_FRAMEWORKS:
             yield from _designed(ctx, n, target)
             continue

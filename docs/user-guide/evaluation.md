@@ -40,8 +40,10 @@ An evaluator scores one run from 0 to 1, passes or fails it at a threshold (*pas
 ## Experiments
 
 An experiment runs one or more **targets** over a dataset version and scores every result. A target is the draft,
-a published version, or a variant with another model or prompt. **▶ Run experiment** starts it in the background;
-it can be cancelled and survives a server restart.
+a published version, or a variant with another model or prompt, and it can run **on another framework** (convert
+and compare: pick *on OpenAI Agents SDK* for a target, or click **+ Compare on the other frameworks**; see
+[Choosing a framework](frameworks.md#convert-and-compare)). **▶ Run experiment** starts it in the background; it can
+be cancelled and survives a server restart.
 
 The results grid shows mean scores, pass rates, latency, tokens and cost per target, and each example's output
 with its run timeline one click away. **Compare** two experiments to see which examples improved or regressed.

@@ -47,7 +47,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to LangGraph, WayFlow and OpenAI Agents through Agent Spec (preview) (✅ done) |
 | **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates (✅ done) |
 | **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals (✅ done) |
-| **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare |
+| **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare (✅ done) |
 | **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
 | **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
 | **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries |
@@ -550,6 +550,31 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S25 — OpenAI Agents SDK flows → v0.17.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Flow tier: codegen and runtime | B | 4 | A workflow becomes SDK code (an `Agent` per AI block, a function per block, a `FLOW`); a run executes that module; the 12 conformance cases pass |
+| 2 | Full agent tier | B | 3 | Agents with Python tools, tool approvals (approve, reject, edit), typed answers and call limits; any catalog model through the bridge, with usage and recordings |
+| 3 | Export | B | 2 | A project with the flow, the vendored runtime, a CLI that pauses and continues, and tests that replay saved cases with the SDK's scripted model; no LangChain |
+| 4 | Convert and compare | B+F | 2 | An experiment target on another framework; a framework picker per target in Evaluation Studio |
+| 5 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** `adapters/openai_agents/` (`codegen.py`, `runtime.py`, `packager.py`, the adapter with its
+`ServerHost`), manifest `registry/adapters/openai_agents.json` (tier T2), `framework` on experiment targets,
+`?framework=` on the code view, the target framework picker and **+ Compare on the other frameworks** in the
+Experiments tab, `tests/test_openai_agents.py`, `e2e/s25.spec.ts`. Exit met: Classify and route compiles to
+LangGraph and to the SDK and runs on both in one experiment with equal answers, paths and token counts
+(`test_one_template_runs_on_both_frameworks_in_one_experiment`, and the browser journey). 22 of the 26 templates run
+on the SDK (the other four use a Planning Agent, memory, HTTP tools or the PII add-on) and their exports pass their
+own tests; CI now runs them. Deviations from the adapter spec: no sessions or saved history (a paused run is kept in
+memory as JSON, as Echo does; exports keep it in a file), so the adapter declares no optional abilities; an edited
+tool call is sent back to the agent to make again (the SDK runs calls as the model made them) and the re-made call
+is approved automatically; handoffs, guardrails, hosted tools, MCP and HTTP tools (the `openai.*` dialect nodes)
+are not in this sprint; the server offers the SDK by default (`AGENTCANVAS_ADAPTERS=langchain,openai_agents`), and
+`openai-agents==0.23.1` (the spec named 0.22.3) is an API dependency. Found and fixed on the way: S21 designed
+agents failed on nullable answer fields (`["string", "null"]`).
 
 ### S24 — Knowledge Studio → v0.16.0 (✅ done)
 

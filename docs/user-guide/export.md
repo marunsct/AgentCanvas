@@ -32,6 +32,10 @@ Or call `GET /v1/workflows/{id}/export.zip?target=<target>&version=<x.y.z>`, and
 A database is needed when the workflow pauses for people (approvals, questions), keeps memories, or continues chats
 across messages. Without one, the service keeps conversations in a SQLite file on one machine.
 
+A workflow whose framework is the **OpenAI Agents SDK** exports as an SDK project instead (the targets above are for
+LangGraph workflows): the generated flow, a command-line runner and offline tests. See
+[Run a workflow on the OpenAI Agents SDK](frameworks.md#run-a-workflow-on-the-openai-agents-sdk).
+
 ## Export a whole workflow to another framework (preview)
 
 In the Export box, **Framework** also offers **LangGraph (through Agent Spec)**, **WayFlow** and **OpenAI Agents

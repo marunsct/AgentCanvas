@@ -1,0 +1,38 @@
+{
+  "id": "openai_agents",
+  "label": "OpenAI Agents SDK",
+  "framework": "openai-agents 0.23.1",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes OpenAI Agents SDK code: an Agent for each AI block (tools, approvals, structured output) and a small flow that runs the other blocks in Python. Any catalog model works, not only OpenAI's. Exports are Python projects with a command-line runner. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "python"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.llm": "native",
+    "core.agent": "native",
+    "model.chat": "native",
+    "tool.python": "native",
+    "core.set": "emulated",
+    "core.router": "emulated",
+    "core.join": "emulated",
+    "core.approval": "emulated",
+    "core.human_input": "emulated",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "a line of Python in the generated flow",
+    "core.router": "Python picks the next step with the same CEL rules",
+    "core.join": "the flow waits for every branch before going on",
+    "core.approval": "the flow pauses between steps; the SDK has no approval step of its own",
+    "core.human_input": "the flow pauses between steps and asks again when an answer does not fit",
+    "core.script": "your workspace function is called from the flow",
+    "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
+    "core.agent": "an edited tool call is sent back to the agent to make again with the new arguments",
+    "mw.model_call_limit": "becomes the agent's max_turns (model calls in one run of the agent); a per-conversation limit is not kept"
+  }
+}

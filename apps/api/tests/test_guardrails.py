@@ -298,7 +298,7 @@ def test_guardrail_rules():
     flag_only = guard_wf("guard.injection", {"on_fail": "flag"})
     flag_only.nodes[0].config.pop("flag_output")
     flag_only.nodes[0].config.pop("report_output")
-    assert codes(flag_only) == {"W019"}
+    assert codes(flag_only) - {"P003"} == {"W019"}  # P003: the OpenAI Agents SDK has no guard blocks (S25)
     assert "W019" not in wf_with("guard.injection", {"on_fail": "flag"})
     unknown = guard_wf("guard.injection", {})
     unknown.nodes[0].config["input"] = "nowhere"

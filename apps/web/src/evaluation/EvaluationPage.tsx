@@ -7,9 +7,10 @@ import { apiDownload, apiFetch } from "../api/client";
 import type {
   DatasetDetail, DatasetOut, GateOut, DatasetVersionOut, EvaluatorOut, ExperimentOut, ExperimentResultOut, Score, VersionOut,
 } from "../api/generated";
+import { useFrameworks } from "../api/queries";
 import { can } from "../api/session";
 import { QueryStatus, errorText } from "../ui/QueryStatus";
-import { KIND_CONFIG, compare, fmt, grid, passed, pct } from "./compare";
+import { KIND_CONFIG, compare, fmt, frameworksToCompare, grid, passed, pct } from "./compare";
 import { Production } from "./Production";
 import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
@@ -34,7 +35,9 @@ const short = (v: unknown) => {
 export function EvaluationPage() {
   const { id = "" } = useParams();
   const [tab, setTab] = useState<Tab>("datasets");
-  const wf = useQuery({ queryKey: ["workflow", id], queryFn: () => apiFetch<{ name: string }>(`/workflows/${id}`) });
+  const wf = useQuery({
+    queryKey: ["workflow", id], queryFn: () => apiFetch<{ name: string; ir: { framework?: string } }>(`/workflows/${id}`),
+  });
   return (
     <div className="page evaluation">
       <header className="topbar">
@@ -51,7 +54,7 @@ export function EvaluationPage() {
       </nav>
       {tab === "datasets" && <Datasets wfId={id} />}
       {tab === "evaluators" && <Evaluators wfId={id} />}
-      {tab === "experiments" && <Experiments wfId={id} />}
+      {tab === "experiments" && <Experiments wfId={id} wfFramework={wf.data?.ir.framework ?? "langchain"} />}
       {tab === "gates" && <Gates wfId={id} />}
       {tab === "production" && <Production wfId={id} />}
       {tab === "queues" && <Queues wfId={id} />}
@@ -276,9 +279,10 @@ function TryEvaluator({ evaluatorId }: { evaluatorId: string }) {
 }
 
 // --------------------------------------------------------------------------------------------- experiments ----
-interface TargetDraft { version: string; overrides: string; label: string }
+interface TargetDraft { version: string; overrides: string; label: string; framework: string }
+const NEW_TARGET: TargetDraft = { version: "", overrides: "", label: "", framework: "" };
 
-function Experiments({ wfId }: { wfId: string }) {
+function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string }) {
   const qc = useQueryClient();
   const key = ["experiments", wfId];
   const list = useQuery({
@@ -290,7 +294,8 @@ function Experiments({ wfId }: { wfId: string }) {
   const versions = useQuery({ queryKey: ["versions", wfId], queryFn: () => apiFetch<VersionOut[]>(`/workflows/${wfId}/versions`) });
   const [dataset, setDataset] = useState("");
   const [split, setSplit] = useState("");
-  const [targets, setTargets] = useState<TargetDraft[]>([{ version: "", overrides: "", label: "" }]);
+  const [targets, setTargets] = useState<TargetDraft[]>([NEW_TARGET]);
+  const { data: frameworks = [] } = useFrameworks();
   const [open, setOpen] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<string>("");
   const [sim, setSim] = useState({ on: false, model: "anthropic:claude-haiku-4-5", persona: "", goal: "", max_turns: "5" });
@@ -300,7 +305,7 @@ function Experiments({ wfId }: { wfId: string }) {
       json: {
         dataset_id: dataset || datasets.data?.[0]?.id, split: split || null,
         targets: targets.map((t) => ({
-          version: t.version || null, label: t.label || null,
+          version: t.version || null, label: t.label || null, framework: t.framework || null,
           overrides: t.overrides.trim() ? parseJson(t.overrides, "overrides") : {},
         })),
         simulation: sim.on ? { model: sim.model, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
@@ -330,13 +335,28 @@ function Experiments({ wfId }: { wfId: string }) {
                 <option value="">draft</option>
                 {versions.data?.map((v) => <option key={v.id} value={v.semver}>v{v.semver}</option>)}
               </select>
+              {frameworks.length > 1 && (
+                <select aria-label={`target ${i + 1} framework`} value={t.framework} onChange={(e) => setTarget(i, { framework: e.target.value })}
+                  title="convert and compare: run this target on another framework">
+                  <option value="">its own framework</option>
+                  {frameworks.map((f) => <option key={f.id} value={f.id}>on {f.label}</option>)}
+                </select>
+              )}
               <input aria-label={`target ${i + 1} label`} placeholder="label" value={t.label} onChange={(e) => setTarget(i, { label: e.target.value })} style={{ width: 110 }} />
               <input aria-label={`target ${i + 1} overrides`} placeholder='overrides, e.g. {"llm": {"model": "openai:gpt-5-mini"}}' value={t.overrides}
                 onChange={(e) => setTarget(i, { overrides: e.target.value })} />
               {targets.length > 1 && <button type="button" className="link small" onClick={() => setTargets((ts) => ts.filter((_, j) => j !== i))}>Remove</button>}
             </div>
           ))}
-          <button type="button" className="link small" onClick={() => setTargets((ts) => [...ts, { version: "", overrides: "", label: "" }])}>+ Add a version or variant</button>
+          <div className="row gap">
+            <button type="button" className="link small" onClick={() => setTargets((ts) => [...ts, NEW_TARGET])}>+ Add a version or variant</button>
+            {frameworks.length > 1 && (
+              <button type="button" className="link small" data-testid="compare-frameworks"
+                onClick={() => setTargets((ts) => [...ts, ...frameworksToCompare(frameworks, wfFramework, ts)])}>
+                + Compare on the other frameworks
+              </button>
+            )}
+          </div>
           <label className="row small" title="chat workflows: a model plays the user and holds a conversation per example">
             <input type="checkbox" checked={sim.on} onChange={(e) => setSim((x) => ({ ...x, on: e.target.checked }))} />simulated user
           </label>

@@ -165,9 +165,13 @@ async def validate_workflow(wf_id: str, svc: WorkflowService = Depends(service))
 
 
 @router.get("/workflows/{wf_id}/code", response_class=PlainTextResponse)
-async def get_code(wf_id: str, svc: WorkflowService = Depends(service)) -> str:
+async def get_code(wf_id: str, framework: str | None = None, svc: WorkflowService = Depends(service)) -> str:
+    """The workflow's generated code; `?framework=` previews it converted to another installed framework (S25)."""
     view = await svc.get(wf_id)
-    return framework_adapter(view.workflow.framework).generate(view.workflow, svc.registry(view.row.project_id))
+    wf = view.workflow
+    if framework and framework != wf.framework:
+        wf = wf.model_copy(update={"framework": framework})
+    return framework_adapter(wf.framework).generate(wf, svc.registry(view.row.project_id))
 
 
 class PortabilityOut(BaseModel):

@@ -618,6 +618,10 @@ export type Targets1 =
   | [TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn]
   | [TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn]
   | [TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn];
+/**
+ * the framework this target runs on (S25); None: the workflow's own
+ */
+export type Framework3 = string | null;
 export type Label8 = string | null;
 /**
  * a published version (semver or id); None: the draft
@@ -656,6 +660,7 @@ export type PassRate2 = number | null;
 export type Target1 = number;
 export type Tokens = number;
 export type Summary3 = TargetSummary[];
+export type Framework4 = string | null;
 export type Label10 = string;
 export type Version6 = string | null;
 export type Targets2 = TargetOut[];
@@ -3275,6 +3280,7 @@ export interface Simulation {
  * via the `definition` "TargetIn".
  */
 export interface TargetIn {
+  framework?: Framework3;
   label?: Label8;
   overrides?: Overrides;
   version?: Version5;
@@ -3331,6 +3337,7 @@ export interface TargetSummary {
  * via the `definition` "TargetOut".
  */
 export interface TargetOut {
+  framework?: Framework4;
   label: Label10;
   overrides: Overrides1;
   version: Version6;

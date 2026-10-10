@@ -8383,6 +8383,19 @@
       },
       "TargetIn": {
         "properties": {
+          "framework": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the framework this target runs on (S25); None: the workflow's own",
+            "title": "Framework"
+          },
           "label": {
             "anyOf": [
               {
@@ -8422,6 +8435,17 @@
       },
       "TargetOut": {
         "properties": {
+          "framework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Framework"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -9772,7 +9796,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.16.0"
+    "version": "0.17.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -20822,6 +20846,7 @@
     },
     "/v1/workflows/{wf_id}/code": {
       "get": {
+        "description": "The workflow's generated code; `?framework=` previews it converted to another installed framework (S25).",
         "operationId": "get_code_v1_workflows__wf_id__code_get",
         "parameters": [
           {
@@ -20831,6 +20856,22 @@
             "schema": {
               "title": "Wf Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework"
             }
           },
           {
