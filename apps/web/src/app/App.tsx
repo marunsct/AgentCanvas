@@ -17,6 +17,7 @@ const MembersPage = lazy(() => import("./MembersPage").then((m) => ({ default: m
 const EvaluationPage = lazy(() => import("../evaluation/EvaluationPage").then((m) => ({ default: m.EvaluationPage })));
 const SetupPage = lazy(() => import("./SetupPage").then((m) => ({ default: m.SetupPage })));
 const SharePage = lazy(() => import("../share/SharePage").then((m) => ({ default: m.SharePage })));
+const PlaygroundPage = lazy(() => import("../playground/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })));
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 
 // one retry: an unreachable API shows its error (with a Retry button) in seconds, not after three back-offs
@@ -43,6 +44,7 @@ export function App() {
           <Route path="/workflows/:id/evaluation" element={<EvaluationPage />} />
           <Route path="/workflows/:id/workspace" element={<WorkspacePage />} />
           <Route path="/setup" element={<SetupPage />} />
+          <Route path="/playground" element={<PlaygroundPage />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />

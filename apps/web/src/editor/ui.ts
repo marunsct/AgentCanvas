@@ -1,6 +1,7 @@
 /** Transient UI state (command palette, dock tab). */
 import { create } from "zustand";
 import type { PortRef } from "../canvas/suggest";
+import { loadSimple, saveSimple } from "./simple";
 
 export type DockTab = "problems" | "timeline" | "explain";
 
@@ -13,6 +14,7 @@ interface UiState {
   dryRun: boolean; // test runs stub risky tools (FR-X-02)
   portMenu: (PortRef & { x: number; y: number }) | null; // "what can connect here?" for a clicked port (screen x/y)
   help: boolean; // the beginner guide drawer
+  simple: boolean; // Simple mode: beginner blocks and panels only (S31)
   openPalette: (at?: { x: number; y: number } | null) => void;
   closePalette: () => void;
   setDock: (d: DockTab) => void;
@@ -21,6 +23,7 @@ interface UiState {
   setDryRun: (on: boolean) => void;
   openPortMenu: (m: UiState["portMenu"]) => void;
   setHelp: (on: boolean) => void;
+  setSimple: (on: boolean) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -40,4 +43,6 @@ export const useUi = create<UiState>((set) => ({
   openPortMenu: (portMenu) => set({ portMenu }),
   help: false,
   setHelp: (help) => set({ help }),
+  simple: loadSimple(),
+  setSimple: (simple) => { saveSimple(simple); set({ simple }); },
 }));
