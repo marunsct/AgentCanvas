@@ -329,6 +329,55 @@ class Evaluator(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class KnowledgeBase(Base):
+    """Documents a workflow can search (S24 Knowledge Studio). `version` grows with every change, so each
+    instance's search cache knows when to reload."""
+
+    __tablename__ = "knowledge_base"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="knowledge_base_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    embedding: Mapped[dict[str, Any]]  # {"model": "builtin" | "<provider>:<model>", "base_url"?, "api_key"?}
+    chunking: Mapped[dict[str, Any]]  # {"strategy", "size", "overlap"}
+    stale: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    version: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _now()
+
+
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_document"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kb_id: Mapped[str] = mapped_column(ForeignKey("knowledge_base.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)  # upload | url | text
+    url: Mapped[str | None] = mapped_column(Text)
+    # the extracted text, pages separated by form feeds, kept so a change of chunking re-chunks without the file
+    content: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    sha256: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    status: Mapped[str] = mapped_column(Text, server_default=text("'ready'"), default="ready")  # ready | error
+    error: Mapped[str | None] = mapped_column(Text)
+    chunks: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunk"
+    __table_args__ = (Index("knowledge_chunk_kb", "kb_id", "doc_id", "ordinal"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kb_id: Mapped[str] = mapped_column(ForeignKey("knowledge_base.id", ondelete="CASCADE"))
+    doc_id: Mapped[str] = mapped_column(ForeignKey("knowledge_document.id", ondelete="CASCADE"), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    page: Mapped[int | None] = mapped_column(Integer)
+    heading: Mapped[str | None] = mapped_column(Text)
+    vector: Mapped[bytes | None] = mapped_column(LargeBinary)  # float32, little-endian
+
+
 class Experiment(Base):
     """A workflow run over a pinned dataset version, once per target (the draft, a version, or either with model
     or prompt overrides), and scored by evaluators (FR-EVAL-04). Targets and evaluators are snapshots taken at

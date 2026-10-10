@@ -121,4 +121,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S22: Whole flows, preview (v0.14.0) | ✅ done: export a whole workflow to LangGraph, WayFlow or OpenAI Agents through Agent Spec, with a gaps report |
 | Milestone review after S20–S22 | ✅ done (#27): 19 fixes |
 | S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates |
-| S24–S36: Knowledge Studio, framework flows, mixed-flow export, importers | ⏸ next (S24); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S24: Knowledge Studio (v0.16.0) | ✅ done: knowledge bases from files, web pages and text; hybrid search with citations; the Search knowledge block; retrieval evals |
+| S25–S36: framework flows, model gateway, mixed-flow export, importers | ⏸ next (S25); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

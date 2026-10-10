@@ -49,6 +49,7 @@ export function HomePage() {
         <span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span><span className="spacer" />
         {can("builder") && <Link to="/setup" data-testid="setup-link">Model</Link>}
         <Link to="/inbox">Inbox</Link>
+        <Link to="/knowledge" data-testid="knowledge-link">Knowledge</Link>
         <Link to="/memory" data-testid="memory-link">Memory</Link>
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
         <Link to="/events" data-testid="events-link">Events</Link>

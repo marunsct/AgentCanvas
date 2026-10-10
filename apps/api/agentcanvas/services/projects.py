@@ -29,6 +29,7 @@ class ProjectRegistry:
         self._resources: dict[str, Any] = {}
         self._catalogs: dict[str, tuple[str, Catalog, Registry]] = {}
         self.secrets: dict[str, dict[str, str]] = {}  # project id -> {name: value}, filled by the secrets service
+        self.knowledge: Any = None  # services.knowledge.Searcher (S24), set at startup
 
     def workspace(self, project_id: str) -> Workspace:
         if not _SAFE.match(project_id):
@@ -49,6 +50,8 @@ class ProjectRegistry:
                 registry=lambda: self.registry(project_id),
                 resources_class=self.resources_class,
             )
+            if self.knowledge is not None:
+                self._resources[project_id].knowledge = self.knowledge.for_project(project_id)
         return self._resources[project_id]
 
     async def aclose(self) -> None:

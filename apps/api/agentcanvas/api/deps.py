@@ -115,6 +115,7 @@ SCOPED_PARAMS = {
     "oev_id": "online_evaluator",
     "aq_id": "annotation_queue",
     "item_id": "annotation_item",
+    "kb_id": "knowledge_base",
 }
 
 
@@ -155,6 +156,7 @@ ROLE_EXCEPTIONS = {
     ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server
     ("DELETE", "/projects/{project_id}/trace-export"): "admin",
     ("GET", "/deployments/{dep_id}/share"): "builder",  # the link is a capability: builders hand it out (S23)
+    ("POST", "/knowledge/{kb_id}/search"): "viewer",  # a read: what a Search knowledge block would find (S24)
 }
 
 

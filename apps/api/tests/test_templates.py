@@ -38,6 +38,8 @@ INPUTS = {
     "translation_glossary": {"text": "Start your free trial.", "target_language": "German", "glossary": "trial = Test"},
     "trip_planner": {"trip_request": "3 days in Lisbon in May, 600 EUR"},
     "web_research": {"question": "How was Hubble's mirror fixed?"},
+    # S24
+    "knowledge_qa": {"question": "How many vacation days do I get?"},
 }
 
 
@@ -77,6 +79,9 @@ async def test_template_validates_and_runs(app, api_client, name):
 
     demo = DemoResources()
     app.state.resources_factory = lambda thread_id, wf: demo
+    if name == "knowledge_qa":  # S24: searches the sample knowledge base, like a project that loaded it
+        assert (await api_client.post(f"{P}/knowledge", json={"sample": "handbook"})).status_code == 201
+        demo.knowledge = app.state.projects.knowledge.for_project("prj_default")
     wf = (await api_client.post(f"{P}/workflows", json={"name": name, "template": name})).json()
     assert not [d for d in wf["diagnostics"] if d["severity"] == "error"], wf["diagnostics"]
     text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text

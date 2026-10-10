@@ -114,6 +114,7 @@ CHILD_PARAMS = {
     "target": "a framework name, not a stored object (S22 bridge export)",
     "node_id": "an Agent block inside {wf_id}'s workflow (S21)",
     "proposal_id": "a Copilot proposal looked up within the caller's conversation about {wf_id}",
+    "doc_id": "a knowledge document looked up within {kb_id}",
     "token": "a share link's token: public visitor routes, the token is the capability (S23)",
 }
 

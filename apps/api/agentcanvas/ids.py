@@ -39,6 +39,8 @@ PREFIXES = {
     "prop",  # Copilot proposal
     "aqi",  # annotation queue item
     "ann",  # a reviewer's annotation of a queue item
+    "kb",  # knowledge base (S24)
+    "kdoc",  # knowledge document
 }
 
 

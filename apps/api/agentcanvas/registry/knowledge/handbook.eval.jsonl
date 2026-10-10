@@ -1,0 +1,50 @@
+{"id": "q01", "input": {"question": "How many vacation days do I get each year?"}, "reference": {"relevant": ["vacation-policy"]}, "metadata": {"case": "q01"}}
+{"id": "q02", "input": {"question": "Can I carry unused holidays over to next year?"}, "reference": {"relevant": ["vacation-policy"]}, "metadata": {"case": "q02"}}
+{"id": "q03", "input": {"question": "When will my expenses be reimbursed?"}, "reference": {"relevant": ["expenses"]}, "metadata": {"case": "q03"}}
+{"id": "q04", "input": {"question": "What's the daily limit for meals on a business trip?"}, "reference": {"relevant": ["expenses"]}, "metadata": {"case": "q04"}}
+{"id": "q05", "input": {"question": "Do I need a doctors note when I'm sick?"}, "reference": {"relevant": ["sick-leave"]}, "metadata": {"case": "q05"}}
+{"id": "q06", "input": {"question": "How long is paid leave for adopting parents?"}, "reference": {"relevant": ["parental-leave"]}, "metadata": {"case": "q06"}}
+{"id": "q07", "input": {"question": "Can parental leave be split up?"}, "reference": {"relevant": ["parental-leave"]}, "metadata": {"case": "q07"}}
+{"id": "q08", "input": {"question": "Which flight class can I book for long flights?"}, "reference": {"relevant": ["travel-booking"]}, "metadata": {"case": "q08"}}
+{"id": "q09", "input": {"question": "How many days a week may I work remotely?"}, "reference": {"relevant": ["remote-work"]}, "metadata": {"case": "q09"}}
+{"id": "q10", "input": {"question": "Can I work abroad for a few weeks?"}, "reference": {"relevant": ["remote-work"]}, "metadata": {"case": "q10"}}
+{"id": "q11", "input": {"question": "Is there an allowance for my home internet?"}, "reference": {"relevant": ["home-office"]}, "metadata": {"case": "q11"}}
+{"id": "q12", "input": {"question": "Who owns the chair I bought with the home office budget?"}, "reference": {"relevant": ["home-office"]}, "metadata": {"case": "q12"}}
+{"id": "q13", "input": {"question": "When do laptops get replaced?"}, "reference": {"relevant": ["laptops"]}, "metadata": {"case": "q13"}}
+{"id": "q14", "input": {"question": "My laptop got stolen, what do I do?"}, "reference": {"relevant": ["laptops", "security-incidents"]}, "metadata": {"case": "q14"}}
+{"id": "q15", "input": {"question": "How long must my passwords be?"}, "reference": {"relevant": ["passwords"]}, "metadata": {"case": "q15"}}
+{"id": "q16", "input": {"question": "Is two factor authentication required?"}, "reference": {"relevant": ["passwords"]}, "metadata": {"case": "q16"}}
+{"id": "q17", "input": {"question": "I clicked a phishing link, who do I contact?"}, "reference": {"relevant": ["security-incidents"]}, "metadata": {"case": "q17"}}
+{"id": "q18", "input": {"question": "What happens on my first day?"}, "reference": {"relevant": ["onboarding"]}, "metadata": {"case": "q18"}}
+{"id": "q19", "input": {"question": "How often are performance reviews held?"}, "reference": {"relevant": ["performance-reviews"]}, "metadata": {"case": "q19"}}
+{"id": "q20", "input": {"question": "When do salary raises happen?"}, "reference": {"relevant": ["performance-reviews"]}, "metadata": {"case": "q20"}}
+{"id": "q21", "input": {"question": "What day is payday?"}, "reference": {"relevant": ["salary-payroll"]}, "metadata": {"case": "q21"}}
+{"id": "q22", "input": {"question": "How much does the company contribute to my pension?"}, "reference": {"relevant": ["pension"]}, "metadata": {"case": "q22"}}
+{"id": "q23", "input": {"question": "How big is the training budget?"}, "reference": {"relevant": ["learning-budget"]}, "metadata": {"case": "q23"}}
+{"id": "q24", "input": {"question": "Are certifications paid for?"}, "reference": {"relevant": ["learning-budget"]}, "metadata": {"case": "q24"}}
+{"id": "q25", "input": {"question": "What are the office opening hours?"}, "reference": {"relevant": ["office-access"]}, "metadata": {"case": "q25"}}
+{"id": "q26", "input": {"question": "How do I register a visitor?"}, "reference": {"relevant": ["office-access"]}, "metadata": {"case": "q26"}}
+{"id": "q27", "input": {"question": "Where can I report harassment anonymously?"}, "reference": {"relevant": ["code-of-conduct"]}, "metadata": {"case": "q27"}}
+{"id": "q28", "input": {"question": "May I accept a present from a supplier?"}, "reference": {"relevant": ["gifts"]}, "metadata": {"case": "q28"}}
+{"id": "q29", "input": {"question": "Can I paste customer information into ChatGPT?"}, "reference": {"relevant": ["customer-data"]}, "metadata": {"case": "q29"}}
+{"id": "q30", "input": {"question": "What is the notice period when I resign?"}, "reference": {"relevant": ["leaving", "probation"]}, "metadata": {"case": "q30"}}
+{"id": "q31", "input": {"question": "Are leftover vacation days paid when I leave?"}, "reference": {"relevant": ["leaving"]}, "metadata": {"case": "q31"}}
+{"id": "q32", "input": {"question": "How long is the probationary period?"}, "reference": {"relevant": ["probation"]}, "metadata": {"case": "q32"}}
+{"id": "q33", "input": {"question": "How much does lunch cost?"}, "reference": {"relevant": ["cafeteria"]}, "metadata": {"case": "q33"}}
+{"id": "q34", "input": {"question": "reimbursment deadline for receipts"}, "reference": {"relevant": ["expenses"]}, "metadata": {"case": "q34"}}
+{"id": "q35", "input": {"question": "vacaton request how far ahead"}, "reference": {"relevant": ["vacation-policy"]}, "metadata": {"case": "q35"}}
+{"id": "q36", "input": {"question": "matching contributions retirement"}, "reference": {"relevant": ["pension"]}, "metadata": {"case": "q36"}}
+{"id": "q37", "input": {"question": "how do i get reimbursed for a taxi"}, "reference": {"relevant": ["expenses"]}, "metadata": {"case": "q37"}}
+{"id": "q38", "input": {"question": "deadline to submit expens claims"}, "reference": {"relevant": ["expenses"]}, "metadata": {"case": "q38"}}
+{"id": "q39", "input": {"question": "adoptive parent leave weeks"}, "reference": {"relevant": ["parental-leave"]}, "metadata": {"case": "q39"}}
+{"id": "q40", "input": {"question": "certificate from a doctor after 3 days ill"}, "reference": {"relevant": ["sick-leave"]}, "metadata": {"case": "q40"}}
+{"id": "q41", "input": {"question": "replacing my macbook"}, "reference": {"relevant": ["laptops"]}, "metadata": {"case": "q41"}}
+{"id": "q42", "input": {"question": "hardware keys for logging in"}, "reference": {"relevant": ["passwords"]}, "metadata": {"case": "q42"}}
+{"id": "q43", "input": {"question": "visiting guests at the office"}, "reference": {"relevant": ["office-access"]}, "metadata": {"case": "q43"}}
+{"id": "q44", "input": {"question": "pension contributions changing"}, "reference": {"relevant": ["pension"]}, "metadata": {"case": "q44"}}
+{"id": "q45", "input": {"question": "when are payslips available"}, "reference": {"relevant": ["salary-payroll"]}, "metadata": {"case": "q45"}}
+{"id": "q46", "input": {"question": "accepting gifts from partners"}, "reference": {"relevant": ["gifts"]}, "metadata": {"case": "q46"}}
+{"id": "q47", "input": {"question": "deleting customers data on request"}, "reference": {"relevant": ["customer-data"]}, "metadata": {"case": "q47"}}
+{"id": "q48", "input": {"question": "subsidised meals in the canteen"}, "reference": {"relevant": ["cafeteria"]}, "metadata": {"case": "q48"}}
+{"id": "q49", "input": {"question": "conferences paid by company"}, "reference": {"relevant": ["learning-budget"]}, "metadata": {"case": "q49"}}
+{"id": "q50", "input": {"question": "working from home days per week"}, "reference": {"relevant": ["remote-work"]}, "metadata": {"case": "q50"}}

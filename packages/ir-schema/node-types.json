@@ -2083,6 +2083,115 @@
     "docs": null
   },
   {
+    "type": "knowledge.search",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Search knowledge",
+    "category": "Knowledge",
+    "icon": "book-open",
+    "color": "#7C3AED",
+    "description": "Finds the passages of a knowledge base (documents you uploaded on the Knowledge page) that best answer a question, and saves them in a data field, each with its title, page and a citation number to quote.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go after the search: connect the next step (usually an AI step that answers from the passages), or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "knowledge_base",
+        "query",
+        "output"
+      ],
+      "properties": {
+        "knowledge_base": {
+          "type": "string",
+          "title": "Knowledge base",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "description": "The name of a knowledge base in this project (Knowledge page). Exports ship it as knowledge/<name>.jsonl."
+        },
+        "query": {
+          "type": "string",
+          "title": "Search for",
+          "format": "template",
+          "default": "{{ state.question }}",
+          "description": "Jinja template: the question to look up."
+        },
+        "mode": {
+          "enum": [
+            "hybrid",
+            "semantic",
+            "keyword"
+          ],
+          "title": "Match by",
+          "default": "hybrid",
+          "description": "hybrid = words and meaning together (best in most cases); semantic = meaning (embeddings); keyword = exact words (BM25)"
+        },
+        "top_k": {
+          "type": "integer",
+          "title": "At most",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5,
+          "description": "How many passages to keep"
+        },
+        "min_score": {
+          "type": "number",
+          "title": "Minimum score",
+          "minimum": 0,
+          "default": 0,
+          "description": "Drop passages scoring below this (0 = keep the best ones whatever their score)"
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the passages in",
+          "format": "channel",
+          "default": "passages",
+          "description": "A list of {cite, title, text, page, source, score}; an AI step can quote them by [cite]"
+        },
+        "sources_output": {
+          "type": "string",
+          "title": "Save the sources in",
+          "format": "channel",
+          "description": "Optional: the citation list ({cite, title, source, page}) to show under an answer"
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output",
+      "sources_output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "query"
+    ],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "core.memory_forget",
     "version": "1.0.0",
     "kind": "runtime",

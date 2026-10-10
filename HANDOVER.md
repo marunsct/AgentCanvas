@@ -14,24 +14,24 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S23 Ship to users → v0.15.0** (the S23 PR): share a published deployment as a public chat page (`/s/<token>`, `services/share.py`, `api/v1/share.py`, `web/src/share/`) or a chat button on any site (`apps/web/public/widget.js`); four safety blocks `guard.pii`, `guard.injection`, `guard.moderation`, `guard.schema` (`agentcanvas/guardrails.py`, eval cases in `registry/guardrails/*.cases.json`); a gallery of 25 templates (`metadata.gallery`, `web/src/app/TemplateGallery.tsx`) |
-| Before that | Milestone review after S20–S22, 19 fixes ([#27](https://github.com/marunsct/AgentCanvas/pull/27), merged `54d2673`); S22 Whole flows → v0.14.0 (#26, `9e741e3`); S21 Design any agent → v0.13.0 (#25, `f308699`) |
-| Version in code | API `0.15.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.15.0 (it also holds the review fixes) |
-| Git tags | **none pushed.** v0.1.0 … v0.15.0 are all left to the owner (see §2) |
-| Next sprint | **S24 Knowledge Studio → v0.16.0** (was S20; [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): ingestion, hybrid search, citations, retrieval evals |
-| Work status | S23 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S24 starts |
-| Open PRs | the S23 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S24 Knowledge Studio → v0.16.0** (the S24 PR): knowledge bases per project (`services/knowledge.py`, `api/v1/knowledge.py`, `web/src/knowledge/`), ingestion of PDF/Word/HTML/Markdown/text files, public web pages and pasted text, chunking options, keyword/meaning/hybrid search with citations (`agentcanvas/knowledge_search.py`, shipped in exports), the `knowledge.search` block, the `retrieval` evaluator, a sample handbook with a 50-question eval set (`registry/knowledge/`), the Ask your documents template |
+| Before that | S23 Ship to users → v0.15.0 ([#28](https://github.com/marunsct/AgentCanvas/pull/28), merged `820312e`); milestone review after S20–S22, 19 fixes (#27, `54d2673`); S22 Whole flows → v0.14.0 (#26, `9e741e3`) |
+| Version in code | API `0.16.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.16.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.16.0 are all left to the owner (see §2) |
+| Next sprint | **S25 → v0.17.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
+| Work status | S24 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S25 starts |
+| Open PRs | the S24 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S23** (all green locally):
+**Test totals at the end of S24** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 652 passed, 1 xfail (known upstream canary) | see §5 |
-| Web unit (vitest) | 88 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 50 | see §5 |
+| API (pytest, Postgres) | 668 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd) | see §5 |
+| Web unit (vitest) | 91 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 52 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 25 templates (local target run for all 18 new ones) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
+| Exported templates, each export's own tests | 26 templates (S24: `knowledge_qa` exported with the sample knowledge base; its tests pass and the export searches `src/knowledge/handbook.jsonl`) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -91,6 +91,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   agentspec.py             Open Agent Spec export/import (S16), pure dict mapping, no pyagentspec at runtime
   designs/                 S21: an Agent block as native code for 9 agent frameworks; export.py + kit/ (per-agent project)
   guardrails.py            S23: decision logic of the safety blocks (shipped in exports); evals in registry/guardrails/
+  knowledge_search.py      S24: chunking, built-in embedder, BM25/cosine/hybrid search, retrieval metrics (shipped in exports)
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
@@ -178,7 +179,16 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.15.0 not created (owner).
+- **Release tags** v0.1.0 to v0.16.0 not created (owner).
+- **S24 limits:** search runs in memory per API instance (up to 50,000 chunks per knowledge base, cached by
+  `version`); pgvector is not used yet (vectors are float32 bytes in `knowledge_chunk.vector`), so a very large
+  corpus needs that follow-up. The built-in embedder matches word forms and misspellings, not synonyms: hybrid
+  beats keyword on the sample by a small margin (recall@3 0.95 vs 0.93); provider embedding models are wired
+  (`knowledge_embedder` in nodes.py, via `init_embeddings`) but not exercised in CI. No Google Drive or other
+  connector ingestion (upload the files, or use an MCP server on an agent); no OCR for scanned PDFs; web pages are
+  fetched once (no re-crawl); a document's text is stored in `knowledge_document.content`. The Search knowledge
+  block names its knowledge base as free text (no picker; a missing one fails the run with a clear message). The
+  embedding provider's API key must be a `{"$secret": …}` reference or the provider's usual project secret.
 - **S23 limits:** a share link is the credential (stored in plain text so builders can copy it again; regenerate
   it if logs leak, since it appears in URL paths); `/s/` pages can be framed by any site (no allowed-origins list,
   the page is static); abuse protection is the deployment's and project's rate limits plus nginx's per-IP limit, so
@@ -267,7 +277,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S21 Design any agent | #25 | `f308699` | v0.13.0 |
 | S22 Whole flows, preview | #26 | `9e741e3` | v0.14.0 |
 | Milestone review after S20–S22 (19 fixes) | #27 | `54d2673` | (in v0.15.0) |
-| S23 Ship to users | the S23 PR | (after merge) | v0.15.0 |
+| S23 Ship to users | #28 | `820312e` | v0.15.0 |
+| S24 Knowledge Studio | the S24 PR | (after merge) | v0.16.0 |
 
 ## 11. Sprint-end checklist
 

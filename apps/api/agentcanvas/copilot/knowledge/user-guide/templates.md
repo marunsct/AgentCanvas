@@ -57,6 +57,7 @@ fields. Templates that pause for a person (an approval or a tool call) show the 
 
 | Template | What it does | Level |
 |---|---|---|
+| **Ask your documents** | Answers questions from a knowledge base (Knowledge page) with citations: Search knowledge finds the best passages by words and meaning, then the model answers only from them and cites them as [1], [2]. Load the sample 'handbook' knowledge base to try it, and score its search with the sample retrieval eval set. | beginner |
 | **Document Q&A** | Answers a question about a document you paste in (a contract, a manual, a policy): it first quotes the relevant passages, then answers only from them. | beginner |
 | **RAG Q&A** | Answer questions from a knowledge base: recall the most relevant passages from memory, answer only from them. Fill the `knowledge` memory space first (Memory Remember node or the Memory page). | intermediate |
 | **Research brief** | Map-reduce research: one LLM call per topic in parallel, then a Deep Agent writes the brief and keeps findings in the user's long-term /memories/ folder. | intermediate |
