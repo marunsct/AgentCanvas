@@ -27,7 +27,7 @@ updated one wins; fix the other in the same PR.
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 669 passed, 1 xfail (known upstream canary); the Docker sandbox test needs a running dockerd | see §5 |
+| API (pytest, Postgres) | 668 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd) | see §5 |
 | Web unit (vitest) | 91 | `cd apps/web && pnpm exec vitest run` |
 | Browser journeys (Playwright, prod build under the prod CSP) | 52 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
