@@ -541,6 +541,16 @@ variable; tool steps missed state used with filters or nested fields; Ollama mod
 Agents path; the Export box hid a failed framework lookup and named every version's download the same. Left as is:
 end outputs of unusual types (enums, unions) get a `null` default, which both loaders accept.
 
+### Milestone review after S20–S22 (✅ done)
+
+Run at the end of the framework milestone, per the owner's flow (whole-codebase review after a major milestone).
+Three reviewers covered the web app and infra, the API core, and the adapters, designs, bridges and Copilot.
+19 bugs were found and fixed; CHANGELOG "Unreleased" lists them. New checks: E007 (reserved resource names),
+E043 (private networks in the hosted edition), E051 (secret names). New migration `b3c7d1e5f9a2`
+(one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
+in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
+code evaluator until the evaluator file changes (the gate's hash still catches it).
+
 ### S18 — AI Copilot II and debug assistant → v0.8.0
 
 | # | Item | Days | Acceptance |

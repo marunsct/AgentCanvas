@@ -187,14 +187,14 @@ async def test_a_handler_continues_the_thread_of_the_run_that_raised_its_event(a
     """Handlers run once the run is over and its thread free: one may resume that very thread."""
     src = (
         "from agentcanvas.sdk import on\n\n\n"
-        "@on(\"interrupt.raised\", filter=\"event.data.workflow_name == 'AutoSign'\")\n"
-        "def approve(event, act):\n    act.resume(event.data[\"thread_id\"], {\"approved\": True})\n"
+        '@on("interrupt.raised", filter="event.data.workflow_name == \'AutoSign\'")\n'
+        'def approve(event, act):\n    act.resume(event.data["thread_id"], {"approved": True})\n'
     )
     await api_client.put(f"{P}/files/events/auto.py", json={"content": src})
     ask = {"id": "n_a", "type": "core.approval", "name": "sign", "config": {"show": "out", "output": "ok"}}
     wf = await make_wf(api_client, linear("AutoSign", [ask], ["out", "ok"]))
-    r = await api_client.post(f"/v1/workflows/{wf}/runs/wait", json={"thread_id": "th_auto"})
-    assert r.status_code == 200 and r.json()["status"] == "interrupted", r.text  # not held up by the handler
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"thread_id": "th_auto"})
+    assert events(r.text)[-1]["status"] == "interrupted", r.text  # the stream does not wait for the handler
     await delivered(app)
     raised = next(e for e in (await api_client.get(f"{P}/events")).json() if e["type"] == "interrupt.raised")
     assert raised["status"] == "handled", raised

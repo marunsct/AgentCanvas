@@ -28,7 +28,7 @@ updated one wins; fix the other in the same PR.
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 534 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| API (pytest, Postgres) | 534 passed, 1 skipped, 1 xfail (known upstream canary); 548 after the milestone review | see §5 |
 | Web unit (vitest) | 82 | `cd apps/web && pnpm exec vitest run` |
 | Browser journeys (Playwright, prod build under the prod CSP) | 47 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
@@ -172,6 +172,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   code onto existing images or build stand-ins from `mirror.gcr.io` Python images with `--network host` and the proxy CA.
 - The egress proxy blocks most remote MCP hosts and many vendor doc sites, so `smoke_mcp_gallery.py --live` and some
   research can't run here.
+- After a container restart: `service postgresql start`; run pyright as `uv run pyright` (or `.venv/bin/pyright
+  --pythonpath .venv/bin/python`) and pytest with `PATH=$PWD/.venv/bin:$PATH` (the LangSmith sandbox test calls `python`).
 - k6 lives at `~/go/bin/k6`; helm via `go install helm.sh/helm/v3/cmd/helm@v3.16.2`.
 
 ## 9. Known gaps and deferred items

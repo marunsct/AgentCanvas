@@ -38,11 +38,11 @@ from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.online import OnlineScorer
-from agentcanvas.services.projects import ProjectRegistry
+from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
-from agentcanvas.services.secrets import SecretService
+from agentcanvas.services.secrets import SecretCache
 from agentcanvas.services.trace_export import TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -84,9 +84,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.keyring = Keyring.from_settings(settings)
             masking.provider = lambda: (v for values in app.state.projects.secrets.values() for v in values.values())
             masking.install_langsmith()
-            async with db.sessionmaker() as s:  # decrypted once at startup; the secrets API keeps them in sync
-                for project, values in (await SecretService(s, app.state.keyring).values()).items():
-                    app.state.projects.secrets.setdefault(project, {}).update(values)
+            # decrypted at startup, reloaded when another instance changed them (each project's secrets_version)
+            app.state.secrets = SecretCache(db, lambda: app.state.keyring, app.state.projects.secrets)
+            await app.state.secrets.sync()
             runner = Runner(
                 db,
                 adapter,
@@ -95,6 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 models=app.state.models,
             )
             app.state.runner = runner
+            runner.prepare_hooks.append(
+                lambda wf: app.state.secrets.refresh(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT))
+            )
             app.state.events = EventService(db, runner, app.state.projects)
             runner.after_hooks.append(app.state.events.on_run_finished)
             runner.start_hooks.append(observability.run_started)
@@ -124,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.retention.start()
                 app.state.handover.start()
                 app.state.online.start()
+                app.state.secrets.start()
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
             log.info(
@@ -137,6 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.handover.stop()
                 await app.state.cron.stop()
                 await app.state.retention.stop()
+                await app.state.secrets.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 await app.state.online.stop()  # after the drain: runs finishing in it are scored too
                 await runner.shutdown()

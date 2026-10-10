@@ -106,7 +106,7 @@ async def put_setup(
     name = _key_secret(p)
     if key and name:
         await SecretService(session, request.app.state.keyring).put(project_id, name, key, user.id)
-        request.app.state.projects.secrets.setdefault(project_id, {})[name] = key  # runs see it right away
+        await request.app.state.secrets.refresh(project_id)  # runs here see it right away, other instances soon
     project.settings = {
         **(project.settings or {}),
         "default_model": dm.model_dump(exclude_none=True),

@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
@@ -173,6 +173,8 @@ class Runner:
         self.after_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
         # called when a run starts (metrics)
         self.start_hooks: list[Callable[[RunHandle], None]] = []
+        # awaited before a run starts (the project's secrets, reloaded when another instance changed them)
+        self.prepare_hooks: list[Callable[[Workflow], Awaitable[None]]] = []
         self.draining = False  # shutting down: no new runs (FR-X-10)
 
     @property
@@ -240,6 +242,8 @@ class Runner:
         run_id = new_id("run")
         self.active_by_thread[thread_id] = run_id  # reserved before any await: a concurrent start is refused
         try:
+            for prepare in self.prepare_hooks:
+                await prepare(wf)
             async with self.db.sessionmaker() as s:
                 thread = await s.get(Thread, thread_id)
                 if thread is None:

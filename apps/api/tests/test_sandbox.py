@@ -253,6 +253,7 @@ async def test_langsmith_mode_end_to_end(app, api_client, fake_langsmith):
     text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": {"text": "abc"}})).text
     fin = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert fin["output"]["out"] == "cba", fin
+    await asyncio.gather(*(h.task for h in app.state.runner.handles.values() if h.task))  # its events delivered
 
     res = (await api_client.post(f"{P}/events/dry-run", json={"type": "test.ping", "data": {"n": 1}})).json()
     assert res["handlers"][0]["actions"] == [{"action": "emit", "type": "test.pong", "data": {"n": 2}}]

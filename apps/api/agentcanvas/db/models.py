@@ -91,6 +91,8 @@ class Project(Base):
     name: Mapped[str] = mapped_column(Text)
     # first-run setup: {"default_model": {"model", "base_url"?, "api_key"?}, "setup_done": bool}
     settings: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    # grows with every secret change: each instance reloads its decrypted copy when it is behind (S22)
+    secrets_version: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     created_at: Mapped[datetime] = _now()
 
 
@@ -145,6 +147,7 @@ class TestCase(Base):
 
 class Deployment(Base):
     __tablename__ = "deployment"
+    __table_args__ = (UniqueConstraint("workflow_id", "environment", name="deployment_once"),)
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id"))

@@ -94,8 +94,8 @@ def context_for(wf: Workflow, given: dict[str, Any], user_id: str | None, org_id
 
 def scorers(runner: Any, wf: Workflow, usage: dict[str, Any] | None = None) -> dict[str, Any]:
     """The model service's call (for judges) and the workflow adapter's workspace functions (for code evaluators,
-    with the hash of the code they run), for `wf`'s project. `usage`, when given, collects the judge's tokens per model: {model: {input_tokens,
-    output_tokens}}."""
+    with the hash of the code they run), for `wf`'s project. `usage`, when given, collects the judge's tokens per
+    model: {model: {input_tokens, output_tokens}}."""
     adapter, resources, models = runner.adapter, runner.resources("", wf), runner.models
 
     async def complete(system: str, prompt: str, model: str) -> str:

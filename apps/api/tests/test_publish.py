@@ -159,3 +159,34 @@ async def test_api_end_users_live_under_the_deployment():
     ctx = await _api_context(NoRows(), dep, wf, ApiRunIn(user_id="usr_alice"))  # type: ignore[arg-type]
     assert ctx == {"uid": "api:dep_1:usr_alice"}
     assert await _api_context(NoRows(), dep, wf, ApiRunIn()) == {"uid": "api:dep_1"}  # type: ignore[arg-type]
+
+
+async def test_concurrent_first_publishes_share_one_deployment(app, api_client):
+    """Both first publishes of an environment found no deployment: the second to insert moves the first's."""
+    from sqlalchemy import select
+
+    from agentcanvas.db.models import Deployment, WorkflowRow, WorkflowVersion
+    from agentcanvas.services.deployments import DeploymentService
+
+    wf = await make_greeter(api_client)
+    first = await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "qa"})
+    assert first.status_code == 200, first.text
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(WorkflowRow, wf)
+        assert row is not None
+        version = (await s.scalars(select(WorkflowVersion).where(WorkflowVersion.workflow_id == wf))).one()
+        svc = DeploymentService(s)
+        real = s.scalar
+        calls = 0
+
+        async def stale(q, *args, **kwargs):  # the first look ran before the other publish committed
+            nonlocal calls
+            calls += 1
+            return None if calls == 1 else await real(q, *args, **kwargs)
+
+        s.scalar = stale  # type: ignore[method-assign]
+        dep, key = await svc.publish(row, "qa", version)
+    assert key is None and dep.id == first.json()["deployment"]["id"]
+    async with app.state.db.sessionmaker() as s:
+        rows = (await s.scalars(select(Deployment).where(Deployment.workflow_id == wf))).all()
+    assert [(d.environment, d.version_id) for d in rows] == [("qa", version.id)]

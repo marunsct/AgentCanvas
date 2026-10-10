@@ -15066,10 +15066,13 @@
             }
           },
           {
+            "description": "a variable-safe name",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
+              "description": "a variable-safe name",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
               "title": "Name",
               "type": "string"
             }
@@ -15131,10 +15134,13 @@
             }
           },
           {
+            "description": "a variable-safe name",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
+              "description": "a variable-safe name",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
               "title": "Name",
               "type": "string"
             }

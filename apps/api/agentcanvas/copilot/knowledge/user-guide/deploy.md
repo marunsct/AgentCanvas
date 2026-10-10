@@ -53,6 +53,7 @@ Migrations run as a Helm hook Job before the API starts.
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them) |
 | `AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT` / `_PER_WEBHOOK` / `_PER_PROJECT` | Public API requests per minute (120 / 120 / 600) |
+| `TRUSTED_PROXIES` (web) | The address range of a load balancer or ingress in front of the web container, e.g. `10.0.0.0/8`. Only a client address it forwards is believed, for rate limits and the audit log. Default `127.0.0.1/32` (nothing in front). In Helm: `web.trustedProxies`. |
 
 ## Sign-in
 

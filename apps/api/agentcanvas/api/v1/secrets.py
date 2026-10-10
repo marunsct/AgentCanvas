@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Path, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.repositories import ProjectRepo
+from agentcanvas.ir.models import SECRET_NAME
 from agentcanvas.services.secrets import SecretService
 
 router = APIRouter(prefix="/projects/{project_id}/secrets", tags=["secrets"])
+NAME = Path(pattern=SECRET_NAME.pattern, description="a variable-safe name")
 
 
 class SecretOut(BaseModel):
@@ -39,23 +41,23 @@ async def list_secrets(
 @router.put("/{name}", status_code=204)
 async def put_secret(
     project_id: str,
-    name: str,
     body: SecretIn,
     request: Request,
+    name: str = NAME,
     svc: SecretService = Depends(service),
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> Response:
     await ProjectRepo(session).require(project_id)
     await svc.put(project_id, name, body.value, user.id)
-    request.app.state.projects.secrets.setdefault(project_id, {})[name] = body.value  # runs see it right away
+    await request.app.state.secrets.refresh(project_id)  # runs here see it right away, other instances soon
     return Response(status_code=204)
 
 
 @router.delete("/{name}", status_code=204)
 async def delete_secret(
-    project_id: str, name: str, request: Request, svc: SecretService = Depends(service)
+    project_id: str, request: Request, name: str = NAME, svc: SecretService = Depends(service)
 ) -> Response:
     await svc.delete(project_id, name)
-    request.app.state.projects.secrets.setdefault(project_id, {}).pop(name, None)
+    await request.app.state.secrets.refresh(project_id)
     return Response(status_code=204)
