@@ -51,7 +51,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts (✅ done) |
 | **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews (✅ done) |
 | **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries (✅ done) |
-| **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full |
+| **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full (✅ done) |
 | **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers |
 | **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
 | **S33–S34** | 4 | Microsoft Agent Framework flows → v0.24.0 (was S30–S31) | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Authoring tier; Full later if users ask |
@@ -550,6 +550,35 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S29–S30 — Google ADK flows → v0.21.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Workflow lowering: codegen and runtime | B | 5 | A workflow becomes a native ADK 2 graph `Workflow` (function nodes, `("START", …)` edges, route dicts, fan-out tuples, `JoinNode`, back edges for loops); a run executes that module with ADK's `Runner`; the 12 conformance cases pass |
+| 2 | Running ADK next to the server | B | 2 | ADK in its own environment (its LiteLLM pins `openai<3`), the one mixed flows use; one worker process serves every run; models through the bridge (LiteLLM), tools, knowledge and code on the server |
+| 3 | Agents | B | 3 | AI agents as ADK `Agent`s run as dynamic nodes (`ctx.run_node`): tools, typed answers as `output_schema`, call limits as a `before_model_callback`, instructions kept literal (no `{state}` templating) |
+| 4 | People | B | 3 | Approvals and questions as ADK `RequestInput`; tool calls named in *Ask before using* pause with a `tool_approval` (approve, edit, reject); continuing replays finished steps from the record |
+| 5 | Export | B | 2 | An ADK project with the workflow, the vendored runtime, LiteLLM models, a CLI that pauses and continues, tests with a scripted ADK model; every template ADK runs exports and passes its tests |
+| 6 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** `adapters/google_adk/` (`codegen.py`, `runtime.py`, `worker.py`, `packager.py`, the adapter,
+which reuses the CrewAI adapter's server side: `CrewWorker` and `shared_worker` now take a framework's worker files
+and module, and `CrewAIAdapter` names its Python, worker and generator as methods), manifest
+`registry/adapters/google_adk.json` (tier T2), `google_adk` in the default `AGENTCANVAS_ADAPTERS`, `make framework
+FW=google_adk` (now with `cel-python`, `jinja2` and `jsonschema`; the API image takes
+`--build-arg WITH_GOOGLE_ADK=true`), `tests/test_google_adk.py`, `e2e/s29.spec.ts`, ADK template exports in
+`scripts/export_templates.py`. Exit met: the conformance kit passes on Google ADK (12 of 12 cases) in
+`tests/test_conformance.py`; 22 of the 27 templates run on ADK end to end and their exports pass their own tests.
+Beyond CrewAI: asking before a tool call works (the agent's turn runs again up to the call when the person answers;
+with a real model the model is asked again). Deviations from the adapter spec: flows run in a worker process from
+a separate environment (as CrewAI's) and reach the canvas models through LiteLLM and the model bridge rather than
+Gemini model strings; the canvas's fields live in the runtime and are mirrored to ADK's session state through each
+step's `Event(state=...)` (not namespaced `ac:` keys); a pause is kept as JSON and continued by replay, not through
+ADK's resumable sessions (`DatabaseSessionService`) or `ToolConfirmation`; tool approvals are the runtime's own
+wrapper, not `FunctionTool(require_confirmation=...)`; no `adk.*` dialect blocks, YAML `AgentConfig` import,
+`AgentCanvasPlugin` or `adk deploy` targets yet; a step reached from two parallel branches without Wait for all
+runs once per branch (ADK's semantics).
 
 ### S28 — Mixed-flow export → v0.20.0 (✅ done)
 

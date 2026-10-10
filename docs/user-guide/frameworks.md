@@ -1,7 +1,7 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. A server offers three:
+for. A server offers four:
 
 - **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
   long-term memory and breakpoints. New workflows use it.
@@ -10,6 +10,8 @@ for. A server offers three:
   [Run a workflow on the OpenAI Agents SDK](#run-a-workflow-on-the-openai-agents-sdk).
 - **CrewAI** turns the workflow into a native CrewAI flow, with CrewAI agents for the AI blocks and two blocks of
   its own: **Crew** and **Agent task**. See [Run a workflow on CrewAI](#run-a-workflow-on-crewai).
+- **Google ADK** turns the workflow into a native ADK graph workflow, with ADK agents for the AI blocks and tool
+  calls that can wait for your approval. See [Run a workflow on Google ADK](#run-a-workflow-on-google-adk).
 
 More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
 
@@ -182,6 +184,38 @@ and export CrewAI workflows; a run says how to install it.
 An experiment can compare a workflow on LangGraph and on CrewAI side by side (a target **on CrewAI**), and
 `GET /v1/workflows/{id}/code?framework=crewai` previews the converted code.
 
+## Run a workflow on Google ADK
+
+Pick **Google ADK** as the workflow's framework (click empty canvas, then **Framework**). Runs need ADK installed on
+the server: `make framework FW=google_adk` puts it in a Python environment of its own (ADK's LiteLLM pins an older
+`openai` package than AgentCanvas uses; the same environment runs ADK agents in mixed flows), and the Docker image
+takes `--build-arg WITH_GOOGLE_ADK=true`. Without it you can still design, check and export ADK workflows; a run
+says how to install it.
+
+- **The code is an ADK workflow.** The Code tab shows one function node per block (marked `@canvas-node`) and a
+  `build()` that wires them with ADK's own graph edges: `("START", first)`, a route dict after each path block, a
+  tuple where a step fans out to parallel branches, and a `JoinNode` before a wait-for-all step. AI agents are ADK
+  `Agent`s (instructions, model, tools, typed answers as `output_schema`) that run inside their step. A run
+  executes exactly that module with ADK's own `Runner`.
+- **Any model.** The canvas model blocks reach ADK through LiteLLM and AgentCanvas: every catalog model, scripted
+  test replies, backup models and the answer cache all work, and runs are traced and costed.
+- **Ask before a tool call.** Tools named in an AI agent's **Ask before using** wait for you: approve the call,
+  change its arguments or reject it. When you answer, the agent's turn runs again up to that call, which then runs
+  as you decided (with a real model, the model is asked again, so it may phrase its call differently).
+- **Approvals and questions** pause the workflow with ADK's own `RequestInput`. When you answer, the workflow starts
+  again from the saved fields, skips the steps that had finished (the paths they took are remembered) and gives your
+  answer to the step that asked.
+- **Loops** are guarded: a step that runs more often than the workflow's step limit stops the run, and a **Model
+  call limit** block caps an agent's model calls in one turn.
+- **What it does not have yet.** Saved conversation history, state editing, replay and breakpoints; a paused run is
+  kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and
+  other add-ons stay on LangGraph for now.
+- **Export.** The Versions tab exports an ADK project: the workflow, the small runtime it needs, a command-line
+  runner that saves a paused run in `.runs/` and continues it, each model block reached through LiteLLM over its
+  provider's OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
+
+`GET /v1/workflows/{id}/code?framework=google_adk` previews the converted code.
+
 ## What each framework can do
 
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
@@ -189,7 +223,8 @@ from an earlier step, long-term memory, browsing an app connector's tools, and b
 framework cannot do one of them, AgentCanvas says so plainly instead of failing; switch the workflow to LangGraph
 to use it.
 
-Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default `langchain,openai_agents,crewai`).
+Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
+`langchain,openai_agents,crewai,google_adk`).
 
 ## The Echo demo engine
 

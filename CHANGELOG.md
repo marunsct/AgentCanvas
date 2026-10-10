@@ -2,6 +2,18 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.21.0 — Google ADK flows (not tagged yet)
+
+### Added
+- **Google ADK as a workflow framework.** Pick it in the workflow settings and the workflow is generated as a native ADK 2 graph workflow (`google-adk` 2.11.0): one function node per block and a `build()` that wires them with ADK's own edges (`("START", first)`, a route dict after each path block, a tuple for parallel branches, a `JoinNode` before Wait for all), ADK `Agent`s with LiteLLM models for AI agents (Python tools, typed answers as `output_schema`, model call limits as a `before_model_callback`), run inside their step with `ctx.run_node`. A run executes the generated module with ADK's `Runner`. It passes the 12-case conformance kit; 22 of the 27 templates run on it.
+- **Ask before a tool call on ADK.** Tools named in an AI agent's *Ask before using* pause the run with a `tool_approval` (approve, edit the arguments, or reject), as on LangGraph and the OpenAI Agents SDK; the agent's turn runs again up to the call when the person answers. Several approvals in one turn are answered one after another.
+- Approvals and questions pause an ADK workflow with ADK's own `RequestInput`; the answer continues it from the saved fields without running finished steps again. A step that loops past the workflow's step limit stops the run (`recursion_limit`).
+- **Export to an ADK project:** the workflow, the runtime it needs (vendored, no LangChain), a host that reaches each model through LiteLLM over its provider's OpenAI-compatible API, a command-line runner that saves a paused run in `.runs/` and continues it, and tests that replay saved test cases with a scripted ADK model. CI exports every template ADK can run and runs each project's tests.
+- Servers offer Google ADK by default (`AGENTCANVAS_ADAPTERS=langchain,openai_agents,crewai,google_adk`). Its workflows run in a worker process in the environment `make framework FW=google_adk` makes (the one mixed flows use for ADK agents, which now also gets `cel-python`, `jinja2` and `jsonschema`); the API image takes `--build-arg WITH_GOOGLE_ADK=true`.
+
+### Changed
+- The CrewAI adapter's worker and server side are shared: `CrewWorker` and `shared_worker` take the framework's worker files and module, and `CrewAIAdapter` names its Python, worker and code generator as methods the ADK adapter overrides.
+
 ## v0.20.0 — Mixed-flow export (not tagged yet)
 
 ### Added

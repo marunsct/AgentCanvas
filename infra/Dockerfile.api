@@ -23,6 +23,12 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 ARG WITH_CREWAI=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_CREWAI" = "true" ]; then \
       uv venv .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25; fi
+# 4) optional (S29): Google ADK in an environment of its own, for workflows designed for ADK and ADK agents in mixed
+#   flows (about 350 MB): docker build --build-arg WITH_GOOGLE_ADK=true ...
+ARG WITH_GOOGLE_ADK=false
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_GOOGLE_ADK" = "true" ]; then \
+      uv venv .frameworks/google_adk && uv pip install --python .frameworks/google_adk/bin/python \
+      google-adk==2.11.0 litellm==1.104.2 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 
 FROM python AS runtime
 # git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)

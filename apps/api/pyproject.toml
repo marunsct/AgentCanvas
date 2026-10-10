@@ -87,8 +87,12 @@ asyncio_mode = "auto"
 
 [tool.pyright]
 include = ["agentcanvas"]
-# S27: these run in the CrewAI environment (make crewai), which the API's own cannot install
-exclude = ["agentcanvas/adapters/crewai/runtime.py", "agentcanvas/adapters/crewai/worker.py"]
+# S27/S29: these run in the CrewAI and Google ADK environments (make crewai, make framework FW=google_adk), which the
+# API's own cannot install
+exclude = [
+  "agentcanvas/adapters/crewai/runtime.py", "agentcanvas/adapters/crewai/worker.py",
+  "agentcanvas/adapters/google_adk/runtime.py", "agentcanvas/adapters/google_adk/worker.py",
+]
 typeCheckingMode = "standard"
 
 [tool.importlinter]

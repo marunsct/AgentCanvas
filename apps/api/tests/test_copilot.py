@@ -262,7 +262,8 @@ def test_the_copilot_knows_the_target_framework():
 
     assert "LangGraph" in framework_note("langchain")
     assert "native CrewAI flow" in framework_note("crewai")  # S27
-    assert "no adapter" in framework_note("google_adk")
+    assert "native Google ADK 2 graph workflow" in framework_note("google_adk")  # S29
+    assert "no adapter" in framework_note("agno")
     assert "CrewAI (`crewai`)" in framework_note("langchain")  # S21: agents designed for other frameworks
 
 

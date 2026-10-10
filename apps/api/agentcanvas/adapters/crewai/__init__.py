@@ -27,7 +27,7 @@ import threading
 from collections.abc import AsyncIterator, Callable
 from contextlib import ExitStack, asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from agentcanvas.adapters.crewai import codegen
 from agentcanvas.adapters.langchain import nodes as ac
@@ -65,6 +65,18 @@ class CrewAIAdapter:
         self._paused: dict[str, str] = {}  # thread id -> runtime.Paused as JSON
         self._shared: ac.Resources | None = None
 
+    # what the Google ADK adapter (S29), which runs the same way, changes
+    install_hint = INSTALL_HINT
+
+    def python(self) -> str | None:
+        return crewai_python()
+
+    def worker(self, python: str) -> CrewWorker:
+        return shared_worker(python)
+
+    def source(self, wf: Workflow) -> str:
+        return codegen.generate(wf)
+
     # ------------------------------------------------------------ compile ----
     def _blocked(self, wf: Workflow) -> list[dict[str, Any]]:
         out = [
@@ -74,8 +86,8 @@ class CrewAIAdapter:
         ]  # fmt: skip
         out += [
             {"code": "P001", "severity": "error", "node_id": n.id,
-             "message": f"'{n.name}': CrewAI flows cannot ask a person before a tool call yet; clear 'Ask before "
-                        "using' or pick another framework"}
+             "message": f"'{n.name}': {self.manifest.label} flows cannot ask a person before a tool call yet; clear "
+                        "'Ask before using' or pick another framework"}
             for n in wf.nodes if n.type == "core.agent" and any(n.config.get("approve_tools") or [])
         ]  # fmt: skip
         return out
@@ -88,7 +100,7 @@ class CrewAIAdapter:
         errors += [b for b in self._blocked(wf) if b not in errors]
         if errors:
             raise WorkflowHasErrors("; ".join(f"{d['code']} {d['message']}" for d in errors), errors=errors)
-        return codegen.generate(wf)
+        return self.source(wf)
 
     def package(
         self,
@@ -128,12 +140,12 @@ class CrewAIAdapter:
     async def execute(self, spec: RunSpec, resources: Any) -> AsyncIterator[dict[str, Any]]:
         wf = spec.workflow
         try:
-            python = crewai_python()
+            python = self.python()
             if python is None:
-                raise RuntimeError(INSTALL_HINT)
+                raise RuntimeError(self.install_hint)
             if blocked := self._blocked(wf):
                 raise WorkflowHasErrors("; ".join(f"{d['code']} {d['message']}" for d in blocked), errors=blocked)
-            source = codegen.generate(wf)
+            source = self.source(wf)
             if spec.mocks:
                 resources = resources.with_mocks(spec.mocks)
             if spec.dry_run:
@@ -150,7 +162,7 @@ class CrewAIAdapter:
                 request["input"] = spec.input
             usage = UsageTracker(node_index(wf))
             host = ServerHost(wf, resources, await model_bridge(), usage, self)
-            worker = shared_worker(python)
+            worker = self.worker(python)
         except Exception as exc:  # noqa: BLE001 - every failure reaches the UI as RUN_ERROR
             yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
             return
@@ -238,31 +250,38 @@ class ServerHost:
 
 # ------------------------------------------------------------------ the worker ----
 class CrewWorker:
-    """The worker process and its runs. Reading happens on a thread, so one worker serves every event loop."""
+    """The worker process and its runs. Reading happens on a thread, so one worker serves every event loop.
+
+    The Google ADK adapter (S29) runs its worker the same way: a subclass names its files, module and label."""
+
+    label = "CrewAI"
+    package = "crewai"  # agentcanvas/adapters/<package>/worker.py
+    files = WORKER_FILES
+    extra_env: ClassVar[dict[str, str]] = {"CREWAI_DISABLE_TELEMETRY": "true", "CREWAI_TRACING_ENABLED": "false"}
 
     def __init__(self, python: str):
         self.python = python
-        self._dir = tempfile.mkdtemp(prefix="agentcanvas-crewai-")
-        for rel in WORKER_FILES:
+        self._dir = tempfile.mkdtemp(prefix=f"agentcanvas-{self.package}-")
+        for rel in self.files:
             dest = Path(self._dir) / "agentcanvas" / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(API_ROOT / rel, dest)
-        for pkg in ("agentcanvas", "agentcanvas/adapters", "agentcanvas/adapters/crewai"):
+        for pkg in ("agentcanvas", "agentcanvas/adapters", f"agentcanvas/adapters/{self.package}"):
             (Path(self._dir) / pkg / "__init__.py").touch()
-        env = {**os.environ, "PYTHONPATH": self._dir, "PYTHONUNBUFFERED": "1", "CREWAI_DISABLE_TELEMETRY": "true",
-               "CREWAI_TRACING_ENABLED": "false", "OTEL_SDK_DISABLED": "true"}  # fmt: skip
+        env = {**os.environ, "PYTHONPATH": self._dir, "PYTHONUNBUFFERED": "1", "OTEL_SDK_DISABLED": "true",
+               **self.extra_env}  # fmt: skip
         for leaked in ("VIRTUAL_ENV", "PYTHONHOME"):
             env.pop(leaked, None)
         self.proc = subprocess.Popen(
-            [python, "-m", "agentcanvas.adapters.crewai.worker"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, cwd=self._dir, env=env,
+            [python, "-m", f"agentcanvas.adapters.{self.package}.worker"], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self._dir, env=env,
         )  # fmt: skip
         self._lock = threading.Lock()
         self._runs: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]] = {}
         self.version: str | None = None
         self.stderr: list[str] = []
-        threading.Thread(target=self._read, daemon=True, name="crewai-worker-out").start()
-        threading.Thread(target=self._read_errors, daemon=True, name="crewai-worker-err").start()
+        threading.Thread(target=self._read, daemon=True, name=f"{self.package}-worker-out").start()
+        threading.Thread(target=self._read_errors, daemon=True, name=f"{self.package}-worker-err").start()
 
     @property
     def alive(self) -> bool:
@@ -288,12 +307,12 @@ class CrewWorker:
             except ValueError:
                 continue
             if msg.get("ready"):
-                self.version = msg.get("crewai")
+                self.version = msg.get("crewai") or msg.get("version")
             elif "run" in msg:
                 self._deliver(msg["run"], msg)
         tail = "; ".join(self.stderr[-3:])
         for run_id in list(self._runs):  # the worker died
-            self._deliver(run_id, {"dead": True, "message": f"the CrewAI worker stopped: {tail}"[:600]})
+            self._deliver(run_id, {"dead": True, "message": f"the {self.label} worker stopped: {tail}"[:600]})
 
     def _read_errors(self) -> None:
         assert self.proc.stderr is not None
@@ -301,7 +320,7 @@ class CrewWorker:
             line = raw.decode(errors="replace").rstrip()
             if line.strip(" │╭╰─"):
                 self.stderr = [*self.stderr[-49:], line]
-                log.debug("crewai worker: %s", line)
+                log.debug("%s worker: %s", self.package, line)
 
     def send(self, msg: dict[str, Any]) -> None:
         assert self.proc.stdin is not None
@@ -353,18 +372,18 @@ class CrewWorker:
             self.send(json.loads(json.dumps(reply, default=str)))
 
 
-_workers: dict[str, CrewWorker] = {}
+_workers: dict[tuple[str, str], CrewWorker] = {}
 _workers_lock = threading.Lock()
 
 
-def shared_worker(python: str) -> CrewWorker:
-    """The worker for `python`, started on first use and again if it stopped."""
+def shared_worker(python: str, kind: type[CrewWorker] = CrewWorker) -> CrewWorker:
+    """The `kind` worker for `python`, started on first use and again if it stopped."""
     with _workers_lock:
-        worker = _workers.get(python)
+        worker = _workers.get((kind.package, python))
         if worker is None or not worker.alive:
             if worker is not None:
                 worker.close()
-            worker = _workers[python] = CrewWorker(python)
+            worker = _workers[(kind.package, python)] = kind(python)
         return worker
 
 

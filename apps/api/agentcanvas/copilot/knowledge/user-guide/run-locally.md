@@ -123,7 +123,10 @@ This runs `cd apps/api && uv sync` (Python packages into `apps/api/.venv`) and `
 The first run downloads a few hundred MB and can take a few minutes.
 
 To run workflows designed for CrewAI, also run `make crewai`: it installs CrewAI in a Python environment of its own
-(`apps/api/.frameworks/crewai`, about 800 MB), because CrewAI needs other package versions than AgentCanvas.
+(`apps/api/.frameworks/crewai`, about 800 MB), because CrewAI needs other package versions than AgentCanvas. The same goes
+for workflows designed for Google ADK and for agents designed for Google ADK, Agno, Strands Agents or LlamaIndex in a
+mixed flow: `make framework FW=google_adk` (or `agno`, `strands`, `llamaindex`) gives that framework an environment of
+its own.
 
 ### 4. Start the API (terminal 1)
 
