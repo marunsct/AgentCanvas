@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
+.PHONY: help setup crewai infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -7,6 +7,9 @@ help:       ## show targets
 setup:      ## install Python and web dependencies
 	cd apps/api && uv sync
 	cd apps/web && pnpm install
+
+crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai
+	cd apps/api && uv venv --allow-existing .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25
 
 infra:      ## start local Postgres + Redis (Docker)
 	docker compose -f infra/docker-compose.yml up -d postgres redis

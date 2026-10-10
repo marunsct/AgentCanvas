@@ -5,7 +5,8 @@ state, time travel, long-term memory, MCP inspection, breakpoints) and how it su
 (`native`, `emulated` or `unsupported`; `"*"` and `"<namespace>.*"` are fallbacks). The validator reads them for the
 portability check (P001-P004) and the editor for the framework picker, so neither ever imports a framework.
 
-Which adapters a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated ids, default `langchain,openai_agents`).
+Which adapters a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated ids, default
+`langchain,openai_agents,crewai`).
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 HERE = Path(__file__).parent / "adapters"
 DEFAULT_FRAMEWORK = "langchain"
-DEFAULT_ADAPTERS = "langchain,openai_agents"  # S25: the OpenAI Agents SDK ships with the server
+DEFAULT_ADAPTERS = "langchain,openai_agents,crewai"  # S25: the OpenAI Agents SDK; S27: CrewAI (runs need `make crewai`)
 
 Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs"]
 Support = Literal["native", "emulated", "unsupported"]

@@ -2,6 +2,20 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.19.0 — CrewAI flows (not tagged yet)
+
+### Added
+- **CrewAI as a workflow framework.** Pick it in the workflow settings and the workflow is generated as a native CrewAI flow (`crewai` 1.15.25): a `Flow` class with one method per block, chained with CrewAI's `@start`, `@listen` and `@router` (paths become `@router` methods, Wait for all listens with `and_()`, a step reached from several places with `or_()`), CrewAI `LLM`s for AI steps and `Agent`s for AI agents (Python tools, typed answers, model call limits as `max_iter`). A run executes the generated module. It passes the 12-case conformance kit; 22 of the 26 templates run on it.
+- **Crew** block (`crewai.crew`, CrewAI only): a team of agents with roles, goals and backstories works through a list of tasks, in order or handed out by a manager; the last task's answer lands in a field.
+- **Agent task** block (`crewai.task`, CrewAI only): one agent does one task, with an optional **guardrail** in plain words that the model checks; a failing answer is redone up to the number of tries.
+- Approvals and questions pause a CrewAI flow with CrewAI's own `HumanFeedbackPending`; the answer continues it from the saved fields without running finished steps again. A step that loops past the workflow's step limit stops the run (`recursion_limit`).
+- **Export to a CrewAI project:** the flow, the runtime it needs (vendored, no LangChain), a host that reaches each model over its provider's OpenAI-compatible API, a command-line runner that saves a paused run in `.runs/` and continues it, and tests that replay saved test cases with a scripted model.
+- `make crewai` installs CrewAI in its own Python environment (`apps/api/.frameworks/crewai`, or `AGENTCANVAS_CREWAI_PYTHON`); the API image takes `--build-arg WITH_CREWAI=true`. Without it CrewAI workflows can still be designed, checked and exported, and a run says how to install it.
+
+### Changed
+- Servers offer LangGraph, the OpenAI Agents SDK and CrewAI by default (`AGENTCANVAS_ADAPTERS=langchain,openai_agents,crewai`). CrewAI is not an API dependency: its flows run in a worker process (CrewAI pins `openai<3`, the API needs `openai>=3`).
+- CI's api job installs CrewAI, so the conformance kit and the CrewAI tests run there; the template-export job also runs every CrewAI template export's tests.
+
 ## v0.18.0 — Model gateway and cost controls (not tagged yet)
 
 ### Added

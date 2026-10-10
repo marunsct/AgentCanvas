@@ -60,8 +60,8 @@ them from environment variables with the same names (listed in the export's `.en
 
 ## Backup models and reusing answers
 
-Two settings of an **AI model** block form its model gateway. They work on every framework (LangGraph and the
-OpenAI Agents SDK) and for every step and agent the block powers.
+Two settings of an **AI model** block form its model gateway. They work on every framework (LangGraph, the
+OpenAI Agents SDK and CrewAI) and for every step and agent the block powers.
 
 - **Backup models:** when the block's model fails (the provider is down, out of quota, too slow for the block's
   timeout), the same request goes to each backup in order and the first answer wins. A streamed answer fails over
@@ -75,7 +75,7 @@ OpenAI Agents SDK) and for every step and agent the block powers.
   project, up to 1,000 of them, and are gone after a server restart.
 
 The run panel and the workflow's **Spending** count cached answers and answers from backups. Exported LangGraph
-projects keep both settings; OpenAI Agents SDK exports keep the backup models but not the cache. The older **Backup
+projects keep both settings; OpenAI Agents SDK exports keep the backup models but not the cache; CrewAI exports keep neither. The older **Backup
 models** add-on block (`mw.model_fallback`) still works for agents on LangGraph.
 
 ## The first-run screen

@@ -122,6 +122,9 @@ make setup
 This runs `cd apps/api && uv sync` (Python packages into `apps/api/.venv`) and `cd apps/web && pnpm install`.
 The first run downloads a few hundred MB and can take a few minutes.
 
+To run workflows designed for CrewAI, also run `make crewai`: it installs CrewAI in a Python environment of its own
+(`apps/api/.frameworks/crewai`, about 800 MB), because CrewAI needs other package versions than AgentCanvas.
+
 ### 4. Start the API (terminal 1)
 
 ```bash

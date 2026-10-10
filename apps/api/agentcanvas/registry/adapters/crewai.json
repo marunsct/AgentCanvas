@@ -1,0 +1,41 @@
+{
+  "id": "crewai",
+  "label": "CrewAI",
+  "framework": "crewai 1.15.25",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes a native CrewAI flow: a method for each block, chained with @start, @listen and @router, with CrewAI Agents for the AI blocks and Crew blocks for teams of agents with tasks. Any catalog model works. Runs need CrewAI installed on the server (`make crewai`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "python"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "native",
+    "core.join": "native",
+    "core.llm": "native",
+    "core.agent": "native",
+    "crewai.crew": "native",
+    "crewai.task": "native",
+    "model.chat": "native",
+    "tool.python": "native",
+    "core.approval": "emulated",
+    "core.human_input": "emulated",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "a flow method that returns the fields it sets",
+    "core.router": "a @router method that picks the route with the same CEL rules",
+    "core.join": "a method that listens with and_() for every branch",
+    "core.llm": "a call to a CrewAI LLM",
+    "core.agent": "a CrewAI Agent (role, goal from the instructions, tools, structured output); asking before a tool call is not available yet",
+    "core.approval": "the flow stops with CrewAI's HumanFeedbackPending and continues from the saved fields when a person answers",
+    "core.human_input": "the flow stops with CrewAI's HumanFeedbackPending and asks again when an answer does not fit",
+    "core.script": "your workspace function is called from the flow",
+    "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
+    "mw.model_call_limit": "becomes the agent's max_iter (model calls in one run of the agent); a per-conversation limit is not kept"
+  }
+}

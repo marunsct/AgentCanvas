@@ -17,6 +17,8 @@
     "agent_designs"
   ],
   "nodes": {
+    "crewai.*": "unsupported",
     "*": "native"
-  }
+  },
+  "notes": {}
 }

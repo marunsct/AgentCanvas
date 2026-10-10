@@ -5,7 +5,7 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 
 - **Branch:** the user guide, any-provider models, first-run setup and the Docker app are in [#9](https://github.com/marunsct/AgentCanvas/pull/9). S13 was merged via [#8](https://github.com/marunsct/AgentCanvas/pull/8). S0–S8 were merged via [#1](https://github.com/marunsct/AgentCanvas/pull/1), S9 via [#2](https://github.com/marunsct/AgentCanvas/pull/2), S10 via [#3](https://github.com/marunsct/AgentCanvas/pull/3), S11 via [#4](https://github.com/marunsct/AgentCanvas/pull/4) and S12 via [#5](https://github.com/marunsct/AgentCanvas/pull/5).
 - **Plan:** `docs/agent-canvas-spec/build-guide/13-sprint-plan.md`. Its execution log has the per-sprint detail.
-- **Last updated:** 2026-10-10. Sprint 26 (Model gateway and cost controls → v0.18.0) is done: an AI model block can name backup models that answer when its provider fails and can reuse answers to identical requests at no cost, on LangGraph and the OpenAI Agents SDK and in exports; a workflow can have day and month budgets that stop its runs, with cost alerts, and the editor shows what it spent today and this month. Next: S27 CrewAI flows.
+- **Last updated:** 2026-10-10. Sprint 27 (CrewAI flows → v0.19.0) is done: a workflow can be designed for CrewAI and runs as a native CrewAI flow (methods chained with @start, @listen and @router, CrewAI agents for the AI blocks), with two CrewAI-only blocks (Crew and Agent task with a guardrail), pauses for people, and exports as a CrewAI project; it passes the conformance kit. Next: S28 Mixed-flow export.
 - **Before that:** 2026-10-10. Sprint 24 (Knowledge Studio → v0.16.0) is done: a Knowledge page holds knowledge bases built from uploaded files (PDF, Word, HTML, Markdown, text), public web pages or pasted text, with chunking options; search by keywords, meaning or both (hybrid) with citations; the Search knowledge block and an Ask your documents template; a retrieval evaluator. On the sample handbook's 50-question eval set hybrid search beats keyword search (recall@3 0.95 vs 0.93), measured through an experiment. Next: S25 OpenAI Agents SDK flows.
 - **Before that:** 2026-10-10. Sprint 23 (Ship to users → v0.15.0) is done: a published deployment can be shared as a public chat page (`/s/<token>`) or a chat button on any website (`widget.js`); four safety blocks (personal data, prompt injection, harmful content, output format) ship with 91 labelled eval cases; Home has a searchable gallery of 25 templates. Before it, a whole-codebase review after S20–S22 fixed 19 bugs (#27). Next: S24 Knowledge Studio.
 - **Before that:** 2026-10-09. Sprint 22 (Whole flows, preview → v0.14.0) is done: the Export box can write a whole workflow for LangGraph (through Agent Spec), WayFlow or the OpenAI Agents SDK, listing first what does not carry over; the download runs the flow with that framework's own Agent Spec loader and has tests against a fake model. Next: S23 Ship to users.
@@ -53,7 +53,8 @@ To continue the work in a new session or as a new person, start with [HANDOVER.m
 | S24 Knowledge Studio → v0.16.0 | ✅ done |
 | S25 OpenAI Agents SDK flows → v0.17.0 | ✅ done |
 | S26 Model gateway and cost controls → v0.18.0 | ✅ done |
-| S27–S36 (S27 CrewAI flows is next; framework flows, mixed-flow export, importers) | ⏸ planned, see [competitive roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan) |
+| S27 CrewAI flows → v0.19.0 | ✅ done |
+| S28–S36 (S28 Mixed-flow export is next; framework flows, importers) | ⏸ planned, see [competitive roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan) |
 | Later: GA backlog | ⬜ pending |
 
 **Test totals** at the end of S13:

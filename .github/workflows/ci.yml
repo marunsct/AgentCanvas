@@ -22,6 +22,7 @@ jobs:
       - run: uv run pyright
       - run: uv run lint-imports
       - run: uv run python scripts/export_ir_schema.py && git diff --exit-code ../../packages/ir-schema agentcanvas/copilot/knowledge/user-guide
+      - run: make -C ../.. crewai  # S27: CrewAI flows run in the conformance kit and their own tests
       - run: uv run pytest -q
         env:
           AGENTCANVAS_ENV: test
@@ -219,7 +220,7 @@ jobs:
           done
           for t in "$EXPORTS"/aws/*/*/deploy/aws/task-definition.json; do python3 -m json.tool "$t" >/dev/null; done
       - name: Each export passes its own tests (uv sync with the exported pins)
-        run: for d in "$EXPORTS"/local/*/* "$EXPORTS"/openai_agents/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
+        run: for d in "$EXPORTS"/local/*/* "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
         run: |
@@ -255,6 +256,7 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: cd apps/api && uv sync --frozen
+      - run: make crewai  # S27: the CrewAI journey runs a CrewAI flow
       - run: cd apps/web && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
       - run: cd apps/web && pnpm e2e
       - name: Print the page state of failed tests

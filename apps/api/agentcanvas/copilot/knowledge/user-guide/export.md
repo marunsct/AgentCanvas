@@ -34,7 +34,8 @@ across messages. Without one, the service keeps conversations in a SQLite file o
 
 A workflow whose framework is the **OpenAI Agents SDK** exports as an SDK project instead (the targets above are for
 LangGraph workflows): the generated flow, a command-line runner and offline tests. See
-[Run a workflow on the OpenAI Agents SDK](frameworks.md#run-a-workflow-on-the-openai-agents-sdk).
+[Run a workflow on the OpenAI Agents SDK](frameworks.md#run-a-workflow-on-the-openai-agents-sdk). A workflow on
+**CrewAI** exports as a CrewAI project the same way; see [Run a workflow on CrewAI](frameworks.md#run-a-workflow-on-crewai).
 
 ## Export a whole workflow to another framework (preview)
 
