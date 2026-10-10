@@ -1,0 +1,53 @@
+{
+  "ir_version": "1.2",
+  "id": "tpl_mixed_team",
+  "name": "Mixed-framework team",
+  "description": "Two agents from two frameworks in one flow: an OpenAI Agents SDK researcher hands its notes to a CrewAI writer, whose typed answer (a title and a summary) is checked at the boundary. Exports as one project that installs each framework.",
+  "state": {
+    "channels": [
+      {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages", "io": "inout"},
+      {"name": "structured_response", "type": {"type": "object"}, "io": "out", "description": "The writer's brief: title and summary"}
+    ]
+  },
+  "resources": [
+    {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}}
+  ],
+  "nodes": [
+    {
+      "id": "n_research", "type": "core.agent", "name": "researcher", "label": "Researcher (OpenAI Agents SDK)",
+      "engine": "openai_agents",
+      "config": {"system_prompt": "Find the key facts about the user's topic. Answer with short notes, one fact per line."}
+    },
+    {
+      "id": "n_write", "type": "core.agent", "name": "writer", "label": "Writer (CrewAI)",
+      "engine": "crewai",
+      "config": {
+        "system_prompt": "Turn the research notes in the conversation into a brief for a busy reader.",
+        "response_format": {
+          "title": "Brief",
+          "type": "object",
+          "required": ["title", "summary"],
+          "properties": {
+            "title": {"type": "string", "description": "A headline of at most ten words"},
+            "summary": {"type": "string", "description": "Three sentences"}
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e0", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_research"}},
+    {"id": "e1", "kind": "flow", "source": {"node": "n_research"}, "target": {"node": "n_write"}},
+    {"id": "e2", "kind": "flow", "source": {"node": "n_write"}, "target": {"node": "END"}},
+    {"id": "w1", "kind": "wiring", "source": {"node": "r_model"}, "target": {"node": "n_research", "port": "model"}},
+    {"id": "w2", "kind": "wiring", "source": {"node": "r_model"}, "target": {"node": "n_write", "port": "model"}}
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": ["mixed frameworks", "CrewAI", "OpenAI Agents SDK"],
+      "difficulty": "intermediate",
+      "sample_input": {"messages": [{"role": "user", "content": "Honey bees in cities"}]}
+    }
+  }
+}

@@ -9,6 +9,11 @@ text)` runs it once. The same module is used three ways:
 * in a single-agent export (`export_files`): a native project with its own runner, pinned packages and tests;
 * in the code view, so a person sees exactly what runs.
 
+Mixed-flow export (S28): five of the frameworks pin packages that clash with LangGraph's (`own_env`), so in an
+exported project, and on a server that cannot import them, their agents run as *parts*: the same module in a Python
+environment of its own, driven over a pipe by `adapters.langchain.parts`. Each part has a typed contract
+(`contract`): text in, and its structured output (or text) out, checked where the answer crosses back.
+
 This module is framework-neutral: it writes code as text and never imports the frameworks it writes for.
 """
 
@@ -17,9 +22,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import keyword
+import os
 import re
 from dataclasses import dataclass, field
 from functools import cache
+from pathlib import Path
 from typing import Any, Literal
 
 from agentcanvas.ir.models import Node, Workflow
@@ -33,20 +40,23 @@ class AgentFramework:
     module: str  # importable when the framework is installed
     api: Literal["openai", "anthropic"]  # the model API the generated agent speaks
     structured_output: bool = True  # can give a typed answer (the block's `response_format`)
+    own_env: bool = False  # its pins clash with the LangGraph host's (S28): an export runs it as a part of its own
 
 
 AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
     f.id: f
     for f in [
         AgentFramework("openai_agents", "OpenAI Agents SDK", ("openai-agents==0.23.1",), "agents", "openai"),
-        AgentFramework("crewai", "CrewAI", ("crewai==1.15.25",), "crewai", "openai"),
-        AgentFramework("google_adk", "Google ADK", ("google-adk==2.11.0", "litellm==1.104.2"), "google.adk", "openai"),
+        AgentFramework("crewai", "CrewAI", ("crewai==1.15.25",), "crewai", "openai", own_env=True),
+        AgentFramework("google_adk", "Google ADK", ("google-adk==2.11.0", "litellm==1.104.2"), "google.adk", "openai",
+                       own_env=True),
         AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.54.0",), "pydantic_ai", "openai"),
-        AgentFramework("agno", "Agno", ("agno==3.1.1", "openai==2.54.0"), "agno", "openai"),
-        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.58.1",), "strands", "openai"),
+        AgentFramework("agno", "Agno", ("agno==3.1.1", "openai==2.54.0"), "agno", "openai", own_env=True),
+        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.58.1",), "strands", "openai",
+                       own_env=True),
         AgentFramework(
             "llamaindex", "LlamaIndex", ("llama-index-core==0.14.25", "llama-index-llms-openai-like==0.8.1"),
-            "llama_index.core", "openai",
+            "llama_index.core", "openai", own_env=True,
         ),
         AgentFramework(
             "microsoft_agent_framework", "Microsoft Agent Framework",
@@ -58,13 +68,28 @@ AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
 }  # fmt: skip
 
 
+FRAMEWORKS_DIR = Path(__file__).parents[2] / ".frameworks"  # `make framework FW=<id>`: one environment each
+
+
 @cache
-def installed(framework: str) -> bool:
-    """Whether `framework` can be imported on this server (drawn agents for it run here)."""
+def importable(framework: str) -> bool:
+    """Whether `framework` can be imported by this server itself."""
     try:
         return importlib.util.find_spec(AGENT_FRAMEWORKS[framework].module) is not None
     except (ImportError, ValueError):
         return False
+
+
+def part_python(framework: str) -> str | None:
+    """The Python of `framework`'s own environment on this server (S28), if there is one: AGENTCANVAS_<ID>_PYTHON,
+    else `.frameworks/<id>` (made by `make framework FW=<id>`; CrewAI's is the one its flows use too)."""
+    found = os.environ.get(f"AGENTCANVAS_{framework.upper()}_PYTHON") or str(FRAMEWORKS_DIR / framework / "bin/python")
+    return found if Path(found).is_file() else None
+
+
+def installed(framework: str) -> bool:
+    """Whether drawn agents for `framework` run on this server: in the server's process, or as a part (S28)."""
+    return importable(framework) or part_python(framework) is not None
 
 
 # Where an exported agent reaches each catalog provider over the OpenAI API (None: the model's base_url is needed).
@@ -130,6 +155,19 @@ class AgentDesign:
     output_schema: dict[str, Any] | None = None
     middleware: list[str] = field(default_factory=list)
     other_tools: list[str] = field(default_factory=list)  # wired tools of kinds a design cannot carry (e.g. memory)
+
+
+TEXT_IN: dict[str, Any] = {
+    "type": "object",
+    "properties": {"text": {"type": "string", "description": "the conversation, as the host hands it over"}},
+    "required": ["text"],
+}
+TEXT_OUT: dict[str, Any] = {"type": "string"}
+
+
+def contract(design: AgentDesign) -> dict[str, Any]:
+    """The typed boundary of an agent designed for another framework (S28): what crosses into it and back out."""
+    return {"input": TEXT_IN, "output": design.output_schema or TEXT_OUT}
 
 
 DESIGN_TYPES = {"core.agent"}  # blocks that can be designed for another framework

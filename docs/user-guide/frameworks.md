@@ -34,7 +34,7 @@ The Problems tab explains the rest:
 | P003 | The workflow could move to some installed frameworks but not others |
 | P004 | This AI block is designed for another workflow framework than the workflow's; for now it runs on the workflow's |
 | P005 | The agent framework this AI agent is designed for cannot take something wired into it (add-ons, some tools, its answer shape) |
-| P006 | The agent framework this AI agent is designed for is not installed on this server, so runs here fail until it is |
+| P006 | The agent framework this AI agent is designed for is not installed on this server, so runs here fail until it is (`make framework FW=<id>` fixes it) |
 
 ## An AI block of its own framework
 
@@ -68,7 +68,8 @@ which tools need approval, and an answer shape. What changes:
 - **View the code.** **View … code** in the block's settings shows the module that runs, updated as you edit.
 - **Take it away.** **Export as … project** downloads a ready-to-run project for that framework: the agent, its
   tools, a small `main.py`, pinned packages, a README and tests that run without an API key (`uv run pytest`).
-  Exporting the whole workflow also puts each designed agent's code in `agents/` and adds its packages.
+  Exporting the whole workflow puts every designed agent into one project (see
+  [Mixed flows](#mixed-flows-parts-and-contracts)).
 - **Approvals pause the run.** A tool that needs approval pauses the run as usual; when you approve, the agent step
   starts again from its beginning with your answer.
 - **Typed answers.** An answer shape becomes the framework's own structured output (a Pydantic class), and the
@@ -78,6 +79,41 @@ Each framework takes a little less than LangGraph does: add-ons (middleware) and
 be wired into a designed agent, and P005 says which. Only the LangGraph framework can run agents designed for other
 frameworks today, so other workflow frameworks show them as blocks they cannot run; in a workflow on the OpenAI
 Agents SDK, an agent designed for the OpenAI Agents SDK is simply one of its own agents.
+
+## Mixed flows: parts and contracts
+
+A LangGraph workflow can mix agents of several frameworks: a researcher on the OpenAI Agents SDK, a writer on CrewAI,
+a checker on Pydantic AI. The **Mixed-framework team** template is a small example. Each agent is a *part* of the flow,
+and the LangGraph workflow is the host that passes the conversation from one part to the next.
+
+**Typed contracts.** Each part has a contract: the conversation goes in as text, and its answer comes back. With an
+answer shape the answer must match it; if a framework hands back something else, the step stops with *answered
+outside its contract* and says which field is wrong, so the next step never gets unchecked data.
+
+**Parts with an environment of their own.** Five frameworks pin Python packages that clash with LangGraph's (CrewAI,
+Google ADK, Agno, Strands Agents and LlamaIndex), so they cannot be installed next to it. Their agents run in a
+Python environment of their own, in a small worker process the host talks to. Tool calls come back to the host, so
+approvals, traces and recorded replies work as usual, and the model is served by the host. The block's settings say
+when an agent runs this way.
+
+- **On this server**, such an agent runs when its framework has an environment: `make framework FW=crewai` (or
+  `google_adk`, `agno`, `strands`, `llamaindex`) sets one up in `apps/api/.frameworks/`; `make crewai` makes the
+  same CrewAI environment. Without one, P006 warns and a run stops with that command in the error.
+- **In an export** the project holds every part: agents that fit next to LangGraph in `src/<name>/agents/`, the
+  others in `parts/<agent>/` with their own `requirements.txt`. `make install` and the Docker image install each part
+  in its own environment, `contracts.json` lists every part with its framework, where it runs and its contract,
+  and `tests/test_parts.py` runs the flow through each part. Deploy it like any export: `make deploy`, then
+  `make smoke`.
+
+**Parts in other languages.** An agent written in TypeScript, Java or Go joins a flow over A2A: add a **Remote agent
+(A2A)** block with its Agent Card address. In an export it is listed in `contracts.json` (text in, text out) and
+`make doctor` checks its address can be reached.
+
+| Framework | In a mixed flow |
+|---|---|
+| OpenAI Agents SDK, Pydantic AI, Microsoft Agent Framework, Claude Agent SDK | Next to LangGraph, in the host |
+| CrewAI, Google ADK, Agno, Strands Agents, LlamaIndex | In an environment of its own |
+| Any other language | Over A2A |
 
 ## Run a workflow on the OpenAI Agents SDK
 

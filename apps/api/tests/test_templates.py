@@ -6,12 +6,14 @@ import json
 
 import pytest
 
+from agentcanvas import designs
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.workflows import GALLERY_CATEGORIES, TEMPLATES, template_gallery
 
 P = "/v1/projects/prj_default"
 NAMES = sorted(p.name.removesuffix(".ir.json") for p in TEMPLATES.glob("*.ir.json"))
 INPUTS = {
+    "mixed_team": {"messages": [{"role": "user", "content": "Honey bees in cities"}]},
     "approval_workflow": {"brief": "New office opens Monday"},
     "chat_assistant": {"messages": [{"role": "user", "content": "hi"}]},
     "classify_and_route": {"request": "Where is my order?"},
@@ -77,6 +79,8 @@ async def test_gallery_endpoint_and_created_workflows_drop_gallery_metadata(api_
 async def test_template_validates_and_runs(app, api_client, name):
     from agentcanvas.testing import DemoResources
 
+    if name == "mixed_team" and designs.part_python("crewai") is None and not designs.importable("crewai"):
+        pytest.skip("its CrewAI writer needs CrewAI's environment (make crewai)")
     demo = DemoResources()
     app.state.resources_factory = lambda thread_id, wf: demo
     if name == "knowledge_qa":  # S24: searches the sample knowledge base, like a project that loaded it

@@ -2,6 +2,24 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.20.0 — Mixed-flow export (not tagged yet)
+
+### Added
+- **Framework parts.** CrewAI, Google ADK, Agno, Strands Agents and LlamaIndex pin packages that clash with LangGraph's (for example `openai<3` against `openai>=3`), so their agents can no longer be installed next to the host. An agent designed for one of them now runs as a *part*: its generated module in a Python environment of its own, driven by a small worker (`part_worker.py`, standard library only) over JSON lines. Tool calls come back to the host (traced, approved, recorded), the model is the host's model bridge on 127.0.0.1. The other four frameworks keep running in the host. `scripts/check_part_envs.py` (in CI) proves which is which by resolving each framework's pins with the host's.
+- **Typed contracts between parts.** Every designed agent has a contract (`interop.part_contract`, `designs.contract`): the conversation goes in as text, and its answer must match its structured output schema (or be text). An answer outside the contract stops the step with `answered outside its contract: <field>: <why>`.
+- **Mixed flows on this server.** `make framework FW=<id>` sets up a framework's environment in `apps/api/.frameworks/<id>` (or `AGENTCANVAS_<ID>_PYTHON`); CrewAI's is the one `make crewai` makes. A LangGraph workflow with a CrewAI agent now runs on a server that has it.
+- **One deployable project for a mixed flow.** The export keeps agents that fit in `src/<pkg>/agents/` and their packages in `pyproject.toml`, and puts each part in `parts/<agent>/` (`agent.py`, `worker.py`, `requirements.txt`, `contract.json`). `make install` and the Dockerfile install each part in its own environment (`parts/<agent>/.venv`, or `PART_<AGENT>_PYTHON`); `contracts.json` lists every part (host, own environment, or A2A) with its contract; `tests/test_parts.py` runs the flow through each part; the README explains the parts.
+- **A2A parts** for agents in other languages: Remote agent (A2A) blocks are listed in `contracts.json`, and their hosts are checked by `make doctor`.
+- **Mixed-framework team** template (27 templates): an OpenAI Agents SDK researcher hands its notes to a CrewAI writer whose typed brief is checked at the boundary. Exported for Docker Compose, it deploys with `make deploy` and passes `make smoke` (also a CI step).
+- The AI agent's settings say when it runs as a part; `GET /v1/agent-frameworks` gains `own_env`.
+
+### Changed
+- `installed` for an agent framework now also counts a part environment; P006's hint names `make framework`.
+- Exported projects' `make test` installs the parts first; CI's export job runs `make test` for every LangGraph export.
+
+### Fixed
+- A whole-workflow export with an agent designed for CrewAI, Google ADK, Agno, Strands or LlamaIndex could not be installed (its packages conflicted with LangGraph's).
+
 ## v0.19.0 — CrewAI flows (not tagged yet)
 
 ### Added

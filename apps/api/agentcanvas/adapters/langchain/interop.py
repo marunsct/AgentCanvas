@@ -548,6 +548,7 @@ def plain_tool(t: Any, call: Callable[[Any, dict[str, Any]], Awaitable[Any]]) ->
     fn.__doc__ = (spec.get("description") or spec["name"]) + ("\n\nArgs:\n" + "\n".join(doc_args) if doc_args else "")
     fn.__signature__ = inspect.Signature(params, return_annotation=str)  # pyright: ignore[reportFunctionMemberAccess]
     fn.__annotations__ = {**annotations, "return": str}
+    fn.spec = spec  # pyright: ignore[reportFunctionMemberAccess] - what a part's worker rebuilds the tool from (S28)
     return fn
 
 
@@ -579,10 +580,29 @@ _ASKED: OrderedDict[tuple[str, str, str, int], str] = OrderedDict()
 _ASKED_MAX = 10_000
 
 
+def part_contract(output: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The typed boundary of an agent designed for another framework (S28; the same as `designs.contract`): the
+    conversation goes in as text, and its structured output (or text) comes back."""
+    return {
+        "input": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "the conversation, as the host hands it over"}},
+            "required": ["text"],
+        },
+        "output": output or {"type": "string"},
+    }
+
+
 def design_module(package: str | None, name: str) -> Any:
-    """The generated module of the designed agent `name` in an exported project (`<package>/agents/<name>.py`)."""
+    """The generated module of the designed agent `name` in an exported project: `<package>/agents/<name>.py`, or the
+    part `parts/<name>/` when its framework runs in an environment of its own (S28)."""
     import importlib
 
+    from agentcanvas.adapters.langchain.parts import project_part
+
+    part = project_part(package, name)
+    if part is not None:
+        return part
     return importlib.import_module(f"{package}.agents.{name}" if package else f"agents.{name}")
 
 
@@ -600,13 +620,18 @@ def designed_agent_node(
     tools: list[Any],
     approve_tools: list[str] | None = None,
     structured: bool = False,
+    contract: dict[str, Any] | None = None,
 ) -> Callable:
     """An Agent block designed for another framework, run as one step of a LangGraph flow (S21 mixed flows).
 
     `source` (or an imported `module`) is the agent written in that framework's own style by `agentcanvas.designs`:
     `build(tools, model=, base_url=, api_key=)` and `ask(agent, text)`. The canvas model reaches it through the model
     bridge, the canvas tools as plain functions; tools in `approve_tools` ask a person first, as in a LangGraph agent
-    (the step then runs again from the start with the answer, so the model is asked again)."""
+    (the step then runs again from the start with the answer, so the model is asked again).
+
+    `contract` (S28) is the agent's typed boundary (`designs.contract`): its answer must match the output schema, or
+    the step fails saying how. `module` may be a part (`parts.PartModule`): the agent then runs in its framework's own
+    environment."""
     from langgraph.config import get_config
     from langgraph.errors import GraphInterrupt
 
@@ -624,12 +649,17 @@ def designed_agent_node(
             loaded["module"] = mod
         return loaded["module"]
 
+    output_schema = (contract or {}).get("output")
+    structured = structured or bool(output_schema and output_schema.get("type") == "object")
+
     async def run(state: Any) -> dict:
         try:
-            __import__(requires)
+            if not getattr(loaded["module"], "PART", False):
+                __import__(requires)
         except ImportError as exc:
             raise AgentError(
-                f"{label} is not installed on this server, so the agent '{name}' cannot run ({exc})"
+                f"{label} is not installed here, so the agent '{name}' cannot run ({exc}); on an AgentCanvas server, "
+                f"`make framework FW={framework}` gives it an environment of its own"
             ) from None
         config = get_config()
         waiting: list[GraphInterrupt] = []
@@ -683,6 +713,13 @@ def designed_agent_node(
                 raise AgentError(f"the {label} agent '{name}' failed: {type(exc).__name__}: {exc}") from exc
         if waiting:  # a tool asked for approval: pause here, as a LangGraph agent would
             raise waiting[0]
+        if output_schema is not None:
+            from agentcanvas.adapters.langchain.parts import check_answer
+
+            try:
+                answer = check_answer(output_schema, answer)
+            except ValueError as broken:
+                raise AgentError(f"the {label} agent '{name}' answered outside its contract: {broken}") from None
         update: dict[str, Any] = {}
         if structured and answer is not None and not isinstance(answer, str):
             data = answer.model_dump(mode="json") if hasattr(answer, "model_dump") else answer

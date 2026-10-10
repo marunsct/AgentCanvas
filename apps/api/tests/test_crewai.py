@@ -290,6 +290,7 @@ TEMPLATE_SUPPORT = sorted(
         all_manifests()["crewai"].support(el["type"]) != "unsupported"
         for el in [*json.loads(p.read_text())["nodes"], *json.loads(p.read_text()).get("resources", [])]
     )
+    and not any(n.get("engine") for n in json.loads(p.read_text())["nodes"])  # mixed flows run on LangGraph (S28)
     and not any(n.get("config", {}).get("approve_tools") for n in json.loads(p.read_text())["nodes"])
 )
 

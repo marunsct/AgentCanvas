@@ -224,6 +224,10 @@
             "title": "Label",
             "type": "string"
           },
+          "own_env": {
+            "title": "Own Env",
+            "type": "boolean"
+          },
           "packages": {
             "items": {
               "type": "string"
@@ -242,7 +246,8 @@
           "packages",
           "api",
           "structured_output",
-          "installed"
+          "installed",
+          "own_env"
         ],
         "title": "AgentFrameworkOut",
         "type": "object"

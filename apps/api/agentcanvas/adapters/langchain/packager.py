@@ -11,6 +11,10 @@
       src/<pkg>/app.py          HTTP service with the same API as an AgentCanvas deployment
       src/<pkg>/checks.py smoke.py kit.json   `make doctor` / `make smoke` and the facts they check
       src/<pkg>/server.py       `make_graph` (ServerRuntime factory) for LangGraph Server / `langgraph dev`
+      src/<pkg>/agents/<name>.py   agents designed for another framework that installs next to LangGraph (S21)
+      parts/<name>/             agents of frameworks that clash with LangGraph (S28): agent.py, worker.py, their own
+                                requirements.txt (`make install` sets up parts/<name>/.venv) and contract.json
+      contracts.json            every part of a mixed flow: its framework, where it runs, and its typed contract
       src/<pkg>/__main__.py     `python -m <pkg> '{"input": ...}'`
       src/agentcanvas/...       the node library the generated code calls (vendored, Apache-2.0)
       src/scripts|tools|nodes|flows/   exactly the workspace code the workflow uses (imports followed, S17)
@@ -35,6 +39,7 @@ from agentcanvas import designs
 from agentcanvas.adapters.langchain import deploykit
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.adapters.langchain.interop import FRAMEWORKS
+from agentcanvas.designs import article
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
 from agentcanvas.workspace import bundle
@@ -47,6 +52,7 @@ RUNTIME_FILES = [
     "adapters/langchain/gateway.py",
     "adapters/langchain/interop.py",
     "adapters/langchain/nodes.py",
+    "adapters/langchain/parts.py",
     "adapters/langchain/testing.py",
     "expr.py",
     "guardrails.py",
@@ -159,6 +165,8 @@ def dependencies(wf: Workflow) -> list[str]:
         if pkg and pkg not in deps:
             deps.append(pkg)
     for _, node in designed_agents(wf):  # agents designed for another framework: its packages, as CI tests them
+        if designs.AGENT_FRAMEWORKS[str(node.engine)].own_env:
+            continue  # a part: installed in its own environment (S28)
         for pkg in designs.AGENT_FRAMEWORKS[str(node.engine)].packages:
             if pkg not in deps:
                 deps.append(pkg)
@@ -168,6 +176,61 @@ def dependencies(wf: Workflow) -> list[str]:
             v = _version(pkg)
             deps.append(f"{pkg}=={v}" if v else pkg)
     return deps
+
+
+def parts(wf: Workflow) -> list[tuple[Workflow, Any]]:
+    """(workflow, node) of the designed agents an export runs in their own environment (S28)."""
+    return [(o, n) for o, n in designed_agents(wf) if designs.AGENT_FRAMEWORKS[str(n.engine)].own_env]
+
+
+def _remote_agents(wf: Workflow) -> list[Any]:
+    out = [n for n in wf.nodes if n.type == "agent.a2a"]
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            out += _remote_agents(wf.subworkflow(n))
+    return out
+
+
+A2A_CONTRACT = {"input": {"type": "string"}, "output": {"type": "string"}}  # A2A messages: text in, text out
+
+
+def contracts(wf: Workflow, pkg: str) -> dict[str, Any]:
+    """Every part of a mixed flow (S28): the LangGraph host, the agents designed for other frameworks (in the host's
+    environment or one of their own) and the remote agents it calls over A2A, each with its typed contract."""
+    out: dict[str, Any] = {
+        "host": {"framework": "langgraph", "path": f"src/{pkg}/graph.py", "packages": dependencies(wf)},
+        "parts": [],
+        "remote": [],
+    }
+    for owner, node in designed_agents(wf):
+        fw = designs.AGENT_FRAMEWORKS[str(node.engine)]
+        out["parts"].append({
+            "name": node.name, "node_id": node.id, "framework": fw.id, "label": fw.label,
+            "runs": "own environment" if fw.own_env else "host",
+            "path": f"parts/{node.name}" if fw.own_env else f"src/{pkg}/agents/{node.name}.py",
+            "packages": list(fw.packages), "contract": designs.contract(designs.design_for(owner, node)),
+        })  # fmt: skip
+    for node in _remote_agents(wf):
+        out["remote"].append({"name": node.name, "node_id": node.id, "protocol": "a2a",
+                              "url": node.config.get("url"), "contract": A2A_CONTRACT})  # fmt: skip
+    return out
+
+
+def _part_files(owner: Workflow, node: Any) -> dict[str, str | bytes]:
+    from agentcanvas.adapters.langchain.parts import worker_source
+
+    fw = designs.AGENT_FRAMEWORKS[str(node.engine)]
+    design = designs.design_for(owner, node)
+    base = f"parts/{node.name}"
+    return {
+        f"{base}/agent.py": designs.generate(fw.id, design),
+        f"{base}/worker.py": worker_source(),
+        f"{base}/requirements.txt": "".join(f"{p}\n" for p in fw.packages),
+        f"{base}/contract.json": json.dumps(
+            {"name": node.name, "framework": fw.id, **designs.contract(design)}, indent=2
+        )
+        + "\n",
+    }
 
 
 def _dist(requirement: str) -> str:
@@ -220,7 +283,37 @@ The service (`src/{pkg}/app.py`) answers the same API as an AgentCanvas deployme
 `src/scripts|tools|nodes/` is the project's workspace code. In your own code: `from {pkg}.graph import build_graph`
 and pass your checkpointer and store. `python -m {pkg} '{{"input": {{}}}}'` runs one turn from the command line, and
 `langgraph dev` serves it with LangGraph Studio (`pip install "langgraph-cli[inmem]"`).
+{_mixed(wf)}"""
+
+
+def _mixed(wf: Workflow) -> str:
+    """The README's section on a mixed flow's parts (S28), or nothing."""
+    designed, remote = designed_agents(wf), _remote_agents(wf)
+    if not designed and not remote:
+        return ""
+    lines = []
+    for _, n in designed:
+        fw = designs.AGENT_FRAMEWORKS[str(n.engine)]
+        where = f"`parts/{n.name}/`, in its own Python environment" if fw.own_env else "inside the host"
+        lines.append(f"- **{n.name}**: {article(fw.label)} {fw.label} agent, {where}")
+    lines += [f"- **{n.name}**: a remote agent over A2A at {n.config.get('url')}, any language" for n in remote]
+    own = any(designs.AGENT_FRAMEWORKS[str(n.engine)].own_env for _, n in designed)
+    return f"""
+## A mixed flow
+
+The LangGraph host runs these parts, each behind a typed contract (`contracts.json`): the conversation goes in, and
+an answer matching the part's structured output comes back, or the step fails saying how it broke the contract.
+
+{chr(10).join(lines)}
+""" + (
+        """
+A part's framework pins packages that clash with LangGraph's, so `make install` (and the Docker image) installs it in
+`parts/<name>/.venv`. The host runs it in a worker process there; tool calls come back to the host, and the model is
+served to it by the host on 127.0.0.1. Set `PART_<NAME>_PYTHON` to use another environment.
 """
+        if own
+        else ""
+    )
 
 
 SERVER = '''"""LangGraph Server entry point (`langgraph.json` -> make_graph): resources from the environment."""
@@ -348,6 +441,49 @@ async def test_saved_case(case):
 '''
 
 
+PARTS_TEST = '''"""Generated with the project (S28): each part of this mixed flow runs and keeps its typed contract."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import jsonschema
+from langgraph.checkpoint.memory import InMemorySaver
+
+from agentcanvas.adapters.langchain.testing import DemoResources
+from {pkg} import graph as generated
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACTS = json.loads((ROOT / "contracts.json").read_text())
+KIT = json.loads((ROOT / "src" / "{pkg}" / "kit.json").read_text())
+
+
+def test_each_part_says_its_contract():
+    for part in CONTRACTS["parts"]:
+        if part["runs"] == "own environment":
+            own = json.loads((ROOT / part["path"] / "contract.json").read_text())
+            assert {{"input": own["input"], "output": own["output"]}} == part["contract"], part["name"]
+
+
+async def test_the_flow_runs_through_every_part():
+    """One run with canned model answers (DEMO_MODE's): each part answers, in its own environment if it has one."""
+    build = getattr(generated, "abuild_graph", None)
+    resources = DemoResources()
+    graph = await build(resources, checkpointer=InMemorySaver()) if build else generated.build_graph(
+        resources, checkpointer=InMemorySaver()
+    )
+    out = await graph.ainvoke(KIT["example_input"], {{"configurable": {{"thread_id": "parts"}}}},
+                              context=KIT.get("example_context") or {{}})
+    said = {{getattr(m, "name", None): m.content for m in out.get("messages", []) if getattr(m, "type", "") == "ai"}}
+    for part in CONTRACTS["parts"]:
+        assert part["name"] in said, f"the part {{part['name']}} did not answer"
+        schema = part["contract"]["output"]
+        if schema.get("type") == "object":
+            jsonschema.validate(json.loads(said[part["name"]]), schema)
+'''
+
+
 WORKSPACE_IMPORTS = '''"""The workspace code this workflow names is bundled and imports."""
 
 import importlib
@@ -394,7 +530,7 @@ def package(
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, pkg, version, found.requirements if found else None),
         "README.md": _readme(wf, pkg, kit.pop("_readme_targets")),
-        ".gitignore": ".venv/\n__pycache__/\n.env\ndata/\n",
+        ".gitignore": ".venv/\nparts/*/.venv/\n__pycache__/\n.env\ndata/\n",
         **kit,
         "langgraph.json": json.dumps(
             {"dependencies": ["."], "graphs": {pkg: f"./src/{pkg}/server.py:make_graph"}, "env": ".env"}, indent=2
@@ -414,15 +550,24 @@ def package(
     designed = designed_agents(wf)
     if designed:  # each in its framework's own code (S21), as the Agent block's code view shows it
         files[f"src/{pkg}/agents/__init__.py"] = '"""Agents designed on the canvas for other frameworks."""\n'
+        seen: set[str] = set()
         for owner, node in designed:
-            if f"src/{pkg}/agents/{node.name}.py" in files:
+            if node.name in seen:
                 raise InvalidInput(
                     f"two agents designed for other frameworks are both named '{node.name}' (one is in a subflow); "
                     "rename one so each gets its own file in the export"
                 )
-            files[f"src/{pkg}/agents/{node.name}.py"] = designs.generate(
-                str(node.engine), designs.design_for(owner, node)
-            )
+            seen.add(node.name)
+            if designs.AGENT_FRAMEWORKS[str(node.engine)].own_env:  # a part with its own environment (S28)
+                files.update(_part_files(owner, node))
+            else:
+                files[f"src/{pkg}/agents/{node.name}.py"] = designs.generate(
+                    str(node.engine), designs.design_for(owner, node)
+                )
+    if designed or _remote_agents(wf):
+        files["contracts.json"] = json.dumps(contracts(wf, pkg), indent=2, ensure_ascii=False) + "\n"
+    if designed:
+        files["tests/test_parts.py"] = PARTS_TEST.format(pkg=pkg)
     files["src/agentcanvas/adapters/__init__.py"] = ""  # the control plane's adapter registry is not needed
     if workspace is not None:  # exactly the workspace code the workflow uses (S17), and a test that it imports
         assert found is not None

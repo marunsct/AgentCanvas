@@ -77,6 +77,7 @@ the agent's settings instead (see [Choosing a framework](frameworks.md#design-an
 | `src/<name>/graph.py`, `src/agentcanvas/` | The generated LangGraph code and the node library it uses |
 | `src/flows/<id>/…`, `src/scripts/…` and other workspace folders | Your workspace code that this workflow uses (below) |
 | `tests/test_workspace_code.py` | Checks that every code path the workflow names (`flows.<id>.scripts.x:run` …) imports inside the export |
+| `contracts.json`, `parts/<agent>/` | A mixed flow's parts: each agent's framework, where it runs and its typed contract; agents whose framework clashes with LangGraph get their own folder and environment ([Mixed flows](frameworks.md#mixed-flows-parts-and-contracts)) |
 
 ### Your workspace code in the export
 

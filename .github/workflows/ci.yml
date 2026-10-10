@@ -45,6 +45,7 @@ jobs:
         with: { node-version: 22 }
       - run: uv sync --frozen
       - run: uv run python scripts/smoke_mcp_gallery.py
+      - run: uv run python scripts/check_part_envs.py  # S28: which frameworks a mixed-flow export installs apart
 
   frameworks:  # S16/S21: real agents from each framework, wrapped and drawn on the canvas, against fake models
     runs-on: ubuntu-latest
@@ -220,9 +221,19 @@ jobs:
           done
           for t in "$EXPORTS"/aws/*/*/deploy/aws/task-definition.json; do python3 -m json.tool "$t" >/dev/null; done
       - name: Each export passes its own tests (uv sync with the exported pins)
-        run: for d in "$EXPORTS"/local/*/* "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
+        run: |
+          for d in "$EXPORTS"/local/*/*; do (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
+          for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
+        run: |
+          make setup && sed -i 's/^DEMO_MODE=false/DEMO_MODE=true/' .env
+          make doctor
+          make deploy
+          make smoke
+          docker compose --env-file .env -f deploy/local/docker-compose.yml down -v
+      - name: Docker Compose, for real, a mixed flow (S28; OpenAI Agents SDK in the host, CrewAI as a part)
+        working-directory: exports/local/mixed_team/mixed-framework-team
         run: |
           make setup && sed -i 's/^DEMO_MODE=false/DEMO_MODE=true/' .env
           make doctor
