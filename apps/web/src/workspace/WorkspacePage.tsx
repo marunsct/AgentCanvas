@@ -69,11 +69,12 @@ export function WorkspacePage() {
   useEffect(() => { setDraft(null); setDiagnostics(file.data?.diagnostics ?? []); }, [file.data]);
 
   const save = useMutation({
-    mutationFn: (content: string) =>
-      apiFetch<{ diagnostics: LintItem[] }>(`${base()}/files/${enc(selected!)}`, { method: "PUT", json: { content } }),
-    onSuccess: (out) => {
-      setDiagnostics(out.diagnostics);
-      setDraft(null);
+    mutationFn: ({ path, content }: { path: string; content: string }) =>
+      apiFetch<{ diagnostics: LintItem[] }>(`${base()}/files/${enc(path)}`, { method: "PUT", json: { content } }),
+    onSuccess: (out, { path, content }) => {
+      // the cached copy is what reopening the file shows: keep it in step with what was saved
+      qc.setQueryData<FileContent>(["file", PROJECT_ID, path], (old) => ({ ...old, path, content, diagnostics: out.diagnostics }));
+      if (path === selected) { setDiagnostics(out.diagnostics); setDraft(null); }
       void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
       void qc.invalidateQueries({ queryKey: ["workspace-catalog"] }); // new tools / custom nodes
       void qc.invalidateQueries({ queryKey: ["node-types"] });
@@ -98,7 +99,7 @@ export function WorkspacePage() {
     onSuccess: () => { setParams({}); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); },
   });
   const dirty = draft !== null && draft !== file.data?.content;
-  const doSave = () => { if (selected && draft !== null) save.mutate(draft); };
+  const doSave = () => { if (selected && draft !== null) save.mutate({ path: selected, content: draft }); };
   const newFile = (path: string) => create.mutate({ path, content: starter(path) });
   const prefix = folder ? `${folder}/` : "";
   const fileButton = (f: FileOut) => (

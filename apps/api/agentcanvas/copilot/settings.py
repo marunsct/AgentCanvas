@@ -89,14 +89,35 @@ def resolve(
             )
         config = {k: v for k, v in res.config.items() if k in ("base_url", "api_key")}
         chosen = ResolvedModel(model=str(res.config["model"]), config=config, origin=f"workflow model '{res.name}'")
-    check_model(chosen.model, settings, policies, registry)
+    base_url = chosen.config.get("base_url")
+    check_model(chosen.model, settings, policies, registry, base_url if isinstance(base_url, str) else None)
     return chosen
 
 
-def check_model(model: str, settings: CopilotSettings, policies: list[Policy], registry: Registry) -> None:
+def _local_address(base_url: str) -> bool:
+    """An address on this machine or the local network: an IP literal that is not public, or a name that is not
+    on the internet (`localhost`, `ollama` in compose, `*.local`, `*.internal`)."""
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(base_url if "://" in base_url else f"http://{base_url}").hostname or "").rstrip(".").lower()
+    try:
+        return not ipaddress.ip_address(host).is_global
+    except ValueError:
+        return bool(host) and ("." not in host or host.endswith((".local", ".internal", ".localhost", ".lan")))
+
+
+def check_model(
+    model: str, settings: CopilotSettings, policies: list[Policy], registry: Registry, base_url: str | None = None
+) -> None:
     """A model the Copilot may use: local when the settings say so, able to call tools, allowed by policies."""
     if settings.privacy == "local_only":
         provider = registry.provider(model.partition(":")[0])
+        if base_url and not _local_address(base_url):
+            raise InvalidInput(
+                f"the Copilot is set to local models only, but {model} is served from {base_url}, which is not on "
+                "this machine or network; use a local address or turn off local-only"
+            )
         if provider is None or not provider.local:
             raise InvalidInput(
                 f"the Copilot is set to local models only, but {model} is not a local model; "
@@ -105,18 +126,26 @@ def check_model(model: str, settings: CopilotSettings, policies: list[Policy], r
     info = registry.model(model)
     if info is not None and not info.tools:
         raise InvalidInput(f"{model} cannot call tools, which the Copilot needs; choose another model")
-    check_model_policies(model, policies, registry)
+    check_model_policies(model, policies, registry, base_url)
 
 
-def check_model_policies(model: str, policies: list[Policy], registry: Registry) -> None:
+def check_model_policies(model: str, policies: list[Policy], registry: Registry, base_url: str | None = None) -> None:
     """The organisation's resource policies hold for the Copilot's model as for any AI model in a workflow."""
     relevant = [p for p in policies if p.scope == "resource"]
     if not relevant:
         return
+    config: dict[str, Any] = {"model": model, **({"base_url": base_url} if base_url else {})}
     probe = Workflow(
         id="wf_copilot_policy",
         name="copilot",
-        resources=[Resource(id="r_copilot", type="model.chat", name="copilot_model", config={"model": model})],
+        resources=[
+            Resource(
+                id="r_copilot",
+                type="model.chat",
+                name="copilot_model",
+                config=config,
+            )
+        ],
     )
     broken = [d for d in check_policies(probe, relevant, registry) if d.severity == "error"]
     if broken:

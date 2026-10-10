@@ -136,6 +136,7 @@ async function save(workflowId: string): Promise<void> {
     const res = await apiFetch<CommandResult>(`/workflows/${workflowId}/commands`, {
       method: "POST", json: { commands: batch }, version,
     });
+    if (get().workflowId !== workflowId) return; // another workflow was opened meanwhile
     const rest = get().pending; // edits made while the request was in flight are re-applied on top
     const { undoStack, redoStack } = get();
     set({
@@ -147,19 +148,26 @@ async function save(workflowId: string): Promise<void> {
       redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack : [],
     });
   } catch (e) {
+    if (get().workflowId !== workflowId) return;
     const conflict = e instanceof ApiError && e.status === 409;
     const text = conflict ? "Updated elsewhere — reloaded the latest version." : `Edit rejected: ${(e as Error).message}`;
     set({ pending: [], notice: { kind: conflict ? "info" : "error", text } });
     await get().load(workflowId).catch(() => undefined);
   } finally {
-    set({ inflight: false });
+    if (get().workflowId === workflowId) set({ inflight: false });
   }
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
   ...initial,
 
-  reset: () => set({ ...initial }),
+  reset: () => {
+    if (flushTimer) clearTimeout(flushTimer);
+    if (layoutTimer) clearTimeout(layoutTimer);
+    flushTimer = layoutTimer = null;
+    layoutDirty = {};
+    set({ ...initial });
+  },
 
   load: async (id) => {
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
@@ -167,6 +175,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
       diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
       pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}), drill: [],
+      undoStack: [], redoStack: [], // inverses from another version no longer apply
     });
   },
 

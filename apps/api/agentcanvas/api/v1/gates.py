@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Dataset, Evaluator, ReleaseGate
+from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.services import gates
@@ -65,11 +66,13 @@ async def set_gate(
     wf_id: str,
     environment: str,
     body: GateIn,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> GateOut:
     """Require an evaluation before publishing to `environment` (admins only). The gate keeps the dataset version
-    and a copy of the evaluators as they are now: save it again to pick up later changes."""
+    and a copy of the evaluators (with the hash of the code a code evaluator runs) as they are now: save it again to
+    pick up later changes."""
     import re
 
     if not re.fullmatch(ENVIRONMENT, environment):
@@ -89,7 +92,9 @@ async def set_gate(
         gate = ReleaseGate(id=new_id("gate"), workflow_id=wf_id, environment=environment)
         session.add(gate)
     gate.dataset_id, gate.min_scores, gate.max_regression = body.dataset_id, body.min_scores, body.max_regression
-    gate.dataset_version, gate.evaluators = version.number, gates.snapshot(evaluators, body.min_scores)
+    workspace = request.app.state.projects.workspace((await WorkflowRepo(session).require(wf_id)).project_id).root
+    gate.dataset_version = version.number
+    gate.evaluators = gates.snapshot(evaluators, body.min_scores, workspace)
     gate.updated_by, gate.updated_at = user.id, datetime.now(UTC)
     await session.commit()
     await session.refresh(gate)

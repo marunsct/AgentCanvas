@@ -24,11 +24,13 @@ cannot fail a whole experiment. The model call and the workspace function come f
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import math
 import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any, Literal
 
 from jsonschema import Draft202012Validator
@@ -38,6 +40,7 @@ from pydantic import BaseModel, Field, ValidationError
 from agentcanvas import safe_regex
 from agentcanvas.errors import InvalidInput
 from agentcanvas.registry import default_registry
+from agentcanvas.workspace.bundle import collect
 
 Kind = Literal["exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise"]
 DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7, "composite": 0.7, "pairwise": 0.5}
@@ -72,6 +75,9 @@ class TrajectoryConfig(BaseModel):
 
 class CodeConfig(BaseModel):
     function: str = Field(description="scripts.<module>:<function>, (sample) -> {score, comment}")
+    pinned: str | None = Field(
+        default=None, description="a release gate's copy: the code_hash it was saved with (set by the server)"
+    )
 
 
 class CompositeConfig(BaseModel):
@@ -127,8 +133,10 @@ def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
             parsed.weights.get(n, 1.0) > 0 for n in parsed.evaluators
         ):
             raise InvalidInput("composite evaluator: weights are positive (or 0 to leave one out)")
-    elif isinstance(parsed, CodeConfig) and not re.fullmatch(r"scripts(\.\w+)+:\w+", parsed.function):
-        raise InvalidInput("code evaluator: the function must be 'scripts.<module>:<function>' in the workspace")
+    elif isinstance(parsed, CodeConfig):
+        parsed.pinned = None
+        if not re.fullmatch(r"scripts(\.\w+)+:\w+", parsed.function):
+            raise InvalidInput("code evaluator: the function must be 'scripts.<module>:<function>' in the workspace")
     return parsed.model_dump(by_alias=True, exclude_none=True)
 
 
@@ -166,9 +174,30 @@ def spec_of(e: Any, siblings: Any = ()) -> Spec:
     return Spec(name=e.name, kind=e.kind, config=config, threshold=e.threshold)
 
 
-# (system, prompt, model) -> reply text;  (import path) -> async (sample) -> dict
+# (system, prompt, model) -> reply text;  (import path) -> async (sample) -> dict;  (import path) -> code_hash
 Complete = Callable[[str, str, str], Awaitable[str]]
 Script = Callable[[str], Callable[[dict[str, Any]], Awaitable[Any]]]
+Fingerprint = Callable[[str], str]
+CODE_CHANGED = "its code changed since the release gate was saved: an admin saves the gate again to accept that"
+
+
+def code_hash(workspace: Path | None, function: str) -> str:
+    """What a code evaluator runs: its function's module and every workspace module that imports, hashed. A
+    release gate keeps this, so the code it measures with cannot change behind its back (S13)."""
+    h = hashlib.sha256(function.encode())
+    if workspace is not None:
+        for rel in collect(workspace, "evaluator", function).files:
+            if rel.endswith(".py"):  # the code it imports (not a workflow folder's data files)
+                h.update(f"\0{rel}\0".encode() + (workspace / rel).read_bytes())
+    return h.hexdigest()
+
+
+def pinned_code(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The code evaluator specs in `spec` (itself, or a composite's parts)."""
+    if spec["kind"] == "composite":
+        return [p for p in spec["config"].get("parts") or [] if p["kind"] == "code"]
+    return [spec] if spec["kind"] == "code" else []
+
 
 JUDGE_SYSTEM = (
     "You grade the output of an AI workflow against a rubric. Reply with JSON only: "
@@ -203,7 +232,13 @@ def _grade(reply: str) -> tuple[float, str]:
     return float(number.group(1)), reply.strip()[:500]
 
 
-async def score(spec: Spec, obs: Observation, complete: Complete | None = None, script: Script | None = None) -> Score:
+async def score(
+    spec: Spec,
+    obs: Observation,
+    complete: Complete | None = None,
+    script: Script | None = None,
+    fingerprint: Fingerprint | None = None,
+) -> Score:
     threshold = spec.threshold if spec.threshold is not None else DEFAULT_THRESHOLD.get(spec.kind, 1.0)
 
     def done(value: float | None, comment: str = "") -> Score:
@@ -248,12 +283,16 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
             value, reasoning = _grade(reply)
             return done(value, reasoning)
         if isinstance(cfg, CompositeConfig):
-            return await _composite(cfg, obs, complete, script, done)
+            return await _composite(cfg, obs, complete, script, fingerprint, done)
         if isinstance(cfg, PairwiseConfig):
             return done(None, "a pairwise judge compares two experiment targets: it scores in experiments only")
         assert isinstance(cfg, CodeConfig)
         if script is None:
             return done(None, "workspace code is not available here")
+        if cfg.pinned is not None and (
+            fingerprint is None or await asyncio.to_thread(fingerprint, cfg.function) != cfg.pinned
+        ):
+            return done(None, CODE_CHANGED)
         out = await asyncio.wait_for(script(cfg.function)(obs.model_dump()), JUDGE_TIMEOUT_S)
         if isinstance(out, bool | int | float):
             return done(float(out))
@@ -263,14 +302,19 @@ async def score(spec: Spec, obs: Observation, complete: Complete | None = None, 
 
 
 async def _composite(
-    cfg: CompositeConfig, obs: Observation, complete: Complete | None, script: Script | None, done: Any
+    cfg: CompositeConfig,
+    obs: Observation,
+    complete: Complete | None,
+    script: Script | None,
+    fingerprint: Fingerprint | None,
+    done: Any,
 ) -> Score:
     parts = {p["name"]: Spec(**p) for p in cfg.parts or []}
     if missing := [n for n in cfg.evaluators if n not in parts]:
         return done(None, f"no longer an evaluator of the workflow: {', '.join(missing)}")
     if any(p.kind in ("composite", *ONLY_IN_EXPERIMENTS) for p in parts.values()):
         return done(None, "a composite combines plain evaluators only")
-    scores = {n: await score(parts[n], obs, complete, script) for n in cfg.evaluators}
+    scores = {n: await score(parts[n], obs, complete, script, fingerprint) for n in cfg.evaluators}
     summary = ", ".join(f"{n} {'—' if s.score is None else f'{s.score:.2f}'}" for n, s in scores.items())
     if cfg.mode == "all":
         return done(float(all(s.passed for s in scores.values())), summary)

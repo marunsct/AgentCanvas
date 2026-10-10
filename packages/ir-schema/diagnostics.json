@@ -28,6 +28,10 @@
       "what": "An arrow connects two things that cannot be connected that way.",
       "fix": "Steps connect with grey arrows (right dot → left dot). Add-ons such as AI models plug into a step's coloured inputs. Delete the arrow and redraw it."
     },
+    "E007": {
+      "what": "A resource has a name Python reserves (like class, import or builder), so the exported code could not use it.",
+      "fix": "Rename the resource in the Inspector, for example add a word: fast_model instead of builder."
+    },
     "E010": {
       "what": "There is no path from Start to Finish, so a run could never finish.",
       "fix": "Connect Start to your first step, and your last step to Finish. Tip: click a step's right-hand dot to pick what comes next."
@@ -120,9 +124,17 @@
       "what": "This app connector starts a program on the server, which an admin must allow first.",
       "fix": "Ask an admin to enable local MCP, or use a connector with a URL."
     },
+    "E043": {
+      "what": "A tool or remote agent is allowed to reach private or internal network addresses, which the hosted service never allows.",
+      "fix": "Turn off \"Allow private network\" on it, and give it a public address instead."
+    },
     "E050": {
       "what": "A password or API key is typed straight into a setting, where others could see it.",
       "fix": "Store it as a project secret (Workspace → Secrets) and pick it from the list instead."
+    },
+    "E051": {
+      "what": "A secret is referenced by a name that is not a plain variable name, so exports could not pass it as a setting.",
+      "fix": "Use a secret whose name has only letters, digits and _ (for example OPENAI_API_KEY)."
     },
     "E070": {
       "what": "This block both pauses for a person and changes something outside, which would happen twice when the run resumes.",

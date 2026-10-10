@@ -32,6 +32,8 @@ spec:
           env:
             - name: API_UPSTREAM
               value: "http://{{ $name }}-api:{{ .Values.service.api.port }}"
+            - name: TRUSTED_PROXIES
+              value: {{ .Values.web.trustedProxies | default "127.0.0.1/32" | quote }}
             - name: OIDC_ISSUER   # its origin is allowed in the Content-Security-Policy
               value: {{ .Values.config.oidc.issuer | default "" | quote }}
             - name: CSP_CONNECT_SRC

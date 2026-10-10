@@ -25,5 +25,6 @@ USER 101
 COPY infra/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --chmod=755 infra/web/20-csp.envsh /docker-entrypoint.d/20-csp.envsh
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
-ENV API_UPSTREAM=http://api:8000
+ENV API_UPSTREAM=http://api:8000 \
+    TRUSTED_PROXIES=127.0.0.1/32
 EXPOSE 8080

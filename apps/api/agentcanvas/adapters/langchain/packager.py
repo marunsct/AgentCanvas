@@ -81,7 +81,23 @@ PROVIDERS = {  # model id prefix -> (integration package, API key variable)
 
 def package_name(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "workflow"
-    return slug if slug[0].isalpha() else f"wf_{slug}"
+    if not slug[0].isalpha() or _taken(slug):
+        return f"wf_{slug}"
+    return slug
+
+
+def _taken(slug: str) -> bool:
+    """A package of this name would hide a module the export imports (`langgraph`, `email`, ...) on src/."""
+    import importlib.util
+    import keyword
+    import sys
+
+    if keyword.iskeyword(slug) or slug in sys.stdlib_module_names:
+        return True
+    try:
+        return importlib.util.find_spec(slug) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _secret_names(value: Any) -> set[str]:

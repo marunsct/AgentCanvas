@@ -96,7 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.runner = runner
             app.state.events = EventService(db, runner, app.state.projects)
-            runner.finish_hooks.append(app.state.events.on_run_finished)
+            runner.after_hooks.append(app.state.events.on_run_finished)
             runner.start_hooks.append(observability.run_started)
             runner.finish_hooks.append(observability.run_finished)
             # tests check drift after every score; servers at most every few seconds per evaluator

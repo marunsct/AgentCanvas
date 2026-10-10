@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import keyword
 from collections import Counter
 from collections.abc import Iterator
 
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule
 
 SPECIAL = {"START", "END"}
+# names the exported graph code itself uses for variables (adapters/langchain/templates/graph.py.j2): a
+# resource of that name would replace them
+GENERATED = {"ac", "interop", "builder", "resources", "checkpointer", "store", "cache", "annotations"}
 
 
 @rule
@@ -21,6 +25,9 @@ def unique_ids_and_names(ctx: ValidationContext) -> Iterator[Diagnostic]:
     for dup, n in sorted(names.items()):
         if n > 1:
             yield error("E000", f"name '{dup}' is used by {n} elements; names become code identifiers")
+    for r in wf.resources:  # resources become Python variables in the exported code
+        if keyword.iskeyword(r.name) or r.name in GENERATED:
+            yield error("E007", f"'{r.name}' is a name Python code reserves; rename this resource", node_id=r.id)
     channels = Counter(c.name for c in wf.state.channels)
     for dup, n in sorted(channels.items()):
         if n > 1:

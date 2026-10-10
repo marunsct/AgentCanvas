@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from agentcanvas.ir.models import Workflow
+from agentcanvas.adapters.langchain.codegen import one_line
+from agentcanvas.errors import InvalidInput
+from agentcanvas.ir.models import SECRET_NAME, Workflow
 
 KIT_DIR = Path(__file__).with_name("kit")
 PYTHON_IMAGE = "python:3.12-slim"
@@ -199,7 +201,10 @@ def _walk(wf: Workflow) -> tuple[list[Any], list[Any]]:
 def _secret_names(value: Any) -> set[str]:
     if isinstance(value, dict):
         if isinstance(value.get("$secret"), str):
-            return {value["$secret"]}
+            name = value["$secret"]
+            if not SECRET_NAME.fullmatch(name):  # it becomes a shell and Makefile variable in the export
+                raise InvalidInput(f"secret name {name!r} is not a variable name (letters, digits and _)")
+            return {name}
         return set().union(*(_secret_names(v) for v in value.values())) if value else set()
     if isinstance(value, list):
         return set().union(*(_secret_names(v) for v in value)) if value else set()
@@ -263,7 +268,8 @@ def _example(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
 
 def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | None = None) -> Facts:
     nodes, resources = _walk(wf)
-    f = Facts(name=wf.name, pkg=pkg, slug=pkg.replace("_", "-"), version=version)
+    # the name heads comments in shell, YAML and Makefiles: one line, no trailing \ joining the next line
+    f = Facts(name=one_line(wf.name).rstrip("\\ ") or pkg, pkg=pkg, slug=pkg.replace("_", "-"), version=version)
     env: dict[str, dict[str, Any]] = {}
     hosts: dict[str, dict[str, Any]] = {}
     for r in resources:

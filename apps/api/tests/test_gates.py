@@ -159,3 +159,60 @@ async def test_a_draft_changed_during_the_evaluation_is_not_published(api_client
     monkeypatch.setattr(gates, "evaluate", meanwhile)
     r = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
     assert r.status_code == 409 and "changed while it was being evaluated" in r.json()["detail"], r.text
+
+
+async def test_a_builder_cannot_rewrite_a_gated_code_evaluator(app, api_client):
+    """A gate pins the code its code evaluators run (and what that imports): rewriting it fails the gate."""
+    from test_evaluators import P
+
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf)
+    assert (await api_client.post(f"/v1/datasets/{ds['id']}/examples", json={"examples": EXAMPLES})).status_code == 200
+    files = {
+        "scripts/strict.py": "def same(a, b):\n    return a == b\n",
+        "scripts/gate_evals.py": "from scripts.strict import same\n\n\n"
+        "def check(sample):\n    return float(same(sample['output'].get('out'), sample['reference'].get('out')))\n",
+    }
+    for path, src in files.items():
+        assert (await api_client.put(f"{P}/files/{path}", json={"content": src})).status_code in (200, 201, 204)
+    body = {"name": "same", "kind": "code", "config": {"function": "scripts.gate_evals:check", "pinned": "x"}}
+    assert (await api_client.post(f"/v1/workflows/{wf}/evaluators", json=body)).status_code == 201
+    [ev] = (await api_client.get(f"/v1/workflows/{wf}/evaluators")).json()
+    assert "pinned" not in ev["config"]  # only a gate pins code
+    url = f"/v1/workflows/{wf}/gates/prod"
+    assert (await api_client.put(url, json={"dataset_id": ds["id"]})).status_code == 200
+    await set_greeting(api_client, wf, "Hey")
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert refused.status_code == 422 and check(refused.json())["items"] == ["same: mean 0.0 (needs 1)"]
+
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_dev", org_id="org_default", role="builder")
+    try:  # a helper it imports, or the evaluator itself, now agrees with anything
+        for path, src in {"scripts/strict.py": "def same(a, b):\n    return True\n",
+                          "scripts/gate_evals.py": "def check(sample):\n    return 1.0\n"}.items():  # fmt: skip
+            r = await api_client.put(f"{P}/files/{path}", json={"content": src})
+            assert r.status_code in (200, 201, 204), r.text
+            refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+            assert refused.status_code == 422, refused.text
+            assert "changed since the release gate was saved" in check(refused.json())["detail"]
+    finally:
+        app.dependency_overrides.pop(current_user)
+    assert (await api_client.put(url, json={"dataset_id": ds["id"]})).status_code == 200  # an admin accepts it
+    r = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert r.status_code == 200, r.text
+
+
+async def test_a_pinned_code_evaluator_scores_only_the_code_it_pinned():
+    from agentcanvas.evaluation import Observation, Spec, score
+
+    spec = Spec(name="c", kind="code", config={"function": "scripts.e:check", "pinned": "abc"})
+    composite = Spec(name="all", kind="composite", config={"evaluators": ["c"], "parts": [spec.model_dump()]})
+    for fingerprint, want in (("abc", 1.0), ("def", None)):
+        tools = {"script": lambda _path: lambda _obs: _one(), "fingerprint": lambda _path, f=fingerprint: f}
+        assert (await score(spec, Observation(), **tools)).score == want
+        assert (await score(composite, Observation(), **tools)).score == (want if want else None)
+    changed = await score(spec, Observation(), script=lambda _path: lambda _obs: _one())  # nothing to check against
+    assert changed.score is None and "changed since the release gate was saved" in changed.comment
+
+
+async def _one() -> float:
+    return 1.0

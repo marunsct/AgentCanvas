@@ -37,24 +37,24 @@ export function StateDesigner() {
             <tr key={`${i}-${c.name}`}>
               <td><ChannelName value={c.name} onCommit={(name) => edit(i, { name })} /></td>
               <td>
-                <select value={(c.type?.type as string) ?? "string"} onChange={(e) => edit(i, { type: { type: e.target.value } })}>
+                <select aria-label={`${c.name} type`} value={(c.type?.type as string) ?? "string"} onChange={(e) => edit(i, { type: { type: e.target.value } })}>
                   {TYPES.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </td>
               <td>
-                <select value={c.reducer ?? "replace"} onChange={(e) => edit(i, { reducer: e.target.value as Channel["reducer"] })}>
+                <select aria-label={`${c.name} reducer`} value={c.reducer ?? "replace"} onChange={(e) => edit(i, { reducer: e.target.value as Channel["reducer"] })}>
                   {REDUCERS.map((r) => <option key={r}>{r}</option>)}
                 </select>
               </td>
               <td>
-                <select value={c.storage ?? "full"} title="delta = LangGraph DeltaChannel (append-heavy channels)"
+                <select aria-label={`${c.name} storage`} value={c.storage ?? "full"} title="delta = LangGraph DeltaChannel (append-heavy channels)"
                   disabled={!["append", "add_messages"].includes(c.reducer ?? "replace")}
                   onChange={(e) => edit(i, { storage: e.target.value as Channel["storage"] })}>
                   <option>full</option><option>delta</option>
                 </select>
               </td>
               <td>
-                <select value={c.io ?? "inout"} onChange={(e) => edit(i, { io: e.target.value as Channel["io"] })}>
+                <select aria-label={`${c.name} input or output`} value={c.io ?? "inout"} onChange={(e) => edit(i, { io: e.target.value as Channel["io"] })}>
                   {IO.map((x) => <option key={x}>{x}</option>)}
                 </select>
               </td>

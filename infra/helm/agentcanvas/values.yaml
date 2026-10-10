@@ -53,6 +53,9 @@ web:
   # identity provider origins the browser may call besides config.oidc.issuer's (Content-Security-Policy
   # connect-src), space-separated, e.g. when the token endpoint is on another host
   cspConnectSrc: ""
+  # the ingress controller's address range: only X-Forwarded-For from there is believed for the client
+  # address (rate limits, audit log). Narrow it to your controller's pod range if you know it.
+  trustedProxies: 10.0.0.0/8
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 256Mi }

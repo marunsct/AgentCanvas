@@ -28,7 +28,9 @@ function batcher(apply: (e: RunEvent) => void) {
 
 async function stream(path: string, body: unknown): Promise<void> {
   const run = useRun.getState();
-  const b = batcher(run.apply);
+  const wfId = useEditor.getState().workflowId;
+  // events still streaming after another workflow was opened belong to that old run: drop them
+  const b = batcher((e) => { if (useEditor.getState().workflowId === wfId) run.apply(e); });
   try {
     await postStream(path, body, b.push);
   } catch (e) {

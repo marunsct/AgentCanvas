@@ -30,7 +30,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.db.models import Experiment, ExperimentResult, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unavailable
-from agentcanvas.evaluation import ONLY_IN_EXPERIMENTS, Observation, Score, Spec, pairwise, score, trajectory_of
+from agentcanvas.evaluation import (
+    ONLY_IN_EXPERIMENTS,
+    Observation,
+    Score,
+    Spec,
+    code_hash,
+    pairwise,
+    score,
+    trajectory_of,
+)
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
@@ -84,8 +93,8 @@ def context_for(wf: Workflow, given: dict[str, Any], user_id: str | None, org_id
 
 
 def scorers(runner: Any, wf: Workflow, usage: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The model service's call (for judges) and the workflow adapter's workspace functions (for code evaluators),
-    for `wf`'s project. `usage`, when given, collects the judge's tokens per model: {model: {input_tokens,
+    """The model service's call (for judges) and the workflow adapter's workspace functions (for code evaluators,
+    with the hash of the code they run), for `wf`'s project. `usage`, when given, collects the judge's tokens per model: {model: {input_tokens,
     output_tokens}}."""
     adapter, resources, models = runner.adapter, runner.resources("", wf), runner.models
 
@@ -94,7 +103,11 @@ def scorers(runner: Any, wf: Workflow, usage: dict[str, Any] | None = None) -> d
             return await models.complete(resources, model, system, prompt)
         return await models.complete(resources, model, system, prompt, usage=usage.setdefault(model, {}))
 
-    return {"complete": complete, "script": lambda path: adapter.script(resources, path)}
+    return {
+        "complete": complete,
+        "script": lambda path: adapter.script(resources, path),
+        "fingerprint": lambda path: code_hash(getattr(resources, "workspace", None), path),
+    }
 
 
 def _percentile(values: list[int], q: float) -> int | None:

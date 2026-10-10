@@ -30,6 +30,7 @@ from agentcanvas.runtime.tracing import trace_id
 from agentcanvas.runtime.types import CheckpointInfo, InterruptInfo, RunSpec, ThreadState, interrupt_kind
 from agentcanvas.sdk import _SECRETS
 from agentcanvas.services.secrets import hide_values
+from agentcanvas.settings import get_settings
 from agentcanvas.validation.blast import dry_run_tools
 
 STREAM_MODES = ["tasks", "updates", "messages", "custom"]
@@ -48,7 +49,7 @@ class LangChainAdapter:
         self._p: Persistence | None = None
         self._graphs: OrderedDict[tuple[str, int, str], tuple[Any, Any]] = OrderedDict()
         self._cache_size = graph_cache_size
-        self._shared = ac.Resources()
+        self._shared = self.new_resources()
 
     # ------------------------------------------------------------ plumbing ----
     def script(self, resources: Any, import_path: str) -> Any:
@@ -59,7 +60,9 @@ class LangChainAdapter:
 
     def new_resources(self, *, resources_class: Any = None, **kw: Any) -> ac.Resources:
         """A resolver for one project: its workspace (scripts/tools/nodes), secrets and script sandbox."""
-        return (resources_class or ac.Resources)(**kw)
+        resources = (resources_class or ac.Resources)(**kw)
+        resources.public_only = get_settings().edition == "hosted"
+        return resources
 
     @asynccontextmanager
     async def persistence(self, database_url: str | None) -> AsyncIterator[None]:

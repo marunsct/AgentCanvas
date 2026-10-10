@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 IR_VERSION = "1.2"
 IDENT = re.compile(r"^[a-z][a-z0-9_]{0,62}$")  # names become Python identifiers
+SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")  # an environment variable in exports
 TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")  # e.g. core.llm, model.chat, acme.upsert
 RESERVED_NAMES = {"start", "end", "__start__", "__end__"}
 
