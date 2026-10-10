@@ -49,6 +49,7 @@ RUNTIME_FILES = [
     "adapters/langchain/testing.py",
     "expr.py",
     "guardrails.py",
+    "knowledge_search.py",
     "safe_regex.py",
     "sdk.py",
     "security/__init__.py",

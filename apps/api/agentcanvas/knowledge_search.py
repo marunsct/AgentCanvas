@@ -8,10 +8,11 @@ embedding (from the built-in embedder or a provider model), `None` when it has n
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +21,7 @@ DIM = 512
 MODES = ("hybrid", "semantic", "keyword")
 STRATEGIES = ("paragraphs", "sentences", "fixed", "markdown")
 RRF_K = 60  # reciprocal-rank fusion constant (Cormack et al. 2009)
+NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")  # a knowledge base's name: also its file name in exports
 
 _WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 _STOP = frozenset(
@@ -78,7 +80,8 @@ def _pack(units: Iterable[str], size: int) -> list[str]:
     """Join small units up to `size` characters; split units longer than `size` at word boundaries."""
     out: list[str] = []
     buf = ""
-    for unit in units:
+    for whole in units:
+        unit = whole
         while len(unit) > size:
             cut = unit.rfind(" ", 0, size)
             cut = cut if cut > size // 2 else size
@@ -147,7 +150,7 @@ class Index:
     avgdl: float = 0.0
 
     def __post_init__(self) -> None:
-        self.terms = [Counter(words(f"{c.get('title') or ''} {c.get('heading') or ''} {c['text']}")) for c in self.chunks]
+        self.terms = [Counter(words(embed_text(c))) for c in self.chunks]
         for t in self.terms:
             self.df.update(t.keys())
         self.avgdl = (sum(sum(t.values()) for t in self.terms) / len(self.terms)) if self.terms else 0.0
@@ -179,11 +182,11 @@ def search(
     mode: str = "hybrid",
     top_k: int = 5,
     min_score: float = 0.0,
-    embed: Callable[[Sequence[str]], list[list[float]]] | None = None,
+    query_vector: Sequence[float] | None = None,
 ) -> list[dict[str, Any]]:
     """The best `top_k` chunks for `query`, each with `score` and a `cite` number (1, 2, …) for answers to quote.
-    keyword = BM25 over words; semantic = cosine of embeddings (`embed` turns the query into a vector, the
-    built-in embedder by default); hybrid = both rankings fused by reciprocal rank."""
+    keyword = BM25 over words; semantic = cosine of embeddings (`query_vector` is the query's embedding from the
+    knowledge base's model, the built-in embedder's by default); hybrid = both rankings fused by reciprocal rank."""
     if mode not in MODES:
         raise ValueError(f"unknown search mode {mode!r}; use one of {', '.join(MODES)}")
     if not index.chunks or not query.strip():
@@ -192,7 +195,7 @@ def search(
     if mode == "keyword":
         ranked = _ranked(index.bm25(query))
     else:
-        qv = (embed or builtin_embed)([query])[0]
+        qv = query_vector if query_vector is not None else builtin_embed([query])[0]
         semantic = _ranked(index.semantic(qv))
         if mode == "semantic":
             ranked = semantic
@@ -224,8 +227,7 @@ def _ranked(scores: list[float]) -> list[tuple[int, float]]:
 def sources(results: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """The citation list for results: one entry per cited chunk, `[n] title (page)`."""
     return [
-        {"cite": r["cite"], "title": r.get("title"), "source": r.get("source"), "page": r.get("page")}
-        for r in results
+        {"cite": r["cite"], "title": r.get("title"), "source": r.get("source"), "page": r.get("page")} for r in results
     ]
 
 
@@ -243,3 +245,34 @@ def retrieval_metrics(retrieved: Sequence[str], relevant: Sequence[str], k: int)
         "hit": 1.0 if hits else 0.0,
         "mrr": 1.0 / (first + 1) if first is not None else 0.0,
     }
+
+
+# ------------------------------------------------------------------ files ----
+def dump_jsonl(name: str, embedding: dict[str, Any], chunks: Sequence[dict[str, Any]]) -> str:
+    """A knowledge base as JSON lines: a header, then one chunk per line. Built-in vectors are left out (loading
+    recomputes them); a provider model's are kept, since recomputing them needs the provider."""
+    builtin = (embedding.get("model") or BUILTIN) == BUILTIN
+    lines = [json.dumps({"knowledge_base": name, "embedding": {"model": embedding.get("model") or BUILTIN}})]
+    for c in chunks:
+        row = {k: c.get(k) for k in ("id", "doc_id", "title", "source", "text", "page", "heading")}
+        if not builtin and c.get("vector"):
+            row["vector"] = [round(float(v), 6) for v in c["vector"]]
+        lines.append(json.dumps(row, ensure_ascii=False))
+    return "\n".join(lines) + "\n"
+
+
+def load_jsonl(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """(header, chunks) from `dump_jsonl` output, with built-in vectors recomputed."""
+    rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+    if not rows or "knowledge_base" not in rows[0]:
+        raise ValueError("not a knowledge base file: the first line names the knowledge base")
+    header, chunks = rows[0], rows[1:]
+    if (header.get("embedding", {}).get("model") or BUILTIN) == BUILTIN:
+        for c, v in zip(chunks, builtin_embed([embed_text(c) for c in chunks]), strict=True):
+            c["vector"] = v
+    return header, chunks
+
+
+def embed_text(chunk: dict[str, Any]) -> str:
+    """What a chunk's embedding is computed from: its document title, heading and text."""
+    return " ".join(str(x) for x in (chunk.get("title"), chunk.get("heading"), chunk.get("text")) if x)

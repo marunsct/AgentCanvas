@@ -1,0 +1,137 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_knowledge_qa",
+  "name": "Ask your documents",
+  "description": "Answers questions from a knowledge base (Knowledge page) with citations: Search knowledge finds the best passages by words and meaning, then the model answers only from them and cites them as [1], [2]. Load the sample 'handbook' knowledge base to try it, and score its search with the sample retrieval eval set.",
+  "state": {
+    "channels": [
+      {
+        "name": "question",
+        "io": "in",
+        "description": "What to ask"
+      },
+      {
+        "name": "passages",
+        "io": "out",
+        "type": {
+          "type": "array"
+        },
+        "description": "The passages found, each with a citation number"
+      },
+      {
+        "name": "sources",
+        "io": "out",
+        "type": {
+          "type": "array"
+        },
+        "description": "The cited documents"
+      },
+      {
+        "name": "answer",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "answer_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_search",
+      "type": "knowledge.search",
+      "name": "search",
+      "label": "Search the handbook",
+      "config": {
+        "knowledge_base": "handbook",
+        "query": "{{ state.question }}",
+        "mode": "hybrid",
+        "top_k": 3,
+        "output": "passages",
+        "sources_output": "sources"
+      }
+    },
+    {
+      "id": "n_answer",
+      "type": "core.llm",
+      "name": "answer",
+      "label": "Answer with citations",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Answer the question using only these passages. Cite each passage you use as [n]. If they do not answer it, say the documents do not say.\n\nPassages:\n{% for p in state.passages %}[{{ p.cite }}] {{ p.title }}{% if p.page %} (page {{ p.page }}){% endif %}: {{ p.text }}\n{% endfor %}\nQuestion: {{ state.question }}",
+        "output": "answer"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_search"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_search"
+      },
+      "target": {
+        "node": "n_answer"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_answer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_answer",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": [
+        "knowledge base",
+        "citations",
+        "retrieval"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "question": "How many vacation days do I get?"
+      }
+    }
+  }
+}

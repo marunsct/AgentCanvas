@@ -21,6 +21,7 @@ from agentcanvas.ir.contract import Contract, ContractChange, breaking_changes, 
 from agentcanvas.ir.diff import WorkflowDiff
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.types import REPLAYABLE
+from agentcanvas.services import knowledge
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.testcases import CaseResult, Expect, TestCaseService
 from agentcanvas.services.versions import Bump, VersionService
@@ -187,6 +188,10 @@ async def export_zip(
         version=semver,
         target=target,
     )
+    if used := knowledge.used_knowledge_bases(wf.model_dump(mode="json")):  # S24: ship the knowledge bases it searches
+        ks = knowledge.KnowledgeService(session)
+        files = {name: await ks.export(await ks.by_name(view.row.project_id, name)) for name in sorted(used)}
+        data = knowledge.bundle(data, files)
     return Response(
         data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
     )

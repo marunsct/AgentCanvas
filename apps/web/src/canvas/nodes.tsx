@@ -10,6 +10,7 @@ const ICONS: Record<string, string> = {
   sparkles: "✨", bot: "🤖", split: "🔀", "user-check": "🙋", pencil: "✏️", code: "⌨️", cpu: "🔌", wrench: "🔧", box: "▪",
   brain: "🧠", shield: "🛡", gauge: "⏱", "rotate-cw": "🔁", "life-buoy": "🛟", scroll: "📜", "list-checks": "☑",
   filter: "🔎", file: "📄", database: "🗄", "message-square": "💬", "git-fork": "🔱", merge: "⛙", plug: "🔌", globe: "🌐", layers: "🗂",
+  "book-open": "📚",
 };
 const STATUS_LABEL: Record<string, string> = { running: "running", ok: "done", error: "error", interrupted: "waiting" };
 

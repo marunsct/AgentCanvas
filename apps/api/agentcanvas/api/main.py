@@ -37,6 +37,7 @@ from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
+from agentcanvas.services.knowledge import Searcher, knowledge_embedder
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
@@ -87,6 +88,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # decrypted at startup, reloaded when another instance changed them (each project's secrets_version)
             app.state.secrets = SecretCache(db, lambda: app.state.keyring, app.state.projects.secrets)
             await app.state.secrets.sync()
+            # S24: Search knowledge blocks read this server's knowledge bases
+            app.state.projects.knowledge = Searcher(
+                db, knowledge_embedder(adapter), lambda project_id: app.state.projects.secrets.get(project_id, {})
+            )
             runner = Runner(
                 db,
                 adapter,

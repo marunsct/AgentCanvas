@@ -239,6 +239,17 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             )
         elif n.type == "core.set":
             fn = ac.set_node(values=cfg["values"])
+        elif n.type == "knowledge.search":
+            fn = ac.knowledge_search_node(
+                knowledge_base=cfg["knowledge_base"],
+                query=cfg.get("query", "{{ state.question }}"),
+                output=cfg.get("output", "passages"),
+                mode=cfg.get("mode", "hybrid"),
+                top_k=cfg.get("top_k", 5),
+                min_score=cfg.get("min_score", 0.0),
+                sources_output=cfg.get("sources_output"),
+                resources=resources,
+            )
         elif n.type in GUARDS:
             fn = guard_node(n, cfg, wired("model"))
         elif n.type == "core.script":

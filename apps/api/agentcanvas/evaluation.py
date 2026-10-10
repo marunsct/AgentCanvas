@@ -13,6 +13,10 @@ Each evaluator turns an `Observation` (the example's input and reference, and wh
 | `code` | `function`: `scripts.<module>:<fn>` | what the workspace function returns |
 | `composite` | `evaluators`, `mode`: weighted / all / any, `weights` | their weighted mean, or 1 when all / any pass |
 | `pairwise` | `model`, `rubric`, `channels` | experiments only: each target against the first, see `pairwise` |
+| `retrieval` | `channel`, `k`, `metric`, `match_by` | recall / precision / hit / MRR at k of found passages (S24) |
+
+A retrieval evaluator compares the passages a Search knowledge block saved with the example's `reference.relevant`
+(the documents, titles, chunk ids or phrases a good search finds).
 
 A composite scores its parts itself (their specs are resolved into its config by `spec_of`), so it needs no
 other evaluator to run first; parts that cannot score are left out of a weighted mean.
@@ -39,11 +43,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from agentcanvas import safe_regex
 from agentcanvas.errors import InvalidInput
+from agentcanvas.knowledge_search import retrieval_metrics
 from agentcanvas.registry import default_registry
 from agentcanvas.workspace.bundle import collect
 
-Kind = Literal["exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise"]
-DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7, "composite": 0.7, "pairwise": 0.5}
+Kind = Literal["exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise", "retrieval"]
+DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7, "composite": 0.7, "pairwise": 0.5, "retrieval": 0.5}
 ONLY_IN_EXPERIMENTS = ("pairwise",)
 JUDGE_TIMEOUT_S = 60.0
 
@@ -93,6 +98,17 @@ class PairwiseConfig(BaseModel):
     channels: list[str] | None = Field(default=None, description="output channels the judge sees (default: all)")
 
 
+class RetrievalConfig(BaseModel):
+    channel: str = Field(default="passages", description="where the Search knowledge block saved its passages")
+    k: int = Field(default=5, ge=1, le=50, description="how many of the first passages count")
+    metric: Literal["recall", "precision", "hit", "mrr"] = "recall"
+    match_by: Literal["source", "title", "id", "text"] = Field(
+        default="source",
+        description="how a passage matches a relevant item: its document (file name without extension, or "
+        "address), title, chunk id, or (text) the item appears in the passage",
+    )
+
+
 CONFIGS: dict[str, type[BaseModel]] = {
     "exact": ExactConfig,
     "regex": RegexConfig,
@@ -102,6 +118,7 @@ CONFIGS: dict[str, type[BaseModel]] = {
     "code": CodeConfig,
     "composite": CompositeConfig,
     "pairwise": PairwiseConfig,
+    "retrieval": RetrievalConfig,
 }
 
 
@@ -284,6 +301,8 @@ async def score(
             return done(value, reasoning)
         if isinstance(cfg, CompositeConfig):
             return await _composite(cfg, obs, complete, script, fingerprint, done)
+        if isinstance(cfg, RetrievalConfig):
+            return done(*retrieval_score(cfg, obs))
         if isinstance(cfg, PairwiseConfig):
             return done(None, "a pairwise judge compares two experiment targets: it scores in experiments only")
         assert isinstance(cfg, CodeConfig)
@@ -299,6 +318,43 @@ async def score(
         return done(None if out.get("score") is None else float(out["score"]), str(out.get("comment") or ""))
     except Exception as exc:  # noqa: BLE001 - an evaluator that breaks scores None, it never stops an experiment
         return done(None, f"{type(exc).__name__}: {exc}"[:500])
+
+
+def _passage_key(passage: Any, match_by: str) -> str:
+    if not isinstance(passage, dict):
+        return str(passage).strip().lower()
+    if match_by == "id":
+        return str(passage.get("id") or passage.get("chunk_id") or "")
+    if match_by == "title":
+        return str(passage.get("title") or "").strip().lower()
+    source = str(passage.get("source") or "").strip()
+    if "://" in source:
+        return source.lower().rstrip("/")
+    name = source.rsplit("/", 1)[-1]
+    return (name.rsplit(".", 1)[0] if "." in name else name).lower()
+
+
+def retrieval_score(cfg: RetrievalConfig, obs: Observation) -> tuple[float | None, str]:
+    """(score, comment): the chosen metric at k of the passages in `cfg.channel` against `reference.relevant`."""
+    relevant = obs.reference.get("relevant")
+    if isinstance(relevant, str):
+        relevant = [relevant]
+    if not relevant:
+        return None, "the example has no reference.relevant (the documents a good search finds)"
+    if cfg.channel not in obs.output:
+        return 0.0, f"the run did not produce '{cfg.channel}'"
+    passages = obs.output[cfg.channel] or []
+    if not isinstance(passages, list):
+        return None, f"'{cfg.channel}' is not a list of passages"
+    wanted = [str(r).strip().lower() for r in relevant]
+    if cfg.match_by == "text":
+        texts = [str(p.get("text", "") if isinstance(p, dict) else p).lower() for p in passages]
+        keys = [next((w for w in wanted if w in t), f"\0{i}") for i, t in enumerate(texts)]
+    else:
+        keys = [_passage_key(p, cfg.match_by) for p in passages]
+    m = retrieval_metrics(keys, wanted, cfg.k)
+    comment = ", ".join(f"{name}@{cfg.k} {m[name]:.2f}" for name in ("recall", "precision", "hit", "mrr"))
+    return m[cfg.metric], comment
 
 
 async def _composite(

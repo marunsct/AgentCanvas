@@ -64,6 +64,10 @@ class LangChainAdapter:
         resources.public_only = get_settings().edition == "hosted"
         return resources
 
+    def embedder(self, spec: dict[str, Any], secrets: dict[str, str]) -> Any:
+        """A knowledge base's embedding function (S24)."""
+        return ac.knowledge_embedder(spec, secrets)
+
     @asynccontextmanager
     async def persistence(self, database_url: str | None) -> AsyncIterator[None]:
         async with open_persistence(database_url) as p:

@@ -20,6 +20,7 @@ from agentcanvas.db.models import (
     Evaluator,
     Experiment,
     InterruptTask,
+    KnowledgeBase,
     Membership,
     OnlineEvaluator,
     Organization,
@@ -318,6 +319,9 @@ class ScopeRepo:
             "annotation_item": via_workflow.join(AnnotationQueue, AnnotationQueue.workflow_id == WorkflowRow.id)
             .join(AnnotationItem, AnnotationItem.queue_id == AnnotationQueue.id)
             .where(AnnotationItem.id == rid),
+            "knowledge_base": select(Project.org_id)
+            .join(KnowledgeBase, KnowledgeBase.project_id == Project.id)
+            .where(KnowledgeBase.id == rid),
             "interrupt": via_thread.join(InterruptTask, InterruptTask.thread_id == Thread.id).where(
                 InterruptTask.id == rid
             ),

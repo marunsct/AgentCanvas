@@ -21,7 +21,7 @@ import os
 import re
 import warnings
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -56,6 +56,7 @@ from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPoli
 from typing_extensions import TypedDict
 
 from agentcanvas import guardrails as guard
+from agentcanvas import knowledge_search as ks
 from agentcanvas.expr import eval_condition, render_template
 from agentcanvas.security.imports import is_script_path
 from agentcanvas.workspace.loader import load_attr
@@ -341,6 +342,39 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
     return model, params
 
 
+def knowledge_embedder(
+    spec: dict[str, Any], secrets: dict[str, str]
+) -> Callable[[Sequence[str]], Awaitable[list[list[float]]]]:
+    """The embedding function of a knowledge base (S24): the built-in offline embedder, or a provider model
+    ("openai:text-embedding-3-small", "ollama:nomic-embed-text", …) through LangChain's `init_embeddings`."""
+    model = spec.get("model") or ks.BUILTIN
+    if model == ks.BUILTIN:
+
+        async def builtin(texts: Sequence[str]) -> list[list[float]]:
+            return ks.builtin_embed(texts)
+
+        return builtin
+    from langchain.embeddings import init_embeddings
+
+    params: dict[str, Any] = {}
+    for k, v in spec.items():
+        if k == "model" or v in (None, ""):
+            continue
+        if isinstance(v, dict) and "$secret" in v:
+            if v["$secret"] not in secrets:
+                raise KeyError(f"secret '{v['$secret']}' is not set for this project")
+            params[k] = secrets[v["$secret"]]
+        else:
+            params[k] = v
+    model_id, params = chat_model_args(model, params, secrets)
+    embeddings = init_embeddings(model_id, **params)
+
+    async def provider(texts: Sequence[str]) -> list[list[float]]:
+        return [[float(x) for x in v] for v in await embeddings.aembed_documents(list(texts))]
+
+    return provider
+
+
 class Resources:
     """Resolves resource configs into live objects. Tests and the fake server inject models here.
 
@@ -369,6 +403,9 @@ class Resources:
         self._cache: OrderedDict[str, Any] = OrderedDict()  # model clients, least recently used first
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
+        # the server's knowledge bases (S24): (name, query, mode=, top_k=, min_score=) -> results; None = files
+        self.knowledge: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None
+        self._kb_files: dict[str, tuple[float, ks.Index, Callable[..., Awaitable[list[list[float]]]]]] = {}
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
@@ -425,6 +462,35 @@ class Resources:
                 config = {**config, "allow_private_network": False}
             return http_tool(name=name, config=config, resolve=self._resolve, transport=self._http_transport)
         return safe_import(config["import_path"], self.workspace)
+
+    async def search_knowledge(
+        self, name: str, query: str, *, mode: str = "hybrid", top_k: int = 5, min_score: float = 0.0
+    ) -> list[dict[str, Any]]:
+        """Search the knowledge base `name` (S24): the server's own when it injected `knowledge`, else the file
+        `knowledge/<name>.jsonl` (in $AGENTCANVAS_KNOWLEDGE_DIR, the workspace, an export's src/ folder or the
+        current directory)."""
+        if self.knowledge is not None:
+            return await self.knowledge(name, query, mode=mode, top_k=top_k, min_score=min_score)
+        index, embed = self._knowledge_file(name)
+        qv = (await embed([query]))[0] if mode != "keyword" and query.strip() else None
+        return ks.search(index, query, mode=mode, top_k=top_k, min_score=min_score, query_vector=qv)
+
+    def _knowledge_file(self, name: str) -> tuple[ks.Index, Callable[..., Awaitable[list[list[float]]]]]:
+        if not ks.NAME.match(name):
+            raise ValueError(f"invalid knowledge base name '{name}'")
+        here = os.environ.get("AGENTCANVAS_KNOWLEDGE_DIR")
+        shipped = Path(__file__).resolve().parents[3] / "knowledge"  # an export's src/knowledge/
+        dirs = [here, self.workspace and self.workspace / "knowledge", shipped, "knowledge"]
+        path = next((p for d in dirs if d and (p := Path(d) / f"{name}.jsonl").is_file()), None)
+        if path is None:
+            raise ValueError(f"knowledge base '{name}' not found (looked for knowledge/{name}.jsonl)")
+        mtime = path.stat().st_mtime
+        cached = self._kb_files.get(name)
+        if cached is None or cached[0] != mtime:
+            header, chunks = ks.load_jsonl(path.read_text(encoding="utf-8"))
+            embed = knowledge_embedder(header.get("embedding") or {}, self._secrets)
+            cached = self._kb_files[name] = (mtime, ks.Index(chunks), embed)
+        return cached[1], cached[2]
 
     def revision(self) -> str:
         """Identifies the workspace code a graph was built from (graphs are rebuilt when it changes)."""
@@ -1172,6 +1238,34 @@ def set_node(*, values: dict[str, str]) -> Callable:
 
     async def run(state: Any) -> dict:
         return {k: render_template(v, state) for k, v in values.items()}
+
+    return run
+
+
+# ------------------------------------------------------------------ knowledge (S24) ----
+def knowledge_search_node(
+    *,
+    knowledge_base: str,
+    query: str,
+    output: str,
+    mode: str = "hybrid",
+    top_k: int = 5,
+    min_score: float = 0.0,
+    sources_output: str | None = None,
+    resources: Resources | None = None,
+) -> Callable:
+    """Search knowledge (S24): the passages of a knowledge base that best match the rendered query, each with
+    its title, page and a `cite` number, saved in `output`; `sources_output` gets the citation list."""
+
+    async def run(state: Any) -> dict:
+        q = render_template(query, state).strip()
+        found = await (resources or Resources()).search_knowledge(
+            knowledge_base, q, mode=mode, top_k=top_k, min_score=min_score
+        ) if q else []  # fmt: skip
+        out: dict[str, Any] = {output: found}
+        if sources_output:
+            out[sources_output] = ks.sources(found)
+        return out
 
     return run
 
