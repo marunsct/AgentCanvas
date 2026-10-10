@@ -127,4 +127,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S27: CrewAI flows (v0.19.0) | ✅ done: workflows as native CrewAI flows, Crew and Agent task blocks, pauses for people, CrewAI project export |
 | S28: Mixed-flow export (v0.20.0) | ✅ done: frameworks that clash with LangGraph run as parts in their own environment, typed contracts between parts, one deployable project per mixed flow |
 | S29–S30: Google ADK flows (v0.21.0) | ✅ done: workflows as native ADK graph workflows, ADK agents with tool approvals, pauses for people, ADK project export |
-| S31–S36: framework flows, importers | ⏸ next (S31 Onboarding and switching); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S31: Onboarding and switching (v0.22.0) | ✅ done: Langflow, Flowise and n8n importers, a Playground, Simple mode, Push to GitHub |
+| S32–S36: framework flows | ⏸ next (S32 Pydantic AI and Agno flows); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

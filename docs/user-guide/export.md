@@ -37,6 +37,20 @@ LangGraph workflows): the generated flow, a command-line runner and offline test
 [Run a workflow on the OpenAI Agents SDK](frameworks.md#run-a-workflow-on-the-openai-agents-sdk). A workflow on
 **CrewAI** exports as a CrewAI project the same way; see [Run a workflow on CrewAI](frameworks.md#run-a-workflow-on-crewai).
 
+## Push to GitHub
+
+Instead of downloading, the export can go straight into a GitHub repository. In **Export**, open **Push to
+GitHub…**, enter the repository (`owner/name`), a branch and, if you like, a folder, and press **Push**. The same
+files the download would hold are committed in one commit. A branch that does not exist yet starts from the
+repository's default branch, so you can open a pull request from it; pushing again to the same branch adds a new
+commit on top.
+
+It needs a project secret named `GITHUB_TOKEN` (Workspace → Secrets) holding a GitHub token that can write to the
+repository: a fine-grained personal access token with **Contents: Read and write** on that repository is enough.
+The token never leaves the server. Through the API: `POST /v1/workflows/{id}/github` with
+`{"repo": "acme/agents", "branch": "agentcanvas/support", "folder": "agents/support"}` (and optionally `version`,
+`target`, `message`, or `token_secret` to use another secret).
+
 ## Export a whole workflow to another framework (preview)
 
 In the Export box, **Framework** also offers **LangGraph (through Agent Spec)**, **WayFlow** and **OpenAI Agents
