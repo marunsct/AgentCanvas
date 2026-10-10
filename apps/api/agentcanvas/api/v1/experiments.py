@@ -17,7 +17,7 @@ from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
 from agentcanvas.evaluation import Score, spec_of
 from agentcanvas.ir.models import Workflow
-from agentcanvas.registry import default_registry
+from agentcanvas.registry import adapters, default_registry
 from agentcanvas.services.datasets import DatasetService
 from agentcanvas.services.experiments import (
     MAX_CONCURRENCY,
@@ -53,6 +53,7 @@ class TargetOut(BaseModel):
     label: str
     version: str | None
     overrides: dict[str, dict[str, Any]]
+    framework: str | None = None
 
 
 class ExperimentOut(BaseModel):
@@ -99,7 +100,8 @@ def _out(exp: Experiment, results: list[ExperimentResult]) -> ExperimentOut:
     return ExperimentOut(
         id=exp.id, workflow_id=exp.workflow_id, name=exp.name, dataset_id=exp.dataset_id,
         dataset_version=exp.dataset_version, split=exp.split,
-        targets=[TargetOut(label=t["label"], version=t["version"], overrides=t["overrides"]) for t in exp.targets],
+        targets=[TargetOut(label=t["label"], version=t["version"], overrides=t["overrides"],
+                           framework=t.get("framework")) for t in exp.targets],
         evaluators=[e["name"] for e in exp.evaluators],
         pairwise=[e["name"] for e in exp.evaluators if e["kind"] == "pairwise"], concurrency=exp.concurrency,
         simulation=Simulation.model_validate(exp.simulation) if exp.simulation else None, status=exp.status,
@@ -127,6 +129,12 @@ async def _target(
         wf, version_id, semver = Workflow.model_validate(v.ir), v.id, v.semver
     wf = apply_overrides(wf, t.overrides)
     label = t.label or (f"v{semver}" if semver else "draft") + (" (variant)" if t.overrides else "")
+    if t.framework and t.framework != wf.framework:  # convert and compare (S25): the same workflow on another one
+        found = adapters.manifest(t.framework)
+        if found is None:
+            raise InvalidInput(f"target {i + 1}: this server has no framework '{t.framework}'")
+        wf = wf.model_copy(update={"framework": t.framework})
+        label = t.label or f"{label} on {found.label}"
     errors = [
         d.model_dump()
         for d in await svc._validate(wf, project_id)
@@ -136,7 +144,7 @@ async def _target(
         raise WorkflowHasErrors(f"target {i + 1} ({label}) has {len(errors)} error(s)", errors=errors)
     return {
         "label": label, "version": semver, "version_id": version_id, "overrides": t.overrides,
-        "ir": wf.model_dump(mode="json"),
+        "framework": t.framework, "ir": wf.model_dump(mode="json"),
     }  # fmt: skip
 
 

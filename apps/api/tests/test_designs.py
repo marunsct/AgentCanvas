@@ -131,8 +131,11 @@ def test_output_models_are_pydantic_classes():
 def test_checks_for_designed_agents(monkeypatch):
     wf = Workflow.model_validate(workflow())
     codes = {d.code for d in validate(wf, default_registry())}
-    assert "P006" in codes  # the frameworks are not installed in this test environment
-    assert "P001" not in codes and "P005" not in codes and "P004" not in codes
+    assert "P001" not in codes and "P005" not in codes and "P004" not in codes and "P006" not in codes
+    crew = workflow()
+    crew["nodes"][0]["engine"] = "crewai"
+    found = {(d.code, d.node_id) for d in validate(Workflow.model_validate(crew), default_registry())}
+    assert ("P006", "n_a") in found  # CrewAI is not installed on this server (the OpenAI Agents SDK is, since S25)
     mw = workflow()
     mw["resources"].append({"id": "r_mw", "type": "mw.model_call_limit", "name": "limit", "config": {"run_limit": 3}})
     mw["edges"].append({"id": "w9", "kind": "wiring", "source": {"node": "r_mw"},
@@ -320,7 +323,8 @@ def test_a_tool_becomes_a_plain_function():
 # ------------------------------------------------------------------ API and exports ----
 async def test_the_api_lists_frameworks_and_shows_an_agents_code(api_client, app):
     found = (await api_client.get("/v1/agent-frameworks")).json()
-    assert [f["id"] for f in found] == list(designs.AGENT_FRAMEWORKS) and found[0]["installed"] is False
+    assert [f["id"] for f in found] == list(designs.AGENT_FRAMEWORKS)
+    assert found[0]["installed"] is True and found[1]["installed"] is False  # the OpenAI Agents SDK ships (S25)
     wf = (await api_client.post(P, json={"name": "Orders"})).json()
     ir = {**workflow(), "id": wf["ir"]["id"], "name": "Orders"}
     r = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})

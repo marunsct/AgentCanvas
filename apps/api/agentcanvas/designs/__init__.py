@@ -238,6 +238,9 @@ def _type_problem(prop: Any) -> str | None:
     if "enum" in prop:
         return None if all(isinstance(v, str | int | float | bool) for v in prop["enum"]) else "has an unusual enum"
     t = prop.get("type")
+    if isinstance(t, list):  # ["string", "null"]: an optional value of one type
+        rest = [x for x in t if x != "null"]
+        return _type_problem({**prop, "type": rest[0]}) if len(rest) == 1 else f"has several types ({t!r})"
     if t in _JSON_TYPES:
         return None
     if t == "array":
@@ -259,6 +262,9 @@ def output_models(schema: dict[str, Any], name: str = "Answer") -> str:
         if "enum" in prop:
             return "Literal[" + ", ".join(json.dumps(v) if isinstance(v, str) else repr(v) for v in prop["enum"]) + "]"
         t = prop.get("type")
+        if isinstance(t, list):  # ["string", "null"]
+            rest = [x for x in t if x != "null"]
+            return f"{type_of({**prop, 'type': rest[0]}, owner, field_name)} | None" if rest else "None"
         if t == "array":
             return f"list[{type_of(prop.get('items') or {'type': 'string'}, owner, field_name)}]"
         if t == "object":

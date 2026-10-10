@@ -5,7 +5,7 @@ state, time travel, long-term memory, MCP inspection, breakpoints) and how it su
 (`native`, `emulated` or `unsupported`; `"*"` and `"<namespace>.*"` are fallbacks). The validator reads them for the
 portability check (P001-P004) and the editor for the framework picker, so neither ever imports a framework.
 
-Which adapters a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated ids, default `langchain`).
+Which adapters a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated ids, default `langchain,openai_agents`).
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 HERE = Path(__file__).parent / "adapters"
 DEFAULT_FRAMEWORK = "langchain"
+DEFAULT_ADAPTERS = "langchain,openai_agents"  # S25: the OpenAI Agents SDK ships with the server
 
 Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs"]
 Support = Literal["native", "emulated", "unsupported"]
@@ -64,7 +65,7 @@ def all_manifests() -> dict[str, AdapterManifest]:
 
 
 def installed_ids() -> list[str]:
-    wanted = [a.strip() for a in os.environ.get("AGENTCANVAS_ADAPTERS", DEFAULT_FRAMEWORK).split(",") if a.strip()]
+    wanted = [a.strip() for a in os.environ.get("AGENTCANVAS_ADAPTERS", DEFAULT_ADAPTERS).split(",") if a.strip()]
     known = all_manifests()
     ids = [a for a in wanted if a in known]
     return ids or [DEFAULT_FRAMEWORK]

@@ -1,4 +1,5 @@
-"""Framework adapters (spec doc 11/12): LangChain/LangGraph, and the Echo demo engine that proves the seams (S20).
+"""Framework adapters (spec doc 11/12): LangChain/LangGraph, the OpenAI Agents SDK (S25), and the Echo demo engine
+that proves the seams (S20).
 
 `get_adapter(id)` is the process-wide adapter for a framework; `create_adapter(id)` a fresh one (tests, the
 conformance kit). Which ones a server offers is `AGENTCANVAS_ADAPTERS` (`registry.adapters.installed_ids`).
@@ -12,7 +13,7 @@ from agentcanvas.adapters.spi import FrameworkAdapter, ModelService
 from agentcanvas.errors import Conflict
 from agentcanvas.registry import adapters as manifests
 
-KNOWN = ("langchain", "echo")
+KNOWN = ("langchain", "echo", "openai_agents")
 
 
 def create_adapter(framework: str = "langchain") -> FrameworkAdapter:
@@ -24,6 +25,10 @@ def create_adapter(framework: str = "langchain") -> FrameworkAdapter:
         from agentcanvas.adapters.echo import EchoAdapter
 
         return EchoAdapter()
+    if framework == "openai_agents":
+        from agentcanvas.adapters.openai_agents import OpenAIAgentsAdapter
+
+        return OpenAIAgentsAdapter()
     raise ValueError(f"no adapter installed for framework '{framework}'")
 
 
