@@ -1,10 +1,9 @@
-/** Open Agent Spec (S16): download this workflow as an Agent Spec flow, or import one as a new workflow. */
+/** Open Agent Spec (S16): download this workflow as an Agent Spec flow (importing one: Import.tsx, S31). */
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 
 interface ExportOut { spec: Record<string, unknown>; report: string[] }
-export interface ImportOut { id: string; name: string; report: string[] }
 
 function save(doc: unknown, name: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));
@@ -41,32 +40,6 @@ export function AgentSpecExport({ wfId, name }: { wfId: string; name: string }) 
               <ul>{report.map((r) => <li key={r}>{r}</li>)}</ul></>}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Reads a chosen file and imports it; `onDone` gets the new workflow and the import notes. */
-export function AgentSpecImport({ projectId, onDone }: { projectId: string; onDone: (out: ImportOut) => void }) {
-  const run = useMutation({
-    mutationFn: async (file: File) => {
-      let spec: unknown;
-      try {
-        spec = JSON.parse(await file.text());
-      } catch {
-        throw new Error(`${file.name} is not a JSON file. Agent Spec files are JSON (YAML is not supported yet).`);
-      }
-      return apiFetch<ImportOut>(`/projects/${projectId}/workflows/agent-spec`, { method: "POST", json: { spec } });
-    },
-    onSuccess: onDone,
-  });
-  return (
-    <div className="row gap small" data-testid="agentspec-import">
-      <label className="button" htmlFor="agentspec-file">Import an Agent Spec file…</label>
-      <input id="agentspec-file" type="file" accept=".json,application/json" className="visually-hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) run.mutate(f); e.target.value = ""; }} />
-      <span className="muted">Flows and agents in Open Agent Spec, e.g. from WayFlow or pyagentspec's LangGraph and AutoGen adapters.</span>
-      {run.isPending && <span className="muted">Importing…</span>}
-      {run.error && <p className="error-text" role="alert">{(run.error as Error).message}</p>}
     </div>
   );
 }

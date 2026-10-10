@@ -2,6 +2,18 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.22.0 — Onboarding and switching (not tagged yet)
+
+### Added
+- **Import from Langflow, Flowise and n8n.** Home's *Import a file…* takes the JSON those builders export (and Open Agent Spec files, as before) and creates a workflow: Langflow chat inputs, prompts, models, agents, API Request tools and If-Else routers; Flowise chatflows (LLM chains, conversation chains, tool agents, chat models, request tools) and Agentflow v2 (LLM, Agent, Condition, Human Input, Direct Reply); n8n chat triggers, AI Agent, Basic LLM Chain, chat-model sub-nodes, HTTP Request tools, If, Switch and Edit Fields with `$json` and `$('Node')` expressions. Prompts' `{variables}` become `{{ state.<field> }}`; a step that needs several earlier ones gets a Wait for all (not when they are exclusive branches); what has no counterpart becomes a placeholder step, and a note lists everything to check. `POST /v1/projects/{id}/workflows/import` returns the workflow, the `format` and the `report`.
+- **Playground.** Chat with the project's default model, or any catalogue model, and its instructions before building anything; *Make it a workflow* creates a workflow with one AI agent that has those instructions and that model (`/v1/projects/{id}/playground/chat`, `/playground/workflow`).
+- **Simple mode.** A *Simple / Full* switch in the editor: Simple shows only the blocks a first workflow needs and the Inspector, Copilot and Run panels, and hides the power tools; the choice is remembered in the browser.
+- **Push to GitHub.** Export's *Push to GitHub…* commits the export to a repository as one commit, on an existing branch or a new one started from the default branch (`POST /v1/workflows/{id}/github`); the token is the project secret `GITHUB_TOKEN`.
+- User guide: *Coming from Langflow, Flowise or n8n*, the Playground and Simple mode in the Beginner's guide, Push to GitHub in *Export and deploy*.
+
+### Changed
+- Home's *Import an Agent Spec file…* became *Import a file…* (the Agent Spec endpoint stays).
+
 ## v0.21.0 — Google ADK flows (not tagged yet)
 
 ### Added

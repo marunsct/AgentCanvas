@@ -52,6 +52,22 @@ Ask AI block's right-hand dot and choose **Ask for approval**; connect that to F
 Prefer to learn by doing with a checklist? On the home page, press **Start the guided build**: a card walks you
 through six steps and ticks each one off as you do it.
 
+## Try a model first: the Playground
+
+Not sure yet what to build? Open **Playground** (top of the home page, or **Try a model in the playground**).
+Pick a model, write its instructions, and chat with it. When the answers look right, give it a name and press
+**Make it a workflow**: you get a workflow with one AI agent that has those instructions and that model, ready for
+tools, approvals and more steps. Nothing you type in the playground is saved.
+
+## Simple mode
+
+At the top of the editor, **Simple** shows only what a first workflow needs: the blocks that ask AI, run an agent,
+choose a path, set values or ask a person, with their models and tools; and the Inspector, Copilot and Run panels.
+The power tools (subgraphs, frames, blast radius, versions, code, the workspace) are hidden, not removed: press
+**Full** to see everything again. The editor remembers your choice in this browser.
+
+Built something in Langflow, Flowise or n8n before? [Import it](switching.md).
+
 ## Getting unstuck
 
 - **Hover** over any dot on a block to see what it carries and what to do with it.

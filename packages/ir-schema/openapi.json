@@ -1204,6 +1204,81 @@
         "title": "Channel",
         "type": "object"
       },
+      "ChatIn": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "provider:model; omitted: the project's default",
+            "title": "Model"
+          },
+          "system_prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "ChatIn",
+        "type": "object"
+      },
+      "ChatOut": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "reply": {
+            "title": "Reply",
+            "type": "string"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "reply",
+          "model"
+        ],
+        "title": "ChatOut",
+        "type": "object"
+      },
       "Check": {
         "properties": {
           "detail": {
@@ -4276,6 +4351,113 @@
         "title": "GateOut",
         "type": "object"
       },
+      "GitHubPushIn": {
+        "properties": {
+          "branch": {
+            "description": "created from the default branch if it is new",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Branch",
+            "type": "string"
+          },
+          "folder": {
+            "default": "",
+            "description": "where the export goes in the repository ('' = the root)",
+            "maxLength": 200,
+            "title": "Folder",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the commit message",
+            "title": "Message"
+          },
+          "repo": {
+            "description": "owner/name of the repository",
+            "maxLength": 200,
+            "title": "Repo",
+            "type": "string"
+          },
+          "target": {
+            "default": "local",
+            "enum": [
+              "local",
+              "server",
+              "kubernetes",
+              "cloudrun",
+              "aws",
+              "azure"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "token_secret": {
+            "default": "GITHUB_TOKEN",
+            "description": "project secret",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Token Secret",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "repo",
+          "branch"
+        ],
+        "title": "GitHubPushIn",
+        "type": "object"
+      },
+      "GitHubPushOut": {
+        "properties": {
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "created_branch": {
+            "title": "Created Branch",
+            "type": "boolean"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit",
+          "url",
+          "branch",
+          "created_branch",
+          "files"
+        ],
+        "title": "GitHubPushOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4287,6 +4469,34 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportFile": {
+        "properties": {
+          "file": {
+            "additionalProperties": true,
+            "description": "The JSON a Langflow, Flowise, n8n or Agent Spec export downloads",
+            "title": "File",
+            "type": "object"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "ImportFile",
         "type": "object"
       },
       "ImportIn": {
@@ -4333,6 +4543,85 @@
           "content"
         ],
         "title": "ImportIn",
+        "type": "object"
+      },
+      "Imported": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "format": {
+            "description": "langflow, flowise, n8n or agentspec",
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ir": {
+            "additionalProperties": true,
+            "title": "Ir",
+            "type": "object"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "layout": {
+            "additionalProperties": true,
+            "title": "Layout",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "report": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Report",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "version",
+          "ir_hash",
+          "ir",
+          "layout",
+          "diagnostics",
+          "created_at",
+          "updated_at",
+          "format",
+          "report"
+        ],
+        "title": "Imported",
         "type": "object"
       },
       "InlineRequest": {
@@ -5318,6 +5607,29 @@
           "value"
         ],
         "title": "MemoryItem",
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "content": {
+            "maxLength": 20000,
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "Message",
         "type": "object"
       },
       "MessageIn": {
@@ -9755,6 +10067,50 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "WorkflowIn": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "default": "Playground assistant",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "system_prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          }
+        },
+        "title": "WorkflowIn",
+        "type": "object"
+      },
       "WorkflowOut": {
         "properties": {
           "created_at": {
@@ -9941,7 +10297,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.21.0"
+    "version": "0.22.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -17115,6 +17471,158 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/playground/chat": {
+      "post": {
+        "description": "One answer from the model to the conversation so far (nothing is saved).",
+        "operationId": "chat_v1_projects__project_id__playground_chat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chat",
+        "tags": [
+          "playground"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/playground/workflow": {
+      "post": {
+        "description": "A workflow with one agent step that has the playground's instructions and model.",
+        "operationId": "make_workflow_v1_projects__project_id__playground_workflow_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Make Workflow",
+        "tags": [
+          "playground"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/scripts": {
       "post": {
         "description": "Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01), or `flows/<workflow>/scripts/<name>.py`\nwith `workflow_id` (S17); returns its import path.",
@@ -18271,6 +18779,82 @@
           }
         ],
         "summary": "Import Agent Spec",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/workflows/import": {
+      "post": {
+        "description": "A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec), with what changed.",
+        "operationId": "import_file_v1_projects__project_id__workflows_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Imported"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import File",
         "tags": [
           "workflows"
         ]
@@ -22494,6 +23078,82 @@
         "summary": "Set Gate",
         "tags": [
           "release gates"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/github": {
+      "post": {
+        "description": "Push the export (as `export.zip` would download it) to a GitHub repository as one commit (S31).",
+        "operationId": "push_to_github_v1_workflows__wf_id__github_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitHubPushIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubPushOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Push To Github",
+        "tags": [
+          "versions"
         ]
       }
     },

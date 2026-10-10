@@ -52,7 +52,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews (✅ done) |
 | **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries (✅ done) |
 | **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full (✅ done) |
-| **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers |
+| **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers (✅ done) |
 | **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
 | **S33–S34** | 4 | Microsoft Agent Framework flows → v0.24.0 (was S30–S31) | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Authoring tier; Full later if users ask |
 | **S35** | 2 | Strands & LlamaIndex flows → v0.25.0 (was S29) | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier |
@@ -550,6 +550,31 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S31 — Onboarding and switching → v0.22.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Importers | B | 3 | Langflow flows, Flowise chatflows and Agentflow v2, and n8n workflows become workflows that validate; what has no counterpart becomes a placeholder or a report line; one import endpoint and an *Import a file…* button that also takes Agent Spec |
+| 2 | Playground | B/F | 1 | Chat with the default or a catalogue model and its instructions, nothing stored; *Make it a workflow* creates a one-agent workflow with them |
+| 3 | Simple mode | F | 1 | An editor switch that shows only beginner blocks and the Inspector, Copilot and Run panels; remembered per browser |
+| 4 | Push to GitHub | B/F | 1 | The export as one commit on a branch (new branches start from the default branch), token from a project secret, GitHub errors explained |
+| 5 | Docs | all | 1 | User guide (Coming from Langflow, Flowise or n8n; Playground and Simple mode; Push to GitHub), changelog, handover |
+
+**Done (2026-10-10).** `agentcanvas/importers/` (`Builder` and helpers in `__init__.py`, `langflow.py`,
+`flowise.py`, `n8n.py`; pure functions over the JSON, nothing from those builders installed),
+`POST /v1/projects/{id}/workflows/import`, `api/v1/playground.py` (`/playground/chat`, `/playground/workflow`),
+`services/github.py` and `POST /v1/workflows/{id}/github` (Git Data API: blobs, a tree on the branch's tree, a
+commit, the ref moved or created), web `release/Import.tsx`, `playground/PlaygroundPage.tsx`, `editor/simple.ts`, the
+GitHub form in Export, `tests/test_importers.py` with seven sample files in `tests/importers/`,
+`tests/test_onboarding.py`, `e2e/s31.spec.ts`. Exit met: the Langflow *Basic Prompting* export imports, opens and runs
+on the canvas (`e2e/s31.spec.ts`), and every sample file imports without errors and runs to the end with demo models
+(`tests/test_importers.py`). "Galleries" is the S23 template gallery plus the import on Home. Deviations: the sample
+files are hand-written in each builder's export format, not downloaded from the builders; Langflow components are read
+by type name (custom components, loops and multi-output components become placeholders); n8n expressions beyond
+`$json.<field>` and `$('Node').item.json.<field>` stay as text and are listed; webhook and schedule triggers become
+input fields (set a trigger on the workflow page); Flowise agent tools other than HTTP requests and n8n tools other
+than the HTTP Request tool are listed, not converted; Push to GitHub needs a token secret (no GitHub App sign-in).
 
 ### S29–S30 — Google ADK flows → v0.21.0 (✅ done)
 

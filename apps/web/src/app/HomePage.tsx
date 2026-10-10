@@ -6,7 +6,7 @@ import { apiFetch } from "../api/client";
 import { signInEnabled, signOut } from "../api/auth";
 import { PROJECT_ID, useSetup, useTemplates, useWorkflows } from "../api/queries";
 import { can, ME } from "../api/session";
-import { AgentSpecImport, type ImportOut } from "../release/AgentSpec";
+import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
@@ -48,6 +48,7 @@ export function HomePage() {
       <header className="topbar">
         <span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span><span className="spacer" />
         {can("builder") && <Link to="/setup" data-testid="setup-link">Model</Link>}
+        {can("builder") && <Link to="/playground" data-testid="playground-link">Playground</Link>}
         <Link to="/inbox">Inbox</Link>
         <Link to="/knowledge" data-testid="knowledge-link">Knowledge</Link>
         <Link to="/memory" data-testid="memory-link">Memory</Link>
@@ -69,7 +70,10 @@ export function HomePage() {
       <section className="guided">
         <h2>New here?</h2>
         <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
-        <button type="button" className="primary" data-testid="start-tour" onClick={() => tour.mutate()}>Start the guided build</button>
+        <div className="row gap">
+          <button type="button" className="primary" data-testid="start-tour" onClick={() => tour.mutate()}>Start the guided build</button>
+          <Link to="/playground" className="button" data-testid="try-playground">Try a model in the playground</Link>
+        </div>
         {tour.error && <p className="error-text">{(tour.error as Error).message}</p>}
       </section>
       <section>
@@ -85,11 +89,12 @@ export function HomePage() {
             onPick={(t) => create.mutate({ name: name.trim() || t.name, template: t.id })} />
         )}
         {create.error && <p className="error-text">{(create.error as Error).message}</p>}
-        <h3>…or bring one from another agent framework</h3>
-        <AgentSpecImport projectId={PROJECT_ID} onDone={onImported} />
+        <h3>…or bring one from Langflow, Flowise, n8n or another agent framework</h3>
+        <FileImport projectId={PROJECT_ID} onDone={onImported} />
         {imported && (
-          <div className="notes small" data-testid="agentspec-notes">
-            <p>Imported <b>{imported.name}</b>. Check these before running it:</p>
+          <div className="notes small" data-testid="import-notes">
+            <p>Imported <b>{imported.name}</b>{imported.format ? ` from ${FORMAT_LABELS[imported.format] ?? imported.format}` : ""}.
+              {imported.report.length ? " Check these before running it:" : " Everything carried over."}</p>
             <ul>{imported.report.map((r) => <li key={r}>{r}</li>)}</ul>
             <Link to={`/workflows/${imported.id}`} className="button primary">Open {imported.name}</Link>
           </div>

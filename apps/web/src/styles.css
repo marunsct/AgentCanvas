@@ -910,3 +910,12 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .kb-drop { display: flex; flex-direction: column; gap: 6px; }
 .kb-chunks { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .kb-chunks pre { margin: 2px 0 0; white-space: pre-wrap; font-size: 12px; max-height: 160px; overflow: auto; }
+
+/* S31: playground and Push to GitHub */
+.playground-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; gap: 24px; align-items: start; }
+.playground-grid .chat-log { max-height: 60vh; min-height: 240px; }
+.playground-grid .chat form input { flex: 1; }
+.playground .stack, .github-push .stack { display: flex; flex-direction: column; gap: 6px; }
+.github-push { margin-top: 10px; }
+.github-push summary { cursor: pointer; }
+@media (max-width: 760px) { .playground-grid { grid-template-columns: 1fr; } }

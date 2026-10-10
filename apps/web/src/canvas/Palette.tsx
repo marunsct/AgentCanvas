@@ -7,6 +7,8 @@ import type { NodeManifest } from "../api/types";
 import { addElement, DND_MIME, manifestCache, type Preset, projectModel } from "./Canvas";
 import { QueryStatus } from "../ui/QueryStatus";
 import { categoryRank, firstSentence } from "../help/glossary";
+import { paletteTypes } from "../editor/simple";
+import { useUi } from "../editor/ui";
 
 interface WorkspaceItem {
   key: string;
@@ -22,6 +24,7 @@ export function Palette() {
   const catalog = useWorkspaceCatalog(useEditor((s) => s.workflowId));
   const connectors = useMcpConnectors();
   const [q, setQ] = useState("");
+  const simple = useUi((st) => st.simple);
   for (const m of data ?? []) manifestCache.set(m.type, m);
   const dm = useSetup().data?.default_model;
   projectModel.current = dm ? Object.fromEntries(Object.entries(dm).filter(([, v]) => v != null)) : null;
@@ -31,9 +34,9 @@ export function Palette() {
     const hit = (m: NodeManifest) =>
       !needle || `${m.label} ${m.type} ${m.description ?? ""} ${m.category}`.toLowerCase().includes(needle);
     const out = new Map<string, NodeManifest[]>();
-    for (const m of data ?? []) if (hit(m)) out.set(m.category, [...(out.get(m.category) ?? []), m]);
+    for (const m of paletteTypes(data ?? [], simple)) if (hit(m)) out.set(m.category, [...(out.get(m.category) ?? []), m]);
     return [...out.entries()].sort(([a], [b]) => categoryRank(a) - categoryRank(b) || a.localeCompare(b));
-  }, [data, q]);
+  }, [data, q, simple]);
 
   // workspace tools and scripts are presets of the generic tool / script types (M5-T5)
   const workspaceItems = useMemo(() => {
@@ -71,7 +74,8 @@ export function Palette() {
         </p>
       )}
       <QueryStatus q={nodeTypes} what="widgets" />
-      {workspaceItems.length > 0 && (
+      {simple && !q && <p className="muted small" data-testid="simple-note">Simple mode shows the blocks most workflows need. Switch to <b>Full</b> at the top for every block.</p>}
+      {!simple && workspaceItems.length > 0 && (
         <section>
           <h4>Workspace</h4>
           {workspaceItems.map((i) => (
@@ -91,7 +95,7 @@ export function Palette() {
           ))}
         </section>
       )}
-      {connectorItems.length > 0 && (
+      {!simple && connectorItems.length > 0 && (
         <details className="palette-connectors" open={!!q.trim()} data-testid="palette-connectors">
           <summary><h4>App connectors ({connectorItems.length})</h4></summary>
           {connectorItems.map((c) => (

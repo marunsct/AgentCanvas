@@ -1,0 +1,307 @@
+{
+ "name": "Router",
+ "data": {
+  "nodes": [
+   {
+    "id": "ChatInput-1",
+    "type": "genericNode",
+    "position": {
+     "x": 0,
+     "y": 0
+    },
+    "data": {
+     "id": "ChatInput-1",
+     "type": "ChatInput",
+     "node": {
+      "display_name": "Chat Input",
+      "template": {}
+     }
+    }
+   },
+   {
+    "id": "ConditionalRouter-2",
+    "type": "genericNode",
+    "position": {
+     "x": 300,
+     "y": 0
+    },
+    "data": {
+     "id": "ConditionalRouter-2",
+     "type": "ConditionalRouter",
+     "node": {
+      "display_name": "If-Else",
+      "template": {
+       "input_text": {
+        "value": "",
+        "type": "str"
+       },
+       "match_text": {
+        "value": "refund",
+        "type": "str"
+       },
+       "operator": {
+        "value": "contains",
+        "type": "str"
+       },
+       "case_sensitive": {
+        "value": true,
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "Prompt-3",
+    "type": "genericNode",
+    "position": {
+     "x": 600,
+     "y": -100
+    },
+    "data": {
+     "id": "Prompt-3",
+     "type": "Prompt",
+     "node": {
+      "display_name": "Refund prompt",
+      "template": {
+       "template": {
+        "value": "Explain our refund policy to: {question}",
+        "type": "str"
+       },
+       "question": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "AnthropicModel-4",
+    "type": "genericNode",
+    "position": {
+     "x": 900,
+     "y": -100
+    },
+    "data": {
+     "id": "AnthropicModel-4",
+     "type": "AnthropicModel",
+     "node": {
+      "display_name": "Refunds",
+      "template": {
+       "model_name": {
+        "value": "claude-haiku-4-5",
+        "type": "str"
+       },
+       "input_value": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "OllamaModel-5",
+    "type": "genericNode",
+    "position": {
+     "x": 900,
+     "y": 100
+    },
+    "data": {
+     "id": "OllamaModel-5",
+     "type": "OllamaModel",
+     "node": {
+      "display_name": "Other",
+      "template": {
+       "model_name": {
+        "value": "llama3.3",
+        "type": "str"
+       },
+       "base_url": {
+        "value": "http://localhost:11434",
+        "type": "str"
+       },
+       "input_value": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "ChatOutput-6",
+    "type": "genericNode",
+    "position": {
+     "x": 1200,
+     "y": -100
+    },
+    "data": {
+     "id": "ChatOutput-6",
+     "type": "ChatOutput",
+     "node": {
+      "display_name": "Out A",
+      "template": {}
+     }
+    }
+   },
+   {
+    "id": "ChatOutput-7",
+    "type": "genericNode",
+    "position": {
+     "x": 1200,
+     "y": 100
+    },
+    "data": {
+     "id": "ChatOutput-7",
+     "type": "ChatOutput",
+     "node": {
+      "display_name": "Out B",
+      "template": {}
+     }
+    }
+   }
+  ],
+  "edges": [
+   {
+    "source": "ChatInput-1",
+    "target": "ConditionalRouter-2",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "ChatInput-1",
+      "name": "message",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_text",
+      "id": "ConditionalRouter-2",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-ChatInput-1-ConditionalRouter-2"
+   },
+   {
+    "source": "ConditionalRouter-2",
+    "target": "Prompt-3",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "ConditionalRouter-2",
+      "name": "true_result",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "question",
+      "id": "Prompt-3",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-ConditionalRouter-2-Prompt-3"
+   },
+   {
+    "source": "Prompt-3",
+    "target": "AnthropicModel-4",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "Prompt-3",
+      "name": "prompt",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "AnthropicModel-4",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-Prompt-3-AnthropicModel-4"
+   },
+   {
+    "source": "ConditionalRouter-2",
+    "target": "OllamaModel-5",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "ConditionalRouter-2",
+      "name": "false_result",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "OllamaModel-5",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-ConditionalRouter-2-OllamaModel-5"
+   },
+   {
+    "source": "AnthropicModel-4",
+    "target": "ChatOutput-6",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "AnthropicModel-4",
+      "name": "text_output",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "ChatOutput-6",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-AnthropicModel-4-ChatOutput-6"
+   },
+   {
+    "source": "OllamaModel-5",
+    "target": "ChatOutput-7",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "OllamaModel-5",
+      "name": "text_output",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "ChatOutput-7",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-OllamaModel-5-ChatOutput-7"
+   }
+  ]
+ }
+}

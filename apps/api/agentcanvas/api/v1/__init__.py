@@ -25,6 +25,7 @@ from agentcanvas.api.v1 import (
     memory,
     online,
     org,
+    playground,
     projects,
     protocols,
     runs,
@@ -55,6 +56,7 @@ signed_in.include_router(knowledge.router)
 signed_in.include_router(workspace.router)
 signed_in.include_router(secrets.router)
 signed_in.include_router(setup.router)
+signed_in.include_router(playground.router)
 signed_in.include_router(events.router)
 signed_in.include_router(versions.router)
 signed_in.include_router(datasets.router)

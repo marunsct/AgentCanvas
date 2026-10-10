@@ -1,9 +1,9 @@
 /** Export (S16): pick a version and where it will run; see what that needs before downloading the deploy kit.
  * S22: or pick another framework (preview, through Agent Spec) and see what does not carry over. */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiDownload, apiFetch } from "../api/client";
-import type { BridgesOut, ExportPlanOut, VersionOut } from "../api/generated";
+import type { BridgesOut, ExportPlanOut, GitHubPushOut, VersionOut } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
 
 type Item = { name?: string; host?: string; port?: number; why?: string; where?: string; what?: string; install?: string; optional?: boolean };
@@ -108,6 +108,7 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
         <button type="button" className="primary" data-testid="export-download" onClick={download}>⬇ Download</button>
       </div>
       {error && <p className="error-text small" role="alert">{error}</p>}
+      {!framework && <GitHubPush wfId={wfId} version={version} target={target} />}
     </section>
   );
 }
@@ -139,5 +140,43 @@ function BridgeGaps({ bridge, notOffered }: { bridge: BridgesOut["targets"][numb
         frameworks from its own settings.
       </p>
     </div>
+  );
+}
+
+/** S31: push the same export to a GitHub repository as one commit (a new branch is ready for a pull request). */
+function GitHubPush({ wfId, version, target }: { wfId: string; version: string; target: string }) {
+  const [repo, setRepo] = useState("");
+  const [branch, setBranch] = useState("agentcanvas/export");
+  const [folder, setFolder] = useState("");
+  const push = useMutation({
+    mutationFn: () => apiFetch<GitHubPushOut>(`/workflows/${wfId}/github`, {
+      method: "POST", json: { repo: repo.trim(), branch: branch.trim(), folder: folder.trim(), target, version: version || null },
+    }),
+  });
+  return (
+    <details className="github-push small" data-testid="github-push">
+      <summary>Push to GitHub…</summary>
+      <p className="muted">
+        Commits this export to a repository. It needs a project secret <code>GITHUB_TOKEN</code>: a GitHub token with
+        Contents read and write on that repository. A new branch starts from the default branch, ready for a pull request.
+      </p>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); push.mutate(); }}>
+        <label htmlFor="gh-repo">Repository</label>
+        <input id="gh-repo" placeholder="owner/name" value={repo} onChange={(e) => setRepo(e.target.value)} required />
+        <label htmlFor="gh-branch">Branch</label>
+        <input id="gh-branch" value={branch} onChange={(e) => setBranch(e.target.value)} required />
+        <label htmlFor="gh-folder">Folder (empty: the repository root)</label>
+        <input id="gh-folder" placeholder="agents/support" value={folder} onChange={(e) => setFolder(e.target.value)} />
+        <button type="submit" className="primary" data-testid="github-push-button" disabled={push.isPending || !repo.trim()}>
+          {push.isPending ? "Pushing…" : "Push"}</button>
+      </form>
+      {push.error && <p className="error-text" role="alert">{(push.error as Error).message}</p>}
+      {push.data && (
+        <p data-testid="github-pushed">
+          Pushed {push.data.files} files to <a href={push.data.url} target="_blank" rel="noreferrer">{push.data.branch}</a>
+          {push.data.created_branch ? " (a new branch: open a pull request from it on GitHub)" : ""}.
+        </p>
+      )}
+    </details>
   );
 }

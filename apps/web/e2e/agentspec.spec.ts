@@ -7,8 +7,8 @@ const SAMPLE = readFileSync(new URL("../../api/tests/agentspec_sample.json", imp
 
 test("import an Agent Spec flow, read the notes, open it and see the remote agent badge", async ({ page }) => {
   await page.goto("/");
-  await page.locator("#agentspec-file").setInputFiles({ name: "support.json", mimeType: "application/json", buffer: SAMPLE });
-  const notes = page.getByTestId("agentspec-notes");
+  await page.locator("#import-file").setInputFiles({ name: "support.json", mimeType: "application/json", buffer: SAMPLE });
+  const notes = page.getByTestId("import-notes");
   await expect(notes).toContainText("Imported Support desk");
   await expect(notes).toContainText("works on the chat");
   await notes.getByRole("link", { name: "Open Support desk" }).click();
@@ -30,7 +30,7 @@ test("download a workflow as Agent Spec; the file imports back exactly", async (
   await expect(page.getByTestId("agentspec-report")).toContainText("OpenAI-compatible");
 
   await page.goto("/");
-  await page.locator("#agentspec-file").setInputFiles(await file.path());
+  await page.locator("#import-file").setInputFiles(await file.path());
   await expect(page).toHaveURL(/\/workflows\/wf_/); // restored exactly: opens straight away
   await expect(page.getByTestId("node-route")).toBeVisible();
 });

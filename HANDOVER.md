@@ -14,22 +14,22 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S29–S30 Google ADK flows → v0.21.0** (the S29 PR): `adapters/google_adk/` (`codegen.py` writes a native ADK 2 graph `Workflow`; `runtime.py` with `@rt.step`, `Run`, tool approvals and replay; `worker.py`; `packager.py`; the adapter reuses the CrewAI adapter's `ServerHost`, `CrewWorker` and `shared_worker`), manifest `registry/adapters/google_adk.json`, `google_adk` in the default `AGENTCANVAS_ADAPTERS`, `make framework FW=google_adk`, `--build-arg WITH_GOOGLE_ADK=true` |
-| Before that | S28 Mixed-flow export → v0.20.0 ([#33](https://github.com/marunsct/AgentCanvas/pull/33), merged `b8b2e01`); S27 CrewAI flows → v0.19.0 (#32, `43d4a71`); S26 Model gateway and cost controls → v0.18.0 (#31, `5832c26`) |
-| Version in code | API `0.21.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.21.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.21.0 are all left to the owner (see §2) |
-| Next sprint | **S31 Onboarding and switching → v0.22.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): beginner items (Playground, Simple mode, galleries, Push to GitHub) and importers from Langflow, Flowise and n8n JSON; exit: a Langflow export opens and runs on the canvas |
-| Work status | S29–S30 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S31 starts |
-| Open PRs | the S29 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S31 Onboarding and switching → v0.22.0** (the S31 PR): `agentcanvas/importers/` (`Builder` in `__init__.py`, `langflow.py`, `flowise.py`, `n8n.py`) and `POST /v1/projects/{id}/workflows/import`; `api/v1/playground.py` (chat, make it a workflow); `services/github.py` and `POST /v1/workflows/{id}/github`; web `release/Import.tsx`, `playground/PlaygroundPage.tsx`, `editor/simple.ts` (Simple / Full switch), the GitHub form in Export |
+| Before that | S29–S30 Google ADK flows → v0.21.0 ([#34](https://github.com/marunsct/AgentCanvas/pull/34), merged `c038d0e`); S28 Mixed-flow export → v0.20.0 (#33, `b8b2e01`); S27 CrewAI flows → v0.19.0 (#32, `43d4a71`) |
+| Version in code | API `0.22.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.22.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.22.0 are all left to the owner (see §2) |
+| Next sprint | **S32 Pydantic AI and Agno flows → v0.23.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): Authoring tier for both; exit: templates compile and deploy on both |
+| Work status | S31 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S32 starts |
+| Open PRs | the S31 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S29–S30** (all green locally):
+**Test totals at the end of S31** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 917 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai`, the ADK tests and the kit on ADK `make framework FW=google_adk` | see §5 |
-| Web unit (vitest) | 94 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 59 (the S27 and S28 journeys need `make crewai`, the S29 journey `make framework FW=google_adk`) | see §5 |
+| API (pytest, Postgres) | 956 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai`, the ADK tests and the kit on ADK `make framework FW=google_adk` | see §5 |
+| Web unit (vitest) | 97 | `cd apps/web && pnpm exec vitest run` |
+| Browser journeys (Playwright, prod build under the prod CSP) | 63 (the S27 and S28 journeys need `make crewai`, the S29 journey `make framework FW=google_adk`) | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
 | Exported templates, each export's own tests | 27 templates on LangGraph (the Mixed-framework team export also deployed with Docker Compose and passed `make smoke`, S28), and the 22 each that the OpenAI Agents SDK (S25), CrewAI (S27) and Google ADK (S29) can run, in `<dir>/openai_agents/*/*`, `<dir>/crewai/*/*` and `<dir>/google_adk/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `make test` in each `<dir>/local/*/*` (it installs the parts) |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
@@ -97,6 +97,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   adapters/langchain/parts.py + part_worker.py   S28: agents of frameworks that clash with LangGraph run as parts in their own environment (.frameworks/<id>, make framework FW=<id>); typed contracts
   adapters/crewai/         S27: workflows as native CrewAI flows (codegen.py); runtime.py + worker.py run in .frameworks/crewai (make crewai); packager.py
   adapters/google_adk/     S29: workflows as native ADK graph workflows (codegen.py); runtime.py + worker.py run in .frameworks/google_adk (make framework FW=google_adk); packager.py; server side shared with adapters/crewai
+  importers/               S31: Langflow, Flowise and n8n JSON to workflows (Builder + one module per builder); samples in tests/importers/
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
@@ -106,7 +107,8 @@ apps/api/tests/            pytest; test_auth.py lists public/own-credential rout
 apps/api/scripts/          export_ir_schema.py, smoke_mcp_gallery.py, smoke_frameworks.py (S16), ...
 apps/web/src/              React 19 + TS, React Flow, Zustand, TanStack Query
   api/generated.ts         generated from OpenAPI (`pnpm gen`), never edit by hand
-  release/                 publish, deployments, ConnectSection (MCP/A2A snippets), AgentSpec.tsx (S16)
+  release/                 publish, deployments, ConnectSection (MCP/A2A snippets), AgentSpec.tsx (S16), Import.tsx (S31)
+  playground/              S31: Playground page; editor/simple.ts = Simple mode
   theme/                   light / medium / dark / system themes (#20); colours are CSS tokens in styles.css
   observability/           TraceExportSettings (Setup page)
 apps/web/e2e/              Playwright journeys
@@ -197,7 +199,14 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.21.0 not created (owner).
+- **Release tags** v0.1.0 to v0.22.0 not created (owner).
+- **S31 limits:** the importers read each builder's export format as documented and as the hand-written samples in
+  `apps/api/tests/importers/` show; real exports from newer builder versions may name components differently (unknown
+  ones become placeholders, never errors). Langflow custom components, loops and multi-output components, n8n
+  expressions other than `$json.<field>` / `$('Node').item.json.<field>`, n8n webhook and schedule triggers (input
+  fields instead), and tools other than HTTP requests are listed in the report, not converted. Push to GitHub needs a
+  token in a project secret (no GitHub App sign-in) and pushes at most 500 files. Simple mode is remembered per
+  browser (localStorage), not per user.
 - **S29–S30 limits:** ADK workflows run like CrewAI flows: one worker process from `apps/api/.frameworks/google_adk`,
   models through LiteLLM and the model bridge, a paused run in the API's memory continued by replay (a parallel branch
   that had not finished when another paused runs again). Tool approvals re-run the agent's turn up to the call (with
@@ -343,7 +352,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S26 Model gateway and cost controls | #31 | `5832c26` | v0.18.0 |
 | S27 CrewAI flows | #32 | `43d4a71` | v0.19.0 |
 | S28 Mixed-flow export | #33 | `b8b2e01` | v0.20.0 |
-| S29–S30 Google ADK flows | the S29 PR | (after merge) | v0.21.0 |
+| S29–S30 Google ADK flows | #34 | `c038d0e` | v0.21.0 |
+| S31 Onboarding and switching | the S31 PR | (after merge) | v0.22.0 |
 
 ## 11. Sprint-end checklist
 

@@ -28,6 +28,7 @@ import { useEditor } from "./store";
 import { recallView } from "./viewMemory";
 import { can, ME } from "../api/session";
 import { type DockTab, useUi } from "./ui";
+import { SIMPLE_DOCK, SIMPLE_TABS } from "./simple";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
@@ -44,6 +45,12 @@ export function EditorPage() {
   const dock = useUi((s) => s.dock);
   const setDock = useUi((s) => s.setDock);
   const blast = useUi((s) => s.blast);
+  const simple = useUi((s) => s.simple);
+  useEffect(() => {  // Simple mode hides some panels: leave them for one it shows
+    if (!simple) return;
+    if (!SIMPLE_TABS.has(tab)) setTab("inspect");
+    if (!SIMPLE_DOCK.has(dock)) setDock("problems");
+  }, [simple]);
   const inbox = useInbox();
   const pendingDecisions = inbox.data?.length ?? 0;
   useFirstVisitHelp();
@@ -108,23 +115,34 @@ export function EditorPage() {
           : <span className="save-state" data-testid="view-only" title={`your role is ${ME.role}`}>View only</span>}
         <FrameworkBadges />
         <span className="spacer" />
+        <div className="toolbar-group" role="group" aria-label="Editor mode">
+          <button type="button" className={simple ? "active" : ""} aria-pressed={simple} data-testid="simple-toggle"
+            onClick={() => useUi.getState().setSimple(true)}
+            title="Only the blocks and panels a first workflow needs">Simple</button>
+          <button type="button" className={simple ? "" : "active"} aria-pressed={!simple} data-testid="full-toggle"
+            onClick={() => useUi.getState().setSimple(false)} title="Every block, panel and tool">Full</button>
+        </div>
+        {!simple && <>
         <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link">Evaluate</Link>
         <Link to={`/workflows/${wf.id}/workspace`} className="inbox-link" data-testid="workspace-link"
           title="This workflow's code (scripts, tools, custom blocks) and the project's shared code">Workspace</Link>
         <Link to="/knowledge" className="inbox-link" data-testid="knowledge-link">Knowledge</Link>
         <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>
+        </>}
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}
         </Link>
         <div className="toolbar-group" role="group" aria-label="Canvas tools">
           <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
           <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
+          {!simple && <>
           <button type="button" className={blast ? "active" : ""} aria-pressed={blast} onClick={() => useUi.getState().toggleBlast()}
             title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
           <button type="button" onClick={() => void useEditor.getState().group?.()}
             title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
           <button type="button" onClick={() => useEditor.getState().frame?.()}
             title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
+          </>}
         </div>
         <div className="toolbar-group" role="group" aria-label="History">
           <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)" aria-label="Undo">↶</button>
@@ -151,7 +169,7 @@ export function EditorPage() {
       </main>
       <aside className="side">
         <nav className="tabs" role="tablist">
-          {(["inspect", "copilot", "run", "tests", "versions", "code"] as Tab[]).map((t) => (
+          {(["inspect", "copilot", "run", "tests", "versions", "code"] as Tab[]).filter((t) => !simple || SIMPLE_TABS.has(t)).map((t) => (
             <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
               onClick={() => setTab(t)}>{{ inspect: "Inspector", copilot: "Copilot", run: "Run", tests: "Tests", versions: "Versions", code: "Code" }[t]}</button>
           ))}
@@ -167,7 +185,7 @@ export function EditorPage() {
       </aside>
       <footer className="dock">
         <nav className="tabs dock-tabs" role="tablist">
-          {(["problems", "timeline", "explain"] as DockTab[]).map((t) => (
+          {(["problems", "timeline", "explain"] as DockTab[]).filter((t) => !simple || SIMPLE_DOCK.has(t)).map((t) => (
             <button type="button" role="tab" key={t} aria-selected={dock === t} className={dock === t ? "active" : ""}
               onClick={() => setDock(t)}>{{ problems: "Problems", timeline: "Timeline", explain: "Explain" }[t]}</button>
           ))}

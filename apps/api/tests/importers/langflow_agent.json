@@ -1,0 +1,244 @@
+{
+ "name": "Simple Agent",
+ "description": "A simple but powerful starter agent.",
+ "data": {
+  "nodes": [
+   {
+    "id": "ChatInput-a1",
+    "type": "genericNode",
+    "position": {
+     "x": 0,
+     "y": 0
+    },
+    "data": {
+     "id": "ChatInput-a1",
+     "type": "ChatInput",
+     "node": {
+      "display_name": "Chat Input",
+      "template": {
+       "input_value": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "Agent-b2",
+    "type": "genericNode",
+    "position": {
+     "x": 400,
+     "y": 0
+    },
+    "data": {
+     "id": "Agent-b2",
+     "type": "Agent",
+     "node": {
+      "display_name": "Agent",
+      "template": {
+       "agent_llm": {
+        "value": "OpenAI",
+        "type": "str"
+       },
+       "model_name": {
+        "value": "gpt-4.1",
+        "type": "str"
+       },
+       "temperature": {
+        "value": 0.1,
+        "type": "str"
+       },
+       "system_prompt": {
+        "value": "You are a helpful assistant that can use tools to answer questions.",
+        "type": "str"
+       },
+       "input_value": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "APIRequest-c3",
+    "type": "genericNode",
+    "position": {
+     "x": 0,
+     "y": 300
+    },
+    "data": {
+     "id": "APIRequest-c3",
+     "type": "APIRequest",
+     "node": {
+      "display_name": "API Request",
+      "template": {
+       "urls": {
+        "value": [
+         "https://api.open-meteo.com/v1/forecast"
+        ],
+        "type": "str"
+       },
+       "method": {
+        "value": "GET",
+        "type": "str"
+       },
+       "tool_description": {
+        "value": "Gets the weather",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "CalculatorComponent-d4",
+    "type": "genericNode",
+    "position": {
+     "x": 0,
+     "y": 500
+    },
+    "data": {
+     "id": "CalculatorComponent-d4",
+     "type": "CalculatorComponent",
+     "node": {
+      "display_name": "Calculator",
+      "template": {}
+     }
+    }
+   },
+   {
+    "id": "ChatOutput-e5",
+    "type": "genericNode",
+    "position": {
+     "x": 800,
+     "y": 0
+    },
+    "data": {
+     "id": "ChatOutput-e5",
+     "type": "ChatOutput",
+     "node": {
+      "display_name": "Chat Output",
+      "template": {
+       "input_value": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "Memory-f6",
+    "type": "genericNode",
+    "position": {
+     "x": 0,
+     "y": 700
+    },
+    "data": {
+     "id": "Memory-f6",
+     "type": "Memory",
+     "node": {
+      "display_name": "Message History",
+      "template": {}
+     }
+    }
+   }
+  ],
+  "edges": [
+   {
+    "source": "ChatInput-a1",
+    "target": "Agent-b2",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "ChatInput-a1",
+      "name": "message",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "Agent-b2",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-ChatInput-a1-Agent-b2"
+   },
+   {
+    "source": "APIRequest-c3",
+    "target": "Agent-b2",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "APIRequest-c3",
+      "name": "component_as_tool",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "tools",
+      "id": "Agent-b2",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-APIRequest-c3-Agent-b2"
+   },
+   {
+    "source": "CalculatorComponent-d4",
+    "target": "Agent-b2",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "CalculatorComponent-d4",
+      "name": "component_as_tool",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "tools",
+      "id": "Agent-b2",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-CalculatorComponent-d4-Agent-b2"
+   },
+   {
+    "source": "Agent-b2",
+    "target": "ChatOutput-e5",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "Agent-b2",
+      "name": "response",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "ChatOutput-e5",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-Agent-b2-ChatOutput-e5"
+   }
+  ]
+ }
+}

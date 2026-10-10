@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas import agentspec
+from agentcanvas import agentspec, importers
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
 from agentcanvas.db.models import CostAlert, Run, Thread
@@ -294,6 +294,35 @@ async def import_agent_spec(
     view = await svc.create_from_ir(project_id, ir, layout, user.id)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     return AgentSpecImported(**_out(view, response).model_dump(), report=report)
+
+
+# ------------------------------------------------------------------ importers (S31) ----
+class ImportFile(BaseModel):
+    file: dict[str, Any] = Field(description="The JSON a Langflow, Flowise, n8n or Agent Spec export downloads")
+    name: str | None = Field(None, min_length=1, max_length=200)
+
+
+class Imported(WorkflowOut):
+    format: str = Field(description="langflow, flowise, n8n or agentspec")
+    report: list[str]
+
+
+@router.post("/projects/{project_id}/workflows/import", response_model=Imported, status_code=201)
+async def import_file(
+    project_id: str,
+    body: ImportFile,
+    response: Response,
+    svc: WorkflowService = Depends(service),
+    user: CurrentUser = Depends(current_user),
+) -> Imported:
+    """A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec), with what changed."""
+    try:
+        kind, ir, report, layout = importers.import_document(body.file, wf_id=new_id("wf"), name=body.name)
+    except importers.ImportError_ as exc:
+        raise InvalidInput(str(exc)) from exc
+    view = await svc.create_from_ir(project_id, ir, layout, user.id)
+    response.headers["Location"] = f"/v1/workflows/{view.row.id}"
+    return Imported(**_out(view, response).model_dump(), format=kind, report=report)
 
 
 # ------------------------------------------------------------------ refactorings (M2-T13) ----
