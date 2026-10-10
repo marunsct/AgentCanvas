@@ -39,6 +39,13 @@ def hosted_edition(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 f"'{el.name}' ({m.type}) executes on the host and is only allowed in the local edition",
                 node_id=el.id,
             )
+        if el.config.get("allow_private_network"):
+            yield error(
+                "E043",
+                f"'{el.name}': private and internal network addresses are not reachable in the hosted edition",
+                node_id=el.id,
+                path="config.allow_private_network",
+            )
 
 
 @rule

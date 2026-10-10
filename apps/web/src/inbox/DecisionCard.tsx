@@ -60,7 +60,7 @@ function ToolApproval({ requests, onDecide, busy }: { requests: ActionRequest[];
             onChange={(e) => setDrafts(drafts.map((d, j) => (j === i ? e.target.value : d)))} />
         </div>
       ))}
-      <input placeholder="Reason (sent to the agent when rejecting)" value={message} onChange={(e) => setMessage(e.target.value)} />
+      <input aria-label="rejection reason" placeholder="Reason (sent to the agent when rejecting)" value={message} onChange={(e) => setMessage(e.target.value)} />
       <div className="row gap">
         <button type="button" className="primary" disabled={busy || !valid} onClick={approve}>
           {edited.some(Boolean) ? "Approve with edits" : "Approve"}

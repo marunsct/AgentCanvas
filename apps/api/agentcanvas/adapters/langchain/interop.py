@@ -398,6 +398,7 @@ def a2a_agent_node(
                     message_text = answer if isinstance(answer, str) else json.dumps(answer, default=str)
                     continue
                 if status in ("failed", "rejected", "canceled"):
+                    _SENT.pop(key or "", None)  # a retry of the step sends the task again
                     raise AgentError(f"the remote agent '{name}' {status} the task: {reply or 'no reason given'}")
                 _SENT.pop(key or "", None)
                 _trace(node=name, framework="a2a", input=text, output=reply, task=task_id)
@@ -572,7 +573,10 @@ def _conversation(state: Any) -> str:
 
 # (thread, namespace, step, nth approval) -> the tool call a person was asked about, so that a designed agent's rerun
 # after the pause only uses the decision for that exact call (interrupts resume by position, not by content)
-_ASKED: dict[tuple[str, str, str, int], str] = {}
+# Kept in this process only: after a restart, or on another replica, the rerun refuses the call and the agent asks
+# again (fails closed). Bounded, so pauses nobody answers do not pile up.
+_ASKED: OrderedDict[tuple[str, str, str, int], str] = OrderedDict()
+_ASKED_MAX = 10_000
 
 
 def design_module(package: str | None, name: str) -> Any:
@@ -646,6 +650,8 @@ def designed_agent_node(
                     allowed = _approve(node_id, name, framework, asking)
                 except GraphInterrupt as asked:
                     _ASKED[slot] = asking
+                    while len(_ASKED) > _ASKED_MAX:
+                        _ASKED.popitem(last=False)
                     waiting.append(asked)
                     return (
                         "This tool call is waiting for a person's approval. Do not call it again; say you are waiting."

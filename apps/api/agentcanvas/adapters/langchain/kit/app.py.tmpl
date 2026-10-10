@@ -180,6 +180,8 @@ class Service:
         self, thread_id: str, graph_input: Any, context: dict[str, Any], metadata: dict[str, str] | None = None
     ) -> AsyncIterator[dict[str, Any]]:
         """Run once on `thread_id`, yielding canonical run events; the last one is RUN_FINISHED or RUN_ERROR."""
+        if len(self.locks) > 10_000:  # forget threads that are not running
+            self.locks = {t: k for t, k in self.locks.items() if k.locked()}
         lock = self.locks.setdefault(thread_id, asyncio.Lock())
         if lock.locked():
             raise HTTPException(409, f"thread '{thread_id}' is already running; wait for it to finish")

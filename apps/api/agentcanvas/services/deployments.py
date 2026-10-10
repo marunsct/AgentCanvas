@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Deployment, WorkflowRow, WorkflowVersion
@@ -107,7 +108,8 @@ class DeploymentService:
     async def publish(
         self, row: WorkflowRow, environment: str, version: WorkflowVersion
     ) -> tuple[Deployment, str | None]:
-        """Point the environment's deployment at `version`; returns (deployment, new key or None)."""
+        """Point the environment's deployment at `version`; returns (deployment, new key or None). Two first
+        publishes at once: the one that loses the race (unique per workflow and environment) moves the winner's."""
         q = select(Deployment).where(Deployment.workflow_id == row.id, Deployment.environment == environment)
         dep = await self.s.scalar(q)
         key = None
@@ -121,8 +123,14 @@ class DeploymentService:
                 api_key_hash=hash_key(key),
                 key_prefix=key[:10],
             )
-            self.s.add(dep)
-        else:
+            try:
+                async with self.s.begin_nested():
+                    self.s.add(dep)
+            except IntegrityError:
+                key, dep = None, await self.s.scalar(q)
+                if dep is None:
+                    raise
+        if key is None:
             dep.version_id, dep.active = version.id, True
         await self.s.commit()
         await self.s.refresh(dep)

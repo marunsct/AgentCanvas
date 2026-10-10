@@ -11,6 +11,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from jsonschema import Draft202012Validator
 
 from agentcanvas.expr import ExpressionError, check_condition
+from agentcanvas.ir.models import SECRET_NAME
 from agentcanvas.validation.analysis import iter_formatted, iter_strings
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule
 
@@ -111,4 +112,30 @@ def no_secret_literals(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     node_id=el.id,
                     path=path,
                     hint='store it as a project secret and reference it as {"$secret": "NAME"}',
+                )
+
+
+def _secret_refs(value: object, path: str = "config") -> Iterator[tuple[str, object]]:
+    if isinstance(value, dict):
+        if "$secret" in value:
+            yield path, value["$secret"]
+            return
+        for k, v in value.items():
+            yield from _secret_refs(v, f"{path}.{k}")
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            yield from _secret_refs(v, f"{path}[{i}]")
+
+
+@rule
+def secret_names(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    for el in [*ctx.wf.nodes, *ctx.wf.resources]:
+        for path, name in _secret_refs(el.config):
+            if not isinstance(name, str) or not SECRET_NAME.fullmatch(name):
+                yield error(
+                    "E051",
+                    f"'{el.name}': secret name {name!r} is not a variable name",
+                    node_id=el.id,
+                    path=path,
+                    hint="use letters, digits and _ (e.g. OPENAI_API_KEY): exports read secrets from the environment",
                 )

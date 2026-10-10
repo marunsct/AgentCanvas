@@ -366,7 +366,7 @@ async def put_copilot_settings(
         registry = request.app.state.projects.registry(project_id) or default_registry()
         policies = await WorkflowService(session, settings).policies(project_id)
         for m in chosen:
-            copilot_settings.check_model(m, body, policies, registry)
+            copilot_settings.check_model(m, body, policies, registry, body.base_url if m == body.model else None)
     project.settings = {**(project.settings or {}), "copilot": body.model_dump(exclude_none=True)}
     await session.commit()
     return await get_copilot_settings(project_id, session)

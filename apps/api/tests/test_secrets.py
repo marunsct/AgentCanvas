@@ -134,3 +134,37 @@ async def test_secrets_survive_a_restart(settings, api_client):
     fresh = create_app(settings)
     async with fresh.router.lifespan_context(fresh):
         assert fresh.state.projects.secrets["prj_default"]["DB_PASSWORD"] == "hunter2-long"
+
+
+async def test_other_instances_see_secret_changes(settings, api_client):
+    """Each instance keeps its own decrypted copy: a change made through one reaches another when it starts a run
+    of that project (and on its periodic sync)."""
+    import httpx
+
+    from agentcanvas.api.main import create_app
+
+    assert (await api_client.put(f"{P}/secrets/OLD_TOKEN", json={"value": "old-value-1"})).status_code == 204
+    other = create_app(settings)
+    async with other.router.lifespan_context(other):
+        cache = other.state.projects.secrets
+        assert cache["prj_default"]["OLD_TOKEN"] == "old-value-1"
+        held = cache["prj_default"]  # what the project's resolver reads
+        assert (await api_client.put(f"{P}/secrets/NEW_TOKEN", json={"value": "new-value-1"})).status_code == 204
+        assert (await api_client.delete(f"{P}/secrets/OLD_TOKEN")).status_code == 204
+        assert "NEW_TOKEN" not in cache["prj_default"]  # not yet: nothing asked
+        transport = httpx.ASGITransport(app=other)
+        async with httpx.AsyncClient(transport=transport, base_url="http://other") as b:
+            wf = await script_wf(b, "plain", "def run(state):\n    return {'out': 'ok'}\n")
+            r = await b.post(f"/v1/workflows/{wf}/runs/stream", json={})
+            assert events(r.text)[-1]["type"] == "RUN_FINISHED", r.text
+        assert cache["prj_default"] == {"NEW_TOKEN": "new-value-1"}
+        assert cache["prj_default"] is held  # updated in place
+        assert (await api_client.put(f"{P}/secrets/NEW_TOKEN", json={"value": "new-value-2"})).status_code == 204
+        await other.state.secrets.sync()
+        assert cache["prj_default"] == {"NEW_TOKEN": "new-value-2"}
+
+
+async def test_secret_names_are_variable_safe(api_client):
+    for name in ("9LIVES", "A.B", "A%20B"):
+        assert (await api_client.put(f"{P}/secrets/{name}", json={"value": "x"})).status_code == 422, name
+    assert (await api_client.delete(f"{P}/secrets/9LIVES")).status_code == 422

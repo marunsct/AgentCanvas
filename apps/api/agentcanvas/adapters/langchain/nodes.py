@@ -25,6 +25,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from jsonschema import Draft202012Validator
 from langchain.agents import create_agent
@@ -362,6 +363,8 @@ class Resources:
         self.script_runner = script_runner  # sandboxed execution of workspace scripts (M5-T4); None = in-process
         self.registry = registry  # the project's node registry (built-ins + workspace custom nodes)
         self.dry_run: set[str] | None = None  # tool names replaced by recorders (FR-X-02 dry run)
+        # hosted edition: tools and agents reach public addresses only, whatever allow_private_network says
+        self.public_only = False
         self._cache: OrderedDict[str, Any] = OrderedDict()  # model clients, least recently used first
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
@@ -417,6 +420,8 @@ class Resources:
         if name in self._overrides:
             return self._overrides[name]
         if type_ == "tool.http":
+            if self.public_only:
+                config = {**config, "allow_private_network": False}
             return http_tool(name=name, config=config, resolve=self._resolve, transport=self._http_transport)
         return safe_import(config["import_path"], self.workspace)
 
@@ -449,6 +454,7 @@ class Resources:
             {**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner, self.registry
         )
         clone._mcp = self._mcp
+        clone.public_only = self.public_only
         clone._replays = {**self._replays}
         for name, replies in mocks.items():
             if replies and all(is_tool_recording(r) for r in replies):
@@ -463,7 +469,12 @@ class Resources:
             return replay_stubs(name, ReplayQueue(self._replays[name]))
         key = (name, _config_key(config))
         if refresh or key not in self._mcp:
-            target = self._overrides.get(name) or mcp_target(config, self._resolve)
+            target = self._overrides.get(name)
+            if target is None:
+                target = mcp_target(config, self._resolve)
+                if self.public_only and config.get("transport", "http") != "stdio":
+                    parts = urlsplit(config["url"])  # e.g. never the cloud metadata address
+                    await _public_address(parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80))
             tools = await mcp_tools(target)
             wanted = config.get("tool_filter") or []
             self._mcp[key] = [t for t in tools if not wanted or t.name in wanted]
@@ -665,8 +676,6 @@ def http_tool(
 ) -> StructuredTool:
     """An HTTP request as a tool (M3-T6). Only hosts in `allowed_domains` (and their subdomains) are reachable;
     a refused host or an HTTP error comes back to the model as a tool error, not an exception."""
-    from urllib.parse import urlsplit
-
     import httpx
 
     method = config.get("method", "GET").upper()

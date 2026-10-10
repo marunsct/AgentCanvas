@@ -53,7 +53,8 @@ export function EditorPage() {
   useEffect(() => {
     if (!id) return;
     useEditor.getState().reset();
-    useRun.getState().reset();
+    useRun.getState().setThread(null);
+    useRun.setState({ runId: null, running: false });
     useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null, busy: false, live: null });
     const sel = recallView(id)?.selected; // back from the Workspace: the block you had selected (S17)
     useEditor.getState().load(id)

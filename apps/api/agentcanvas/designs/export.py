@@ -16,7 +16,7 @@ from pathlib import Path
 
 from agentcanvas.designs import AGENT_FRAMEWORKS, AgentDesign, article, export_problems, generate
 from agentcanvas.errors import InvalidInput
-from agentcanvas.ir.models import Workflow
+from agentcanvas.ir.models import SECRET_NAME, Workflow
 from agentcanvas.workspace import bundle
 
 KIT = Path(__file__).parent / "kit"
@@ -32,6 +32,8 @@ def _pin(dist: str) -> str:
 def _secrets(value: object) -> set[str]:
     if isinstance(value, dict):
         if "$secret" in value and isinstance(value["$secret"], str):
+            if not SECRET_NAME.fullmatch(value["$secret"]):  # each one is a line of .env.example
+                raise InvalidInput(f"secret name {value['$secret']!r} is not a variable name (letters, digits and _)")
             return {value["$secret"]}
         return set().union(*(_secrets(v) for v in value.values())) if value else set()
     if isinstance(value, list):
@@ -39,12 +41,18 @@ def _secrets(value: object) -> set[str]:
     return set()
 
 
+_IMPORT_PATH = re.compile(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)*:[A-Za-z_]\w*")
+
+
 def agent_tools(design: AgentDesign) -> str:
     """`agent_tools.py`: the agent's tools, loaded when it starts."""
     imports, lines = [], []
     for i, t in enumerate(design.tools):
         if t.type == "tool.python":
-            module, _, fn = str(t.config["import_path"]).partition(":")
+            path = str(t.config.get("import_path", ""))
+            if not _IMPORT_PATH.fullmatch(path):  # it is written into the code as an import
+                raise InvalidInput(f"tool '{t.resource}': import path {path!r} is not module.path:function")
+            module, _, fn = path.partition(":")
             imports.append(f"from {module} import {fn} as _tool_{i}")  # aliased: two modules may share a name
             lines.append(f"    found.append(_tool_{i})")
         elif t.type == "tool.http":

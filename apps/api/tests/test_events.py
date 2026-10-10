@@ -68,6 +68,12 @@ async def finished(app, run_ids: list[str]) -> None:
         await asyncio.wait_for(app.state.runner.handles[rid].done.wait(), 10)
 
 
+async def delivered(app) -> None:
+    """A run's events reach handlers after it is done (they may start its thread's next run): wait for them."""
+    tasks = [h.task for h in list(app.state.runner.handles.values()) if h.task]
+    await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), 10)
+
+
 def events(text: str) -> list[dict]:
     return [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: ")]
 
@@ -130,6 +136,7 @@ async def test_lifecycle_emit_and_resume(app, api_client):
     fragile = await make_wf(api_client, linear("Fragile", [boom], ["out"]))
     fin = events((await api_client.post(f"/v1/workflows/{fragile}/runs/stream", json={})).text)[-1]
     assert fin["type"] == "RUN_ERROR"
+    await delivered(app)
     log = (await api_client.get(f"{P}/events")).json()
     failed = next(e for e in log if e["type"] == "run.failed")
     assert failed["status"] == "handled"
@@ -145,6 +152,7 @@ async def test_lifecycle_emit_and_resume(app, api_client):
     flag = {"id": "n_f", "type": "core.script", "name": "flag", "config": {"import_path": "scripts.flag:run"}}
     flagger = await make_wf(api_client, linear("Flagger", [flag], ["out"]))
     await api_client.post(f"/v1/workflows/{flagger}/runs/stream", json={})
+    await delivered(app)
     log = (await api_client.get(f"{P}/events")).json()
     audit = next(e for e in log if e["type"] == "audit.recorded")
     assert audit["source"] == "emit" and audit["status"] == "handled"
@@ -157,6 +165,7 @@ async def test_lifecycle_emit_and_resume(app, api_client):
         (await api_client.post(f"/v1/workflows/{signer}/runs/stream", json={"thread_id": "th_contract"})).text
     )[-1]
     assert fin["status"] == "interrupted"
+    await delivered(app)
     log = (await api_client.get(f"{P}/events")).json()
     assert (
         any(e["type"] == "interrupt.raised" and e["status"] == "ignored" for e in log) is False
@@ -172,6 +181,25 @@ async def test_lifecycle_emit_and_resume(app, api_client):
     pings = [e for e in (await api_client.get(f"{P}/events")).json() if e["type"] == "loop.ping"]
     assert len(pings) == 6  # the original event + 5 levels of re-emission
     assert any(e["status"] == "error" and "levels deep" in (e["results"][0]["error"] or "") for e in pings)
+
+
+async def test_a_handler_continues_the_thread_of_the_run_that_raised_its_event(app, api_client):
+    """Handlers run once the run is over and its thread free: one may resume that very thread."""
+    src = (
+        "from agentcanvas.sdk import on\n\n\n"
+        '@on("interrupt.raised", filter="event.data.workflow_name == \'AutoSign\'")\n'
+        'def approve(event, act):\n    act.resume(event.data["thread_id"], {"approved": True})\n'
+    )
+    await api_client.put(f"{P}/files/events/auto.py", json={"content": src})
+    ask = {"id": "n_a", "type": "core.approval", "name": "sign", "config": {"show": "out", "output": "ok"}}
+    wf = await make_wf(api_client, linear("AutoSign", [ask], ["out", "ok"]))
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"thread_id": "th_auto"})
+    assert events(r.text)[-1]["status"] == "interrupted", r.text  # the stream does not wait for the handler
+    await delivered(app)
+    raised = next(e for e in (await api_client.get(f"{P}/events")).json() if e["type"] == "interrupt.raised")
+    assert raised["status"] == "handled", raised
+    await finished(app, raised["results"][0]["runs"])
+    assert (await api_client.get("/v1/threads/th_auto")).json()["values"]["ok"] is True
 
 
 async def test_sandboxed_handler(app, api_client):

@@ -15,19 +15,20 @@ updated one wins; fix the other in the same PR.
 | | |
 |---|---|
 | Last sprint done | **S22 Whole flows, preview → v0.14.0** (the S22 PR): a whole workflow exports to LangGraph (through Agent Spec), WayFlow or the OpenAI Agents SDK as a project around its Agent Spec flow (`agentcanvas/bridges/`, runner `bridges/kit/flowkit.py`), with a gaps report in the Export box and `GAPS.md`; `GET /v1/workflows/{id}/bridges`, `…/bridges/{target}/export.zip`; Agent Spec export fixes; CI jobs `bridge_<target>` |
-| Before that | S21 Design any agent → v0.13.0 ([#25](https://github.com/marunsct/AgentCanvas/pull/25), merged `f308699`); S20 Framework foundation → v0.12.0 (#24, merged `e92f164`) |
+| Since then | **Milestone review after S20–S22** (the review PR): a whole-codebase review found 19 bugs (exports that could run injected code, private-network access in the hosted edition, the release gate's code evaluators, stale secrets on other replicas, editor and workspace state, client address spoofing behind nginx); all fixed, see CHANGELOG "Unreleased" |
+| Before that | S22 #26 merged `9e741e3`; S21 Design any agent → v0.13.0 ([#25](https://github.com/marunsct/AgentCanvas/pull/25), merged `f308699`); S20 Framework foundation → v0.12.0 (#24, merged `e92f164`) |
 | Version in code | API `0.14.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.14.0 |
 | Git tags | **none pushed.** v0.1.0 … v0.14.0 are all left to the owner (see §2) |
 | Next sprint | **S23 Ship to users → v0.15.0** (was S17; [roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)), then S24 onward |
-| Work status | S22 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks |
-| Open PRs | the S22 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Work status | the review fixes are in their PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S23 starts |
+| Open PRs | the review PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
 **Test totals at the end of S22** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 534 passed, 1 skipped, 1 xfail (known upstream canary) | see §5 |
+| API (pytest, Postgres) | 534 passed, 1 skipped, 1 xfail (known upstream canary); 548 after the milestone review | see §5 |
 | Web unit (vitest) | 82 | `cd apps/web && pnpm exec vitest run` |
 | Browser journeys (Playwright, prod build under the prod CSP) | 47 | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
@@ -171,6 +172,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   code onto existing images or build stand-ins from `mirror.gcr.io` Python images with `--network host` and the proxy CA.
 - The egress proxy blocks most remote MCP hosts and many vendor doc sites, so `smoke_mcp_gallery.py --live` and some
   research can't run here.
+- After a container restart: `service postgresql start`; run pyright as `uv run pyright` (or `.venv/bin/pyright
+  --pythonpath .venv/bin/python`) and pytest with `PATH=$PWD/.venv/bin:$PATH` (the LangSmith sandbox test calls `python`).
 - k6 lives at `~/go/bin/k6`; helm via `go install helm.sh/helm/v3/cmd/helm@v3.16.2`.
 
 ## 9. Known gaps and deferred items
@@ -188,7 +191,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   caching knobs) are not used; add-ons (middleware) and tool kinds other than workspace Python, HTTP and MCP are
   P005; on a tool approval the agent step reruns from its start after resume (tools without approval run twice), and the
   decision only applies if the rerun asks for exactly the same call, which the server remembers in its own process
-  (resumed in another process, the call is refused and the agent says so);
+  (resumed in another process, the call is refused and the agent says so; the memory holds at most 10,000 pauses);
   structured output uses each framework's own mechanism, so typed answers can differ slightly. In this cloud sandbox
   the Claude Agent SDK must be tested under `env -i` (the session's own Claude env vars leak into its CLI).
 - **S20 limits:** model and tool resolution (`Resources`) is still the LangChain adapter's object handed to every
@@ -246,7 +249,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S17 Workspace and editor fixes | #23 | `cd8c770` | v0.11.0 |
 | S20 Framework foundation | #24 | `e92f164` | v0.12.0 |
 | S21 Design any agent | #25 | `f308699` | v0.13.0 |
-| S22 Whole flows, preview | the S22 PR | (after merge) | v0.14.0 |
+| S22 Whole flows, preview | #26 | `9e741e3` | v0.14.0 |
+| Milestone review after S20–S22 (19 fixes) | the review PR | (after merge) | (in v0.15.0) |
 
 ## 11. Sprint-end checklist
 

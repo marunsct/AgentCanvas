@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
@@ -166,10 +166,15 @@ class Runner:
         self.handles: OrderedDict[str, RunHandle] = OrderedDict()
         self.active_by_thread: dict[str, str] = {}
         self._keep = keep_finished
-        # called after every run (event delivery: run.completed / run.failed / interrupt.raised, sdk.emit events)
+        # called after every run, before it counts as done (metrics, online evaluators, trace export)
         self.finish_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
+        # called once it is done and its thread free (event delivery: run.completed / run.failed / interrupt.raised,
+        # sdk.emit events), so a handler can start the thread's next run and no caller waits for handlers
+        self.after_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
         # called when a run starts (metrics)
         self.start_hooks: list[Callable[[RunHandle], None]] = []
+        # awaited before a run starts (the project's secrets, reloaded when another instance changed them)
+        self.prepare_hooks: list[Callable[[Workflow], Awaitable[None]]] = []
         self.draining = False  # shutting down: no new runs (FR-X-10)
 
     @property
@@ -237,6 +242,8 @@ class Runner:
         run_id = new_id("run")
         self.active_by_thread[thread_id] = run_id  # reserved before any await: a concurrent start is refused
         try:
+            for prepare in self.prepare_hooks:
+                await prepare(wf)
             async with self.db.sessionmaker() as s:
                 thread = await s.get(Thread, thread_id)
                 if thread is None:
@@ -437,16 +444,24 @@ class Runner:
                 await events.aclose()  # stops the graph if we left early (budget, cancel)
             h.status = status
             await self._finish(h, status, error, interrupts)
-            for hook in self.finish_hooks:
-                try:
-                    await hook(h, status, error, interrupts)
-                except Exception:
-                    log.exception("run.finish_hook_failed", run_id=h.run_id)
+            if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
+                del self.active_by_thread[h.thread_id]
+            await self._hooks(self.finish_hooks, h, status, error, interrupts)
             h.finished_at = time.monotonic()
-            self.active_by_thread.pop(h.thread_id, None)
             h.done.set()
             async with h.changed:
                 h.changed.notify_all()
+            # event handlers may take long and start or resume runs (on this thread too): nobody waiting for the
+            # run waits for them, but they still run in its task, so a shutdown lets them finish
+            await self._hooks(self.after_hooks, h, status, error, interrupts)
+
+    @staticmethod
+    async def _hooks(hooks: list[Callable[..., Any]], h: RunHandle, *args: Any) -> None:
+        for hook in hooks:
+            try:
+                await hook(h, *args)
+            except Exception:
+                log.exception("run.finish_hook_failed", run_id=h.run_id)
 
     async def _finish(self, h: RunHandle, status: str, error: str | None, interrupts: list[dict[str, Any]]) -> None:
         thread_status = {"success": "idle", "interrupted": "interrupted", "cancelled": "idle"}.get(status, "error")

@@ -2,6 +2,29 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## Unreleased — milestone review after S20–S22
+
+A whole-codebase review at the end of the framework milestone found 19 bugs; all are fixed.
+
+### Security
+- **Exports no longer run text from the workflow as code.** A workflow name is one line in exported Makefiles, compose files and scripts; secret names must be variable names (check E051, and the export refuses others); a designed agent's tool import path is checked before it is written into `agent_tools.py`; a resource may not take a name Python or the exported code reserves (check E007); an exported package is never named after a module it imports (`LangGraph`, `email`).
+- **Hosted edition: no private networks.** "Allow private network" on HTTP tools and remote agents is refused (check E043) and ignored at run time, and MCP servers over HTTP must resolve to public addresses (never the cloud metadata address).
+- **Release gates pin the code of code evaluators.** Saving a gate records a hash of the evaluator's workspace code (and the modules it imports); if a builder changes that code, the gate fails until an admin saves it again.
+- **The Copilot's "local models only"** now also checks the model's address, and organisation policies see it.
+- **Client addresses behind nginx can no longer be forged** with an `X-Forwarded-For` header: nginx believes it only from `TRUSTED_PROXIES` (Helm `web.trustedProxies`) and passes the API one address, so rate limits and the audit log use the real client.
+- Project secrets can only be stored under variable-safe names.
+
+### Fixed
+- Secrets changed on one API replica reach the others: each run reloads its project's secrets when they changed, and every replica re-syncs every 10 seconds (so new values are also masked there).
+- Event handlers can resume or continue the thread of the run that triggered them, and streams and `/runs/wait` no longer wait for handlers to finish.
+- Two publishes at the same moment can no longer create two deployments for one environment (a migration merges any existing duplicates).
+- Retrying a failed remote (A2A) agent step contacts the remote agent again instead of replaying the failure.
+- Pending tool approvals of designed agents are bounded in memory.
+- Editor: opening another workflow, reloading after a conflict or restoring a version clears undo/redo; a late save of the previous workflow, or its still-streaming run, no longer lands in the new one.
+- Workspace: reopening a file after saving it shows the saved text, so the next save cannot overwrite it with the old one.
+- Exported services forget idle conversation locks.
+- Accessibility: labels on the state designer's selects and the rejection reason box.
+
 ## v0.14.0 — Whole flows, preview (not tagged yet)
 
 ### Added

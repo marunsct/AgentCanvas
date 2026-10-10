@@ -292,3 +292,30 @@ def test_validation_of_200_nodes_is_fast():
     elapsed = time.perf_counter() - start
     assert [d for d in diags if d.severity == "error"] == []
     assert elapsed < 0.15, f"validation took {elapsed * 1000:.0f} ms"
+
+
+def test_names_and_secrets_that_exports_could_not_use(triage):
+    """Milestone review: resources become Python variables and secret names shell variables in exports."""
+    triage.resource("r_fast").name = "class"  # type: ignore[union-attr]
+    assert "E007" in codes(triage)
+    triage.resource("r_fast").name = "builder"  # type: ignore[union-attr]
+    assert "E007" in codes(triage)
+    triage.resource("r_fast").name = "fast"  # type: ignore[union-attr]
+    assert "E007" not in codes(triage)
+    triage.resource("r_fast").config["api_key"] = {"$secret": "K$(touch /tmp/p)"}  # type: ignore[union-attr]
+    assert "E051" in codes(triage)
+    triage.resource("r_fast").config["api_key"] = {"$secret": "OPENAI_API_KEY"}  # type: ignore[union-attr]
+    assert "E051" not in codes(triage)
+
+
+def test_hosted_edition_keeps_tools_off_private_networks(triage):
+    triage.resources.append(
+        Resource(
+            id="r_web",
+            type="tool.http",
+            name="web",
+            config={"url": "https://x.example", "allowed_domains": ["x.example"], "allow_private_network": True},
+        )
+    )
+    assert "E043" in codes(triage, edition="hosted")
+    assert "E043" not in codes(triage)

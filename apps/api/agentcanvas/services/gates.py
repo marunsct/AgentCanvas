@@ -6,23 +6,35 @@ against the version the environment serves now. At publish the exact workflow be
 dataset's latest version. An experiment that already ran this exact workflow (same IR hash, dataset version and
 evaluator configs) is reused; otherwise one runs now, with the live version as a second target when the
 regression limit needs it. Admins can publish over a failed gate with a reason, which the audit log records.
+
+A code evaluator's copy also pins the hash of the workspace code it runs (`code_hash`): a builder who rewrites that
+code fails the gate instead of lowering its bar, until an admin saves the gate again.
 """
 
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult, ReleaseGate
 from agentcanvas.errors import Forbidden
-from agentcanvas.evaluation import DEFAULT_THRESHOLD, ONLY_IN_EXPERIMENTS, Spec, spec_of
+from agentcanvas.evaluation import (
+    CODE_CHANGED,
+    DEFAULT_THRESHOLD,
+    ONLY_IN_EXPERIMENTS,
+    Spec,
+    code_hash,
+    pinned_code,
+    spec_of,
+)
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.datasets import DatasetService
 from agentcanvas.services.deployments import Check
-from agentcanvas.services.experiments import ExperimentService, TargetSummary, summary
+from agentcanvas.services.experiments import ExperimentService, TargetSummary, scorers, summary
 
 GATE_TIMEOUT_S = 600.0
 
@@ -56,10 +68,14 @@ def _spec(e: Evaluator, siblings: list[Evaluator]) -> dict[str, Any]:
     return spec_of(e, siblings).model_dump()
 
 
-def snapshot(evaluators: list[Evaluator], min_scores: dict[str, float]) -> list[dict[str, Any]]:
-    """The evaluator specs a gate keeps: those it names, or every evaluator of the workflow."""
+def snapshot(evaluators: list[Evaluator], min_scores: dict[str, float], workspace: Path | None) -> list[dict[str, Any]]:
+    """The evaluator specs a gate keeps: those it names, or every evaluator of the workflow. Code evaluators (also
+    a composite's parts) pin the hash of the `workspace` code they run."""
     by_name = {e.name: e for e in evaluators}
-    return [_spec(by_name[n], evaluators) for n in (list(min_scores) or list(by_name)) if n in by_name]
+    specs = [_spec(by_name[n], evaluators) for n in (list(min_scores) or list(by_name)) if n in by_name]
+    for code in (c for x in specs for c in pinned_code(x)):
+        code["config"]["pinned"] = code_hash(workspace, code["config"]["function"])
+    return specs
 
 
 async def _reuse(
@@ -115,6 +131,14 @@ async def evaluate(
             specs = [_spec(by_name[n], list(evaluators)) for n in names]
         if not names:
             return Check(name="evaluation", ok=False, detail="the release gate needs at least one evaluator")
+        fingerprint = scorers(job.runner, candidate)["fingerprint"]
+        if changed := [
+            x["name"]
+            for x in specs
+            for c in pinned_code(x)
+            if c["config"].get("pinned") and fingerprint(c["config"]["function"]) != c["config"]["pinned"]
+        ]:
+            return Check(name="evaluation", ok=False, detail=f"evaluator(s) {sorted(set(changed))}: {CODE_CHANGED}")
         minimums = {
             n: gate.min_scores.get(
                 n, x["threshold"] if x["threshold"] is not None else DEFAULT_THRESHOLD.get(x["kind"], 1.0)

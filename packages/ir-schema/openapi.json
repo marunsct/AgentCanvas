@@ -15066,10 +15066,13 @@
             }
           },
           {
+            "description": "a variable-safe name",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
+              "description": "a variable-safe name",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
               "title": "Name",
               "type": "string"
             }
@@ -15131,10 +15134,13 @@
             }
           },
           {
+            "description": "a variable-safe name",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
+              "description": "a variable-safe name",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
               "title": "Name",
               "type": "string"
             }
@@ -19971,7 +19977,7 @@
         ]
       },
       "put": {
-        "description": "Require an evaluation before publishing to `environment` (admins only). The gate keeps the dataset version\nand a copy of the evaluators as they are now: save it again to pick up later changes.",
+        "description": "Require an evaluation before publishing to `environment` (admins only). The gate keeps the dataset version\nand a copy of the evaluators (with the hash of the code a code evaluator runs) as they are now: save it again to\npick up later changes.",
         "operationId": "set_gate_v1_workflows__wf_id__gates__environment__put",
         "parameters": [
           {

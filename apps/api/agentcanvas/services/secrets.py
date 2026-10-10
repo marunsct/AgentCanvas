@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Project, Secret
@@ -64,13 +66,21 @@ class SecretService:
             )  # fmt: skip
         else:
             row.ciphertext, row.org_key = token, True
+        await self._changed(project_id)
         await self.s.commit()
 
     async def delete(self, project_id: str, name: str) -> None:
         res: Any = await self.s.execute(delete(Secret).where(Secret.project_id == project_id, Secret.name == name))
         if not res.rowcount:
             raise NotFound(f"secret '{name}' not found")
+        await self._changed(project_id)
         await self.s.commit()
+
+    async def _changed(self, project_id: str) -> None:
+        """Every instance's copy of this project's secrets is now stale (`SecretCache`)."""
+        await self.s.execute(
+            update(Project).where(Project.id == project_id).values(secrets_version=Project.secrets_version + 1)
+        )
 
     async def values(self, project_id: str | None = None) -> dict[str, dict[str, str]]:
         """Decrypted values per project (for the runtime resolver only)."""
@@ -85,6 +95,66 @@ class SecretService:
             except InvalidToken:  # encrypted with another key: unusable, never crash startup
                 log.warning("secret.undecryptable", project_id=row.project_id, name=row.name)
         return out
+
+
+class SecretCache:
+    """This instance's decrypted copy of the project secrets: `cache` (project id -> {name: value}) holds the
+    dicts the project resolvers read, so they are updated in place; `keyring` returns the instance's current one.
+    Another instance may change a secret: a project's `secrets_version` says when the copy is behind. It is
+    checked for the run's project when a run starts, and for every project every `interval_s` (what the API lists
+    and masks)."""
+
+    def __init__(
+        self, db: Any, keyring: Callable[[], Keyring], cache: dict[str, dict[str, str]], interval_s: float = 10.0
+    ):
+        self.db, self.keyring, self.cache, self.interval_s = db, keyring, cache, interval_s
+        self.versions: dict[str, int] = {}
+        self._task: asyncio.Task | None = None
+
+    async def sync(self) -> None:
+        """Reload the projects whose secrets changed since they were read (every project at startup)."""
+        async with self.db.sessionmaker() as s:
+            rows = (await s.execute(select(Project.id, Project.secrets_version))).all()
+            versions: dict[str, int] = {project_id: version for project_id, version in rows}
+            stale = [p for p, v in versions.items() if self.versions.get(p) != v]
+            if not stale:
+                return
+            values = await SecretService(s, self.keyring()).values(stale[0] if len(stale) == 1 else None)
+        for project_id in stale:
+            self._set(project_id, versions[project_id], values.get(project_id, {}))
+
+    def start(self) -> None:
+        self._task = asyncio.create_task(self._loop(), name="secrets")
+
+    async def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+
+    async def _loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.interval_s)
+            try:
+                await self.sync()
+            except Exception:
+                log.exception("secrets.sync_failed")
+
+    async def refresh(self, project_id: str) -> None:
+        """Reload the project's secrets when another change was saved since they were read (one indexed read when
+        nothing changed)."""
+        async with self.db.sessionmaker() as s:
+            version = await s.scalar(select(Project.secrets_version).where(Project.id == project_id))
+            if version is None or self.versions.get(project_id) == version:
+                return
+            values = (await SecretService(s, self.keyring()).values(project_id)).get(project_id, {})
+        self._set(project_id, version, values)
+
+    def _set(self, project_id: str, version: int, values: dict[str, str]) -> None:
+        current = self.cache.setdefault(project_id, {})
+        if current != values:
+            current.clear()
+            current.update(values)
+        self.versions[project_id] = version
 
 
 async def migrate_legacy(session: AsyncSession, keyring: Keyring) -> int:
