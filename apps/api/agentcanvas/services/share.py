@@ -1,0 +1,222 @@
+"""Share links and chat widgets (S23): a published deployment as a chat page anyone with the link can use.
+
+A share link carries an unguessable token (`sh_…`); the token is the only thing a visitor needs, so it is a
+capability like an unlisted document link. Builders switch it off or regenerate it to revoke it; regenerating also
+ends every conversation started on the old link.
+
+Visitors are anonymous. Each browser keeps a random visitor secret; the conversations it starts are recorded with
+the secret's hash, so a visitor continues only their own conversations, and only through the link they used.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import secrets
+from typing import Any
+
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from agentcanvas.db.models import Deployment, DeploymentShare, ShareThread, WorkflowVersion
+from agentcanvas.errors import InvalidInput, NotFound
+from agentcanvas.ir.contract import contract
+from agentcanvas.ir.models import Workflow
+
+TOKEN_PREFIX = "sh_"
+TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
+STRONG_ANSWER_FIELDS = ("answer", "reply", "response")
+ANSWER_FIELDS = ("output", "result", "summary", "text", "message")
+MAX_SUGGESTIONS = 6
+
+
+def new_token() -> str:
+    return TOKEN_PREFIX + secrets.token_urlsafe(24)
+
+
+def visitor_hash(visitor: str) -> str:
+    return hashlib.sha256(visitor.encode()).hexdigest()
+
+
+class InputShape(BaseModel):
+    field: str | None = Field(default=None, description="the input field the visitor's message goes to")
+    chat: bool = Field(default=False, description="true: the field is a message list; each message is appended to it")
+
+
+class ShareSettingsIn(BaseModel):
+    enabled: bool | None = None
+    title: str | None = Field(None, max_length=120)
+    greeting: str | None = Field(None, max_length=2000)
+    suggestions: list[str] | None = Field(None, max_length=MAX_SUGGESTIONS)
+    input_field: str | None = Field(None, max_length=63, description="'' picks one from the workflow's inputs")
+
+
+def _messages_field(wf: Workflow) -> str | None:
+    names = set(contract(wf).input)
+    for c in wf.state.channels:
+        if c.name in names and (
+            c.reducer == "add_messages" or (c.name == "messages" and c.type.get("type") == "array")
+        ):
+            return c.name
+    return None
+
+
+def input_shape(wf: Workflow, chosen: str | None) -> InputShape:
+    """Where a visitor's message goes: the chosen field, else a text input named like a question, else a message
+    list, else the workflow's only text input."""
+    c = contract(wf)
+    messages = _messages_field(wf)
+    if chosen and chosen in c.input:
+        return InputShape(field=chosen, chat=chosen == messages)
+    strings = [k for k, v in c.input.items() if v.get("type") in (None, "string")]
+    if named := next((k for k in TEXT_FIELDS if k in strings), None):
+        return InputShape(field=named)
+    if messages is not None:
+        return InputShape(field=messages, chat=True)
+    only_in = [k for k in strings if k not in c.output]  # fields that are both in and out are rarely the question
+    return InputShape(field=next((group[0] for group in (only_in, strings) if group), None))
+
+
+def run_input(shape: InputShape, text: str) -> dict[str, Any]:
+    if shape.field is None:
+        raise InvalidInput("this workflow has no text input a chat message could go to")
+    if shape.chat:
+        return {shape.field: [{"role": "user", "content": text}]}
+    return {shape.field: text}
+
+
+def _content(message: Any) -> str | None:
+    if isinstance(message, str):
+        return message
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if isinstance(content, list):  # content blocks: keep the text ones
+        parts = [p.get("text", "") if isinstance(p, dict) else str(p) for p in content]
+        content = "".join(parts)
+    return content if isinstance(content, str) else None
+
+
+def _last_ai(messages: Any) -> str | None:
+    for m in reversed(messages if isinstance(messages, list) else []):
+        role = (m.get("role") or m.get("type")) if isinstance(m, dict) else None
+        if role in ("assistant", "ai", "AIMessage", "AIMessageChunk") and (text := _content(m)):
+            return text
+    return None
+
+
+def answer_text(output: dict[str, Any] | None, shape: InputShape) -> str:
+    """The visitor-facing answer in a run's output: the last assistant message of a chat workflow, else the most
+    answer-like text field or assistant message, else the output as JSON."""
+    out = dict(output or {})
+    if shape.chat and shape.field:
+        return _last_ai(out.get(shape.field)) or ""
+    if shape.field:
+        out.pop(shape.field, None)  # the question echoed back is not the answer
+    strings = {k: v for k, v in out.items() if isinstance(v, str) and v}
+    for k in STRONG_ANSWER_FIELDS:
+        if k in strings:
+            return strings[k]
+    for v in out.values():
+        if isinstance(v, list) and (text := _last_ai(v)):
+            return text
+    for k in ANSWER_FIELDS:
+        if k in strings:
+            return strings[k]
+    if len(strings) == 1:
+        return next(iter(strings.values()))
+    if not out:
+        return ""
+    return json.dumps(out, indent=2, default=str, ensure_ascii=False)
+
+
+def question_of(interrupt: dict[str, Any]) -> str:
+    """A pause as a prompt a visitor can answer: the question it asks, or what it waits for."""
+    payload = interrupt.get("payload")
+    if isinstance(payload, dict):
+        for k in ("question", "message", "title", "prompt", "description"):
+            if isinstance(payload.get(k), str) and payload[k]:
+                return payload[k]
+    elif isinstance(payload, str) and payload:
+        return payload
+    return {
+        "approval": "Do you approve?",
+        "tool_approval": "May the assistant go ahead with this action?",
+    }.get(interrupt.get("kind") or "", "Please answer to continue.")
+
+
+class ShareService:
+    def __init__(self, session: AsyncSession):
+        self.s = session
+
+    async def get(self, dep_id: str) -> DeploymentShare | None:
+        return await self.s.get(DeploymentShare, dep_id)
+
+    async def ensure(self, dep_id: str) -> DeploymentShare:
+        share = await self.get(dep_id)
+        if share is None:
+            share = DeploymentShare(deployment_id=dep_id, token=new_token(), enabled=False, title="", greeting="",
+                                    suggestions=[])  # fmt: skip
+            self.s.add(share)
+            await self.s.flush()
+        return share
+
+    async def update(self, dep_id: str, body: ShareSettingsIn, user_id: str) -> DeploymentShare:
+        share = await self.ensure(dep_id)
+        if body.enabled is not None:
+            share.enabled = body.enabled
+        if body.title is not None:
+            share.title = body.title.strip()
+        if body.greeting is not None:
+            share.greeting = body.greeting.strip()
+        if body.suggestions is not None:
+            share.suggestions = [s.strip()[:200] for s in body.suggestions if s.strip()][:MAX_SUGGESTIONS]
+        if body.input_field is not None:
+            share.input_field = body.input_field or None
+        share.updated_by = user_id
+        await self.s.commit()
+        await self.s.refresh(share)
+        return share
+
+    async def regenerate(self, dep_id: str, user_id: str) -> DeploymentShare:
+        """A new link; the old one and every conversation started on it stop working at once."""
+        share = await self.ensure(dep_id)
+        share.token, share.updated_by = new_token(), user_id
+        await self.s.execute(delete(ShareThread).where(ShareThread.deployment_id == dep_id))
+        await self.s.commit()
+        await self.s.refresh(share)
+        return share
+
+    async def open(self, token: str) -> tuple[DeploymentShare, Deployment, Workflow]:
+        """The share, its deployment and pinned workflow for a link; 404 when the link is unknown, switched off or
+        its deployment unpublished (all look the same to a visitor)."""
+        share = await self.s.scalar(select(DeploymentShare).where(DeploymentShare.token == token)) if token else None
+        dep = await self.s.get(Deployment, share.deployment_id) if share is not None else None
+        if (
+            share is None
+            or dep is None
+            or not share.enabled
+            or not dep.active
+            or not hmac.compare_digest(share.token, token)
+        ):
+            raise NotFound("this link does not work any more; ask its owner for a new one")
+        version = await self.s.get(WorkflowVersion, dep.version_id)
+        if version is None:
+            raise NotFound("this link does not work any more; ask its owner for a new one")
+        return share, dep, Workflow.model_validate(version.ir)
+
+    async def check_thread(self, dep_id: str, thread_id: str, visitor: str) -> None:
+        """The conversation was started on this link by this visitor (404 otherwise, so ids cannot be probed)."""
+        row = await self.s.get(ShareThread, thread_id)
+        if (
+            row is None
+            or row.deployment_id != dep_id
+            or not hmac.compare_digest(row.visitor_hash, visitor_hash(visitor))
+        ):
+            raise NotFound(f"conversation '{thread_id}' not found")
+
+    async def claim_thread(self, dep_id: str, thread_id: str, visitor: str) -> None:
+        self.s.add(ShareThread(thread_id=thread_id, deployment_id=dep_id, visitor_hash=visitor_hash(visitor)))
+        await self.s.commit()

@@ -1,0 +1,243 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_feedback_triage",
+  "name": "Feedback sentiment triage",
+  "description": "Reads a piece of customer feedback, labels its sentiment and routes it: negative feedback gets a careful drafted reply, positive feedback a thank-you.",
+  "state": {
+    "channels": [
+      {
+        "name": "feedback",
+        "io": "in",
+        "description": "A review, survey answer or email"
+      },
+      {
+        "name": "sentiment",
+        "io": "out",
+        "description": "positive | negative | neutral"
+      },
+      {
+        "name": "reply",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_cls",
+      "type": "core.llm",
+      "name": "classify_sentiment",
+      "label": "Classify sentiment",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Answer with one word: positive, negative or neutral. What is the sentiment of this customer feedback?\n\n{{ state.feedback }}",
+        "output": "sentiment"
+      }
+    },
+    {
+      "id": "n_rt",
+      "type": "core.router",
+      "name": "route_sentiment",
+      "label": "Which sentiment?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.sentiment == \"negative\"",
+            "route": "negative"
+          },
+          {
+            "when": "state.sentiment == \"positive\"",
+            "route": "positive"
+          }
+        ],
+        "default": "neutral"
+      }
+    },
+    {
+      "id": "n_sorry",
+      "type": "core.llm",
+      "name": "draft_apology",
+      "label": "Draft a careful reply",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "A customer left negative feedback. Write a short, sincere reply that acknowledges the problem and says what happens next. Do not promise refunds or compensation.\n\n{{ state.feedback }}",
+        "output": "reply"
+      }
+    },
+    {
+      "id": "n_thanks",
+      "type": "core.set",
+      "name": "thank_customer",
+      "label": "Say thank you",
+      "config": {
+        "values": {
+          "reply": "Thank you for the kind words! We have shared your feedback with the team."
+        }
+      }
+    },
+    {
+      "id": "n_neutral",
+      "type": "core.set",
+      "name": "acknowledge",
+      "label": "Acknowledge",
+      "config": {
+        "values": {
+          "reply": "Thanks for your feedback. We read every message and use it to improve."
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_cls"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_cls"
+      },
+      "target": {
+        "node": "n_rt"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:negative"
+      },
+      "target": {
+        "node": "n_sorry"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:positive"
+      },
+      "target": {
+        "node": "n_thanks"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_rt",
+        "port": "route:neutral"
+      },
+      "target": {
+        "node": "n_neutral"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_sorry"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_thanks"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e8",
+      "kind": "flow",
+      "source": {
+        "node": "n_neutral"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w9",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_cls",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w10",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_sorry",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Customer support",
+      "tags": [
+        "sentiment",
+        "routing",
+        "reviews"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "feedback": "The app keeps logging me out and support never answered my email."
+      }
+    }
+  }
+}

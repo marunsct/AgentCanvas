@@ -22,7 +22,7 @@ from agentcanvas.registry import (
     load_gallery,
 )
 from agentcanvas.registry.adapters import AdapterManifest
-from agentcanvas.services.workflows import list_templates
+from agentcanvas.services.workflows import list_templates, template_gallery
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["catalog"])
@@ -61,6 +61,12 @@ class TemplateInfo(BaseModel):
     name: str
     description: str
     node_count: int
+    # S23 gallery (from the template's `metadata.gallery`; absent on templates that have none)
+    block_count: int = 0  # steps and resources (models, tools, middleware) on the canvas
+    category: str | None = None
+    tags: list[str] = []
+    difficulty: Literal["beginner", "intermediate"] | None = None
+    sample_input: dict[str, Any] | None = None
 
 
 class ConnectorSecret(BaseModel):
@@ -93,10 +99,17 @@ def mcp_connectors() -> list[McpConnector]:
 
 @router.get("/templates", response_model=list[TemplateInfo])
 def templates(settings: Settings = Depends(get_settings_dep)) -> list[TemplateInfo]:
-    return [
-        TemplateInfo(id=k, name=v["name"], description=v.get("description", ""), node_count=len(v.get("nodes", [])))
-        for k, v in list_templates(settings).items()
-    ]
+    """The template gallery (S23): each starter template with its category, tags, difficulty and a sample input."""
+    return [_template_info(k, v) for k, v in list_templates(settings).items()]
+
+
+def _template_info(key: str, doc: dict[str, Any]) -> TemplateInfo:
+    g = template_gallery(doc)
+    return TemplateInfo(
+        id=key, name=doc["name"], description=doc.get("description", ""), node_count=len(doc.get("nodes", [])),
+        block_count=len(doc.get("nodes", [])) + len(doc.get("resources", [])), category=g.get("category"),
+        tags=g.get("tags") or [], difficulty=g.get("difficulty"), sample_input=g.get("sample_input"),
+    )  # fmt: skip
 
 
 @router.get("/ir-schema")

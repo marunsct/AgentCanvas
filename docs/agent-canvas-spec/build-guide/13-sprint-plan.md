@@ -45,7 +45,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S20** | 2 | Framework foundation → v0.12.0 | [doc 17](../17-framework-coverage-review.md), doc 12 WS0 | — | 20 | Adapter interface v2, adapter per workflow, `engine` per node, framework picker, portability check, conformance kit (✅ done) |
 | **S21** | 2 | Design any agent → v0.13.0 | doc 17 | — | 22 | The canvas Agent block builds a native agent in nine frameworks; mixed flows run and export (✅ done) |
 | **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to LangGraph, WayFlow and OpenAI Agents through Agent Spec (preview) (✅ done) |
-| **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates |
+| **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates (✅ done) |
 | **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
 | **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare |
 | **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
@@ -550,6 +550,28 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S23 — Ship to users → v0.15.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Share page | B F | 4 | A published deployment has a public chat page from a link; visitors see only their own conversations |
+| 2 | Chat widget | F D | 2 | One script tag adds the chat to any site; only share pages may be framed by other sites |
+| 3 | Safety blocks | R | 5 | PII redaction, prompt-injection check, moderation and output schema check, each with labelled eval cases |
+| 4 | Template gallery | R F | 4 | 25 use-case templates, searchable by category; each validates, runs on fake models and exports |
+| 5 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** Built in three parallel parts. Share links: `services/share.py`, `api/v1/share.py`
+(public `/v1/share/{token}`, builder `/v1/deployments/{id}/share`), migration `c4e8a2f6b0d3`, `web/src/share/`,
+`public/widget.js`, `release/ShareSection.tsx`; nginx serves `/s/` with `frame-ancestors *` and `widget.js`
+cross-origin, every other page keeps `'self'` and X-Frame-Options. The visitor's stream is filtered to the
+answer text, the final answer and questions. Safety blocks: `agentcanvas/guardrails.py` (shipped in exports),
+`registry/nodes/guard.*.json`, eval cases in `registry/guardrails/*.cases.json` (91, precision and recall 1.0 in
+`tests/test_guardrails.py`), W019. Gallery: 18 new templates with `metadata.gallery`, `TemplateGallery.tsx`.
+Deviations: no allowed-origins list for the widget (the page is static, so a share link is public to anyone who
+has it; documented); moderation and injection checks are pattern lists unless a model is wired, and the model
+path's quality is not measured in CI; two templates were made single-path because pyagentspec cannot load
+parallel branches; the new templates exposed two real bridge failures, now reported as gaps.
 
 ### S18 — AI Copilot II and debug assistant → v0.8.0
 

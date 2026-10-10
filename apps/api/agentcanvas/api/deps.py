@@ -154,6 +154,7 @@ ROLE_EXCEPTIONS = {
     ("DELETE", "/workflows/{wf_id}/gates/{environment}"): "admin",
     ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server
     ("DELETE", "/projects/{project_id}/trace-export"): "admin",
+    ("GET", "/deployments/{dep_id}/share"): "builder",  # the link is a capability: builders hand it out (S23)
 }
 
 

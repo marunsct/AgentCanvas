@@ -188,5 +188,18 @@
         "port": "model"
       }
     }
-  ]
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Getting started",
+      "tags": [
+        "human approval",
+        "drafting"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "brief": "Our new office opens on Monday"
+      }
+    }
+  }
 }

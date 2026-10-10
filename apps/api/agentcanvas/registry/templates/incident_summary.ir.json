@@ -1,0 +1,175 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_incident_summary",
+  "name": "Incident summary",
+  "description": "Turns raw incident notes (alerts, chat, timeline) into a timeline and a blameless summary for stakeholders; the incident lead approves it before it goes out.",
+  "state": {
+    "channels": [
+      {
+        "name": "incident_log",
+        "io": "in",
+        "description": "Alerts, chat messages and notes, in any order"
+      },
+      {
+        "name": "timeline",
+        "io": "out"
+      },
+      {
+        "name": "summary",
+        "io": "out"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_tl",
+      "type": "core.llm",
+      "name": "build_timeline",
+      "label": "Build the timeline",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Build a timeline of this incident: one line per event, 'HH:MM - what happened', in order. Use only what the notes say.\n\n{{ state.incident_log }}",
+        "output": "timeline"
+      }
+    },
+    {
+      "id": "n_sum",
+      "type": "core.llm",
+      "name": "write_summary",
+      "label": "Write the summary",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a blameless incident summary for stakeholders under these headings: Impact, Timeline, Root cause (or 'under investigation'), What we did, Follow-ups. Keep it under 250 words.\n\nTimeline:\n{{ state.timeline }}\n\nNotes:\n{{ state.incident_log }}",
+        "output": "summary"
+      }
+    },
+    {
+      "id": "n_ok",
+      "type": "core.approval",
+      "name": "lead_review",
+      "label": "Incident lead review",
+      "config": {
+        "show": "summary",
+        "output": "approved"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_tl"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_tl"
+      },
+      "target": {
+        "node": "n_sum"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_sum"
+      },
+      "target": {
+        "node": "n_ok"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_ok"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_tl",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w6",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_sum",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Engineering",
+      "tags": [
+        "incidents",
+        "on-call",
+        "human approval"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "incident_log": "14:02 alert: checkout error rate 30%\n14:05 Sam: rolling back release 4.2\n14:11 errors back to normal\n14:30 cause: expired payment API key"
+      }
+    }
+  }
+}

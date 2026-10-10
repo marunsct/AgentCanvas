@@ -218,6 +218,13 @@ async def _caller(
     """The key's deployment and workflow, after counting the request against the deployment's and the project's
     rate limits (429 when over)."""
     dep, wf = await DeploymentService(session).authenticate(dep_id, authorization)
+    await count_call(request, session, dep, wf)
+    return dep, wf
+
+
+async def count_call(request: Request, session: AsyncSession, dep: Deployment, wf: Workflow) -> None:
+    """Count a call of the deployment (by key, MCP, A2A or share link) against its and its project's rate limits
+    (429 when over)."""
     from agentcanvas.db.models import WorkflowRow
 
     row = await session.get(WorkflowRow, dep.workflow_id)
@@ -229,7 +236,6 @@ async def _caller(
         (f"deployment:{dep.id}", per_key),
         (f"project:{row.project_id if row else dep.workflow_id}", settings.rate_limit_per_project),
     )
-    return dep, wf
 
 
 async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, body: ApiRunIn) -> dict[str, Any]:

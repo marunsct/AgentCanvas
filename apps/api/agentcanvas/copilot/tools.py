@@ -23,6 +23,7 @@ from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_co
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry
 from agentcanvas.services.testcases import Expect
+from agentcanvas.services.workflows import without_gallery
 from agentcanvas.validation import Diagnostic
 from agentcanvas.validation.help import diagnostic_help
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -112,7 +113,7 @@ async def get_template(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]
     doc = ctx.templates.get(name)
     if doc is None:
         return {"ok": False, "error": f"no template '{name}'; known: {', '.join(ctx.templates)}"}
-    return {"ok": True, "template": {k: v for k, v in doc.items() if k not in ("id", "ir_version")}}
+    return {"ok": True, "template": {k: v for k, v in without_gallery(doc).items() if k not in ("id", "ir_version")}}
 
 
 # ------------------------------------------------------------------ write ----

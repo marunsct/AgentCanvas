@@ -74,6 +74,16 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
     builder.add_node({{ n.name | py }}, ac.memory_node(op={{ n.type[12:] | py }}, space={{ n.config.get("space", "memories") | py }}, scope={{ n.config.get("scope", "user") | py }}, workflow_id={{ plan.wf.id | py }}, user_key={{ plan.user_key | py }}, key={{ n.config.get("key") | py }}, query={{ n.config.get("query") | py }}, top_k={{ n.config.get("top_k", 5) | py }}, value={{ n.config.get("value") | py }}, output={{ n.config.get("output") | py }}), {{ meta }})
 {%- elif n.type == "core.set" %}
     builder.add_node({{ n.name | py }}, ac.set_node(values={{ n.config["values"] | pp }}), {{ meta }})
+{%- elif n.type in ("guard.pii", "guard.injection", "guard.moderation", "guard.schema") %}{% set c = n.config %}{% set common = "name=" ~ (n.name | py) ~ ", input=" ~ (c.get("input", "messages") | py) ~ ", flag_output=" ~ (c.get("flag_output") | py) ~ ", report_output=" ~ (c.get("report_output") | py) %}{% set model = p.wired.get("model", ["None"])[0] %}
+{%- if n.type == "guard.pii" %}
+    builder.add_node({{ n.name | py }}, ac.pii_guard_node({{ common }}, types={{ c.get("types", pii_types) | py }}, custom_patterns={{ c.get("custom_patterns", []) | pp }}, strategy={{ c.get("strategy", "redact") | py }}, on_fail={{ c.get("on_fail", "redact") | py }}, output={{ c.get("output") | py }}), {{ meta }})
+{%- elif n.type == "guard.injection" %}
+    builder.add_node({{ n.name | py }}, ac.injection_guard_node({{ common }}, model={{ model }}, threshold={{ c.get("threshold", 0.5) | py }}, on_fail={{ c.get("on_fail", "stop") | py }}), {{ meta }})
+{%- elif n.type == "guard.moderation" %}
+    builder.add_node({{ n.name | py }}, ac.moderation_guard_node({{ common }}, model={{ model }}, categories={{ c.get("categories", moderation_categories) | py }}, threshold={{ c.get("threshold", 0.5) | py }}, on_fail={{ c.get("on_fail", "stop") | py }}), {{ meta }})
+{%- else %}
+    builder.add_node({{ n.name | py }}, ac.schema_guard_node({{ common }}, schema={{ c["schema"] | pp }}, model={{ model }}, repair={{ c.get("repair", False) | py }}, on_fail={{ c.get("on_fail", "stop") | py }}, output={{ c.get("output") | py }}), {{ meta }})
+{%- endif %}
 {%- elif n.type == "core.script" %}
     builder.add_node({{ n.name | py }}, ac.script_node(import_path={{ n.config.import_path | py }}), {{ meta }})
 {%- elif n.type == "agent.framework" %}

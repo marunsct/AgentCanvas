@@ -1,0 +1,76 @@
+{
+  "type": "guard.injection",
+  "kind": "runtime",
+  "label": "Check for prompt injection",
+  "category": "Safety",
+  "icon": "shield",
+  "color": "#DC2626",
+  "description": "Checks text for prompt injection: attempts to override the AI's instructions, fake system messages, hidden or encoded instructions, and requests for secrets. Uses fixed checks; plug in an AI model to also ask it.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": false,
+      "description": "Optional: an AI model that also judges the text. The check fails when either the fixed checks or the model flag it."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go after the check: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "input"
+    ],
+    "properties": {
+      "input": {
+        "type": "string",
+        "title": "Text to check",
+        "format": "channel",
+        "default": "messages",
+        "description": "The data field to check. For the conversation (messages) the newest message is checked."
+      },
+      "on_fail": {
+        "enum": [
+          "stop",
+          "flag"
+        ],
+        "title": "When it fails",
+        "default": "stop",
+        "description": "stop = end the run with an error that says why; flag = carry on and save the verdict for a later step to branch on."
+      },
+      "flag_output": {
+        "type": "string",
+        "title": "Save yes/no in",
+        "format": "channel",
+        "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+      },
+      "report_output": {
+        "type": "string",
+        "title": "Save the details in",
+        "format": "channel",
+        "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+      },
+      "threshold": {
+        "type": "number",
+        "title": "Sensitivity threshold",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "description": "The check fails when the risk score (0 to 1) reaches this. Lower catches more but has more false alarms."
+      }
+    }
+  },
+  "read_fields": [
+    "input"
+  ],
+  "channel_fields": [
+    "flag_output",
+    "report_output"
+  ]
+}

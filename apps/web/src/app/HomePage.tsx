@@ -10,6 +10,7 @@ import { AgentSpecImport, type ImportOut } from "../release/AgentSpec";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { TemplateGallery } from "./TemplateGallery";
 
 export function HomePage() {
   const workflows = useWorkflows();
@@ -78,16 +79,10 @@ export function HomePage() {
         </form>
         <h3>…or start from a template</h3>
         <QueryStatus q={templates} what="templates" />
-        <div className="cards">
-          {(templates.data ?? []).map((t) => (
-            <button type="button" key={t.id} className="card" data-testid={`template-${t.id}`}
-              onClick={() => create.mutate({ name: name.trim() || t.name, template: t.id })}>
-              <b>{t.name}</b>
-              <span className="muted">{t.description}</span>
-              <small>{t.node_count} nodes</small>
-            </button>
-          ))}
-        </div>
+        {templates.data && (
+          <TemplateGallery templates={templates.data} busy={create.isPending}
+            onPick={(t) => create.mutate({ name: name.trim() || t.name, template: t.id })} />
+        )}
         {create.error && <p className="error-text">{(create.error as Error).message}</p>}
         <h3>…or bring one from another agent framework</h3>
         <AgentSpecImport projectId={PROJECT_ID} onDone={onImported} />

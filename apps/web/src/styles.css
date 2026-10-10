@@ -259,6 +259,24 @@ html { overflow-x: clip; }
 .card b { font-size: 14.5px; }
 .card .muted { font-size: 13px; line-height: 1.45; }
 .card small { margin-top: auto; padding: 2px 8px; border-radius: 99px; background: var(--bg-subtle); color: var(--muted); font-size: 11.5px; }
+/* S23 template gallery: search, category chips, cards with category, tags, block count and difficulty */
+.gallery-tools { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 4px; }
+.gallery-search { max-width: 420px; width: 100%; }
+.gallery-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gallery-chip { border-radius: 99px; padding: 4px 12px; font-size: 13px; width: auto; }
+.gallery-chip .count { color: var(--muted); font-size: 11.5px; margin-left: 2px; }
+.gallery-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.gallery-cards { list-style: none; padding: 0; margin: 8px 0; }
+.gallery-cards > li { display: flex; min-width: 0; }
+.gallery-cards .card { width: 100%; height: 100%; }
+.gallery-cards .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gallery-cards .card:disabled { opacity: .6; cursor: progress; }
+.card-kicker { font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--accent); }
+.card-tags { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 11.5px; color: var(--muted); }
+.card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.card-meta small { margin-top: 0; }
+.card-meta small.level.beginner { color: var(--ok); background: var(--tint-ok); }
+@media (max-width: 700px) { .cards.gallery-cards { grid-template-columns: 1fr; } }
 .wf-list {
   list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px;
 }
@@ -827,3 +845,45 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .designed-agent .row { flex-wrap: wrap; }
 .designed-code { font-family: var(--mono); font-size: 11px; white-space: pre; overflow: auto; max-height: 360px;
   background: var(--code-bg); color: var(--code-fg); padding: 8px 10px; border-radius: 6px; }
+
+/* ---------- share links (S23): the public chat page, full page or compact in the widget's iframe ---------- */
+.share-page {
+  display: flex; flex-direction: column; height: 100dvh; max-width: 760px; margin: 0 auto; padding: 0 16px;
+}
+.share-header { display: flex; align-items: center; gap: 12px; padding: 16px 0 10px; border-bottom: 1px solid var(--border); }
+.share-header h1 { font-size: 20px; font-weight: 650; margin: 0; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.share-new { flex: none; }
+.share-log { flex: 1; overflow-y: auto; padding: 16px 0; display: flex; flex-direction: column; gap: 10px; }
+.share-msg {
+  max-width: 85%; padding: 10px 14px; border-radius: var(--radius-lg); white-space: pre-wrap; overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.share-msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+.share-msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); }
+.share-msg.error { border-color: var(--err); color: var(--err); }
+.share-msg.question { border-color: var(--wait); }
+.share-greeting { margin: 0; }
+.share-typing { color: var(--muted); }
+.share-rate { display: flex; gap: 4px; margin-top: 6px; }
+.share-rate button { padding: 2px 8px; font-size: 13px; }
+.share-rate button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.share-suggestions { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.share-suggestions button { border-radius: 999px; padding: 6px 14px; }
+.share-decide { display: flex; gap: 8px; padding-bottom: 8px; }
+.share-composer { display: flex; gap: 8px; align-items: flex-end; padding: 10px 0; border-top: 1px solid var(--border); }
+.share-composer textarea { resize: none; min-height: 42px; max-height: 160px; field-sizing: content; }
+.share-composer button { flex: none; min-height: 42px; }
+.share-notice { margin: 0; font-size: 13px; color: var(--muted); }
+.share-foot { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-align: center; }
+.share-loading, .share-gone { margin: auto; text-align: center; color: var(--muted); padding: 40px 0; }
+.share-gone h1 { font-size: 20px; }
+.share-page.embed { max-width: none; padding: 0 12px; }
+.share-page.embed .share-header { padding: 10px 0 8px; }
+.share-page.embed .share-header h1 { font-size: 16px; }
+.share-page.embed .share-msg { max-width: 92%; padding: 8px 12px; }
+.share-box textarea { min-height: 60px; }
+.share-box .row { flex-wrap: wrap; }
+.share-box label { display: block; margin: 8px 0 3px; font-weight: 600; }
+.share-box code { display: block; overflow-wrap: anywhere; }
+.share-box label.share-toggle { font-weight: 400; display: flex; align-items: center; }
+.share-box code.inline { display: inline; }

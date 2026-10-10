@@ -18,17 +18,15 @@ the editor.
 
 ## Option B: start from a template
 
-On **Home**, the template cards create a ready-to-run workflow:
+On **Home**, the [template gallery](templates.md) creates a ready-to-run workflow from one of 25 templates:
+customer support bots, content writers, data extraction, research, sales, HR, engineering and operations helpers.
+Search it or pick a category, then click a card. The ones to start with:
 
 | Template | What it shows |
 |---|---|
 | **Chat assistant** | One agent chatting over the `messages` channel. The best starting point for adding tools. |
 | **Classify and route** | An LLM classifies the input, a router picks a branch, each branch writes a reply. |
-| **Support triage** | Classify a ticket's urgency; urgent tickets wait for a manager's approval, the rest get a drafted reply. |
 | **Approval workflow** | An LLM drafts, a person approves or edits, and only approved drafts are published. |
-| **Data extraction** | Turn free text (an email, an invoice) into validated structured fields. |
-| **RAG Q&A** | Answer from a knowledge base kept in long-term memory. |
-| **Research brief** | Map-reduce research: one LLM call per topic in parallel, then a Deep Agent writes the brief. |
 
 **Support triage (demo tools)** is a variant of Support triage wired to a demo `send_reply` tool from the
 examples, used in the smoke test.

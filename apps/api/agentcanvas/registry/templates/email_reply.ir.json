@@ -1,0 +1,212 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_email_reply",
+  "name": "Email reply with approval",
+  "description": "Drafts a reply to an email in the tone you choose; a person approves or edits it before it is marked ready to send.",
+  "state": {
+    "channels": [
+      {
+        "name": "email",
+        "io": "in",
+        "description": "The email you received"
+      },
+      {
+        "name": "tone",
+        "io": "in",
+        "description": "For example friendly, formal or brief"
+      },
+      {
+        "name": "draft",
+        "io": "out"
+      },
+      {
+        "name": "approved",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "out"
+      },
+      {
+        "name": "status",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_draft",
+      "type": "core.llm",
+      "name": "draft_reply",
+      "label": "Draft reply",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a reply to the email below in a {{ state.tone }} tone. Answer every question it asks, keep it under 150 words and sign off as \"The team\".\n\nEmail:\n{{ state.email }}",
+        "output": "draft"
+      }
+    },
+    {
+      "id": "n_review",
+      "type": "core.approval",
+      "name": "review_reply",
+      "label": "Review the reply",
+      "config": {
+        "show": "draft",
+        "output": "approved"
+      }
+    },
+    {
+      "id": "n_gate",
+      "type": "core.router",
+      "name": "approved_gate",
+      "label": "Approved?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.approved == true",
+            "route": "yes"
+          }
+        ],
+        "default": "no"
+      }
+    },
+    {
+      "id": "n_ready",
+      "type": "core.set",
+      "name": "mark_ready",
+      "label": "Ready to send",
+      "config": {
+        "values": {
+          "status": "ready to send"
+        }
+      }
+    },
+    {
+      "id": "n_rework",
+      "type": "core.set",
+      "name": "mark_rework",
+      "label": "Needs rework",
+      "config": {
+        "values": {
+          "status": "needs rework"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_draft"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_draft"
+      },
+      "target": {
+        "node": "n_review"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_review"
+      },
+      "target": {
+        "node": "n_gate"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:yes"
+      },
+      "target": {
+        "node": "n_ready"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_gate",
+        "port": "route:no"
+      },
+      "target": {
+        "node": "n_rework"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_ready"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_rework"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w8",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_draft",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Customer support",
+      "tags": [
+        "email",
+        "human approval",
+        "drafting"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "email": "Hi, my order #1042 arrived damaged. Can I get a replacement, and how long will it take?",
+        "tone": "friendly"
+      }
+    }
+  }
+}

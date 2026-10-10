@@ -1,0 +1,172 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_product_description",
+  "name": "Product description writer",
+  "description": "Writes shop-ready product copy (headline, description, bullet points, SEO keywords) from a list of facts, as structured output.",
+  "state": {
+    "channels": [
+      {
+        "name": "product_facts",
+        "io": "in",
+        "description": "Name, features, materials, price: one per line"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "private",
+        "description": "The conversation the agent reads"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 10
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "brief_writer",
+      "label": "Brief the writer",
+      "config": {
+        "values": {
+          "messages": "Write product copy for an online shop from these facts. Do not invent features.\n\n{{ state.product_facts }}"
+        }
+      }
+    },
+    {
+      "id": "n_writer",
+      "type": "core.agent",
+      "name": "copywriter",
+      "label": "Copywriter",
+      "config": {
+        "system_prompt": "You are an e-commerce copywriter. Write clear, benefit-led copy in plain English, with no exaggerated claims.",
+        "response_format": {
+          "title": "ProductCopy",
+          "type": "object",
+          "required": [
+            "headline",
+            "description",
+            "bullets"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "description": "At most 60 characters"
+            },
+            "description": {
+              "type": "string",
+              "description": "Two short paragraphs"
+            },
+            "bullets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "3 to 5 key benefits"
+            },
+            "seo_keywords": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_writer"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_writer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_writer",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_writer",
+        "port": "middleware"
+      },
+      "order": 0
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Sales",
+      "tags": [
+        "e-commerce",
+        "copywriting",
+        "structured output"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "product_facts": "Trail Runner 2 backpack\n18 litres, 640 g\nRecycled ripstop nylon, waterproof zips\nLaptop sleeve up to 15 inches\nPrice: $89"
+      }
+    }
+  }
+}

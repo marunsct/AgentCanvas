@@ -100,6 +100,20 @@ def gaps(wf: Workflow, target: str) -> list[Gap]:
                              "refuses or runs only one of them."))  # fmt: skip
     if any(n.type == "core.subgraph" for n in wf.nodes):
         out.append(Gap(True, "Subflows are not exported to other frameworks yet."))
+    if target == "openai_agents":  # its code generator returns only the input or an agent's answer (S23)
+        for e in doc.get("data_flow_connections") or []:
+            src = refs[e["source_node"]["$component_ref"]]
+            if refs[e["destination_node"]["$component_ref"]]["component_type"] == "EndNode" and src[
+                "component_type"
+            ] not in ("StartNode", "AgentNode"):
+                out.append(Gap(True, f"The result '{e['source_output']}' comes from '{src['name']}', which is not an "
+                                     f"agent; {t.label} flows can only return an agent's answer."))  # fmt: skip
+    if target == "wayflow":  # WayFlow checks types: text written into a list field stops the flow (S23)
+        lists = {c.name for c in wf.state.channels if c.type.get("type") == "array"}
+        for n in wf.nodes:
+            if n.type == "core.set" and (bad := sorted(lists & set(n.config.get("values") or {}))):
+                out.append(Gap(True, f"'{n.name}' writes text into the list field '{bad[0]}'; {t.label} expects a "
+                                     "list there."))  # fmt: skip
     out += [Gap(False, r) for r in report]
     out.append(Gap(False, "Runs, approvals, history and traces stay in the other framework: nothing reports back to "
                           "AgentCanvas."))  # fmt: skip

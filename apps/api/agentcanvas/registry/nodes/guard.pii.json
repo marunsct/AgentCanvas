@@ -1,0 +1,133 @@
+{
+  "type": "guard.pii",
+  "kind": "runtime",
+  "label": "Hide personal data",
+  "category": "Safety",
+  "icon": "shield",
+  "color": "#DC2626",
+  "description": "Finds personal data (emails, phone and card numbers, IBANs, IP addresses, US social security numbers, your own patterns) in a data field and hides it, flags it or stops the run. Lists what kinds it found, never the values.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go after the check: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "input"
+    ],
+    "properties": {
+      "input": {
+        "type": "string",
+        "title": "Text to check",
+        "format": "channel",
+        "default": "messages",
+        "description": "The data field to check. For the conversation (messages) the newest message is checked."
+      },
+      "on_fail": {
+        "enum": [
+          "redact",
+          "flag",
+          "stop"
+        ],
+        "title": "When it fails",
+        "default": "redact",
+        "description": "redact = hide what was found and carry on; flag = change nothing and save the verdict; stop = end the run with an error."
+      },
+      "flag_output": {
+        "type": "string",
+        "title": "Save yes/no in",
+        "format": "channel",
+        "description": "Optional: a true/false field that is true when the check fails. Branch on it with Choose a path, e.g. state.flagged == true."
+      },
+      "report_output": {
+        "type": "string",
+        "title": "Save the details in",
+        "format": "channel",
+        "description": "Optional: a field that receives what was found and why (never the personal data itself)."
+      },
+      "types": {
+        "type": "array",
+        "title": "What to look for",
+        "uniqueItems": true,
+        "default": [
+          "email",
+          "phone",
+          "credit_card",
+          "iban",
+          "ip_address",
+          "us_ssn"
+        ],
+        "items": {
+          "enum": [
+            "email",
+            "phone",
+            "credit_card",
+            "iban",
+            "ip_address",
+            "us_ssn"
+          ]
+        },
+        "description": "email, phone, credit_card (checked with the Luhn test), iban, ip_address, us_ssn."
+      },
+      "custom_patterns": {
+        "type": "array",
+        "title": "Your own patterns",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "pattern"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "description": "e.g. order_id; shown as [REDACTED_ORDER_ID]."
+            },
+            "pattern": {
+              "type": "string",
+              "title": "Pattern (regex)",
+              "format": "regex",
+              "minLength": 1
+            }
+          }
+        },
+        "description": "Optional regular expressions for your own kinds of personal data, e.g. AB-\\d{6} for order ids."
+      },
+      "strategy": {
+        "enum": [
+          "redact",
+          "mask",
+          "hash"
+        ],
+        "title": "How to hide it",
+        "default": "redact",
+        "description": "redact = [REDACTED_EMAIL]; mask = keep the last 4 characters (****-1111); hash = a short fingerprint, the same for the same value."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save the cleaned text in",
+        "format": "channel",
+        "description": "Optional: leave empty to clean the field in place (the message itself, for messages)."
+      }
+    }
+  },
+  "read_fields": [
+    "input"
+  ],
+  "channel_fields": [
+    "input",
+    "output",
+    "flag_output",
+    "report_output"
+  ],
+  "side_effects": [
+    "pii_read"
+  ]
+}

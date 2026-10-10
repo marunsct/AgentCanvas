@@ -58,6 +58,42 @@ brackets; it is what the saved workflow and the generated code use, and it never
 | **Run Python code** (`core.script`) | Runs `def run(state) -> dict` from a file in the workspace's `scripts/` folder; return the fields to update. |
 | *Workspace scripts and custom blocks* | Files in the workspace appear in the palette under **Workspace**. See [Workspace](workspace.md). |
 
+## Safety blocks (guardrails)
+
+Safety blocks check text as it passes through your workflow: put one right after **Start** to check what people
+send in, or right before **Finish** to check what the AI wrote. Each one reads a data field (**Text to check**;
+by default `messages`, the conversation, where only the newest message is checked) and has a **When it fails**
+setting:
+
+- **stop**: end the run with an error that says which block stopped it and why. Nothing after it runs.
+- **flag**: carry on, and save the verdict so a later step can decide what to do. **Save yes/no in** gets
+  `true` when the check fails; **Save the details in** gets the reasons (and scores). A block set to flag that
+  saves nothing gets a warning, because nothing could act on it.
+- **redact** (Hide personal data only, the default): hide what was found and carry on.
+
+| Block | What it does |
+|---|---|
+| **Hide personal data** (`guard.pii`) | Finds email addresses, phone numbers, credit card numbers (checked with the Luhn test, so most random numbers are not mistaken for cards), IBANs, IP addresses, US social security numbers and **your own patterns** (a name and a regular expression, e.g. `order_id` = `AB-\d{6}`). **How to hide it**: *redact* (`[REDACTED_EMAIL]`), *mask* (`****-1111`, `j***@example.com`) or *hash* (a short fingerprint, the same for the same value; it is not anonymisation). It cleans the field in place (for `messages`, the message itself, so an AI step after it never sees the data) or writes the cleaned text to **Save the cleaned text in**. The details list the kinds and counts it found, never the values, and so does the error when it stops a run. |
+| **Check for prompt injection** (`guard.injection`) | Scores text from 0 to 1 for attempts to take over the AI: “ignore all previous instructions”, fake system messages (`<\|im_start\|>system`, `[INST]`), requests for its hidden instructions or for keys and passwords, instructions hidden in invisible characters, text-direction tricks or base64, s p a c e d - o u t or 1337-speak spellings. It fails at the **Sensitivity threshold** (0.5). Plug in an **AI model** to also ask it; then the check fails when either says so. |
+| **Check for harmful content** (`guard.moderation`) | Rates text for violence, hate, harassment, self-harm, sexual content and illegal activities, and fails when a category you chose reaches the threshold. **Plug in an AI model** for real judgement (it answers with a score per category). Without one, a fixed list of phrases is used: it catches blatant cases and ignores everyday phrases like “kill the process”, but it is no substitute for a model. |
+| **Check the output format** (`guard.schema`) | Checks that a field (or the newest message) is JSON matching the format you design with **+ Field**, e.g. an object with a `summary` text and a `priority` of low, medium or high. It finds the JSON in a reply even inside a ```` ```json ```` block or a sentence. With an AI model plugged in and **Let the AI fix it once** on, an invalid reply gets one correction before the check fails. **Save the checked data in** receives the parsed data. |
+
+**Branch on a verdict.** Set **When it fails** to *flag* and **Save yes/no in** to a true/false field, say
+`flagged`. Add a **Choose a path** step after the safety block with a rule `state.flagged == true` → path
+`blocked`, and the default path `ok`. Connect `blocked` to a step that answers politely (for example **Set
+values** `answer = "Sorry, I can't help with that."`) and `ok` to the normal next step. With **Save the details
+in** set to `check`, rules can also use `state.check.score > 0.8` or `"violence" in state.check.flagged_categories`.
+
+**Measure a safety block on your own data.** Each block ships with labelled test cases (12 to 28 each, including
+tricky harmless ones like “how do I kill a stuck process?”), in `apps/api/agentcanvas/registry/guardrails/`. Run
+`python -m agentcanvas.guardrails guard.injection > cases.jsonl` (in `apps/api`) and import the file into a
+dataset of a workflow whose input is `text` and output `flagged` (Evaluation page → **Import CSV or JSONL**), then run
+an experiment with an `exact` evaluator limited to the `flagged` channel. Add your own examples to the dataset to see how the block
+does on your traffic before you rely on it.
+
+Fixed checks are fast and free but can be fooled by new wording; treat them as a first line, and combine them with
+an AI model and, for anything risky, a person (**Ask for approval**).
+
 ## Memory
 
 | Block | What it does |

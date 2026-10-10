@@ -71,6 +71,9 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
             ("POST", f"/v1/threads/{h.thread_id}/fork", {}),
             ("DELETE", f"/v1/threads/{h.thread_id}", None),
             ("DELETE", f"/v1/deployments/{dep_id}", None),
+            ("GET", f"/v1/deployments/{dep_id}/share", None),  # S23: share links
+            ("PUT", f"/v1/deployments/{dep_id}/share", {"enabled": True}),
+            ("POST", f"/v1/deployments/{dep_id}/share/regenerate", None),
         ]:
             r = await api_client.request(method, path, json=body)
             assert r.status_code == 404, f"{method} {path}: {r.status_code} {r.text}"
@@ -111,6 +114,7 @@ CHILD_PARAMS = {
     "target": "a framework name, not a stored object (S22 bridge export)",
     "node_id": "an Agent block inside {wf_id}'s workflow (S21)",
     "proposal_id": "a Copilot proposal looked up within the caller's conversation about {wf_id}",
+    "token": "a share link's token: public visitor routes, the token is the capability (S23)",
 }
 
 

@@ -25,7 +25,7 @@ export function typeName(type: string): string {
 }
 
 /** Palette order: what a beginner reaches for first. Categories not listed (custom widgets) follow, A–Z. */
-export const CATEGORY_ORDER = ["AI", "AI models", "Tools", "People", "Flow control", "Data", "Memory", "Agent add-ons"];
+export const CATEGORY_ORDER = ["AI", "AI models", "Tools", "People", "Flow control", "Data", "Safety", "Memory", "Agent add-ons"];
 
 export function categoryRank(category: string): number {
   const i = CATEGORY_ORDER.indexOf(category);

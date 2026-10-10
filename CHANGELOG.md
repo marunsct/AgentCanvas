@@ -2,7 +2,19 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
-## Unreleased — milestone review after S20–S22
+## v0.15.0 — Ship to users (not tagged yet)
+
+### Added
+- **Share a deployment as an app.** Switch on a share link per deployment (Versions → **Share as an app or a chat widget**) and anyone with the link can chat with it on a clean public page (`/s/<token>`): no account, phone-friendly, light and dark, streaming answers, suggested questions, thumbs up/down, and approvals asked as Yes/No. Links can be switched off or replaced, which ends conversations started on the old link. Visitors see only their own conversations; their runs count against the deployment's rate limits and show in Runs as end user `share:<deployment>:<visitor>`. Public API `/v1/share/{token}` (info, `runs/stream`, `threads/{id}/resume`, `runs/{id}/feedback`); builder API `/v1/deployments/{id}/share` (GET, PUT, POST `regenerate`).
+- **Chat widget for any website:** `<script src="https://<your AgentCanvas>/widget.js" data-share="sh_…" async></script>` adds a chat button that opens the shared app in a panel.
+- **Safety blocks (guardrails):** **Hide personal data** (`guard.pii`), **Check for prompt injection** (`guard.injection`), **Check for harmful content** (`guard.moderation`) and **Check the output format** (`guard.schema`). Each checks a field or the newest message and can stop the run, or flag it (a yes/no field to branch on with Choose a path, plus details); personal data can also be redacted, masked or hashed in place. An optional AI model adds a model verdict, real moderation, or one repair of invalid JSON. Every block ships labelled eval cases (91 in all, importable as a dataset with `python -m agentcanvas.guardrails <type>`), measured at precision and recall 1.0 in CI. New warning W019 (a flagging block that saves its verdict nowhere). Exported projects run the blocks too.
+- **Template gallery: 25 use-case templates** (18 new) in nine categories: getting started, customer support, content, sales, data extraction, research, HR, engineering and operations. Home shows them in a searchable gallery with category filters; each card shows category, tags, block count and difficulty. `GET /v1/templates` adds `block_count`, `category`, `tags`, `difficulty` and `sample_input`. New user-guide page: Template gallery.
+
+### Changed
+- Exports to other agent frameworks list two more gaps up front: OpenAI Agents SDK flows whose result does not come from an agent, and WayFlow flows where a Set values step writes text into a list field.
+- Migrations `b3c7d1e5f9a2` (one deployment per environment, project `secrets_version`) and `c4e8a2f6b0d3` (`deployment_share`, `share_thread`).
+
+### Milestone review after S20–S22
 
 A whole-codebase review at the end of the framework milestone found 19 bugs; all are fixed.
 

@@ -1,0 +1,181 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_social_posts",
+  "name": "Social media posts",
+  "description": "Turns one announcement into a LinkedIn post, a post for X and an Instagram caption, one step per network.",
+  "state": {
+    "channels": [
+      {
+        "name": "announcement",
+        "io": "in",
+        "description": "What you want to announce"
+      },
+      {
+        "name": "linkedin_post",
+        "io": "out"
+      },
+      {
+        "name": "x_post",
+        "io": "out"
+      },
+      {
+        "name": "instagram_caption",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_li",
+      "type": "core.llm",
+      "name": "write_linkedin",
+      "label": "LinkedIn post",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a LinkedIn post (at most 120 words, professional, 2 or 3 hashtags) announcing:\n\n{{ state.announcement }}",
+        "output": "linkedin_post"
+      }
+    },
+    {
+      "id": "n_x",
+      "type": "core.llm",
+      "name": "write_x",
+      "label": "Post for X",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write a post for X (at most 270 characters, one hashtag) announcing:\n\n{{ state.announcement }}",
+        "output": "x_post"
+      }
+    },
+    {
+      "id": "n_ig",
+      "type": "core.llm",
+      "name": "write_instagram",
+      "label": "Instagram caption",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "Write an Instagram caption (friendly, emojis welcome, 5 hashtags at the end) announcing:\n\n{{ state.announcement }}",
+        "output": "instagram_caption"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_li"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_li"
+      },
+      "target": {
+        "node": "n_x"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_x"
+      },
+      "target": {
+        "node": "n_ig"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_ig"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_li",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w6",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_x",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w7",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_ig",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Content",
+      "tags": [
+        "social media",
+        "marketing"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "announcement": "Our new mobile app is out today: offline mode, dark theme and 2x faster sync."
+      }
+    }
+  }
+}

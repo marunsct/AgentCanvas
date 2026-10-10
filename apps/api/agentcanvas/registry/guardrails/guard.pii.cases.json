@@ -1,0 +1,351 @@
+{
+  "type": "guard.pii",
+  "description": "Personal data the Hide personal data block must find (types and counts) and how its text reads after redaction.",
+  "config": {
+    "strategy": "redact",
+    "on_fail": "redact"
+  },
+  "cases": [
+    {
+      "id": "pii_01",
+      "input": {
+        "text": "Please email me at jane.doe@example.com."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "email": 1
+        },
+        "redacted": "Please email me at [REDACTED_EMAIL]."
+      },
+      "metadata": {
+        "case": "pii_01"
+      }
+    },
+    {
+      "id": "pii_02",
+      "input": {
+        "text": "Call +1 (415) 555-0132 tomorrow morning."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "phone": 1
+        },
+        "redacted": "Call [REDACTED_PHONE] tomorrow morning."
+      },
+      "metadata": {
+        "case": "pii_02"
+      }
+    },
+    {
+      "id": "pii_03",
+      "input": {
+        "text": "Contact: support@acme.io, +44 20 7946 0958"
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "email": 1,
+          "phone": 1
+        },
+        "redacted": "Contact: [REDACTED_EMAIL], [REDACTED_PHONE]"
+      },
+      "metadata": {
+        "case": "pii_03"
+      }
+    },
+    {
+      "id": "pii_04",
+      "input": {
+        "text": "My card is 4111 1111 1111 1111, expiry 12/27."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "credit_card": 1
+        },
+        "redacted": "My card is [REDACTED_CREDIT_CARD], expiry 12/27."
+      },
+      "metadata": {
+        "case": "pii_04"
+      }
+    },
+    {
+      "id": "pii_05",
+      "input": {
+        "text": "Pay with 5500-0000-0000-0004 please"
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "credit_card": 1
+        },
+        "redacted": "Pay with [REDACTED_CREDIT_CARD] please"
+      },
+      "metadata": {
+        "case": "pii_05"
+      }
+    },
+    {
+      "id": "pii_06",
+      "input": {
+        "text": "Card 4111 1111 1111 1112 was rejected as a typo."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Card 4111 1111 1111 1112 was rejected as a typo."
+      },
+      "metadata": {
+        "case": "pii_06",
+        "note": "fails the Luhn check: not a card number"
+      }
+    },
+    {
+      "id": "pii_07",
+      "input": {
+        "text": "Send the refund to DE89 3704 0044 0532 0130 00."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "iban": 1
+        },
+        "redacted": "Send the refund to [REDACTED_IBAN]."
+      },
+      "metadata": {
+        "case": "pii_07"
+      }
+    },
+    {
+      "id": "pii_08",
+      "input": {
+        "text": "Reference GB00 0000 0000 0000 0000 00 is a placeholder."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Reference GB00 0000 0000 0000 0000 00 is a placeholder."
+      },
+      "metadata": {
+        "case": "pii_08",
+        "note": "bad IBAN checksum"
+      }
+    },
+    {
+      "id": "pii_09",
+      "input": {
+        "text": "SSN: 123-45-6789"
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "us_ssn": 1
+        },
+        "redacted": "SSN: [REDACTED_US_SSN]"
+      },
+      "metadata": {
+        "case": "pii_09"
+      }
+    },
+    {
+      "id": "pii_10",
+      "input": {
+        "text": "Order 123-45-678 has shipped."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Order 123-45-678 has shipped."
+      },
+      "metadata": {
+        "case": "pii_10",
+        "note": "looks like an SSN but has 3 last digits"
+      }
+    },
+    {
+      "id": "pii_11",
+      "input": {
+        "text": "Server 10.0.0.12 stopped answering pings."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "ip_address": 1
+        },
+        "redacted": "Server [REDACTED_IP_ADDRESS] stopped answering pings."
+      },
+      "metadata": {
+        "case": "pii_11"
+      }
+    },
+    {
+      "id": "pii_12",
+      "input": {
+        "text": "Requests from 2001:db8:85a3::8a2e:370:7334 were blocked."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "ip_address": 1
+        },
+        "redacted": "Requests from [REDACTED_IP_ADDRESS] were blocked."
+      },
+      "metadata": {
+        "case": "pii_12",
+        "note": "IPv6"
+      }
+    },
+    {
+      "id": "pii_13",
+      "input": {
+        "text": "Upgrade to version 2.4.1 today."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Upgrade to version 2.4.1 today."
+      },
+      "metadata": {
+        "case": "pii_13",
+        "note": "version number, not an IP address"
+      }
+    },
+    {
+      "id": "pii_14",
+      "input": {
+        "text": "The meeting is on 2024-03-15 at 14:30:00."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "The meeting is on 2024-03-15 at 14:30:00."
+      },
+      "metadata": {
+        "case": "pii_14",
+        "note": "date and time, not a phone number"
+      }
+    },
+    {
+      "id": "pii_15",
+      "input": {
+        "text": "The price is $1,299.99 for 3 units."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "The price is $1,299.99 for 3 units."
+      },
+      "metadata": {
+        "case": "pii_15"
+      }
+    },
+    {
+      "id": "pii_16",
+      "input": {
+        "text": "Your tracking number is 1Z999AA10123456784."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Your tracking number is 1Z999AA10123456784."
+      },
+      "metadata": {
+        "case": "pii_16"
+      }
+    },
+    {
+      "id": "pii_17",
+      "input": {
+        "text": "Follow us @acme_support for updates."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Follow us @acme_support for updates."
+      },
+      "metadata": {
+        "case": "pii_17",
+        "note": "a handle, not an email"
+      }
+    },
+    {
+      "id": "pii_18",
+      "input": {
+        "text": "Write to admin@localhost if it breaks."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Write to admin@localhost if it breaks."
+      },
+      "metadata": {
+        "case": "pii_18",
+        "note": "no domain ending: not counted"
+      }
+    },
+    {
+      "id": "pii_19",
+      "input": {
+        "text": "CC jane@example.org and bob.smith@example.co.uk on the thread."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "email": 2
+        },
+        "redacted": "CC [REDACTED_EMAIL] and [REDACTED_EMAIL] on the thread."
+      },
+      "metadata": {
+        "case": "pii_19"
+      }
+    },
+    {
+      "id": "pii_20",
+      "input": {
+        "text": "ISBN 978-3-16-148410-0 is out of print."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "ISBN 978-3-16-148410-0 is out of print."
+      },
+      "metadata": {
+        "case": "pii_20",
+        "note": "book number"
+      }
+    },
+    {
+      "id": "pii_21",
+      "input": {
+        "text": "Reach me on 555-123-4567 or at 10.1.2.3 from the office VPN."
+      },
+      "reference": {
+        "flagged": true,
+        "found": {
+          "phone": 1,
+          "ip_address": 1
+        },
+        "redacted": "Reach me on [REDACTED_PHONE] or at [REDACTED_IP_ADDRESS] from the office VPN."
+      },
+      "metadata": {
+        "case": "pii_21"
+      }
+    },
+    {
+      "id": "pii_22",
+      "input": {
+        "text": "Nothing personal here, just a question about invoices."
+      },
+      "reference": {
+        "flagged": false,
+        "found": {},
+        "redacted": "Nothing personal here, just a question about invoices."
+      },
+      "metadata": {
+        "case": "pii_22"
+      }
+    }
+  ]
+}

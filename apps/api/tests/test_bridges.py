@@ -40,6 +40,16 @@ def test_what_blocks_each_framework_is_named():
     assert gaps[-1].blocks is False and any("nothing reports back" in g.text for g in gaps)
 
 
+def test_gaps_found_by_the_gallery_templates():
+    """S23: two patterns the bridges' own runs refused, now named before export."""
+    oa = [g.text for g in bridges.gaps(template("sql_helper"), "openai_agents") if g.blocks]
+    assert any("'sql' comes from 'write_query'" in t for t in oa)
+    assert not [g for g in bridges.gaps(template("sql_helper"), "wayflow") if g.blocks]
+    wayflow = [g.text for g in bridges.gaps(template("meeting_notes"), "wayflow") if g.blocks]
+    assert wayflow == ["'hand_over' writes text into the list field 'messages'; WayFlow expects a list there."]
+    assert not [g for g in bridges.gaps(template("meeting_notes"), "langgraph") if g.blocks]
+
+
 def test_tool_steps_read_the_state_their_settings_use():
     doc, _ = agentspec.export_flow(template("ticket_triage"))
     step = next(c for c in doc["$referenced_components"].values() if c.get("name") == "escalate"

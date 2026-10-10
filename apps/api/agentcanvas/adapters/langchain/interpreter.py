@@ -81,6 +81,49 @@ def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: di
     raise ValueError(f"unsupported resource type {r.type}")  # pragma: no cover - rejected by the validator
 
 
+GUARDS = {"guard.pii", "guard.injection", "guard.moderation", "guard.schema"}
+
+
+def guard_node(n: Any, cfg: dict[str, Any], models: list[Any]) -> Any:
+    """A safety block (S23). Optional settings use the manifest defaults, like the generated code."""
+    model = models[0] if models else None
+    common = {
+        "name": n.name,
+        "input": cfg.get("input", "messages"),
+        "flag_output": cfg.get("flag_output"),
+        "report_output": cfg.get("report_output"),
+    }
+    if n.type == "guard.pii":
+        return ac.pii_guard_node(
+            **common,
+            types=cfg.get("types", list(ac.guard.PII_TYPES)),
+            custom_patterns=cfg.get("custom_patterns", []),
+            strategy=cfg.get("strategy", "redact"),
+            on_fail=cfg.get("on_fail", "redact"),
+            output=cfg.get("output"),
+        )
+    if n.type == "guard.injection":
+        return ac.injection_guard_node(
+            **common, model=model, threshold=cfg.get("threshold", 0.5), on_fail=cfg.get("on_fail", "stop")
+        )
+    if n.type == "guard.moderation":
+        return ac.moderation_guard_node(
+            **common,
+            model=model,
+            categories=cfg.get("categories", list(ac.guard.MODERATION_CATEGORIES)),
+            threshold=cfg.get("threshold", 0.5),
+            on_fail=cfg.get("on_fail", "stop"),
+        )
+    return ac.schema_guard_node(
+        **common,
+        schema=cfg["schema"],
+        model=model,
+        repair=cfg.get("repair", False),
+        on_fail=cfg.get("on_fail", "stop"),
+        output=cfg.get("output"),
+    )
+
+
 def designed_agent(plan: Plan, n: Any, model: Any, tools: list[Any]) -> Any:
     """An Agent block designed for another framework: its generated code, run as one step (S21)."""
     fw = designs.AGENT_FRAMEWORKS[str(n.engine)]
@@ -196,6 +239,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             )
         elif n.type == "core.set":
             fn = ac.set_node(values=cfg["values"])
+        elif n.type in GUARDS:
+            fn = guard_node(n, cfg, wired("model"))
         elif n.type == "core.script":
             fn = ac.script_node(import_path=cfg["import_path"], resources=resources)
         elif n.type == "agent.framework":

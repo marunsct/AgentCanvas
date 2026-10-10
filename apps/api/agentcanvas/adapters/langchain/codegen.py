@@ -14,7 +14,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from agentcanvas import designs
+from agentcanvas import designs, guardrails
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
@@ -57,6 +57,8 @@ def generate(wf: Workflow, *, format_code: bool = True, registry: Registry | Non
         sub_fn=_sub_fn,
         sub_prefix=_sub_prefix,
         agent_frameworks=designs.AGENT_FRAMEWORKS,
+        pii_types=list(guardrails.PII_TYPES),
+        moderation_categories=list(guardrails.MODERATION_CATEGORIES),
     )
     return ruff_format(source) if format_code else source
 

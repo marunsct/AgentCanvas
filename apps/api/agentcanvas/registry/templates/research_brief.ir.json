@@ -283,5 +283,24 @@
         "port": "model"
       }
     }
-  ]
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": [
+        "map-reduce",
+        "deep agent",
+        "memory"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "question": "Which renewable energy source is growing fastest?",
+        "topics": [
+          "solar",
+          "wind",
+          "hydro"
+        ]
+      }
+    }
+  }
 }

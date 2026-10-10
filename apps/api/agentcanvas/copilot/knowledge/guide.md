@@ -47,6 +47,10 @@ commands; the person sees your change as a proposal on the canvas and accepts or
 - `core.map` + `core.join`: do something per list item in parallel.
 - `core.script` / `tool.python`: the project's own Python code (`import_path` like `scripts.clean:run`).
 - Memory: `core.memory_recall`, `core.memory_remember`, `core.memory_forget`, `tool.memory`.
+- Safety: `guard.pii`, `guard.injection`, `guard.moderation`, `guard.schema` check a channel (`config.input`,
+  default `messages`). `on_fail` = `stop` (error), `flag` (write `flag_output`, true when it fails, and branch with
+  `core.router` on `state.<flag_output> == true`), or for `guard.pii` `redact` (default, in place or to `output`).
+  Optional `model` port: injection/moderation ask it; `guard.schema` uses it with `repair: true`.
 - Prefer the fewest blocks that do the job. Prefer a template's structure when one fits the goal.
 
 ## Models and secrets

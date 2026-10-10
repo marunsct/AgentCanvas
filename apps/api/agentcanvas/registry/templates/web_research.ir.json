@@ -1,0 +1,223 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_web_research",
+  "name": "Web research agent",
+  "description": "Plans search queries for a question, then an agent researches it with a Wikipedia search tool and writes a sourced answer. Every web call waits for your approval.",
+  "state": {
+    "channels": [
+      {
+        "name": "question",
+        "io": "in"
+      },
+      {
+        "name": "plan",
+        "description": "Search queries to try"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5"
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_wiki",
+      "type": "tool.http",
+      "name": "wiki_search",
+      "config": {
+        "description": "Search Wikipedia. Returns matching article titles with short snippets.",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=5&srsearch={{ args.query }}",
+        "args_schema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What to search for"
+            }
+          }
+        },
+        "allowed_domains": [
+          "en.wikipedia.org"
+        ]
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 15
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_plan",
+      "type": "core.llm",
+      "name": "plan_searches",
+      "label": "Plan the searches",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "List three short search queries that together would answer this question, one per line, nothing else.\n\n{{ state.question }}",
+        "output": "plan"
+      }
+    },
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "brief_researcher",
+      "label": "Brief the researcher",
+      "config": {
+        "values": {
+          "messages": "Answer this question: {{ state.question }}\n\nSuggested searches:\n{{ state.plan }}"
+        }
+      }
+    },
+    {
+      "id": "n_agent",
+      "type": "core.agent",
+      "name": "researcher",
+      "label": "Researcher",
+      "config": {
+        "system_prompt": "You research questions with the wiki_search tool. Search, read the snippets, and answer in under 200 words. Name the Wikipedia articles you relied on and say clearly when the results do not answer the question.",
+        "approve_tools": [
+          "wiki_search"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_plan"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_plan"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_agent"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_agent"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w5",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_plan",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w6",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w7",
+      "kind": "wiring",
+      "source": {
+        "node": "r_wiki"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "tools"
+      },
+      "order": 0
+    },
+    {
+      "id": "w8",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "middleware"
+      },
+      "order": 0
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": [
+        "web",
+        "tools",
+        "agent",
+        "human approval"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "question": "How did the Hubble Space Telescope's mirror problem get fixed?"
+      }
+    }
+  }
+}

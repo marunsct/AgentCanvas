@@ -44,7 +44,7 @@ from langchain.agents.middleware import (
 )
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.messages import AnyMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from langgraph.channels import DeltaChannel
 from langgraph.config import get_config, get_stream_writer
@@ -55,6 +55,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPolicy, TracePolicy, interrupt
 from typing_extensions import TypedDict
 
+from agentcanvas import guardrails as guard
 from agentcanvas.expr import eval_condition, render_template
 from agentcanvas.security.imports import is_script_path
 from agentcanvas.workspace.loader import load_attr
@@ -1171,6 +1172,225 @@ def set_node(*, values: dict[str, str]) -> Callable:
 
     async def run(state: Any) -> dict:
         return {k: render_template(v, state) for k, v in values.items()}
+
+    return run
+
+
+# ------------------------------------------------------------------- safety blocks (guard.*, S23) ----
+def _last_turn(messages: Sequence[Any]) -> BaseMessage | None:
+    """The newest person or AI message (tool results and system messages are skipped)."""
+    return next((m for m in reversed(messages) if isinstance(m, BaseMessage) and m.type in ("human", "ai")), None)
+
+
+def _is_messages(value: Any) -> bool:
+    return isinstance(value, list) and any(isinstance(m, BaseMessage) for m in value)
+
+
+def content_text(content: Any) -> str:
+    """A message's text (the text parts of a multi-part message)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [p if isinstance(p, str) else str(p.get("text", "")) for p in content if isinstance(p, str | dict)]
+        return "\n".join(x for x in parts if x)
+    return "" if content is None else str(content)
+
+
+def guard_text(value: Any) -> str:
+    """The text a safety block checks: the newest message of a messages field, else the value (JSON for data)."""
+    if _is_messages(value):
+        msg = _last_turn(value)
+        return content_text(msg.content) if msg else ""
+    if value is None or isinstance(value, str):
+        return value or ""
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _guard_outputs(
+    verdict: guard.Verdict, *, name: str, what: str, on_fail: str, flag_output: str | None, report_output: str | None
+) -> dict[str, Any]:
+    if verdict.flagged and on_fail == "stop":
+        raise guard.GuardrailError(guard.stop_message(name, what, verdict))
+    out: dict[str, Any] = {}
+    if flag_output:
+        out[flag_output] = verdict.flagged
+    if report_output:
+        out[report_output] = verdict.report()
+    return out
+
+
+async def _ask(model: BaseChatModel, prompt: str) -> str:
+    reply = await model.ainvoke([HumanMessage(prompt)])
+    return content_text(reply.content)
+
+
+def pii_guard_node(
+    *,
+    name: str,
+    input: str,
+    types: Sequence[str] = guard.PII_TYPES,
+    custom_patterns: Sequence[dict[str, str]] = (),
+    strategy: str = "redact",
+    on_fail: str = "redact",
+    output: str | None = None,
+    flag_output: str | None = None,
+    report_output: str | None = None,
+) -> Callable:
+    """Find personal data in a field and hide it (`on_fail="redact"`: in place, or into `output`), flag it, or
+    stop the run. For a messages field only the newest person/AI message is checked and rewritten (same id)."""
+
+    async def run(state: Any) -> dict:
+        found: list[guard.PiiMatch] = []  # per run: one compiled graph serves many runs at once
+
+        async def clean(text: str) -> str:
+            matches = await guard.find_pii(text, types, custom_patterns)
+            found.extend(matches)
+            return guard.redact(text, matches, strategy)
+
+        async def walk(value: Any) -> Any:
+            if isinstance(value, str):
+                return await clean(value)
+            if isinstance(value, dict):
+                return {k: await walk(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [await walk(v) for v in value]
+            return value
+
+        value = state.get(input)
+        message = _last_turn(value) if _is_messages(value) else None
+        if message is not None:
+            content = message.content
+            cleaned: Any = await clean(content) if isinstance(content, str) else await walk(content)
+        else:
+            cleaned = await walk(value) if value is not None else None
+        verdict = guard.pii_verdict(found)
+        out = _guard_outputs(
+            verdict,
+            name=name,
+            what="personal data",
+            on_fail=on_fail,
+            flag_output=flag_output,
+            report_output=report_output,
+        )
+        if on_fail != "redact":
+            return out
+        if output and output != input:
+            out[output] = content_text(cleaned) if message is not None else cleaned
+        elif verdict.flagged and message is not None:
+            out[input] = [message.model_copy(update={"content": cleaned})]  # same id: add_messages replaces it
+        elif verdict.flagged:
+            out[input] = cleaned
+        return out
+
+    return run
+
+
+def injection_guard_node(
+    *,
+    name: str,
+    input: str,
+    model: BaseChatModel | None = None,
+    threshold: float = 0.5,
+    on_fail: str = "stop",
+    flag_output: str | None = None,
+    report_output: str | None = None,
+) -> Callable:
+    """Score a field for prompt injection with fixed checks, plus a wired model's opinion when there is one."""
+
+    async def run(state: Any) -> dict:
+        text = guard_text(state.get(input))
+        verdict = guard.injection_verdict(text, threshold)
+        if model is not None and text.strip():
+            reply = await _ask(model, guard.fill(guard.INJECTION_PROMPT, text=text))
+            verdict = guard.combine_injection(verdict, guard.model_injection_verdict(reply), threshold)
+        return _guard_outputs(
+            verdict,
+            name=name,
+            what="possible prompt injection",
+            on_fail=on_fail,
+            flag_output=flag_output,
+            report_output=report_output,
+        )
+
+    return run
+
+
+def moderation_guard_node(
+    *,
+    name: str,
+    input: str,
+    model: BaseChatModel | None = None,
+    categories: Sequence[str] = guard.MODERATION_CATEGORIES,
+    threshold: float = 0.5,
+    on_fail: str = "stop",
+    flag_output: str | None = None,
+    report_output: str | None = None,
+) -> Callable:
+    """Rate a field for harmful content: by the wired model (JSON scores per category), else by fixed phrases.
+    A model reply that cannot be read falls back to the phrases."""
+
+    async def run(state: Any) -> dict:
+        text = guard_text(state.get(input))
+        scores, source = None, "keywords"
+        if model is not None and text.strip():
+            prompt = guard.fill(guard.MODERATION_PROMPT, categories=", ".join(categories), text=text)
+            scores = guard.model_moderation_scores(await _ask(model, prompt), categories)
+            source = "model" if scores is not None else "keywords (the model's reply could not be read)"
+        if scores is None:
+            scores = guard.keyword_scores(text)
+        verdict = guard.moderation_verdict(scores, categories, threshold, source)
+        return _guard_outputs(
+            verdict,
+            name=name,
+            what="harmful content",
+            on_fail=on_fail,
+            flag_output=flag_output,
+            report_output=report_output,
+        )
+
+    return run
+
+
+def schema_guard_node(
+    *,
+    name: str,
+    input: str,
+    schema: dict[str, Any],
+    model: BaseChatModel | None = None,
+    repair: bool = False,
+    on_fail: str = "stop",
+    output: str | None = None,
+    flag_output: str | None = None,
+    report_output: str | None = None,
+) -> Callable:
+    """Check that a field holds JSON matching `schema` (JSON text, a ```json block in text, or data). With
+    `repair` and a wired model, an invalid value gets one fix attempt. `output` receives the valid data."""
+
+    async def run(state: Any) -> dict:
+        value = state.get(input)
+        raw = guard_text(value) if _is_messages(value) else value
+        data, errors = guard.check_json(raw, schema)
+        repaired = False
+        if errors and repair and model is not None:
+            text = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False, default=str)
+            prompt = guard.fill(
+                guard.REPAIR_PROMPT, schema=json.dumps(schema), errors="\n".join(errors), text=text or ""
+            )
+            fixed, still = guard.check_json(await _ask(model, prompt), schema)
+            if not still:
+                data, errors, repaired = fixed, [], True
+        verdict = guard.schema_verdict(errors, repaired)
+        out = _guard_outputs(
+            verdict,
+            name=name,
+            what="output format",
+            on_fail=on_fail,
+            flag_output=flag_output,
+            report_output=report_output,
+        )
+        if output and not errors:
+            out[output] = data
+        return out
 
     return run
 

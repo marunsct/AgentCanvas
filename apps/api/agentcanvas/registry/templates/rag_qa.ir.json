@@ -107,5 +107,19 @@
         "port": "model"
       }
     }
-  ]
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": [
+        "knowledge base",
+        "memory",
+        "retrieval"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "question": "When are you open on weekends?"
+      }
+    }
+  }
 }

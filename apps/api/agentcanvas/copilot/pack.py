@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.registry import NodeManifest, Registry
+from agentcanvas.services.workflows import without_gallery
 from agentcanvas.validation.help import catalog
 
 GUIDE = Path(__file__).parent / "knowledge" / "guide.md"
@@ -71,6 +72,7 @@ def block_summary(m: NodeManifest, *, full: bool = False) -> str:
 
 
 def _compact(doc: dict[str, Any]) -> str:
+    doc = without_gallery(doc)
     return json.dumps({k: v for k, v in doc.items() if k not in ("id", "ir_version")}, separators=(",", ":"))
 
 

@@ -731,6 +731,14 @@ export type Split4 = string | null;
  */
 export type Split5 = string | null;
 export type NodeId2 = string;
+/**
+ * true: the field is a message list; each message is appended to it
+ */
+export type Chat = boolean;
+/**
+ * the input field the visitor's message goes to
+ */
+export type Field1 = string | null;
 export type CanvasNodeId = string;
 export type CreatedAt12 = string;
 export type DecidedAt = string | null;
@@ -1545,6 +1553,65 @@ export type KeySecret = string | null;
  * that secret exists, or the server has the variable
  */
 export type KeySet = boolean;
+export type Comment5 = string;
+export type Rating1 = "up" | "down";
+/**
+ * a random secret the visitor's browser keeps; only it continues the conversations it started
+ */
+export type Visitor = string;
+export type Greeting = string;
+export type Suggestions = string[];
+export type Title = string;
+export type DeploymentId2 = string;
+export type Enabled6 = boolean;
+export type Greeting1 = string;
+export type InputField = string | null;
+/**
+ * the chat page, relative to the web app (/s/<token>)
+ */
+export type Path6 = string;
+export type Suggestions1 = string[];
+export type Title1 = string;
+export type Token = string;
+export type UpdatedAt6 = string | null;
+/**
+ * the answer to an approval
+ */
+export type Approve = boolean | null;
+export type InterruptId2 = string | null;
+/**
+ * the answer to a question (or a comment)
+ */
+export type Text3 = string | null;
+/**
+ * a random secret the visitor's browser keeps; only it continues the conversations it started
+ */
+export type Visitor1 = string;
+export type Message8 = string;
+/**
+ * continue one of this visitor's conversations
+ */
+export type ThreadId11 = string | null;
+/**
+ * a random secret the visitor's browser keeps; only it continues the conversations it started
+ */
+export type Visitor2 = string;
+export type Enabled7 = boolean | null;
+export type Greeting2 = string | null;
+/**
+ * '' picks one from the workflow's inputs
+ */
+export type InputField1 = string | null;
+export type Suggestions2 =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | null;
+export type Title2 = string | null;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
 export type Name40 = string | null;
@@ -1552,10 +1619,17 @@ export type Name40 = string | null;
  * @minItems 1
  */
 export type NodeIds = [string, ...string[]];
+export type BlockCount = number;
+export type Category2 = string | null;
 export type Description15 = string;
+export type Difficulty = ("beginner" | "intermediate") | null;
 export type Id43 = string;
 export type Name41 = string;
 export type NodeCount = number;
+export type SampleInput = {
+  [k: string]: unknown;
+} | null;
+export type Tags = string[];
 export type Context6 = {
   [k: string]: unknown;
 } | null;
@@ -1580,8 +1654,8 @@ export type Results1 = CaseResult[];
 export type CreatedAt23 = string;
 export type Id45 = string;
 export type Status14 = string;
-export type Title = string | null;
-export type UpdatedAt6 = string;
+export type Title3 = string | null;
+export type UpdatedAt7 = string;
 export type WorkflowId8 = string;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
@@ -1591,7 +1665,7 @@ export type NextCursor = string | null;
 export type ApiKey6 = {
   [k: string]: string;
 } | null;
-export type Enabled6 = boolean;
+export type Enabled8 = boolean;
 /**
  * base URL (the full traces URL for otlp); empty = default
  */
@@ -1615,17 +1689,17 @@ export type SecretKey = {
 } | null;
 export type MissingSecrets = string[];
 export type CreatedAt24 = string;
-export type DeploymentId2 = string | null;
-export type Enabled7 = boolean;
+export type DeploymentId3 = string | null;
+export type Enabled9 = boolean;
 export type Id46 = string;
 export type Kind9 = string;
 export type Secret = string | null;
 export type Url1 = string | null;
-export type DeploymentId3 = string | null;
+export type DeploymentId4 = string | null;
 export type Kind10 = "webhook" | "cron";
 export type CreatedAt25 = string;
-export type DeploymentId4 = string | null;
-export type Enabled8 = boolean;
+export type DeploymentId5 = string | null;
+export type Enabled10 = boolean;
 export type Id47 = string;
 export type Kind11 = string;
 export type Url2 = string | null;
@@ -1633,16 +1707,16 @@ export type CreatedAt26 = string;
 export type CreatedBy2 = string | null;
 export type Id48 = string;
 export type IrHash3 = string;
-export type Message8 = string;
+export type Message9 = string;
 export type Semver1 = string;
 export type WorkspaceCommit = string | null;
 export type Bump = "major" | "minor" | "patch";
-export type Message9 = string;
+export type Message10 = string;
 export type CreatedAt27 = string;
 export type CreatedBy3 = string | null;
 export type Id49 = string;
 export type IrHash4 = string;
-export type Message10 = string;
+export type Message11 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
 export type CreatedAt28 = string;
@@ -1651,11 +1725,11 @@ export type Id50 = string;
 export type IrHash5 = string;
 export type Name44 = string;
 export type ProjectId2 = string;
-export type UpdatedAt7 = string;
+export type UpdatedAt8 = string;
 export type Version10 = number;
 export type Id51 = string;
 export type Name45 = string;
-export type UpdatedAt8 = string;
+export type UpdatedAt9 = string;
 export type Version11 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
@@ -1758,6 +1832,7 @@ export interface ApiSchemas {
   HTTPValidationError?: HTTPValidationError;
   ImportIn?: ImportIn;
   InlineRequest?: InlineRequest;
+  InputShape?: InputShape;
   InterruptOut?: InterruptOut;
   InvitationOut?: InvitationOut;
   ItemDetail?: ItemDetail;
@@ -1831,6 +1906,12 @@ export interface ApiSchemas {
   SettingsOut?: SettingsOut;
   SetupIn?: SetupIn;
   SetupOut?: SetupOut;
+  ShareFeedbackIn?: ShareFeedbackIn;
+  ShareInfo?: ShareInfo;
+  ShareOut?: ShareOut;
+  ShareResumeIn?: ShareResumeIn;
+  ShareRunIn?: ShareRunIn;
+  ShareSettingsIn?: ShareSettingsIn;
   Simulation?: Simulation;
   StateEdit?: StateEdit;
   SubgraphRequest?: SubgraphRequest;
@@ -3390,6 +3471,14 @@ export interface InlineRequest {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "InputShape".
+ */
+export interface InputShape {
+  chat?: Chat;
+  field?: Field1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "InterruptOut".
  */
 export interface InterruptOut {
@@ -4089,6 +4178,71 @@ export interface SetupOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ShareFeedbackIn".
+ */
+export interface ShareFeedbackIn {
+  comment?: Comment5;
+  rating: Rating1;
+  visitor: Visitor;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ShareInfo".
+ */
+export interface ShareInfo {
+  greeting: Greeting;
+  input: InputShape;
+  suggestions: Suggestions;
+  title: Title;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ShareOut".
+ */
+export interface ShareOut {
+  deployment_id: DeploymentId2;
+  enabled: Enabled6;
+  greeting: Greeting1;
+  input: InputShape;
+  input_field: InputField;
+  path: Path6;
+  suggestions: Suggestions1;
+  title: Title1;
+  token: Token;
+  updated_at?: UpdatedAt6;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ShareResumeIn".
+ */
+export interface ShareResumeIn {
+  approve?: Approve;
+  interrupt_id?: InterruptId2;
+  text?: Text3;
+  visitor: Visitor1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ShareRunIn".
+ */
+export interface ShareRunIn {
+  message: Message8;
+  thread_id?: ThreadId11;
+  visitor: Visitor2;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ShareSettingsIn".
+ */
+export interface ShareSettingsIn {
+  enabled?: Enabled7;
+  greeting?: Greeting2;
+  input_field?: InputField1;
+  suggestions?: Suggestions2;
+  title?: Title2;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "StateEdit".
  */
 export interface StateEdit {
@@ -4112,10 +4266,15 @@ export interface SubgraphRequest {
  * via the `definition` "TemplateInfo".
  */
 export interface TemplateInfo {
+  block_count?: BlockCount;
+  category?: Category2;
   description: Description15;
+  difficulty?: Difficulty;
   id: Id43;
   name: Name41;
   node_count: NodeCount;
+  sample_input?: SampleInput;
+  tags?: Tags;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4203,8 +4362,8 @@ export interface ThreadOut {
   created_at: CreatedAt23;
   id: Id45;
   status: Status14;
-  title: Title;
-  updated_at: UpdatedAt6;
+  title: Title3;
+  updated_at: UpdatedAt7;
   workflow_id: WorkflowId8;
 }
 /**
@@ -4223,7 +4382,7 @@ export interface ThreadPage {
  */
 export interface TraceExport {
   api_key?: ApiKey6;
-  enabled?: Enabled6;
+  enabled?: Enabled8;
   endpoint?: Endpoint2;
   headers?: Headers;
   include_content?: IncludeContent;
@@ -4264,8 +4423,8 @@ export interface Guides {
 export interface TriggerCreated {
   config: Config7;
   created_at: CreatedAt24;
-  deployment_id: DeploymentId2;
-  enabled: Enabled7;
+  deployment_id: DeploymentId3;
+  enabled: Enabled9;
   id: Id46;
   kind: Kind9;
   secret?: Secret;
@@ -4280,7 +4439,7 @@ export interface Config7 {
  */
 export interface TriggerIn {
   config?: Config8;
-  deployment_id?: DeploymentId3;
+  deployment_id?: DeploymentId4;
   kind: Kind10;
 }
 export interface Config8 {
@@ -4293,8 +4452,8 @@ export interface Config8 {
 export interface TriggerOut {
   config: Config9;
   created_at: CreatedAt25;
-  deployment_id: DeploymentId4;
-  enabled: Enabled8;
+  deployment_id: DeploymentId5;
+  enabled: Enabled10;
   id: Id47;
   kind: Kind11;
   url?: Url2;
@@ -4313,7 +4472,7 @@ export interface VersionDetail {
   ir: Ir3;
   ir_hash: IrHash3;
   layout: Layout2;
-  message: Message8;
+  message: Message9;
   semver: Semver1;
   workspace_commit: WorkspaceCommit;
 }
@@ -4329,7 +4488,7 @@ export interface Layout2 {
  */
 export interface VersionIn {
   bump?: Bump;
-  message?: Message9;
+  message?: Message10;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4340,7 +4499,7 @@ export interface VersionOut {
   created_by: CreatedBy3;
   id: Id49;
   ir_hash: IrHash4;
-  message: Message10;
+  message: Message11;
   semver: Semver2;
   workspace_commit: WorkspaceCommit1;
 }
@@ -4357,7 +4516,7 @@ export interface WorkflowOut {
   layout: Layout3;
   name: Name44;
   project_id: ProjectId2;
-  updated_at: UpdatedAt7;
+  updated_at: UpdatedAt8;
   version: Version10;
 }
 export interface Ir4 {
@@ -4381,7 +4540,7 @@ export interface WorkflowPage {
 export interface WorkflowSummary {
   id: Id51;
   name: Name45;
-  updated_at: UpdatedAt8;
+  updated_at: UpdatedAt9;
   version: Version11;
 }
 /**

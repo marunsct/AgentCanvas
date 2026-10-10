@@ -1,0 +1,208 @@
+"""Sprint 23 share links (S23): a published deployment as a public chat page and chat widget."""
+
+from __future__ import annotations
+
+import json
+
+from test_publish import bearer, make_greeter
+from test_ratelimit import limits  # noqa: F401 - fixture
+from test_versions import HIGH_CASE, new_triage
+
+from agentcanvas.ir.models import Workflow
+from agentcanvas.services.share import InputShape, answer_text, input_shape
+
+ADA = "visitor-ada-0123456789"
+BO = "visitor-bo-0123456789ab"
+
+
+def events(text: str) -> list[dict]:
+    return [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: ")]
+
+
+async def publish(api) -> tuple[str, str, str]:
+    wf = await make_greeter(api)
+    pub = (await api.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    return wf, pub["deployment"]["id"], pub["api_key"]
+
+
+async def share_on(api, dep: str, **settings) -> dict:
+    r = await api.put(f"/v1/deployments/{dep}/share", json={"enabled": True, **settings})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def say(api, token: str, message: str, visitor: str = ADA, thread_id: str | None = None):
+    body = {"message": message, "visitor": visitor, **({"thread_id": thread_id} if thread_id else {})}
+    return await api.post(f"/v1/share/{token}/runs/stream", json=body)
+
+
+async def test_enable_share_and_chat(api_client):
+    """S23 AC: a builder switches the link on; a visitor (no sign-in, no key) chats and continues the conversation."""
+    _, dep, _ = await publish(api_client)
+    off = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    assert off["enabled"] is False and off["token"].startswith("sh_") and off["path"] == f"/s/{off['token']}"
+    assert off["title"] == "Greeter" and off["input"] == {"field": "who", "chat": False}
+    assert (await api_client.get(f"/v1/share/{off['token']}")).status_code == 404  # off until switched on
+
+    share = await share_on(
+        api_client, dep, title="Say hi", greeting="Tell me your name.", suggestions=["Ada", " ", "Bo"]
+    )
+    token = share["token"]
+    assert share["token"] == off["token"] and share["suggestions"] == ["Ada", "Bo"]
+
+    info = await api_client.get(f"/v1/share/{token}")
+    assert info.status_code == 200
+    assert info.json() == {
+        "title": "Say hi", "greeting": "Tell me your name.", "suggestions": ["Ada", "Bo"],
+        "input": {"field": "who", "chat": False},
+    }  # fmt: skip
+    # nothing internal: no workflow, deployment, key or version
+    assert all(s not in info.text for s in ("wf_", "dep_", "ac_", "ver_", "n_g", "core.set"))
+
+    r = await say(api_client, token, "Ada")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    evs = events(r.text)
+    assert [e["type"] for e in evs] == ["RUN_STARTED", "RUN_FINISHED"]
+    thread = evs[0]["threadId"]
+    assert evs[-1]["answer"] == "Hello Ada" and evs[-1]["status"] == "success" and "output" not in evs[-1]
+
+    again = events((await say(api_client, token, "Bo", thread_id=thread)).text)
+    assert again[0]["threadId"] == thread and again[-1]["answer"] == "Hello Bo"
+
+    # the conversation is an ordinary deployment run, with its end user under the deployment
+    assert (await api_client.get(f"/v1/threads/{thread}")).status_code == 200
+    run = (await api_client.get(f"/v1/runs/{again[-1]['runId']}")).json()
+    assert run["thread_id"] == thread
+
+    # thumbs: by the visitor of the conversation only
+    fb = f"/v1/share/{token}/runs/{again[-1]['runId']}/feedback"
+    assert (await api_client.post(fb, json={"rating": "down", "visitor": BO})).status_code == 404
+    assert (await api_client.post(fb, json={"rating": "up", "visitor": ADA})).status_code == 204
+
+
+async def test_visitors_keep_to_their_own_conversations(api_client):
+    """A conversation continues only for the visitor who started it, on the link it was started on; another
+    deployment's (or the key API's) conversations are out of reach."""
+    _, dep, key = await publish(api_client)
+    token = (await share_on(api_client, dep))["token"]
+    thread = events((await say(api_client, token, "Ada")).text)[0]["threadId"]
+    assert (await say(api_client, token, "Bo", visitor=BO, thread_id=thread)).status_code == 404
+
+    # a conversation started with the deployment key is not a share conversation
+    api_thread = (
+        await api_client.post(f"/v1/deployments/{dep}/runs/wait", json={"input": {"who": "Cy"}}, headers=bearer(key))
+    ).json()["thread_id"]
+    assert (await say(api_client, token, "Cy", thread_id=api_thread)).status_code == 404
+
+    # another deployment's link cannot reach this conversation
+    _, dep2, _ = await publish(api_client)
+    token2 = (await share_on(api_client, dep2))["token"]
+    assert (await say(api_client, token2, "Ada", thread_id=thread)).status_code == 404
+    assert (await say(api_client, token, "Ada", thread_id=thread)).status_code == 200
+
+    # a short or odd visitor secret is refused
+    bad = await api_client.post(f"/v1/share/{token}/runs/stream", json={"message": "x", "visitor": "short"})
+    assert bad.status_code == 422
+
+
+async def test_disabled_regenerated_or_unpublished_links_are_404(api_client):
+    _, dep, _ = await publish(api_client)
+    token = (await share_on(api_client, dep))["token"]
+    thread = events((await say(api_client, token, "Ada")).text)[0]["threadId"]
+
+    await api_client.put(f"/v1/deployments/{dep}/share", json={"enabled": False})
+    assert (await api_client.get(f"/v1/share/{token}")).status_code == 404
+    assert (await say(api_client, token, "Ada")).status_code == 404
+    await api_client.put(f"/v1/deployments/{dep}/share", json={"enabled": True})
+    assert (await say(api_client, token, "Ada", thread_id=thread)).status_code == 200  # back on: same link works
+
+    fresh = (await api_client.post(f"/v1/deployments/{dep}/share/regenerate")).json()
+    assert fresh["token"] != token and fresh["enabled"] is True
+    assert (await api_client.get(f"/v1/share/{token}")).status_code == 404
+    assert (await say(api_client, fresh["token"], "Ada", thread_id=thread)).status_code == 404  # old conversations end
+    assert (await say(api_client, fresh["token"], "Ada")).status_code == 200
+
+    await api_client.delete(f"/v1/deployments/{dep}")  # unpublished
+    assert (await api_client.get(f"/v1/share/{fresh['token']}")).status_code == 404
+    assert (await api_client.get("/v1/share/sh_nope")).status_code == 404
+
+
+async def test_settings_validation_and_roles(api_client, app):
+    from agentcanvas.api.deps import CurrentUser, current_user
+
+    _, dep, _ = await publish(api_client)
+    r = await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": "nope"})
+    assert r.status_code == 422
+    r = await api_client.put(f"/v1/deployments/{dep}/share", json={"suggestions": ["a"] * 7})
+    assert r.status_code == 422
+    app.dependency_overrides[current_user] = lambda: CurrentUser(
+        id="usr_v", org_id="org_default", role="viewer", memberships={"org_default": "viewer"}
+    )
+    try:  # the link is a capability: viewers neither see nor change it
+        assert (await api_client.get(f"/v1/deployments/{dep}/share")).status_code == 403
+        assert (await api_client.put(f"/v1/deployments/{dep}/share", json={"enabled": True})).status_code == 403
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+async def test_share_calls_count_against_the_deployment_limit(api_client, limits):  # noqa: F811
+    limits.rate_limit_per_deployment, limits.rate_limit_per_project = 2, 0
+    _, dep, _ = await publish(api_client)
+    token = (await share_on(api_client, dep))["token"]
+    for _ in range(2):
+        assert (await say(api_client, token, "Ada")).status_code == 200
+    refused = await say(api_client, token, "Ada")
+    assert refused.status_code == 429
+
+
+async def test_a_paused_conversation_asks_the_visitor(app, api_client):
+    """A run that pauses for approval shows the visitor a question; their answer continues it."""
+    from agentcanvas.testing import DemoResources
+
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(HIGH_CASE["mocks"])
+    wf = await new_triage(api_client)
+    dep = (await api_client.post(f"/v1/workflows/{wf['id']}/publish", json={})).json()["deployment"]["id"]
+    share = await share_on(api_client, dep)
+    assert share["input"] == {"field": "ticket", "chat": False}
+    evs = events((await say(api_client, share["token"], "Site down")).text)
+    done = evs[-1]
+    assert done["status"] == "interrupted" and done["answer"] == ""
+    assert done["interrupts"][0]["kind"] == "approval" and done["interrupts"][0]["question"]
+    thread = evs[0]["threadId"]
+    resume = f"/v1/share/{share['token']}/threads/{thread}/resume"
+    assert (await api_client.post(resume, json={"visitor": BO, "approve": True})).status_code == 404
+    after = events((await api_client.post(resume, json={"visitor": ADA, "approve": True})).text)
+    assert after[-1]["type"] == "RUN_FINISHED" and after[-1]["status"] == "success"
+    again = await api_client.post(resume, json={"visitor": ADA, "approve": True})
+    assert again.status_code == 422  # nothing is waiting any more
+
+
+def test_input_shape_and_answer():
+    chat = Workflow.model_validate({
+        "id": "wf_c", "name": "Chat", "nodes": [],
+        "state": {"channels": [{"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"}]},
+    })  # fmt: skip
+    shape = input_shape(chat, None)
+    assert shape == InputShape(field="messages", chat=True)
+    out = {
+        "messages": [{"type": "human", "content": "hi"}, {"type": "ai", "content": [{"type": "text", "text": "yo"}]}]
+    }
+    assert answer_text(out, shape) == "yo"
+    qa = Workflow.model_validate({
+        "id": "wf_q", "name": "QA", "nodes": [],
+        "state": {"channels": [{"name": "question"}, {"name": "answer"},
+                               {"name": "sources", "type": {"type": "array"}}]},
+    })  # fmt: skip
+    shape = input_shape(qa, None)
+    assert shape == InputShape(field="question")
+    assert answer_text({"question": "q", "answer": "a", "sources": []}, shape) == "a"
+    assert answer_text({"question": "q", "n": 1}, shape) == '{\n  "n": 1\n}'
+    triage = Workflow.model_validate({
+        "id": "wf_t", "name": "T", "nodes": [],
+        "state": {"channels": [{"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"},
+                               {"name": "ticket"}, {"name": "summary"}]},
+    })  # fmt: skip
+    shape = input_shape(triage, None)
+    assert shape == InputShape(field="ticket")  # a question-like text input wins over the message list
+    reply = {"messages": [{"type": "ai", "content": "Sorry about that."}], "summary": "ESCALATED", "ticket": "x"}
+    assert answer_text(reply, shape) == "Sorry about that."

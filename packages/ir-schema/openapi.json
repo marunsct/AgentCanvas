@@ -4092,6 +4092,30 @@
         "title": "InlineRequest",
         "type": "object"
       },
+      "InputShape": {
+        "properties": {
+          "chat": {
+            "default": false,
+            "description": "true: the field is a message list; each message is appended to it",
+            "title": "Chat",
+            "type": "boolean"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the input field the visitor's message goes to",
+            "title": "Field"
+          }
+        },
+        "title": "InputShape",
+        "type": "object"
+      },
       "InterruptOut": {
         "properties": {
           "canvas_node_id": {
@@ -7431,6 +7455,301 @@
         "title": "SetupOut",
         "type": "object"
       },
+      "ShareFeedbackIn": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          },
+          "visitor": {
+            "description": "a random secret the visitor's browser keeps; only it continues the conversations it started",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Visitor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating",
+          "visitor"
+        ],
+        "title": "ShareFeedbackIn",
+        "type": "object"
+      },
+      "ShareInfo": {
+        "properties": {
+          "greeting": {
+            "title": "Greeting",
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/InputShape"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "greeting",
+          "suggestions",
+          "input"
+        ],
+        "title": "ShareInfo",
+        "type": "object"
+      },
+      "ShareOut": {
+        "properties": {
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "greeting": {
+            "title": "Greeting",
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/InputShape"
+          },
+          "input_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Field"
+          },
+          "path": {
+            "description": "the chat page, relative to the web app (/s/<token>)",
+            "title": "Path",
+            "type": "string"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "enabled",
+          "token",
+          "path",
+          "title",
+          "greeting",
+          "suggestions",
+          "input_field",
+          "input"
+        ],
+        "title": "ShareOut",
+        "type": "object"
+      },
+      "ShareResumeIn": {
+        "properties": {
+          "approve": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the answer to an approval",
+            "title": "Approve"
+          },
+          "interrupt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupt Id"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the answer to a question (or a comment)",
+            "title": "Text"
+          },
+          "visitor": {
+            "description": "a random secret the visitor's browser keeps; only it continues the conversations it started",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Visitor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "visitor"
+        ],
+        "title": "ShareResumeIn",
+        "type": "object"
+      },
+      "ShareRunIn": {
+        "properties": {
+          "message": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "continue one of this visitor's conversations",
+            "title": "Thread Id"
+          },
+          "visitor": {
+            "description": "a random secret the visitor's browser keeps; only it continues the conversations it started",
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Visitor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "visitor"
+        ],
+        "title": "ShareRunIn",
+        "type": "object"
+      },
+      "ShareSettingsIn": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "greeting": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting"
+          },
+          "input_field": {
+            "anyOf": [
+              {
+                "maxLength": 63,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'' picks one from the workflow's inputs",
+            "title": "Input Field"
+          },
+          "suggestions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestions"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "ShareSettingsIn",
+        "type": "object"
+      },
       "Simulation": {
         "properties": {
           "goal": {
@@ -7721,9 +8040,40 @@
       },
       "TemplateInfo": {
         "properties": {
+          "block_count": {
+            "default": 0,
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "description": {
             "title": "Description",
             "type": "string"
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "enum": [
+                  "beginner",
+                  "intermediate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty"
           },
           "id": {
             "title": "Id",
@@ -7736,6 +8086,26 @@
           "node_count": {
             "title": "Node Count",
             "type": "integer"
+          },
+          "sample_input": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Input"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
           }
         },
         "required": [
@@ -8861,7 +9231,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.14.0"
+    "version": "0.15.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11415,6 +11785,212 @@
         "summary": "Score Summary",
         "tags": [
           "online evaluation"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/share": {
+      "get": {
+        "description": "The deployment's share link and chat page settings (sharing starts switched off).",
+        "operationId": "get_share_v1_deployments__dep_id__share_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Share",
+        "tags": [
+          "share"
+        ]
+      },
+      "put": {
+        "description": "Switch the share link on or off and set the chat page's title, greeting and suggested prompts.",
+        "operationId": "update_share_v1_deployments__dep_id__share_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Share",
+        "tags": [
+          "share"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/share/regenerate": {
+      "post": {
+        "description": "A new link: the old one, and every conversation started on it, stop working at once.",
+        "operationId": "regenerate_share_v1_deployments__dep_id__share_regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Regenerate Share",
+        "tags": [
+          "share"
         ]
       }
     },
@@ -16512,8 +17088,218 @@
         ]
       }
     },
+    "/v1/share/{token}": {
+      "get": {
+        "description": "What a chat page shows before the first message. 404 when the link is off or the deployment unpublished.",
+        "operationId": "share_info_v1_share__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Info",
+        "tags": [
+          "share"
+        ]
+      }
+    },
+    "/v1/share/{token}/runs/stream": {
+      "post": {
+        "description": "Send a visitor's message: starts a conversation (its id comes back in RUN_STARTED and `x-thread-id`) or\ncontinues one of theirs, streaming the answer (SSE).",
+        "operationId": "share_run_stream_v1_share__token__runs_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Run Stream",
+        "tags": [
+          "share"
+        ]
+      }
+    },
+    "/v1/share/{token}/runs/{run_id}/feedback": {
+      "post": {
+        "description": "A visitor's thumbs up or down on an answer in one of their conversations (a later rating replaces the\nearlier one). A thumbs-down puts the run in the annotation queues that ask for them.",
+        "operationId": "share_feedback_v1_share__token__runs__run_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareFeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Feedback",
+        "tags": [
+          "share"
+        ]
+      }
+    },
+    "/v1/share/{token}/threads/{thread_id}/resume": {
+      "post": {
+        "description": "Answer the question (or approval) a visitor's paused conversation asks, streaming what follows (SSE).",
+        "operationId": "share_resume_v1_share__token__threads__thread_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareResumeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Resume",
+        "tags": [
+          "share"
+        ]
+      }
+    },
     "/v1/templates": {
       "get": {
+        "description": "The template gallery (S23): each starter template with its category, tags, difficulty and a sample input.",
         "operationId": "templates_v1_templates_get",
         "parameters": [
           {

@@ -158,6 +158,38 @@ class Deployment(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class DeploymentShare(Base):
+    """A deployment's public share link and chat widget (S23): anyone with the link can chat with the deployment.
+
+    The token is a capability link (like an unlisted document link): kept in clear so builders can copy it again,
+    revoked by switching sharing off or regenerating it."""
+
+    __tablename__ = "deployment_share"
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"), primary_key=True)
+    token: Mapped[str] = mapped_column(Text, unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    title: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    greeting: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    suggestions: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    input_field: Mapped[str | None] = mapped_column(Text)  # None: picked from the workflow's inputs
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
+class ShareThread(Base):
+    """A conversation a visitor of a share link started: only that visitor (holding the visitor secret whose hash
+    is kept here) continues it, and only through the link it was started on."""
+
+    __tablename__ = "share_thread"
+    thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"), primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"), index=True)
+    visitor_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
 class Thread(Base):
     __tablename__ = "thread"
     __table_args__ = (

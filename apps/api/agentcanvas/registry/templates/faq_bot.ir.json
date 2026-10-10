@@ -1,0 +1,112 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_faq_bot",
+  "name": "Customer FAQ bot",
+  "description": "A support chatbot that answers only from the FAQ in its instructions and hands anything else to a person. Replace the sample FAQ with your own.",
+  "state": {
+    "channels": [
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "storage": "delta"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "chat_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 10
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_agent",
+      "type": "core.agent",
+      "name": "faq_agent",
+      "label": "FAQ agent",
+      "config": {
+        "system_prompt": "You answer customer questions for Acme Coffee Roasters using only the FAQ below. If the answer is not in the FAQ, say a person will follow up and ask for the customer's email address. Keep answers under 80 words and be friendly.\n\nFAQ:\n- Shipping: orders ship within 2 business days; shipping is free over $40.\n- Returns: unopened bags can be returned within 30 days for a full refund.\n- Subscriptions: pause, skip or cancel any time from the Account page.\n- Grind: we grind to order: whole bean, espresso, filter or French press."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_agent"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_agent"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w3",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w4",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_agent",
+        "port": "middleware"
+      },
+      "order": 0
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Customer support",
+      "tags": [
+        "chatbot",
+        "faq",
+        "agent"
+      ],
+      "difficulty": "beginner",
+      "sample_input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Can I pause my subscription next month?"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -220,12 +220,21 @@
       "what": "Something inside this group of steps needs attention.",
       "fix": "Double-click the group to look inside."
     },
+    "W019": {
+      "what": "A safety check is set to only flag problems, but its verdict is not saved anywhere, so no later step can act on it.",
+      "fix": "Select the safety block and pick a field in “Save yes/no in”, then branch on it with a “Choose a path” step (e.g. state.flagged == true). Or set “When it fails” to stop."
+    },
     "W095": {
       "what": "This goes against a recommended organisation rule.",
       "fix": "Read the rule in the message; consider changing the workflow."
     }
   },
   "run_errors": [
+    {
+      "pattern": "safety check .* stopped the run|GuardrailError",
+      "what": "A safety block found a problem (personal data, prompt injection, harmful content or a wrong output format) and was set to stop the run.",
+      "fix": "The message says which block and why. If the text is fine, adjust the block's settings (e.g. the sensitivity threshold); to carry on instead, set “When it fails” to flag and branch on the saved verdict with “Choose a path”."
+    },
     {
       "pattern": "api[_ ]?key|authentication|unauthori[sz]ed|\\b401\\b|invalid x-api-key|credentials",
       "what": "The AI provider refused the API key (missing or wrong).",
