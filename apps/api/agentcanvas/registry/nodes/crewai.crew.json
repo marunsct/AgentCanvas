@@ -1,0 +1,171 @@
+{
+  "type": "crewai.crew",
+  "kind": "runtime",
+  "label": "Crew",
+  "category": "CrewAI",
+  "icon": "users",
+  "color": "#EA580C",
+  "description": "A CrewAI team of agents, each with a role, a goal and a backstory, works through a list of tasks. Only in workflows designed for CrewAI. The tasks run one after another (each sees the earlier answers), or a manager hands them out. The last task's answer is saved in a field. Use {{ state.<field> }} in goals, backstories and tasks. Technical: a CrewAI Crew run with kickoff_async.",
+  "inputs": [
+    {
+      "name": "model",
+      "type": "ChatModel",
+      "required": true,
+      "description": "The AI model every agent of the crew (and the manager) uses. Plug in an “AI model” block."
+    },
+    {
+      "name": "tools",
+      "type": "Tool",
+      "multi": true,
+      "ordered": true,
+      "description": "Optional. Tools every agent of the crew may use."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go when the crew has finished: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "agents",
+      "tasks",
+      "output"
+    ],
+    "properties": {
+      "agents": {
+        "type": "array",
+        "title": "Agents",
+        "minItems": 1,
+        "maxItems": 8,
+        "description": "The members of the crew.",
+        "items": {
+          "title": "Agent",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "role",
+            "goal"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "description": "A short name the tasks use to pick this agent, e.g. researcher."
+            },
+            "role": {
+              "type": "string",
+              "title": "Role",
+              "minLength": 1,
+              "description": "What the agent is, e.g. Senior research analyst."
+            },
+            "goal": {
+              "type": "string",
+              "title": "Goal",
+              "format": "prompt",
+              "minLength": 1,
+              "description": "What the agent tries to achieve."
+            },
+            "backstory": {
+              "type": "string",
+              "title": "Backstory",
+              "format": "prompt",
+              "default": "",
+              "description": "Optional. Background that shapes how the agent works."
+            }
+          }
+        },
+        "default": [
+          {
+            "name": "researcher",
+            "role": "Researcher",
+            "goal": "Find the key facts about {{ state.topic }}",
+            "backstory": ""
+          },
+          {
+            "name": "writer",
+            "role": "Writer",
+            "goal": "Turn the facts into a short, clear report",
+            "backstory": ""
+          }
+        ]
+      },
+      "tasks": {
+        "type": "array",
+        "title": "Tasks",
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "The work, in order. Each task's answer is passed to the next one.",
+        "items": {
+          "title": "Task",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "description"
+          ],
+          "properties": {
+            "description": {
+              "type": "string",
+              "title": "Task",
+              "format": "prompt",
+              "minLength": 1,
+              "description": "What to do. Insert data with {{ state.<field> }}."
+            },
+            "expected_output": {
+              "type": "string",
+              "title": "Expected answer",
+              "default": "",
+              "description": "What a good answer looks like, e.g. A bullet list of five findings."
+            },
+            "agent": {
+              "type": "string",
+              "title": "Agent",
+              "default": "",
+              "description": "The name of the agent that does it. Leave empty for the first agent (or, with a manager, for whoever the manager picks)."
+            }
+          }
+        },
+        "default": [
+          {
+            "description": "List the five most important facts about {{ state.topic }}",
+            "expected_output": "Five bullet points",
+            "agent": "researcher"
+          },
+          {
+            "description": "Write a short report from the facts",
+            "expected_output": "One paragraph",
+            "agent": "writer"
+          }
+        ]
+      },
+      "process": {
+        "enum": [
+          "sequential",
+          "hierarchical"
+        ],
+        "title": "How the crew works",
+        "default": "sequential",
+        "description": "sequential: the tasks run in order, each by its agent. hierarchical: a manager (using the same model) hands out the tasks and checks the answers."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save the answer in",
+        "format": "channel",
+        "description": "The data field that receives the last task's answer."
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "side_effects": [
+    "spend"
+  ],
+  "stability": "beta"
+}

@@ -551,6 +551,32 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
 
+### S27 — CrewAI flows → v0.19.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Flow tier: codegen and runtime | B | 4 | A workflow becomes a native CrewAI `Flow` (`@start`/`@listen`/`@router`, `and_`/`or_`); a run executes that module; the 12 conformance cases pass |
+| 2 | Running CrewAI next to the server | B | 2 | CrewAI in its own environment (it cannot share the API's `openai`); one worker process serves every run; models through the bridge, tools, knowledge and code on the server |
+| 3 | Agents and CrewAI-only blocks | B | 3 | AI agents as CrewAI `Agent`s (tools, typed answers, call limits); `crewai.crew` and `crewai.task` (guardrail) blocks, P001 on other frameworks |
+| 4 | Export | B | 1 | A CrewAI project with the flow, the vendored runtime, a CLI that pauses and continues, tests with a scripted model |
+| 5 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** `adapters/crewai/` (`codegen.py`, `runtime.py`, `worker.py`, `packager.py`, the adapter with
+its `ServerHost` and `CrewWorker`), manifest `registry/adapters/crewai.json` (tier T2), blocks `crewai.crew` and
+`crewai.task`, `make crewai` (CrewAI 1.15.25 in `apps/api/.frameworks/crewai`; the API image takes
+`--build-arg WITH_CREWAI=true`), `tests/test_crewai.py`, `e2e/s27.spec.ts`, CrewAI template exports in
+`scripts/export_templates.py`. Exit met: the conformance kit passes on CrewAI (12 of 12 cases, the whole portable
+set) in `tests/test_conformance.py`, which CI's api job now runs with CrewAI installed. 22 of the 26 templates run on
+CrewAI and their exports pass their own tests. Deviations from the adapter spec: CrewAI pins `openai<3` and the API
+needs `openai>=3` (the OpenAI Agents SDK), so flows run in a worker process started from a separate environment and
+reach the canvas models over the model bridge; the flow keeps a `dict` state rather than a generated Pydantic model;
+approvals and questions stop the flow with CrewAI's `HumanFeedbackPending` and resume by starting the flow again
+from the saved fields and replaying the finished steps (their routes are recorded) rather than through `@persist`
+and `resume_async` (the canvas's answers are structured, not `emit` outcomes); a paused run lives in memory as on
+the SDK; asking before a tool call is refused (P001) for now; `FlowDefinition` import, `@human_feedback` with
+outcomes, memory, knowledge and `@persist` blocks are left for later; crews are run as one step (their agents'
+inner steps are not drawn).
+
 ### S26 — Model gateway and cost controls → v0.18.0 (✅ done)
 
 | # | Item | Role | Days | Acceptance |

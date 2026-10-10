@@ -261,7 +261,8 @@ def test_the_copilot_knows_the_target_framework():
     from agentcanvas.copilot.service import framework_note
 
     assert "LangGraph" in framework_note("langchain")
-    assert "no adapter" in framework_note("crewai")
+    assert "native CrewAI flow" in framework_note("crewai")  # S27
+    assert "no adapter" in framework_note("google_adk")
     assert "CrewAI (`crewai`)" in framework_note("langchain")  # S21: agents designed for other frameworks
 
 

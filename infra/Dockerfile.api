@@ -18,6 +18,11 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-ins
 # 2) the application
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
+# 3) optional (S27): CrewAI in an environment of its own, so workflows designed for CrewAI run here (about 800 MB):
+#   docker build --build-arg WITH_CREWAI=true ...   Without it they can still be designed and exported.
+ARG WITH_CREWAI=false
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_CREWAI" = "true" ]; then \
+      uv venv .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25; fi
 
 FROM python AS runtime
 # git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)

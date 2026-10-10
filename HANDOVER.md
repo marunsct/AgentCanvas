@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-10, after Sprint 26 (Model gateway and cost controls → v0.18.0). Previous update: after Sprint 25 (OpenAI Agents SDK flows → v0.17.0, [#30](https://github.com/marunsct/AgentCanvas/pull/30)).
+- **Last updated:** 2026-10-10, after Sprint 27 (CrewAI flows → v0.19.0). Previous update: after Sprint 26 (Model gateway and cost controls → v0.18.0, [#31](https://github.com/marunsct/AgentCanvas/pull/31)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,24 +14,24 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S26 Model gateway and cost controls → v0.18.0** (the S26 PR): `adapters/langchain/gateway.py` (`GatewayModel`: backup models and the answer cache of a model block, used by `Resources.model` when the block sets `fallbacks` or `cache_ttl`; vendored into LangGraph exports), `FallbackModel` in the SDK runtime for SDK exports, day and month budgets with cost alerts in the runner (`period_limits`, `_cost_alerts`, table `cost_alert`), `GET /v1/workflows/{id}/spend`, W016, Spending box in the workflow settings |
-| Before that | S25 OpenAI Agents SDK flows → v0.17.0 ([#30](https://github.com/marunsct/AgentCanvas/pull/30), merged `2e2eeb5`); S24 Knowledge Studio → v0.16.0 (#29, `2db7871`); S23 Ship to users → v0.15.0 (#28, `820312e`) |
-| Version in code | API `0.18.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.18.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.18.0 are all left to the owner (see §2) |
-| Next sprint | **S27 CrewAI flows → v0.19.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
-| Work status | S26 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S27 starts |
-| Open PRs | the S26 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S27 CrewAI flows → v0.19.0** (the S27 PR): `adapters/crewai/` (`codegen.py` writes a native CrewAI `Flow`; `runtime.py` is the `@rt.step` decorator with events, field reducers and pauses replayed from a record, vendored into exports; `worker.py` runs flows in a separate CrewAI environment; the adapter's `ServerHost` and `CrewWorker`; `packager.py`), manifest `registry/adapters/crewai.json`, blocks `crewai.crew` and `crewai.task`, `make crewai` |
+| Before that | S26 Model gateway and cost controls → v0.18.0 ([#31](https://github.com/marunsct/AgentCanvas/pull/31), merged `5832c26`); S25 OpenAI Agents SDK flows → v0.17.0 (#30, `2e2eeb5`); S24 Knowledge Studio → v0.16.0 (#29, `2db7871`) |
+| Version in code | API `0.19.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.19.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.19.0 are all left to the owner (see §2) |
+| Next sprint | **S28 Mixed-flow export → v0.20.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
+| Work status | S27 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S28 starts |
+| Open PRs | the S27 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S26** (all green locally):
+**Test totals at the end of S27** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 761 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd) | see §5 |
+| API (pytest, Postgres) | 832 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests and the kit on CrewAI need `make crewai` | see §5 |
 | Web unit (vitest) | 94 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 55 | see §5 |
+| Browser journeys (Playwright, prod build under the prod CSP) | 57 (the S27 journey needs `make crewai`) | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 26 templates on LangGraph, and (S25) the 22 the OpenAI Agents SDK can run as SDK projects in `<dir>/openai_agents/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
+| Exported templates, each export's own tests | 26 templates on LangGraph, and the 22 each that the OpenAI Agents SDK (S25) and CrewAI (S27) can run, in `<dir>/openai_agents/*/*` and `<dir>/crewai/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -94,6 +94,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   knowledge_search.py      S24: chunking, built-in embedder, BM25/cosine/hybrid search, retrieval metrics (shipped in exports)
   adapters/langchain/gateway.py   S26: model gateway (backup models, answer cache) of a model block; vendored into exports
   adapters/openai_agents/  S25: workflows as OpenAI Agents SDK code (codegen.py), its runtime (runtime.py, vendored into exports), packager.py
+  adapters/crewai/         S27: workflows as native CrewAI flows (codegen.py); runtime.py + worker.py run in .frameworks/crewai (make crewai); packager.py
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
   registry/                node manifests, providers.json, mcp_gallery.json
@@ -175,13 +176,27 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   code onto existing images or build stand-ins from `mirror.gcr.io` Python images with `--network host` and the proxy CA.
 - The egress proxy blocks most remote MCP hosts and many vendor doc sites, so `smoke_mcp_gallery.py --live` and some
   research can't run here.
+- A fresh clone needs `make crewai` (CrewAI in `apps/api/.frameworks/crewai`, gitignored) before the CrewAI tests,
+  the conformance kit on CrewAI and the S27 browser journey run; without it they skip or fail with an install hint.
 - After a container restart: `service postgresql start`; run pyright as `uv run pyright` (or `.venv/bin/pyright
   --pythonpath .venv/bin/python`) and pytest with `PATH=$PWD/.venv/bin:$PATH` (the LangSmith sandbox test calls `python`).
 - k6 lives at `~/go/bin/k6`; helm via `go install helm.sh/helm/v3/cmd/helm@v3.16.2`.
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.18.0 not created (owner).
+- **Release tags** v0.1.0 to v0.19.0 not created (owner).
+- **S27 limits:** CrewAI cannot be installed next to the API (it pins `openai<3`; the API needs `openai>=3` for the
+  OpenAI Agents SDK), so CrewAI flows run in one long-lived worker process started from `apps/api/.frameworks/crewai`
+  (`make crewai`, or `AGENTCANVAS_CREWAI_PYTHON`; the API image only with `--build-arg WITH_CREWAI=true`, untested
+  here because image builds fail in this environment). The worker starts on the first CrewAI run (about 4 s) and is
+  restarted if it dies. A paused run lives in the API process's memory (as on the SDK); continuing it starts the flow
+  again from the saved fields and replays the finished steps from the record, so a parallel branch that had not
+  finished when another branch paused runs again. Not on CrewAI yet: asking before a tool call (refused with P001),
+  `FlowDefinition` import, `@human_feedback` outcomes, CrewAI memory, knowledge and `@persist` blocks, backup models
+  and the answer cache in exports (inside AgentCanvas they work through the bridge), and the same blocks the SDK lacks.
+  Mock replies are per conversation, so a crew's tasks (each a fresh conversation) all get the first scripted reply.
+  pyright skips `runtime.py` and `worker.py` (they import CrewAI); ruff checks them. Validation reports P003 on even
+  more workflows now (three frameworks installed).
 - **S26 limits:** the answer cache lives in each API instance's memory (per project, 1,000 answers): replicas do not
   share it and a restart empties it; OpenAI Agents SDK exports keep backup models but not the cache. Day and month
   spend counts runs once they finish, so runs started together can go a little over a day or month budget; periods
@@ -295,7 +310,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S23 Ship to users | #28 | `820312e` | v0.15.0 |
 | S24 Knowledge Studio | #29 | `2db7871` | v0.16.0 |
 | S25 OpenAI Agents SDK flows | #30 | `2e2eeb5` | v0.17.0 |
-| S26 Model gateway and cost controls | the S26 PR | (after merge) | v0.18.0 |
+| S26 Model gateway and cost controls | #31 | `5832c26` | v0.18.0 |
+| S27 CrewAI flows | the S27 PR | (after merge) | v0.19.0 |
 
 ## 11. Sprint-end checklist
 

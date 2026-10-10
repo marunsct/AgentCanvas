@@ -1664,6 +1664,334 @@
     "docs": null
   },
   {
+    "type": "crewai.task",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Agent task",
+    "category": "CrewAI",
+    "icon": "clipboard-check",
+    "color": "#EA580C",
+    "description": "One CrewAI agent (a role, a goal, a backstory) does one task and saves its answer in a field. Only in workflows designed for CrewAI. A guardrail is a rule in plain words that the answer must follow: the model checks each answer against it and the agent tries again when it does not (up to the number of tries). Use {{ state.<field> }} in the texts. Technical: a CrewAI Task with an LLM guardrail, run by a one-agent Crew.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "The AI model the agent (and the guardrail check) uses. Plug in an \u201cAI model\u201d block."
+      },
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": "Optional. Tools the agent may use."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go when the task is done: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "goal",
+        "description",
+        "output"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "title": "Role",
+          "minLength": 1,
+          "description": "What the agent is, e.g. Support specialist."
+        },
+        "goal": {
+          "type": "string",
+          "title": "Goal",
+          "format": "prompt",
+          "minLength": 1,
+          "description": "What the agent tries to achieve."
+        },
+        "backstory": {
+          "type": "string",
+          "title": "Backstory",
+          "format": "prompt",
+          "default": "",
+          "description": "Optional. Background that shapes how the agent works."
+        },
+        "description": {
+          "type": "string",
+          "title": "Task",
+          "format": "prompt",
+          "minLength": 1,
+          "description": "What to do. Insert data with {{ state.<field> }}, e.g. Answer this ticket: {{ state.ticket }}"
+        },
+        "expected_output": {
+          "type": "string",
+          "title": "Expected answer",
+          "default": "",
+          "description": "What a good answer looks like, e.g. A reply of at most three sentences."
+        },
+        "guardrail": {
+          "type": "string",
+          "title": "Guardrail",
+          "default": "",
+          "description": "Optional. A rule the answer must follow, e.g. Never promise a refund. Checked by the model; a failing answer is redone."
+        },
+        "guardrail_max_retries": {
+          "type": "integer",
+          "title": "Tries after a failed check",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 3,
+          "description": "How many times the agent may redo an answer the guardrail rejects; then the step fails."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the answer in",
+          "format": "channel",
+          "description": "The data field that receives the agent's answer."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "goal",
+      "backstory",
+      "description"
+    ],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [
+      "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
+    "type": "crewai.crew",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Crew",
+    "category": "CrewAI",
+    "icon": "users",
+    "color": "#EA580C",
+    "description": "A CrewAI team of agents, each with a role, a goal and a backstory, works through a list of tasks. Only in workflows designed for CrewAI. The tasks run one after another (each sees the earlier answers), or a manager hands them out. The last task's answer is saved in a field. Use {{ state.<field> }} in goals, backstories and tasks. Technical: a CrewAI Crew run with kickoff_async.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "The AI model every agent of the crew (and the manager) uses. Plug in an \u201cAI model\u201d block."
+      },
+      {
+        "name": "tools",
+        "type": "Tool",
+        "required": false,
+        "multi": true,
+        "ordered": true,
+        "description": "Optional. Tools every agent of the crew may use."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go when the crew has finished: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agents",
+        "tasks",
+        "output"
+      ],
+      "properties": {
+        "agents": {
+          "type": "array",
+          "title": "Agents",
+          "minItems": 1,
+          "maxItems": 8,
+          "description": "The members of the crew.",
+          "items": {
+            "title": "Agent",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "role",
+              "goal"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Name",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "description": "A short name the tasks use to pick this agent, e.g. researcher."
+              },
+              "role": {
+                "type": "string",
+                "title": "Role",
+                "minLength": 1,
+                "description": "What the agent is, e.g. Senior research analyst."
+              },
+              "goal": {
+                "type": "string",
+                "title": "Goal",
+                "format": "prompt",
+                "minLength": 1,
+                "description": "What the agent tries to achieve."
+              },
+              "backstory": {
+                "type": "string",
+                "title": "Backstory",
+                "format": "prompt",
+                "default": "",
+                "description": "Optional. Background that shapes how the agent works."
+              }
+            }
+          },
+          "default": [
+            {
+              "name": "researcher",
+              "role": "Researcher",
+              "goal": "Find the key facts about {{ state.topic }}",
+              "backstory": ""
+            },
+            {
+              "name": "writer",
+              "role": "Writer",
+              "goal": "Turn the facts into a short, clear report",
+              "backstory": ""
+            }
+          ]
+        },
+        "tasks": {
+          "type": "array",
+          "title": "Tasks",
+          "minItems": 1,
+          "maxItems": 12,
+          "description": "The work, in order. Each task's answer is passed to the next one.",
+          "items": {
+            "title": "Task",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "description"
+            ],
+            "properties": {
+              "description": {
+                "type": "string",
+                "title": "Task",
+                "format": "prompt",
+                "minLength": 1,
+                "description": "What to do. Insert data with {{ state.<field> }}."
+              },
+              "expected_output": {
+                "type": "string",
+                "title": "Expected answer",
+                "default": "",
+                "description": "What a good answer looks like, e.g. A bullet list of five findings."
+              },
+              "agent": {
+                "type": "string",
+                "title": "Agent",
+                "default": "",
+                "description": "The name of the agent that does it. Leave empty for the first agent (or, with a manager, for whoever the manager picks)."
+              }
+            }
+          },
+          "default": [
+            {
+              "description": "List the five most important facts about {{ state.topic }}",
+              "expected_output": "Five bullet points",
+              "agent": "researcher"
+            },
+            {
+              "description": "Write a short report from the facts",
+              "expected_output": "One paragraph",
+              "agent": "writer"
+            }
+          ]
+        },
+        "process": {
+          "enum": [
+            "sequential",
+            "hierarchical"
+          ],
+          "title": "How the crew works",
+          "default": "sequential",
+          "description": "sequential: the tasks run in order, each by its agent. hierarchical: a manager (using the same model) hands out the tasks and checks the answers."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the answer in",
+          "format": "channel",
+          "description": "The data field that receives the last task's answer."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [
+      "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "beta",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "core.script",
     "version": "1.0.0",
     "kind": "runtime",

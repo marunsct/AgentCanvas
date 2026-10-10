@@ -1,13 +1,15 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. A server offers two:
+for. A server offers three:
 
 - **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
   long-term memory and breakpoints. New workflows use it.
 - **OpenAI Agents SDK** runs AI steps, AI agents (tools, approvals, typed answers), paths, wait-for-all, approvals,
   questions, Python steps and knowledge search as OpenAI Agents SDK code. See
   [Run a workflow on the OpenAI Agents SDK](#run-a-workflow-on-the-openai-agents-sdk).
+- **CrewAI** turns the workflow into a native CrewAI flow, with CrewAI agents for the AI blocks and two blocks of
+  its own: **Crew** and **Agent task**. See [Run a workflow on CrewAI](#run-a-workflow-on-crewai).
 
 More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
 
@@ -110,6 +112,40 @@ frameworks**), and run: each example runs on both, and the results grid shows sc
 by side. The draft itself does not change. The API takes `"framework"` on a target, and `GET
 /v1/workflows/{id}/code?framework=openai_agents` previews the converted code.
 
+## Run a workflow on CrewAI
+
+Pick **CrewAI** as the workflow's framework (click empty canvas, then **Framework**). Runs need CrewAI installed on
+the server: `make crewai` puts it in a Python environment of its own (CrewAI pins an older `openai` package than
+AgentCanvas uses), and the Docker image takes `--build-arg WITH_CREWAI=true`. Without it you can still design, check
+and export CrewAI workflows; a run says how to install it.
+
+- **The code is a CrewAI flow.** The Code tab shows a `Flow` class with one method per block (marked `@canvas-node`),
+  chained with CrewAI's own `@start`, `@listen` and `@router`: a path becomes a `@router` method whose routes the
+  next steps listen for, a wait-for-all step listens with `and_()`, and a step reached from several places with
+  `or_()`. AI steps call a CrewAI `LLM`, AI agents are CrewAI `Agent`s (role, goal from the instructions, tools,
+  typed answers). A run executes exactly that module.
+- **Any model.** As on the OpenAI Agents SDK, the canvas model blocks reach CrewAI through AgentCanvas: every
+  catalog model, scripted test replies, backup models and the answer cache all work, and runs are traced and costed.
+- **Crew** (CrewAI only): a team of agents, each with a role, a goal and a backstory, works through a list of tasks,
+  one after another or handed out by a manager. The last task's answer lands in the field you pick.
+- **Agent task** (CrewAI only): one agent does one task. Its **guardrail** is a rule in plain words that the answer
+  must follow (for example *Never promise a refund*): the model checks each answer, and the agent redoes a failing
+  one up to the number of tries before the step fails.
+- **Approvals and questions** stop the flow with CrewAI's own `HumanFeedbackPending`. When you answer, the flow
+  starts again from the saved fields, skips the steps that had finished (the paths they took are remembered) and
+  gives your answer to the step that asked.
+- **Loops** are guarded: a step that runs more often than the workflow's step limit stops the run.
+- **What it does not have yet.** Asking before a tool call, saved conversation history, state editing, replay and
+  breakpoints; a paused run is kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and
+  MCP tools, guard blocks and other add-ons stay on LangGraph for now. The Crew and Agent task blocks run only on
+  CrewAI.
+- **Export.** The Versions tab exports a CrewAI project: the flow, the small runtime it needs, a command-line runner
+  that saves a paused run in `.runs/` and continues it, each model block reached over its provider's
+  OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
+
+An experiment can compare a workflow on LangGraph and on CrewAI side by side (a target **on CrewAI**), and
+`GET /v1/workflows/{id}/code?framework=crewai` previews the converted code.
+
 ## What each framework can do
 
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
@@ -117,7 +153,7 @@ from an earlier step, long-term memory, browsing an app connector's tools, and b
 framework cannot do one of them, AgentCanvas says so plainly instead of failing; switch the workflow to LangGraph
 to use it.
 
-Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default `langchain,openai_agents`).
+Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default `langchain,openai_agents,crewai`).
 
 ## The Echo demo engine
 
