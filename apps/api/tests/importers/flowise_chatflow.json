@@ -1,0 +1,189 @@
+{
+ "nodes": [
+  {
+   "id": "chatOpenAI_0",
+   "type": "customNode",
+   "position": {
+    "x": 0,
+    "y": 0
+   },
+   "data": {
+    "id": "chatOpenAI_0",
+    "name": "chatOpenAI",
+    "label": "ChatOpenAI",
+    "inputs": {
+     "modelName": "gpt-4o-mini",
+     "temperature": 0.9,
+     "maxTokens": "",
+     "basePath": ""
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "promptTemplate_0",
+   "type": "customNode",
+   "position": {
+    "x": 0,
+    "y": 300
+   },
+   "data": {
+    "id": "promptTemplate_0",
+    "name": "promptTemplate",
+    "label": "Prompt Template",
+    "inputs": {
+     "template": "What is a good name for a company that makes {product}?",
+     "promptValues": "{\"product\":\"{{question}}\"}"
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "llmChain_0",
+   "type": "customNode",
+   "position": {
+    "x": 400,
+    "y": 100
+   },
+   "data": {
+    "id": "llmChain_0",
+    "name": "llmChain",
+    "label": "LLM Chain",
+    "inputs": {
+     "model": "{{chatOpenAI_0.data.instance}}",
+     "prompt": "{{promptTemplate_0.data.instance}}",
+     "chainName": "Name ideas"
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "toolAgent_0",
+   "type": "customNode",
+   "position": {
+    "x": 800,
+    "y": 100
+   },
+   "data": {
+    "id": "toolAgent_0",
+    "name": "toolAgent",
+    "label": "Tool Agent",
+    "inputs": {
+     "model": "{{chatAnthropic_0.data.instance}}",
+     "tools": [
+      "{{requestsGet_0.data.instance}}",
+      "{{calculator_0.data.instance}}"
+     ],
+     "memory": "{{bufferMemory_0.data.instance}}",
+     "systemMessage": "You are a helpful AI assistant."
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "chatAnthropic_0",
+   "type": "customNode",
+   "position": {
+    "x": 400,
+    "y": 400
+   },
+   "data": {
+    "id": "chatAnthropic_0",
+    "name": "chatAnthropic",
+    "label": "ChatAnthropic",
+    "inputs": {
+     "modelName": "claude-haiku-4-5",
+     "temperature": 0.2
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "requestsGet_0",
+   "type": "customNode",
+   "position": {
+    "x": 400,
+    "y": 600
+   },
+   "data": {
+    "id": "requestsGet_0",
+    "name": "requestsGet",
+    "label": "Requests Get",
+    "inputs": {
+     "url": "https://api.example.com/names",
+     "description": "Looks up taken company names"
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "calculator_0",
+   "type": "customNode",
+   "position": {
+    "x": 400,
+    "y": 800
+   },
+   "data": {
+    "id": "calculator_0",
+    "name": "calculator",
+    "label": "Calculator",
+    "inputs": {},
+    "outputs": {}
+   }
+  },
+  {
+   "id": "bufferMemory_0",
+   "type": "customNode",
+   "position": {
+    "x": 400,
+    "y": 1000
+   },
+   "data": {
+    "id": "bufferMemory_0",
+    "name": "bufferMemory",
+    "label": "Buffer Memory",
+    "inputs": {},
+    "outputs": {}
+   }
+  }
+ ],
+ "edges": [
+  {
+   "source": "chatOpenAI_0",
+   "target": "llmChain_0",
+   "sourceHandle": "chatOpenAI_0-output-chatOpenAI-ChatOpenAI|BaseChatModel",
+   "targetHandle": "llmChain_0-input-model-BaseLanguageModel",
+   "id": "e1"
+  },
+  {
+   "source": "promptTemplate_0",
+   "target": "llmChain_0",
+   "id": "e2"
+  },
+  {
+   "source": "llmChain_0",
+   "target": "toolAgent_0",
+   "id": "e3"
+  },
+  {
+   "source": "chatAnthropic_0",
+   "target": "toolAgent_0",
+   "id": "e4"
+  },
+  {
+   "source": "requestsGet_0",
+   "target": "toolAgent_0",
+   "id": "e5"
+  },
+  {
+   "source": "calculator_0",
+   "target": "toolAgent_0",
+   "id": "e6"
+  },
+  {
+   "source": "bufferMemory_0",
+   "target": "toolAgent_0",
+   "id": "e7"
+  }
+ ]
+}

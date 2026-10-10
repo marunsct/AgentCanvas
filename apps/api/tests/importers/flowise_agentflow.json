@@ -1,0 +1,232 @@
+{
+ "nodes": [
+  {
+   "id": "startAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 0,
+    "y": 0
+   },
+   "data": {
+    "id": "startAgentflow_0",
+    "name": "startAgentflow",
+    "label": "Start",
+    "inputs": {
+     "startInputType": "chatInput",
+     "startState": [
+      {
+       "key": "topic",
+       "value": ""
+      }
+     ]
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "llmAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 200,
+    "y": 0
+   },
+   "data": {
+    "id": "llmAgentflow_0",
+    "name": "llmAgentflow",
+    "label": "Classify",
+    "inputs": {
+     "llmModel": "chatOpenAI",
+     "llmModelConfig": {
+      "modelName": "gpt-4o-mini",
+      "temperature": 0
+     },
+     "llmMessages": [
+      {
+       "role": "system",
+       "content": "<p>Reply with one word: sales or support.</p>"
+      },
+      {
+       "role": "user",
+       "content": "<p>{{ question }}</p>"
+      }
+     ]
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "conditionAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 400,
+    "y": 0
+   },
+   "data": {
+    "id": "conditionAgentflow_0",
+    "name": "conditionAgentflow",
+    "label": "Is sales?",
+    "inputs": {
+     "conditions": [
+      {
+       "type": "string",
+       "value1": "<p>{{ llmAgentflow_0 }}</p>",
+       "operation": "contains",
+       "value2": "sales"
+      }
+     ]
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "agentAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 600,
+    "y": 0
+   },
+   "data": {
+    "id": "agentAgentflow_0",
+    "name": "agentAgentflow",
+    "label": "Sales agent",
+    "inputs": {
+     "agentModel": "chatAnthropic",
+     "agentModelConfig": {
+      "modelName": "claude-haiku-4-5"
+     },
+     "agentMessages": [
+      {
+       "role": "system",
+       "content": "You sell things."
+      }
+     ],
+     "agentTools": [
+      {
+       "agentSelectedTool": "calculator"
+      }
+     ]
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "humanInputAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 600,
+    "y": 0
+   },
+   "data": {
+    "id": "humanInputAgentflow_0",
+    "name": "humanInputAgentflow",
+    "label": "Check reply",
+    "inputs": {
+     "humanInputDescription": "Approve?"
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "directReplyAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 800,
+    "y": 0
+   },
+   "data": {
+    "id": "directReplyAgentflow_0",
+    "name": "directReplyAgentflow",
+    "label": "Approved",
+    "inputs": {
+     "directReplyMessage": "<p>Sent: {{ llmAgentflow_0 }}</p>"
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "directReplyAgentflow_1",
+   "type": "agentFlow",
+   "position": {
+    "x": 800,
+    "y": 0
+   },
+   "data": {
+    "id": "directReplyAgentflow_1",
+    "name": "directReplyAgentflow",
+    "label": "Rejected",
+    "inputs": {
+     "directReplyMessage": "Not sent."
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "customFunctionAgentflow_0",
+   "type": "agentFlow",
+   "position": {
+    "x": 1000,
+    "y": 0
+   },
+   "data": {
+    "id": "customFunctionAgentflow_0",
+    "name": "customFunctionAgentflow",
+    "label": "Log it",
+    "inputs": {
+     "customFunctionJavascriptFunction": "return 1"
+    },
+    "outputs": {}
+   }
+  },
+  {
+   "id": "stickyNoteAgentflow_0",
+   "type": "stickyNote",
+   "position": {
+    "x": 0,
+    "y": 0
+   },
+   "data": {
+    "name": "stickyNoteAgentflow",
+    "inputs": {
+     "note": "hi"
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "source": "startAgentflow_0",
+   "sourceHandle": "startAgentflow_0-output-startAgentflow",
+   "target": "llmAgentflow_0"
+  },
+  {
+   "source": "llmAgentflow_0",
+   "sourceHandle": "llmAgentflow_0-output-llmAgentflow",
+   "target": "conditionAgentflow_0"
+  },
+  {
+   "source": "conditionAgentflow_0",
+   "sourceHandle": "conditionAgentflow_0-output-0",
+   "target": "agentAgentflow_0"
+  },
+  {
+   "source": "conditionAgentflow_0",
+   "sourceHandle": "conditionAgentflow_0-output-1",
+   "target": "humanInputAgentflow_0"
+  },
+  {
+   "source": "humanInputAgentflow_0",
+   "sourceHandle": "humanInputAgentflow_0-output-0",
+   "target": "directReplyAgentflow_0"
+  },
+  {
+   "source": "humanInputAgentflow_0",
+   "sourceHandle": "humanInputAgentflow_0-output-1",
+   "target": "directReplyAgentflow_1"
+  },
+  {
+   "source": "directReplyAgentflow_0",
+   "sourceHandle": "x",
+   "target": "customFunctionAgentflow_0"
+  }
+ ]
+}

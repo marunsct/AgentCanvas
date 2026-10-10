@@ -1,0 +1,184 @@
+{
+ "name": "Basic Prompting",
+ "description": "Perform basic prompting with an OpenAI model.",
+ "data": {
+  "nodes": [
+   {
+    "id": "ChatInput-jFwUm",
+    "type": "genericNode",
+    "position": {
+     "x": 0,
+     "y": 100
+    },
+    "data": {
+     "id": "ChatInput-jFwUm",
+     "type": "ChatInput",
+     "node": {
+      "display_name": "Chat Input",
+      "template": {
+       "input_value": {
+        "value": "Hello",
+        "type": "str"
+       },
+       "sender": {
+        "value": "User",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "Prompt-2ABcd",
+    "type": "genericNode",
+    "position": {
+     "x": 300,
+     "y": 0
+    },
+    "data": {
+     "id": "Prompt-2ABcd",
+     "type": "Prompt",
+     "node": {
+      "display_name": "Prompt",
+      "template": {
+       "template": {
+        "value": "Answer the user as if you were a GenAI expert, enthusiastic about helping them get started building something fresh.",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "OpenAIModel-k39HS",
+    "type": "genericNode",
+    "position": {
+     "x": 600,
+     "y": 50
+    },
+    "data": {
+     "id": "OpenAIModel-k39HS",
+     "type": "OpenAIModel",
+     "node": {
+      "display_name": "OpenAI",
+      "template": {
+       "model_name": {
+        "value": "gpt-4.1-mini",
+        "type": "str"
+       },
+       "temperature": {
+        "value": 0.1,
+        "type": "str"
+       },
+       "max_tokens": {
+        "value": "",
+        "type": "str"
+       },
+       "input_value": {
+        "value": "",
+        "type": "str"
+       },
+       "system_message": {
+        "value": "",
+        "type": "str"
+       },
+       "api_key": {
+        "value": "OPENAI_API_KEY",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "ChatOutput-ylHQ4",
+    "type": "genericNode",
+    "position": {
+     "x": 900,
+     "y": 50
+    },
+    "data": {
+     "id": "ChatOutput-ylHQ4",
+     "type": "ChatOutput",
+     "node": {
+      "display_name": "Chat Output",
+      "template": {
+       "input_value": {
+        "value": "",
+        "type": "str"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "note-1",
+    "type": "noteNode",
+    "position": {
+     "x": 0,
+     "y": -200
+    },
+    "data": {
+     "node": {
+      "description": "Read me"
+     }
+    }
+   }
+  ],
+  "edges": [
+   {
+    "source": "ChatInput-jFwUm",
+    "target": "OpenAIModel-k39HS",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "ChatInput-jFwUm",
+      "name": "message",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "OpenAIModel-k39HS",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-ChatInput-jFwUm-OpenAIModel-k39HS"
+   },
+   {
+    "source": "Prompt-2ABcd",
+    "target": "OpenAIModel-k39HS",
+    "sourceHandle": "{\u0153dataType\u0153: \u0153X\u0153, \u0153id\u0153: \u0153Prompt-2ABcd\u0153, \u0153name\u0153: \u0153prompt\u0153, \u0153output_types\u0153: [\u0153Message\u0153]}",
+    "targetHandle": "{\u0153fieldName\u0153: \u0153system_message\u0153, \u0153id\u0153: \u0153OpenAIModel-k39HS\u0153, \u0153inputTypes\u0153: [\u0153Message\u0153], \u0153type\u0153: \u0153str\u0153}",
+    "id": "xy-Prompt-2ABcd-OpenAIModel-k39HS"
+   },
+   {
+    "source": "OpenAIModel-k39HS",
+    "target": "ChatOutput-ylHQ4",
+    "data": {
+     "sourceHandle": {
+      "dataType": "X",
+      "id": "OpenAIModel-k39HS",
+      "name": "text_output",
+      "output_types": [
+       "Message"
+      ]
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "ChatOutput-ylHQ4",
+      "inputTypes": [
+       "Message"
+      ],
+      "type": "str"
+     }
+    },
+    "id": "reactflow__edge-OpenAIModel-k39HS-ChatOutput-ylHQ4"
+   }
+  ]
+ }
+}

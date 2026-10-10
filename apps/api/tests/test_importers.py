@@ -1,0 +1,213 @@
+"""S31: Langflow, Flowise and n8n files become workflows that validate and run (exit: a Langflow export runs)."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from agentcanvas.importers import ImportError_, detect, import_document
+from agentcanvas.ir.models import Workflow
+from agentcanvas.validation import validate
+
+P = "/v1/projects/prj_default"
+FILES = Path(__file__).parent / "importers"
+NAMES = sorted(p.stem for p in FILES.glob("*.json"))
+CHAT = {"messages": [{"role": "user", "content": "I want a refund for my order"}]}
+INPUTS = {"n8n_branching": {"ticket": "The site is down, urgent!"}}
+
+
+def _load(name: str) -> dict:
+    return json.loads((FILES / f"{name}.json").read_text())
+
+
+def _imported(name: str) -> tuple[str, Workflow, list[str], dict]:
+    kind, ir, report, layout = import_document(_load(name), wf_id="wf_new")
+    return kind, Workflow.model_validate(ir), report, layout
+
+
+def _flows(wf: Workflow) -> set[tuple[str, str | None, str]]:
+    names = {n.id: n.name for n in wf.nodes} | {"START": "START", "END": "END"}
+    return {(names[e.source.node], e.source.port, names[e.target.node]) for e in wf.edges if e.kind == "flow"}
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_sample_imports_without_errors(name):
+    kind, wf, _report, layout = _imported(name)
+    assert kind == name.split("_")[0]
+    assert wf.metadata["imported_from"] == kind
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    assert layout and set(layout) <= {n.id for n in wf.nodes}
+
+
+def test_detect():
+    assert detect({"component_type": "Flow"}) == "agentspec"
+    assert detect({"data": {"nodes": [], "edges": []}}) == "langflow"
+    assert detect({"nodes": [{"type": "genericNode"}], "edges": []}) == "langflow"
+    assert detect({"nodes": [], "connections": {}}) == "n8n"
+    assert detect({"nodes": [{"type": "customNode"}], "edges": []}) == "flowise"
+    assert detect({"hello": 1}) is None and detect([1]) is None
+
+
+def test_langflow_basic_prompting():
+    _, wf, report, _ = _imported("langflow_basic_prompting")
+    (step,) = wf.nodes
+    assert step.type == "core.llm" and step.name == "open_ai"
+    assert step.config["prompt"].startswith("Answer the user as if you were a GenAI expert")
+    assert step.config["prompt"].endswith("{{ state.messages[-1].content }}")  # the chat message
+    assert [r.config for r in wf.resources] == [{"model": "openai:gpt-4.1-mini", "temperature": 0.1}]
+    assert _flows(wf) == {("START", None, "open_ai"), ("open_ai", None, "END")}
+    assert wf.settings.output_channels == ["messages", "open_ai_reply"]
+    assert report == []
+
+
+def test_langflow_agent_with_tools():
+    _, wf, report, _ = _imported("langflow_agent")
+    (agent,) = wf.nodes
+    assert agent.type == "core.agent" and "helpful assistant" in agent.config["system_prompt"]
+    kinds = {r.type: r.config for r in wf.resources}
+    assert kinds["model.chat"] == {"model": "openai:gpt-4.1", "temperature": 0.1}
+    assert kinds["tool.http"]["allowed_domains"] == ["api.open-meteo.com"]
+    wired = {(e.target.port) for e in wf.edges if e.kind == "wiring"}
+    assert wired == {"model", "tools"}
+    assert any("Calculator" in r for r in report) and any("memory" in r for r in report)
+
+
+def test_langflow_router_paths():
+    _, wf, _, _ = _imported("langflow_router")
+    router = next(n for n in wf.nodes if n.type == "core.router")
+    assert router.config["cases"] == [
+        {"when": 'state.messages[size(state.messages) - 1].content.contains("refund")', "route": "true"}
+    ]
+    assert _flows(wf) == {
+        ("START", None, "if_else"),
+        ("if_else", "route:true", "refunds"),
+        ("if_else", "route:false", "other"),
+        ("refunds", None, "END"),
+        ("other", None, "END"),
+    }
+    models = {r.config["model"]: r.config for r in wf.resources}
+    assert models["ollama:llama3.3"]["base_url"] == "http://localhost:11434"
+
+
+def test_flowise_chatflow():
+    _, wf, report, _ = _imported("flowise_chatflow")
+    chain, agent = wf.nodes
+    assert chain.config["prompt"] == "What is a good name for a company that makes {{ state.messages[-1].content }}?"
+    assert agent.type == "core.agent" and agent.config["system_prompt"] == "You are a helpful AI assistant."
+    assert _flows(wf) == {("START", None, "llm_chain"), ("llm_chain", None, "tool_agent"), ("tool_agent", None, "END")}
+    assert {r.type for r in wf.resources} == {"model.chat", "tool.http"}
+    assert any("Buffer Memory" in r for r in report)
+
+
+def test_flowise_agentflow():
+    _, wf, report, _ = _imported("flowise_agentflow")
+    nodes = {n.name: n for n in wf.nodes}
+    assert nodes["is_sales"].config["cases"] == [
+        {"when": 'state.classify_reply.contains("sales")', "route": "branch_1"}
+    ]
+    assert nodes["check_reply"].type == "core.approval" and nodes["check_reply"].config["show"] == "classify_reply"
+    assert nodes["approved"].config == {"values": {"approved_message": "Sent: {{ state.classify_reply }}"}}
+    assert {
+        ("is_sales", "route:branch_1", "sales_agent"),
+        ("is_sales", "route:else", "check_reply"),
+        ("check_reply_answer", "route:proceed", "approved"),
+        ("check_reply_answer", "route:reject", "rejected"),
+    } <= _flows(wf)
+    assert any("customFunctionAgentflow" in r and "placeholder" in r for r in report)
+
+
+def test_n8n_ai_agent():
+    _, wf, report, _ = _imported("n8n_ai_agent")
+    (agent,) = wf.nodes
+    assert agent.config == {"system_prompt": "You are a helpful weather assistant."}
+    assert {r.type for r in wf.resources} == {"model.chat", "tool.http"}
+    assert any("Wikipedia" in r for r in report) and any("Simple Memory" in r for r in report)
+
+
+def test_n8n_branches_do_not_wait_for_each_other():
+    _, wf, report, _ = _imported("n8n_branching")
+    nodes = {n.name: n for n in wf.nodes}
+    assert nodes["classify"].config["prompt"] == (
+        "Answer with one word.\n\nClassify this ticket as urgent or normal: {{ state.ticket }}"
+    )
+    assert nodes["page_on_call"].config == {"values": {"status": "Paged: {{ state.classify_reply }}"}}
+    assert not [n for n in wf.nodes if n.type == "core.join"]  # only one branch runs: no Wait for all
+    assert ("page_on_call", None, "send_slack") in _flows(wf) and ("queue_it", None, "send_slack") in _flows(wf)
+    assert {c.name: c.io for c in wf.state.channels}["ticket"] == "in"
+    assert any("Webhook" in r for r in report)
+
+
+def test_parallel_langflow_inputs_wait_for_all():
+    doc = _load("langflow_router")
+    nodes = doc["data"]["nodes"]
+    prompt = next(n for n in nodes if n["id"] == "Prompt-3")
+    prompt["data"]["node"]["template"]["template"]["value"] = "A: {a} B: {b}"
+    doc["data"]["edges"] = [
+        e for e in doc["data"]["edges"] if e["target"] not in ("Prompt-3", "ConditionalRouter-2", "OllamaModel-5")
+    ]
+    doc["data"]["edges"] = [e for e in doc["data"]["edges"] if e["source"] != "Prompt-3"]
+
+    def edge(src: str, output: str, dst: str, field: str) -> dict:
+        handles = {"sourceHandle": {"name": output}, "targetHandle": {"fieldName": field}}
+        return {"source": src, "target": dst, "data": handles}
+
+    doc["data"]["edges"] += [
+        edge("OllamaModel-5", "text_output", "Prompt-3", "a"),
+        edge("AnthropicModel-4", "text_output", "Prompt-3", "b"),
+        edge("Prompt-3", "prompt", "OpenAIModel-9", "input_value"),
+    ]
+    template = {"model_name": {"value": "gpt-5.5"}}
+    combine = {"type": "OpenAIModel", "node": {"display_name": "Combine", "template": template}}
+    nodes.append({"id": "OpenAIModel-9", "type": "genericNode", "position": {"x": 1, "y": 2}, "data": combine})
+    _, ir, _, _ = import_document(doc, wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert [n.name for n in wf.nodes if n.type == "core.join"] == ["wait_for_combine"]
+    combine = next(n for n in wf.nodes if n.name == "combine")
+    assert combine.config["prompt"] == "A: {{ state.other_reply }} B: {{ state.refunds_reply }}"
+
+
+@pytest.mark.parametrize(
+    ("doc", "message"),
+    [
+        ({"x": 1}, "not a Langflow, Flowise, n8n or Agent Spec"),
+        ({"data": {"nodes": [], "edges": []}}, "no components"),
+        ({"nodes": [], "connections": {}}, "no nodes"),
+        ({"nodes": [{"id": "a", "data": {"name": "chatOpenAI"}}], "edges": []}, "no chain or agent"),
+        ({"nodes": [{"name": "Start", "type": "n8n-nodes-base.manualTrigger"}], "connections": {}}, "no steps"),
+        ({"data": {"nodes": [{"id": "x", "data": "oops"}], "edges": []}}, "could not be read"),
+    ],
+)
+def test_bad_files(doc, message):
+    with pytest.raises(ImportError_, match=message):
+        import_document(doc, wf_id="wf_new")
+
+
+@pytest.mark.parametrize("name", NAMES)
+async def test_imported_workflows_run(app, api_client, name):
+    """The exit criterion: a Langflow export opens and runs on the canvas (and so do the others)."""
+    from agentcanvas.testing import DemoResources
+
+    demo = DemoResources()
+    app.state.resources_factory = lambda thread_id, wf: demo
+    res = await api_client.post(f"{P}/workflows/import", json={"file": _load(name), "name": "Imported"})
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["format"] == name.split("_")[0] and body["name"] == "Imported" and isinstance(body["report"], list)
+    assert res.headers["Location"] == f"/v1/workflows/{body['id']}"
+    assert not [d for d in body["diagnostics"] if d["severity"] == "error"], body["diagnostics"]
+    text = (
+        await api_client.post(f"/v1/workflows/{body['id']}/runs/stream", json={"input": INPUTS.get(name, CHAT)})
+    ).text
+    events = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")]
+    assert events[-1]["type"] == "RUN_FINISHED", events[-1]
+    assert not [e for e in events if e["type"] == "RUN_ERROR"]
+
+
+async def test_import_endpoint_rejects_other_files(api_client):
+    res = await api_client.post(f"{P}/workflows/import", json={"file": {"hello": "world"}})
+    assert res.status_code == 422 and "Langflow" in res.text
+    spec = json.loads((Path(__file__).parent / "agentspec_sample.json").read_text())
+    res = await api_client.post(f"{P}/workflows/import", json={"file": spec})
+    assert res.status_code == 201 and res.json()["format"] == "agentspec"
