@@ -79,4 +79,5 @@ export const KIND_CONFIG: Record<string, unknown> = {
   code: { function: "scripts.evals:check" },
   composite: { evaluators: [], mode: "weighted", weights: {} },
   pairwise: { model: "anthropic:claude-haiku-4-5", rubric: "Which answer is more helpful and correct?" },
+  retrieval: { channel: "passages", k: 3, metric: "recall", match_by: "source" },
 };

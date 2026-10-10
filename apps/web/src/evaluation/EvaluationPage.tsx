@@ -226,6 +226,7 @@ function Evaluators({ wfId }: { wfId: string }) {
               <option value="exact">exact match</option><option value="regex">regex</option><option value="json_schema">JSON Schema</option>
               <option value="llm_judge">LLM judge</option><option value="trajectory">tool trajectory</option><option value="code">workspace code</option>
               <option value="composite">composite</option><option value="pairwise">pairwise judge</option>
+              <option value="retrieval">retrieval (found the right documents)</option>
             </select>
             <input aria-label="threshold" placeholder="pass at (default)" value={threshold} onChange={(e) => setThreshold(e.target.value)} style={{ width: 120 }} />
             <button type="submit" disabled={create.isPending}>Add evaluator</button>

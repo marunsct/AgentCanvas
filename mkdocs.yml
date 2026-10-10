@@ -32,6 +32,7 @@ nav:
       - Block reference: user-guide/widgets.md
       - Running and debugging: user-guide/run-and-debug.md
       - Workspace, secrets and events: user-guide/workspace.md
+      - Knowledge: user-guide/knowledge.md
       - Memory: user-guide/memory.md
       - Evaluation Studio: user-guide/evaluation.md
       - Publish and integrate: user-guide/publish.md

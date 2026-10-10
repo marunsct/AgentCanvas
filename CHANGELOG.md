@@ -2,6 +2,22 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.16.0 — Knowledge Studio (not tagged yet)
+
+### Added
+- **Knowledge page and knowledge bases.** A project's knowledge bases hold documents your workflows search: upload PDF (pages kept for citations), Word, HTML, Markdown, text, CSV and JSON files (20 at a time, 20 MB each), add public web pages by address (private and internal addresses refused, also after redirects), or paste text. Click a document to see its chunks; try searches right on the page. API: `/v1/projects/{id}/knowledge`, `/v1/knowledge/{id}` (`documents`, `documents/url`, `documents/text`, `documents/{doc}/chunks`, `search`, `reindex`).
+- **Chunking options:** by heading (default), paragraph, sentence or fixed windows with overlap, about 800 characters each by default. Changing chunking or the embedding model marks the knowledge base stale until **Reindex**.
+- **Hybrid search with citations.** Keyword (BM25), meaning (embeddings) or hybrid (reciprocal-rank fusion of both); every passage carries a citation number, title, page and source. A built-in offline embedder needs no key (it matches word forms and misspellings); provider embedding models (`openai:text-embedding-3-small`, `ollama:…`) plug in through LangChain.
+- **Search knowledge block** (`knowledge.search`, new palette category Knowledge): saves the best passages and, optionally, the citation list. Exported projects ship each knowledge base the workflow uses as `src/knowledge/<name>.jsonl` and search it the same way.
+- **Retrieval evaluator** (`retrieval`): recall, precision, hit rate or MRR at k of the passages a run found against an example's `reference.relevant` (match by document, title, chunk id or a phrase).
+- **Sample handbook and eval set:** 22 handbook pages of a made-up company and 50 questions with typos and paraphrases. On it, hybrid search finds the right page in the top 3 for 95% of questions against 93% for keyword search (MRR 0.94 against 0.92), measured in CI through an experiment.
+- **Ask your documents** template (26 templates): search a knowledge base, answer only from the passages, cite them.
+- User-guide page: Knowledge.
+
+### Changed
+- Migration `d5f9b3a7c1e4` (`knowledge_base`, `knowledge_document`, `knowledge_chunk`).
+- New API dependencies: `pypdf`, `python-docx`, `python-multipart`.
+
 ## v0.15.0 — Ship to users (not tagged yet)
 
 ### Added

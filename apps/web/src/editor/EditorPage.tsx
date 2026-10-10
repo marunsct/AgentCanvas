@@ -111,6 +111,7 @@ export function EditorPage() {
         <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link">Evaluate</Link>
         <Link to={`/workflows/${wf.id}/workspace`} className="inbox-link" data-testid="workspace-link"
           title="This workflow's code (scripts, tools, custom blocks) and the project's shared code">Workspace</Link>
+        <Link to="/knowledge" className="inbox-link" data-testid="knowledge-link">Knowledge</Link>
         <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}

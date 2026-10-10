@@ -46,7 +46,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S21** | 2 | Design any agent → v0.13.0 | doc 17 | — | 22 | The canvas Agent block builds a native agent in nine frameworks; mixed flows run and export (✅ done) |
 | **S22** | 2 | Whole flows, preview → v0.14.0 | doc 17, [adapters/agent-spec-bridge.md](../adapters/agent-spec-bridge.md) | — | 16 | Portable flows export to LangGraph, WayFlow and OpenAI Agents through Agent Spec (preview) (✅ done) |
 | **S23** | 2 | Ship to users → v0.15.0 (was S17) | doc 16 | — | — | Chat widget and share page, guardrails pack, 25 templates (✅ done) |
-| **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals |
+| **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals (✅ done) |
 | **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare |
 | **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts |
 | **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
@@ -550,6 +550,30 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S24 — Knowledge Studio → v0.16.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Knowledge bases and ingestion | B | 4 | Upload PDF/Word/HTML/Markdown/text files, add public web pages, paste text; private addresses refused |
+| 2 | Chunking options | B | 1 | By heading, paragraph, sentence or fixed windows; changing them marks the base stale until reindexed |
+| 3 | Hybrid search with citations | B | 3 | Keyword, meaning and hybrid search; every passage has a citation number, title, page and source |
+| 4 | Search knowledge block | B | 2 | Runs on the server and in exports (the knowledge base ships with the export) |
+| 5 | Retrieval evals | B | 2 | A retrieval evaluator (recall/precision/hit/MRR at k) and a sample eval set |
+| 6 | Knowledge page | F | 3 | Create, add, inspect chunks, try searches, reindex |
+| 7 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** `agentcanvas/knowledge_search.py` (chunking, a built-in hashed word-and-trigram embedder,
+BM25, cosine, reciprocal-rank fusion, retrieval metrics; shipped in exports), `services/knowledge.py`,
+`api/v1/knowledge.py`, migration `d5f9b3a7c1e4`, `registry/nodes/knowledge.search.json`, the `retrieval` kind in
+`evaluation.py`, `web/src/knowledge/`, template `knowledge_qa`, sample `registry/knowledge/handbook/` (22 pages)
+with `handbook.eval.jsonl` (50 questions). Exit met: on that set hybrid search scores recall@3 0.95 and MRR 0.94
+against keyword search's 0.93 and 0.92, asserted directly and through an experiment with a retrieval evaluator
+(`tests/test_knowledge.py`). Deviations: search runs in Python over vectors stored with the chunks, not pgvector
+(local Postgres here has no pgvector, and in-memory search keeps exports identical; up to 50,000 chunks per
+knowledge base); Drive is not a native source (upload the files or use a Drive MCP server on an agent); the
+built-in embedder matches word forms and misspellings, not synonyms, so the margin over keywords is small;
+provider embedding models are wired through `init_embeddings` but not exercised in CI.
 
 ### S23 — Ship to users → v0.15.0 (✅ done)
 
