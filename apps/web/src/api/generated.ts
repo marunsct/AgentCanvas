@@ -46,6 +46,7 @@ export type Api = string;
 export type Id3 = string;
 export type Installed = boolean;
 export type Label4 = string;
+export type OwnEnv = boolean;
 export type Packages = string[];
 export type StructuredOutput = boolean;
 export type Report = string[];
@@ -2219,6 +2220,7 @@ export interface AgentFrameworkOut {
   id: Id3;
   installed: Installed;
   label: Label4;
+  own_env: OwnEnv;
   packages: Packages;
   structured_output: StructuredOutput;
 }

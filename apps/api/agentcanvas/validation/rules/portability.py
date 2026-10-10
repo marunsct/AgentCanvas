@@ -108,5 +108,6 @@ def _designed(ctx: ValidationContext, n, target: adapters.AdapterManifest) -> It
             "P006",
             f"{fw.label} is not installed on this server, so this agent's runs stop with an error",
             node_id=n.id,
-            hint=f"Install {' '.join(fw.packages)} on the server, or export the agent to run it elsewhere.",
+            hint=f"Run `make framework FW={fw.id}` on the server to give {fw.label} an environment of its own, or "
+            "export the flow to run it elsewhere.",
         )

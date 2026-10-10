@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import SECRET_NAME, Workflow
@@ -174,6 +175,7 @@ class Facts:
     models: list[dict[str, Any]] = field(default_factory=list)
     env: list[dict[str, Any]] = field(default_factory=list)  # model keys and secrets the service reads
     hosts: list[dict[str, Any]] = field(default_factory=list)
+    parts: list[dict[str, str]] = field(default_factory=list)  # agents in an environment of their own (S28)
     pauses: bool = False
     memory: bool = False
     chat: bool = False
@@ -308,6 +310,12 @@ def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | No
     for n in nodes:
         if n.type in INTERRUPTING or (n.type in AGENTS and n.config.get("approve_tools")):
             f.pauses = True
+        fw = designs.AGENT_FRAMEWORKS.get(str(n.engine)) if n.type in designs.DESIGN_TYPES else None
+        if fw is not None and fw.own_env:
+            f.parts.append({"name": n.name, "framework": fw.id, "label": fw.label})
+        if n.type == "agent.a2a" and n.config.get("url") and (host := _host(str(n.config["url"]))):
+            hosts.setdefault(host[0], {"host": host[0], "port": host[1], "kind": "agent",
+                                       "why": f"the remote agent (A2A) '{n.name}'"})  # fmt: skip
         if n.type in MEMORY:
             f.memory = True
     f.chat = any(c.reducer == "add_messages" and c.io in ("in", "inout") for c in wf.state.channels)
@@ -328,7 +336,7 @@ def kit_json(wf: Workflow, f: Facts, target: Target) -> str:
             "name": f.name, "slug": f.slug, "version": f.version, "target": target.id,
             "env": env, "hosts": f.hosts, "tools": tools,
             "models": [{"resource": m["resource"], "model": m["model"], "config": m["config"]} for m in f.models],
-            "needs_database": f.needs_database, "example_input": f.example_input,
+            "needs_database": f.needs_database, "example_input": f.example_input, "parts": f.parts,
             "example_context": f.example_context,
             "node_ids": {n.name: n.id for n in wf.nodes}, "output_channels": outputs,
             "context_fields": [{"name": c.name, "source": c.source, "required": c.required}
@@ -393,7 +401,15 @@ def env_example(f: Facts, target: Target) -> str:
     return "\n".join(lines) + "\n"
 
 
-def dockerfile(pkg: str) -> str:
+def dockerfile(pkg: str, parts: list[dict[str, str]] | None = None) -> str:
+    part_lines = ""
+    if parts:  # S28: each framework that clashes with LangGraph gets its own environment, inside the same image
+        names = " ".join(p["name"] for p in parts)
+        part_lines = f"""
+# Parts of this mixed flow, each in its own Python environment ({", ".join(f"{p['name']}: {p['label']}" for p in parts)})
+COPY parts ./parts
+RUN for p in {names}; do uv venv parts/$p/.venv && uv pip install --python parts/$p/.venv/bin/python \\
+      -r parts/$p/requirements.txt || exit 1; done"""
     return f"""# The service: port 8000, a non-root user, a health check. Build: docker build -t {pkg.replace("_", "-")} .
 FROM {PYTHON_IMAGE}
 COPY --from={UV_IMAGE} /uv /usr/local/bin/uv
@@ -401,7 +417,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \\
     PYTHONUNBUFFERED=1 PYTHONPATH=/app/src PATH=/app/.venv/bin:$PATH
 WORKDIR /app
 COPY pyproject.toml ./
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --no-dev --no-install-project{part_lines}
 COPY src ./src
 COPY workflow.ir.json ./
 RUN useradd --uid 10001 --create-home app && mkdir -p /app/data && chown app /app/data
@@ -413,7 +429,7 @@ CMD ["uvicorn", "{pkg}.app:app", "--host", "0.0.0.0", "--port", "8000", "--app-d
 """
 
 
-DOCKERIGNORE = ".env\n.venv/\n**/__pycache__/\ndata/\n.git/\n"
+DOCKERIGNORE = ".env\n.venv/\nparts/*/.venv/\n**/__pycache__/\ndata/\n.git/\n"
 
 
 def makefile(f: Facts, target: Target) -> str:
@@ -425,8 +441,15 @@ def makefile(f: Facts, target: Target) -> str:
         "aws": f"aws logs tail /ecs/{f.slug} --follow --region $$AWS_REGION",
         "azure": f"az containerapp logs show -n {f.slug} -g $$AZ_RESOURCE_GROUP --follow",
     }[target.id]
+    parts_install = parts_cmd = ""
+    if f.parts:  # S28: and each part's, in an environment of its own
+        parts_install = ", and each framework part's in its own environment"
+        parts_cmd = (
+            "\n\t@for p in $(PARTS); do uv venv -q --allow-existing parts/$$p/.venv && "
+            "uv pip install -q --python parts/$$p/.venv/bin/python -r parts/$$p/requirements.txt || exit 1; done"
+        )
     return f"""# {f.name}: the commands the guides in docs/ use. `make` lists them.
-PKG := {f.pkg}
+PKG := {f.pkg}{f"{chr(10)}PARTS := {' '.join(p['name'] for p in f.parts)}" if f.parts else ""}
 URL ?= http://localhost:8000
 SHELL := /bin/bash
 
@@ -440,8 +463,8 @@ doctor:  ## check this environment has everything (ARGS=--live also tries each m
 setup:  ## create .env with a fresh API key (then fill in the empty values)
 \t@python3 src/$(PKG)/checks.py --init
 
-install:  ## install the service's Python packages (needs uv)
-\tuv sync
+install:  ## install the service's Python packages (needs uv){parts_install}
+\tuv sync{parts_cmd}
 
 test: install  ## the graph builds and the saved test cases pass, offline
 \tuv run pytest -q
@@ -992,7 +1015,7 @@ deploy again. Model keys and secrets: change them in `.env` and run `make deploy
 def files(wf: Workflow, f: Facts, target: Target) -> dict[str, str]:
     """Every deploy-kit file for `target`, by path in the export."""
     out = {
-        "Dockerfile": dockerfile(f.pkg),
+        "Dockerfile": dockerfile(f.pkg, f.parts),
         ".dockerignore": DOCKERIGNORE,
         ".env.example": env_example(f, target),
         "Makefile": makefile(f, target),

@@ -123,6 +123,13 @@ export function DesignedAgent({ node }: { node: IRNode }) {
         workflow&apos;s model, so runs are traced and costed as usual.
         {!fw.installed && " This server does not have it installed, so runs here will fail until it is."}
       </p>
+      {fw.own_env && (
+        <p className="muted" data-testid="part-note">
+          {fw.label}&apos;s packages clash with LangGraph&apos;s, so this agent runs as a <b>part</b>: in an environment of
+          its own, here and in an exported project. Its answer crosses back through a typed contract (
+          {node.config?.response_format ? "its structured output, checked" : "text"}).
+        </p>
+      )}
       {data && data.problems.length > 0 && (
         <ul className="diag-list">
           {data.problems.map((p) => <li key={p} className="error">{p}</li>)}

@@ -49,8 +49,8 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S24** | 2 | Knowledge Studio → v0.16.0 (was S20) | doc 16 | — | — | Ingestion, hybrid search, citations, retrieval evals (✅ done) |
 | **S25** | 2 | OpenAI Agents SDK flows → v0.17.0 (was S21) | [adapters/openai-agents-sdk.md](../adapters/openai-agents-sdk.md) | — | — | Flow tier and Full agent tier; convert-and-compare (✅ done) |
 | **S26** | 2 | Model gateway & cost → v0.18.0 (was S22) | doc 16 | — | — | Fallbacks, budgets, caching, cost alerts (✅ done) |
-| **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews |
-| **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries |
+| **S27** | 2 | CrewAI flows → v0.19.0 (was S25–S26) | [adapters/crewai.md](../adapters/crewai.md) | — | — | Full for Flows, Authoring for Crews (✅ done) |
+| **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries (✅ done) |
 | **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full |
 | **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers |
 | **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
@@ -550,6 +550,33 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S28 — Mixed-flow export → v0.20.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Framework parts | B | 3 | Agents of frameworks whose pins clash with LangGraph's run in an environment of their own, behind a worker; tools, approvals and the model stay in the host; on the server and in exports |
+| 2 | Typed contracts | B | 1 | Each part's answer is checked against its contract where it crosses back; a broken contract stops the step saying which field |
+| 3 | One deployable project | B | 2 | `parts/<agent>/` with its own requirements; `make install` and the Dockerfile install each; `contracts.json`; a test that runs the flow through each part |
+| 4 | A2A parts | B | 1 | Remote agents in other languages are listed with their contract; `make doctor` checks their hosts |
+| 5 | Mixed template, deploy and smoke | B | 1 | A mixed template deploys with the deploy kit and passes `make smoke` |
+| 6 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-10).** `adapters/langchain/parts.py` (`PartModule`, `PartProcess`, `check_answer`, `project_part`;
+vendored into exports) and `part_worker.py` (standard library only; copied into each part), `AgentFramework.own_env`
+and `designs.part_python` / `designs.contract`, `interop.part_contract` and the `contract=` argument of
+`designed_agent_node`, `packager.contracts` / `_part_files` / `PARTS_TEST`, `Facts.parts` and the A2A hosts in the
+deploy kit, `make framework FW=<id>`, `scripts/check_part_envs.py` (CI api job), the **Mixed-framework team** template,
+`tests/test_parts.py`, `e2e/s28.spec.ts`. Exit met: the Mixed-framework team export (OpenAI Agents SDK researcher in
+the host, CrewAI writer as a part) built from its own Dockerfile, started with its Docker Compose file (Postgres,
+non-root) and passed `make doctor` and `make smoke`, its CrewAI writer answering inside the image from
+`parts/writer/.venv` (locally; added to CI's export job). Found on the way: five of the nine agent frameworks
+(CrewAI, Google ADK, Agno, Strands, LlamaIndex) cannot be installed with the LangGraph host's pins, so S21's mixed
+exports with them did not install; they are now parts. Deviations from doc 12 WS7: contracts cover the agent's
+answer (text or its structured output) and the conversation going in, not arbitrary data edges between parts; a
+part's process is shared by the runs of one server (one per framework environment) and is not sandboxed beyond
+the host's own trust; wrapped black-box agents (`agent.framework`) of clashing frameworks still install in the host
+and are left for later; A2A parts are called, not generated (no TypeScript sidecar yet).
 
 ### S27 — CrewAI flows → v0.19.0 (✅ done)
 

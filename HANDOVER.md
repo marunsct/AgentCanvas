@@ -14,24 +14,24 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S27 CrewAI flows → v0.19.0** (the S27 PR): `adapters/crewai/` (`codegen.py` writes a native CrewAI `Flow`; `runtime.py` is the `@rt.step` decorator with events, field reducers and pauses replayed from a record, vendored into exports; `worker.py` runs flows in a separate CrewAI environment; the adapter's `ServerHost` and `CrewWorker`; `packager.py`), manifest `registry/adapters/crewai.json`, blocks `crewai.crew` and `crewai.task`, `make crewai` |
-| Before that | S26 Model gateway and cost controls → v0.18.0 ([#31](https://github.com/marunsct/AgentCanvas/pull/31), merged `5832c26`); S25 OpenAI Agents SDK flows → v0.17.0 (#30, `2e2eeb5`); S24 Knowledge Studio → v0.16.0 (#29, `2db7871`) |
-| Version in code | API `0.19.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.19.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.19.0 are all left to the owner (see §2) |
-| Next sprint | **S28 Mixed-flow export → v0.20.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)) |
-| Work status | S27 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S28 starts |
-| Open PRs | the S27 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S28 Mixed-flow export → v0.20.0** (the S28 PR): `adapters/langchain/parts.py` (`PartModule`, `PartProcess`, `check_answer`, `project_part`; vendored into exports) and `part_worker.py` (standard library only, copied into each exported part), `AgentFramework.own_env` and `designs.part_python` / `designs.contract`, the `contract=` of `designed_agent_node`, `packager.contracts` and `parts/<agent>/` in exports, `Facts.parts` in the deploy kit, `make framework FW=<id>`, `scripts/check_part_envs.py`, the Mixed-framework team template |
+| Before that | S27 CrewAI flows → v0.19.0 ([#32](https://github.com/marunsct/AgentCanvas/pull/32), merged `43d4a71`); S26 Model gateway and cost controls → v0.18.0 (#31, `5832c26`); S25 OpenAI Agents SDK flows → v0.17.0 (#30, `2e2eeb5`) |
+| Version in code | API `0.20.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.20.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.20.0 are all left to the owner (see §2) |
+| Next sprint | **S29–S30 Google ADK flows → v0.21.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)); ADK cannot share the API's environment either (`litellm` pins `openai<3`), so its flows will need a worker like CrewAI's (S27) or the parts worker (S28) |
+| Work status | S28 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S29 starts |
+| Open PRs | the S28 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S27** (all green locally):
+**Test totals at the end of S28** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 832 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests and the kit on CrewAI need `make crewai` | see §5 |
+| API (pytest, Postgres) | 850 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai` | see §5 |
 | Web unit (vitest) | 94 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 57 (the S27 journey needs `make crewai`) | see §5 |
+| Browser journeys (Playwright, prod build under the prod CSP) | 58 (the S27 and S28 journeys need `make crewai`) | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 26 templates on LangGraph, and the 22 each that the OpenAI Agents SDK (S25) and CrewAI (S27) can run, in `<dir>/openai_agents/*/*` and `<dir>/crewai/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `uv sync && uv run pytest` in each `<dir>/local/*/*` |
+| Exported templates, each export's own tests | 27 templates on LangGraph (the Mixed-framework team export also deployed with Docker Compose and passed `make smoke`, S28), and the 22 each that the OpenAI Agents SDK (S25) and CrewAI (S27) can run, in `<dir>/openai_agents/*/*` and `<dir>/crewai/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `make test` in each `<dir>/local/*/*` (it installs the parts) |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -94,6 +94,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   knowledge_search.py      S24: chunking, built-in embedder, BM25/cosine/hybrid search, retrieval metrics (shipped in exports)
   adapters/langchain/gateway.py   S26: model gateway (backup models, answer cache) of a model block; vendored into exports
   adapters/openai_agents/  S25: workflows as OpenAI Agents SDK code (codegen.py), its runtime (runtime.py, vendored into exports), packager.py
+  adapters/langchain/parts.py + part_worker.py   S28: agents of frameworks that clash with LangGraph run as parts in their own environment (.frameworks/<id>, make framework FW=<id>); typed contracts
   adapters/crewai/         S27: workflows as native CrewAI flows (codegen.py); runtime.py + worker.py run in .frameworks/crewai (make crewai); packager.py
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
@@ -178,13 +179,27 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   research can't run here.
 - A fresh clone needs `make crewai` (CrewAI in `apps/api/.frameworks/crewai`, gitignored) before the CrewAI tests,
   the conformance kit on CrewAI and the S27 browser journey run; without it they skip or fail with an install hint.
+- Mixed flows (S28): an agent designed for CrewAI, Google ADK, Agno, Strands or LlamaIndex runs only where its
+  framework has an environment: `make framework FW=<id>` (CrewAI's is `make crewai`'s). `tests/test_parts.py`'s CrewAI
+  cases and the Mixed-framework team template test skip without it; the S28 browser journey needs it.
+- To deploy an export with Docker here: start `dockerd`, tag `mirror.gcr.io/astral/uv:0.11` as
+  `ghcr.io/astral-sh/uv:0.11`, build a local `python:3.12-slim` from `mirror.gcr.io/library/python:3.12-slim` with
+  `/root/.ccr/ca-bundle.crt` as `SSL_CERT_FILE`, then `docker build --network host --build-arg HTTPS_PROXY=...` the
+  export's own Dockerfile and `docker compose ... up -d --no-build --wait` its compose file (as `make deploy` would).
 - After a container restart: `service postgresql start`; run pyright as `uv run pyright` (or `.venv/bin/pyright
   --pythonpath .venv/bin/python`) and pytest with `PATH=$PWD/.venv/bin:$PATH` (the LangSmith sandbox test calls `python`).
 - k6 lives at `~/go/bin/k6`; helm via `go install helm.sh/helm/v3/cmd/helm@v3.16.2`.
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.19.0 not created (owner).
+- **Release tags** v0.1.0 to v0.20.0 not created (owner).
+- **S28 limits:** contracts cover what crosses into a designed agent (the conversation, as text) and back (its
+  structured output or text), not arbitrary data edges between parts. One worker process per framework environment
+  serves all runs of a server (started on first use, restarted if it died), with the server's own trust (no extra
+  sandbox). Wrapped black-box agents (`agent.framework`) of clashing frameworks still install in the host and so
+  conflict in an export. A2A parts are called and listed, not generated (no TypeScript sidecar). `own_env` is a fixed
+  flag per framework, proved by `scripts/check_part_envs.py` against the current pins (CI api job): re-run it when a
+  pin changes. The API image does not include part environments (only `WITH_CREWAI` for CrewAI).
 - **S27 limits:** CrewAI cannot be installed next to the API (it pins `openai<3`; the API needs `openai>=3` for the
   OpenAI Agents SDK), so CrewAI flows run in one long-lived worker process started from `apps/api/.frameworks/crewai`
   (`make crewai`, or `AGENTCANVAS_CREWAI_PYTHON`; the API image only with `--build-arg WITH_CREWAI=true`, untested
@@ -311,7 +326,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S24 Knowledge Studio | #29 | `2db7871` | v0.16.0 |
 | S25 OpenAI Agents SDK flows | #30 | `2e2eeb5` | v0.17.0 |
 | S26 Model gateway and cost controls | #31 | `5832c26` | v0.18.0 |
-| S27 CrewAI flows | the S27 PR | (after merge) | v0.19.0 |
+| S27 CrewAI flows | #32 | `43d4a71` | v0.19.0 |
+| S28 Mixed-flow export | the S28 PR | (after merge) | v0.20.0 |
 
 ## 11. Sprint-end checklist
 

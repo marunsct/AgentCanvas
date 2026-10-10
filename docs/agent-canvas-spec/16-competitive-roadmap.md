@@ -80,7 +80,8 @@ step debugging · **Full** — authoring plus live debugging, approvals, persist
 - **Portable core plus native extras:** core blocks compile to any framework; framework-only blocks are marked, and a
   portability check says which frameworks a workflow can target.
 - **Mixed flows (S21, S28):** each agent on the canvas picks its framework; the flow runs in the LangGraph host with
-  the other frameworks' agents in process (A2A for other languages), and S28 exports and deploys such a flow as one
+  the other frameworks' agents in process, or as parts with an environment of their own when their packages clash
+  with LangGraph's (A2A for other languages), and S28 exports and deploys such a flow as one
   project with typed boundaries between the parts.
 - **Full depth only for the top three** (OpenAI Agents SDK, CrewAI, Google ADK); the rest stop at Authoring until
   users ask, because each adapter spec sizes Full at 12–24 team-weeks.
@@ -144,7 +145,7 @@ the ones below assume each sprint merges in this order.
 | **S25** | v0.17.0 | **OpenAI Agents SDK flows (was S21)** ✅ done (S25 PR; no sessions, handoffs or hosted tools yet, see the sprint plan) | Flow tier and Full agent tier per its adapter spec, on the S20 foundation; convert-and-compare in Evaluation Studio | One template compiles to both frameworks and compares in one experiment |
 | **S26** | v0.18.0 | **Model gateway and cost controls (was S22)** ✅ done (S26 PR; the answer cache lives in each server's memory, see the sprint plan) | Fallback models, per-workflow budgets, response caching, cost alerts | A budget stops a run; a provider outage fails over |
 | **S27** | v0.19.0 | **CrewAI flows (was S25–S26, moved up)** ✅ done (S27 PR; flows run in a worker with CrewAI in its own environment, see the sprint plan) | Full for Flows, Authoring for Crews; CrewAI-only blocks | Conformance suite passes on the portable set |
-| S28 | v0.20.0 | Mixed-flow export (new, doc 12 WS7) | Typed contracts between framework parts; one deployable project holding several frameworks (deploy kit installs and vendors each); A2A for parts in other languages | A mixed template deploys with the deploy kit and passes `make smoke` |
+| **S28** | v0.20.0 | **Mixed-flow export (new, doc 12 WS7)** ✅ done (S28 PR; frameworks whose packages clash with LangGraph's run as parts in their own environment) | Typed contracts between framework parts; one deployable project holding several frameworks (deploy kit installs and vendors each); A2A for parts in other languages | A mixed template deploys with the deploy kit and passes `make smoke` |
 | S29–S30 | v0.21.0 | Google ADK flows (was S27–S28) | Full | Conformance suite passes |
 | S31 | v0.22.0 | Onboarding and switching (was S23) | Beginner items (Playground, Simple mode, galleries, Push to GitHub); importers from Langflow, Flowise and n8n JSON | A Langflow export opens and runs on the canvas |
 | S32 | v0.23.0 | Pydantic AI and Agno flows (was S24) | Authoring tier | Templates compile and deploy on both |

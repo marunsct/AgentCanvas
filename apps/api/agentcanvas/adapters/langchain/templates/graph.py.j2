@@ -50,8 +50,12 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
 {%- elif n.type == "core.llm" %}
     builder.add_node({{ n.name | py }}, ac.llm_node(model={{ p.wired.model[0] }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}), {{ meta }})
 {%- elif n.type == "core.agent" and n.engine in agent_frameworks %}{% set fw = agent_frameworks[n.engine] %}
+{%- if fw.own_env %}
+    # designed for {{ fw.label }}: a part with its own environment, parts/{{ n.name }}/ in an export (the agent in its own code, generated from this block)
+{%- else %}
     # designed for {{ fw.label }}: agents/{{ n.name }}.py is the agent in its own code, generated from this block
-    builder.add_node({{ n.name | py }}, interop.designed_agent_node(node_id={{ n.id | py }}, name={{ n.name | py }}, framework={{ fw.id | py }}, label={{ fw.label | py }}, api={{ fw.api | py }}, requires={{ fw.module | py }}, module=interop.design_module(__package__, {{ n.name | py }}), model={{ p.wired.model[0] }}, tools=[{{ refs(p.wired.get("tools", []), plan.many) }}], approve_tools={{ n.config.get("approve_tools") | py }}, structured={{ (not not n.config.get("response_format")) | py }}), {{ meta }})
+{%- endif %}
+    builder.add_node({{ n.name | py }}, interop.designed_agent_node(node_id={{ n.id | py }}, name={{ n.name | py }}, framework={{ fw.id | py }}, label={{ fw.label | py }}, api={{ fw.api | py }}, requires={{ fw.module | py }}, module=interop.design_module(__package__, {{ n.name | py }}), model={{ p.wired.model[0] }}, tools=[{{ refs(p.wired.get("tools", []), plan.many) }}], approve_tools={{ n.config.get("approve_tools") | py }}, contract=interop.part_contract({{ n.config.get("response_format") | pp }})), {{ meta }})
 {%- elif n.type == "core.agent" %}
     builder.add_node({{ n.name | py }}, ac.agent_node(name={{ n.name | py }}, model={{ p.wired.model[0] }}, tools=[{{ refs(p.wired.get("tools", []), plan.many) }}], system_prompt={{ n.config.get("system_prompt", "") | py }}, approve_tools={{ n.config.get("approve_tools") | py }}{% if p.wired.get("middleware") %}, middleware=[{{ p.wired.middleware | join(", ") }}]{% endif %}{% if n.config.get("response_format") %}, response_format={{ n.config.response_format | pp }}{% endif %}), {{ meta }})
 {%- elif n.type == "agent.deep" %}

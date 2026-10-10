@@ -23,6 +23,7 @@ class AgentFrameworkOut(BaseModel):
     api: str
     structured_output: bool
     installed: bool  # on this server: drawn agents for it run here
+    own_env: bool  # S28: its packages clash with LangGraph's, so it runs as a part with an environment of its own
 
 
 @router.get("/agent-frameworks", response_model=list[AgentFrameworkOut])
@@ -36,6 +37,7 @@ async def list_agent_frameworks() -> list[AgentFrameworkOut]:
             api=f.api,
             structured_output=f.structured_output,
             installed=designs.installed(f.id),
+            own_env=f.own_env,
         )
         for f in designs.AGENT_FRAMEWORKS.values()
     ]

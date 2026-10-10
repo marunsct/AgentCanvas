@@ -125,4 +125,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S25: OpenAI Agents SDK flows (v0.17.0) | ✅ done: workflows run and export as OpenAI Agents SDK code (agents, tools, approvals, typed answers); convert and compare in one experiment |
 | S26: Model gateway and cost controls (v0.18.0) | ✅ done: backup models when a provider fails, an answer cache, day and month budgets with cost alerts, spending in the editor |
 | S27: CrewAI flows (v0.19.0) | ✅ done: workflows as native CrewAI flows, Crew and Agent task blocks, pauses for people, CrewAI project export |
-| S28–S36: mixed-flow export, framework flows, importers | ⏸ next (S28 Mixed-flow export); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S28: Mixed-flow export (v0.20.0) | ✅ done: frameworks that clash with LangGraph run as parts in their own environment, typed contracts between parts, one deployable project per mixed flow |
+| S29–S36: framework flows, importers | ⏸ next (S29–S30 Google ADK flows); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

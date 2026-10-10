@@ -128,6 +128,13 @@ def designed_agent(plan: Plan, n: Any, model: Any, tools: list[Any]) -> Any:
     """An Agent block designed for another framework: its generated code, run as one step (S21)."""
     fw = designs.AGENT_FRAMEWORKS[str(n.engine)]
     design = designs.design_for(plan.wf, n)
+    source = designs.generate(fw.id, design)
+    module = None
+    python = None if designs.importable(fw.id) else designs.part_python(fw.id)
+    if python is not None:  # not importable here, but in an environment of its own: run it as a part (S28)
+        from agentcanvas.adapters.langchain.parts import PartModule
+
+        module = PartModule(python, source=source)
     return interop.designed_agent_node(
         node_id=n.id,
         name=n.name,
@@ -135,11 +142,13 @@ def designed_agent(plan: Plan, n: Any, model: Any, tools: list[Any]) -> Any:
         label=fw.label,
         api=fw.api,
         requires=fw.module,
-        source=designs.generate(fw.id, design),
+        source=source,
+        module=module,
         model=model,
         tools=tools,
         approve_tools=n.config.get("approve_tools"),
         structured=design.output_schema is not None,
+        contract=designs.contract(design),
     )
 
 
