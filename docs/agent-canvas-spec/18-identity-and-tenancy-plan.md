@@ -3,7 +3,7 @@
 > **Update 2026-10-11:** the owner asked for the platform to be a **separate open-source repository** that others can
 > use to host their own apps. The platform itself (Keycloak extensions, control plane, consoles, SDKs, operator,
 > enterprise features) is now planned in its own repository, working name **Tenantry**
-> (`marunsct/tenantry`, plan in its `docs/plan/`). Read this document for the AgentCanvas side: what changes in
+> ([marunsct/Platform](https://github.com/marunsct/Platform), plan in its `docs/plan/`). Read this document for the AgentCanvas side: what changes in
 > AgentCanvas (§2, §8), database isolation in AgentCanvas tables (T5), and the migration of members. Where this
 > document describes the platform's internals, Tenantry's plan supersedes it (its control plane is called
 > `tenantryd`, not `accounts`).
