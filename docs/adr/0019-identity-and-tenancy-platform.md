@@ -43,9 +43,9 @@ apps, not only AgentCanvas.
    SECURITY`; the API connects as a role that does not own the tables and sets `app.org_id` per transaction.
    `org_scope` stays as a second layer. Enterprise tenants can be moved to a dedicated database later (silo tier)
    behind the same code.
-6. **Monorepo first, extraction later.** The platform lives under `platform/` in this repository with a hard
-   boundary (no imports of `agentcanvas`, its own migrations and database), and moves to its own repository when the
-   second app starts. This keeps one CI and one review flow while the APIs settle.
+6. **Separate open-source repository.** The platform is its own Apache-2.0 project, working name Tenantry
+   (`marunsct/tenantry`), so other apps and other people can host it. AgentCanvas consumes it through the SDKs.
+   (Changed on 2026-10-11 at the owner's request; the first draft kept it under `platform/` here.)
 
 ## Alternatives considered
 
