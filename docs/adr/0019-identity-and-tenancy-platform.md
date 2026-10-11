@@ -43,7 +43,7 @@ apps, not only AgentCanvas.
    SECURITY`; the API connects as a role that does not own the tables and sets `app.org_id` per transaction.
    `org_scope` stays as a second layer. Enterprise tenants can be moved to a dedicated database later (silo tier)
    behind the same code.
-6. **Separate open-source repository.** The platform is its own Apache-2.0 project, working name Tenantry
+6. **Separate open-source repository.** The platform is its own Apache-2.0 project, working name Matura
    ([marunsct/Platform](https://github.com/marunsct/Platform)), so other apps and other people can host it. AgentCanvas consumes it through the SDKs.
    (Changed on 2026-10-11 at the owner's request; the first draft kept it under `platform/` here.)
 

@@ -2,11 +2,11 @@
 
 > **Update 2026-10-11:** the owner asked for the platform to be a **separate open-source repository** that others can
 > use to host their own apps. The platform itself (Keycloak extensions, control plane, consoles, SDKs, operator,
-> enterprise features) is now planned in its own repository, working name **Tenantry**
+> enterprise features) is now planned in its own repository, working name **Matura**
 > ([marunsct/Platform](https://github.com/marunsct/Platform), plan in its `docs/plan/`). Read this document for the AgentCanvas side: what changes in
 > AgentCanvas (§2, §8), database isolation in AgentCanvas tables (T5), and the migration of members. Where this
-> document describes the platform's internals, Tenantry's plan supersedes it (its control plane is called
-> `tenantryd`, not `accounts`).
+> document describes the platform's internals, Matura's plan supersedes it (its control plane is called
+> `maturad`, not `accounts`).
 
 > **Status: proposed, waiting for the owner's approval.** Nothing here is built yet. Decision record:
 > [ADR 0019](../adr/0019-identity-and-tenancy-platform.md). Planned against `main` at v0.22.0 (`2e10fff`, after S31).
@@ -233,7 +233,7 @@ T8 proves this with a tiny sample app in `platform/examples/hello-app`.
 | Isolation model | shared database, RLS per workspace; dedicated database for enterprise later | strong, cheap, one code path |
 | Login pages | Keycloak hosted pages themed with our tokens (Keycloakify), light and dark | never handle passwords in app code; one look for all apps |
 | Email | SMTP outbox in `accounts`, Mailpit in dev | provider-neutral |
-| Code location | separate open-source repository (Tenantry), owner's decision 2026-10-11 | reusable by other apps and other people |
+| Code location | separate open-source repository (Matura), owner's decision 2026-10-11 | reusable by other apps and other people |
 | Sign-up policy | open for Individuals; company tenants also self-serve; product admin can switch to invite-only | matches "enable user creation" |
 | Existing data | `org_default` becomes the first company tenant; current members keep their roles | no break for current installs |
 
