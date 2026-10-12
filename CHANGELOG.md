@@ -2,6 +2,18 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.24.0 — Microsoft Agent Framework flows (not tagged yet)
+
+### Added
+- **The Microsoft Agent Framework as a workflow framework.** Pick it in the workflow settings and the workflow is generated as a flow of async Python on the shared flow engine, with Agent Framework `Agent`s for the AI blocks: an `OpenAIChatCompletionClient`, tools, and a `response_format` for typed answers (`agent-framework-core` 1.20.0, `agent-framework-openai` 1.16.0). It passes the 12-case conformance kit; 22 of the 27 templates run on it.
+- **Ask before a tool call, the Agent Framework way.** Tools named in *Ask before using* use `approval_mode="always_require"`. The pause saves the agent's `AgentSession` and the response holding the approval requests; the agent continues in that session with a function approval response per call (approve, edit or reject). When the model calls several tools in one turn, only the ones that need a person are asked about. Edited arguments are applied when the approved call runs.
+- **Model call limits** as a chat middleware that counts an agent's model calls in one turn; a model block's temperature and token limit reach every call the same way.
+- **Export** to an Agent Framework project, like the Pydantic AI and Agno ones; its tests script the model with a chat middleware, so the chat client is the framework's own and nothing reaches a provider. CI exports every template it can run and runs each project's tests.
+- Servers offer it by default (`AGENTCANVAS_ADAPTERS=...,agno,microsoft_agent_framework`). Its workflows run in a worker process from the environment `make framework FW=microsoft_agent_framework` makes; the API image takes `--build-arg WITH_MICROSOFT_AGENT_FRAMEWORK=true`.
+
+### Known limits
+- The flow is not written as the framework's own `WorkflowBuilder` graph (the roadmap's "Full" tier, if users ask). A rejected tool call reaches the agent as the framework's fixed message, not the reason a person typed.
+
 ## v0.23.0 — Pydantic AI and Agno flows (not tagged yet)
 
 ### Added

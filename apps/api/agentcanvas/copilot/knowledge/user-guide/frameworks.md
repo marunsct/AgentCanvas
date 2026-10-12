@@ -1,7 +1,7 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. A server offers six:
+for. A server offers seven:
 
 - **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
   long-term memory and breakpoints. New workflows use it.
@@ -15,6 +15,8 @@ for. A server offers six:
 - **Pydantic AI** and **Agno** turn the workflow into a flow of async Python with the framework's own agents for the
   AI blocks (typed answers, tools that wait for your approval). See
   [Run a workflow on Pydantic AI or Agno](#run-a-workflow-on-pydantic-ai-or-agno).
+- **Microsoft Agent Framework** does the same with Agent Framework agents. See
+  [Run a workflow on the Microsoft Agent Framework](#run-a-workflow-on-the-microsoft-agent-framework).
 
 More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
 
@@ -255,6 +257,29 @@ the canvas draws it, and the AI blocks are the framework's own agents:
 
 `GET /v1/workflows/{id}/code?framework=pydantic_ai` (or `agno`) previews the converted code.
 
+## Run a workflow on the Microsoft Agent Framework
+
+Pick **Microsoft Agent Framework** as the workflow's framework. Runs need it installed on the server in a Python
+environment of its own: `make framework FW=microsoft_agent_framework` (the Docker image takes
+`--build-arg WITH_MICROSOFT_AGENT_FRAMEWORK=true`). Without it you can still design, check and export these
+workflows; a run says how to install it.
+
+It works like [Pydantic AI and Agno](#run-a-workflow-on-pydantic-ai-or-agno): the same `async def` per block and
+`FLOW`, run the way the canvas draws it, with the same shape, models, approvals, questions, limits and export.
+What is its own:
+
+- **The agents** are Agent Framework `Agent`s with an `OpenAIChatCompletionClient`, tools, and a `response_format`
+  for typed answers, run with `agent.run`.
+- **Ask before a tool call** uses the framework's tool approvals (`approval_mode="always_require"`). The paused run
+  keeps the agent's `AgentSession`, and the agent continues in it when you answer, so nothing is asked twice. When
+  the model calls several tools at once, only the ones named in **Ask before using** wait for you. A rejected call
+  reaches the agent as the framework's own "rejected by user" message, not the reason you typed.
+- **Model call limit** is a chat middleware that counts the agent's model calls in one turn.
+- **Not yet:** the flow is not written as the framework's own `WorkflowBuilder` graph; that may come later if it is
+  asked for. Saved history, state editing, replay and breakpoints are missing here too.
+
+`GET /v1/workflows/{id}/code?framework=microsoft_agent_framework` previews the converted code.
+
 ## What each framework can do
 
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
@@ -263,7 +288,7 @@ framework cannot do one of them, AgentCanvas says so plainly instead of failing;
 to use it.
 
 Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
-`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno`).
+`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework`).
 
 ## The Echo demo engine
 

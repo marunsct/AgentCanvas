@@ -149,7 +149,7 @@ the ones below assume each sprint merges in this order.
 | **S29–S30** | v0.21.0 | **Google ADK flows (was S27–S28)** ✅ done (S29 PR; workflows run as native ADK graph workflows in a worker with ADK in its own environment, tool approvals included, see the sprint plan) | Full | Conformance suite passes |
 | **S31** | v0.22.0 | **Onboarding and switching (was S23)** ✅ done (S31 PR; galleries: the template gallery from S23 plus import from Home) | Beginner items (Playground, Simple mode, galleries, Push to GitHub); importers from Langflow, Flowise and n8n JSON | A Langflow export opens and runs on the canvas |
 | **S32** | v0.23.0 | **Pydantic AI and Agno flows (was S24)** ✅ done (S32 PR) | Authoring tier | Templates compile and deploy on both |
-| S33–S34 | v0.24.0 | Microsoft Agent Framework flows (was S30–S31) | Authoring tier; Full later if users ask | Conformance suite passes on the portable set |
+| **S33–S34** | v0.24.0 | **Microsoft Agent Framework flows (was S30–S31)** ✅ done (S33–S34 PR) | Authoring tier; Full later if users ask | Conformance suite passes on the portable set |
 | S35 | v0.25.0 | Strands and LlamaIndex Workflows flows (was S29) | Authoring tier | Templates compile and deploy on both |
 | S36 | v0.26.0 | Mastra (was S32) | Authoring tier with a Node.js sidecar host | A TypeScript project exports and runs |
 
