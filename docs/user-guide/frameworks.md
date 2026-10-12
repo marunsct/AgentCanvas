@@ -1,7 +1,7 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. A server offers four:
+for. A server offers six:
 
 - **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
   long-term memory and breakpoints. New workflows use it.
@@ -12,6 +12,9 @@ for. A server offers four:
   its own: **Crew** and **Agent task**. See [Run a workflow on CrewAI](#run-a-workflow-on-crewai).
 - **Google ADK** turns the workflow into a native ADK graph workflow, with ADK agents for the AI blocks and tool
   calls that can wait for your approval. See [Run a workflow on Google ADK](#run-a-workflow-on-google-adk).
+- **Pydantic AI** and **Agno** turn the workflow into a flow of async Python with the framework's own agents for the
+  AI blocks (typed answers, tools that wait for your approval). See
+  [Run a workflow on Pydantic AI or Agno](#run-a-workflow-on-pydantic-ai-or-agno).
 
 More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
 
@@ -216,6 +219,42 @@ says how to install it.
 
 `GET /v1/workflows/{id}/code?framework=google_adk` previews the converted code.
 
+## Run a workflow on Pydantic AI or Agno
+
+Pick **Pydantic AI** or **Agno** as the workflow's framework (click empty canvas, then **Framework**). Runs need the
+framework installed on the server, each in a Python environment of its own: `make framework FW=pydantic_ai` and
+`make framework FW=agno` (the same environments run their agents in mixed flows). The Docker image takes
+`--build-arg WITH_PYDANTIC_AI=true` and `--build-arg WITH_AGNO=true`. Without them you can still design, check and
+export these workflows; a run says how to install the framework.
+
+Neither framework draws a graph of its own, so the workflow's shape is plain Python that AgentCanvas runs the way
+the canvas draws it, and the AI blocks are the framework's own agents:
+
+- **The code.** The Code tab shows an agent builder per AI agent block, one `async def` per block (marked
+  `@canvas-node`) and a `FLOW` that says which step follows which. With Pydantic AI, agents are `Agent`s with an
+  `OpenAIChatModel`, `Tool`s and `NativeOutput` for typed answers, run with `agent.run`. With Agno, agents are
+  `Agent`s with an `OpenAILike` model, tools and an `output_schema`, run with `agent.arun`. A run executes exactly
+  that module.
+- **The shape.** Steps side by side run in the same round, a wait-for-all step waits for every branch, paths follow
+  the first rule that matches, loops stop at the workflow's step limit, and fields merge as their settings say.
+- **Any model.** The canvas model blocks reach the agents through AgentCanvas over the OpenAI chat API: every
+  catalog model, scripted test replies, backup models and the answer cache all work, and runs are traced and costed.
+- **Ask before a tool call.** Tools named in an AI agent's **Ask before using** wait for you: approve the call,
+  change its arguments or reject it. This uses each framework's own mechanism, so nothing is asked twice: Pydantic
+  AI's deferred tools (the agent continues from its saved message history) and Agno's tool confirmation (the paused
+  agent run is saved and continued).
+- **Approvals and questions** pause the run; when you answer, it continues from the step that asked.
+- **Model call limit.** The block caps an agent's model calls in one turn: the agent stops with a note in the
+  conversation, or the run fails if the block says so.
+- **What they do not have yet.** Saved conversation history, state editing, replay and breakpoints; a paused run is
+  kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and
+  other add-ons stay on LangGraph for now.
+- **Export.** The Versions tab exports a project for the framework: the flow, the small runtime it needs, a
+  command-line runner that saves a paused run in `.runs/` and continues it, each model block reached over its
+  provider's OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
+
+`GET /v1/workflows/{id}/code?framework=pydantic_ai` (or `agno`) previews the converted code.
+
 ## What each framework can do
 
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
@@ -224,7 +263,7 @@ framework cannot do one of them, AgentCanvas says so plainly instead of failing;
 to use it.
 
 Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
-`langchain,openai_agents,crewai,google_adk`).
+`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno`).
 
 ## The Echo demo engine
 

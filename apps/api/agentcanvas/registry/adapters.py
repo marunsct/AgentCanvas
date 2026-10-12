@@ -6,7 +6,7 @@ state, time travel, long-term memory, MCP inspection, breakpoints) and how it su
 portability check (P001-P004) and the editor for the framework picker, so neither ever imports a framework.
 
 Which adapters a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated ids, default
-`langchain,openai_agents,crewai,google_adk`).
+`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno`).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 HERE = Path(__file__).parent / "adapters"
 DEFAULT_FRAMEWORK = "langchain"
-DEFAULT_ADAPTERS = "langchain,openai_agents,crewai,google_adk"  # S25: OpenAI Agents SDK; S27: CrewAI; S29: Google ADK
+DEFAULT_ADAPTERS = "langchain,openai_agents,crewai,google_adk,pydantic_ai,agno"  # S25, S27, S29; S32: Pydantic AI, Agno
 
 Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs"]
 Support = Literal["native", "emulated", "unsupported"]

@@ -1,5 +1,5 @@
 """Framework adapters (spec doc 11/12): LangChain/LangGraph, the OpenAI Agents SDK (S25), CrewAI (S27), Google ADK
-(S29) and the Echo demo engine that proves the seams (S20).
+(S29), Pydantic AI and Agno (S32) and the Echo demo engine that proves the seams (S20).
 
 `get_adapter(id)` is the process-wide adapter for a framework; `create_adapter(id)` a fresh one (tests, the
 conformance kit). Which ones a server offers is `AGENTCANVAS_ADAPTERS` (`registry.adapters.installed_ids`).
@@ -13,7 +13,7 @@ from agentcanvas.adapters.spi import FrameworkAdapter, ModelService
 from agentcanvas.errors import Conflict
 from agentcanvas.registry import adapters as manifests
 
-KNOWN = ("langchain", "echo", "openai_agents", "crewai", "google_adk")
+KNOWN = ("langchain", "echo", "openai_agents", "crewai", "google_adk", "pydantic_ai", "agno")
 
 
 def create_adapter(framework: str = "langchain") -> FrameworkAdapter:
@@ -37,6 +37,14 @@ def create_adapter(framework: str = "langchain") -> FrameworkAdapter:
         from agentcanvas.adapters.google_adk import GoogleADKAdapter
 
         return GoogleADKAdapter()
+    if framework == "pydantic_ai":
+        from agentcanvas.adapters.pydantic_ai import PydanticAIAdapter
+
+        return PydanticAIAdapter()
+    if framework == "agno":
+        from agentcanvas.adapters.agno import AgnoAdapter
+
+        return AgnoAdapter()
     raise ValueError(f"no adapter installed for framework '{framework}'")
 
 

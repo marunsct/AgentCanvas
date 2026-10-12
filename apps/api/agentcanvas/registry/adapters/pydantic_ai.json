@@ -1,0 +1,39 @@
+{
+  "id": "pydantic_ai",
+  "label": "Pydantic AI",
+  "framework": "pydantic-ai-slim 2.54.0",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes a Pydantic AI flow: an async function for each block, Pydantic AI Agents (OpenAIChatModel, Tool, NativeOutput for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's approval (Pydantic AI's deferred tools). Runs need Pydantic AI installed on the server (`make framework FW=pydantic_ai`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "python"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "emulated",
+    "core.join": "emulated",
+    "core.llm": "native",
+    "core.agent": "native",
+    "core.approval": "emulated",
+    "core.human_input": "emulated",
+    "model.chat": "native",
+    "tool.python": "native",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "native",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "an async function that returns the fields it sets",
+    "core.router": "the flow engine follows the first route whose CEL rule matches (generated orchestration: Pydantic AI has no graph of its own)",
+    "core.join": "the flow engine waits for every branch before the block runs",
+    "core.approval": "the run pauses and is saved as JSON; it continues from that step when a person answers",
+    "core.human_input": "the run pauses and asks again when an answer does not fit",
+    "core.script": "your workspace function is called from the flow",
+    "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
+    "core.llm": "a Pydantic AI Agent with the block's model, asked once with agent.run",
+    "core.agent": "a Pydantic AI Agent (instructions, model, tools, NativeOutput); tools named in 'Ask before using' are Tool(requires_approval=True): the run pauses on DeferredToolRequests and continues from the saved message history with DeferredToolResults",
+    "mw.model_call_limit": "UsageLimits(request_limit=...) on the agent's run: past the limit the agent stops with a note, or the run fails when the block says so"
+  }
+}

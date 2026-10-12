@@ -836,6 +836,8 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 
 /* S20: frameworks this workflow can run on */
 .framework-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+/* S32: in the top bar the badges stay on one line (it scrolls sideways); squeezed, they wrapped out of sight */
+.topbar .framework-badges { flex-wrap: nowrap; flex-shrink: 0; }
 .framework-badge {
   font-size: 11px; line-height: 1; padding: 4px 8px; border-radius: 999px; cursor: default;
   border: 1px solid var(--border); background: var(--surface-2, transparent); color: var(--muted);
