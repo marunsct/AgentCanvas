@@ -228,6 +228,20 @@ async def test_pii_strategies_and_own_patterns(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_own_patterns_search_all_of_a_long_text():
+    """Own patterns used to search only the first 100k characters, so personal data after them went through."""
+    from agentcanvas import guardrails, safe_regex
+
+    text = "x" * 100_000 + " EMP-123456 " + "y" * 150_000 + " EMP-654321"
+    edge = safe_regex.MAX_TEXT - safe_regex.OVERLAP - 3  # a match across the first windows' boundary
+    text = text[:edge] + "EMP-777777" + text[edge + 10 :]
+    found = await guardrails.find_pii(text, types=(), custom=[{"name": "emp", "pattern": r"EMP-\d{6}"}])
+    assert [text[m.start : m.end] for m in found] == ["EMP-777777", "EMP-123456", "EMP-654321"]
+    cleaned = guardrails.redact(text, found)
+    assert "EMP-" not in cleaned and cleaned.count("[REDACTED_EMP]") == 3
+
+
+@pytest.mark.asyncio
 async def test_stop_ends_the_run_with_a_clear_error_that_never_shows_the_data(tmp_path):
     wf = guard_wf("guard.pii", {"on_fail": "stop"})
     for build in (lambda: build_graph(wf, Resources()), lambda: compiled(wf, tmp_path).build_graph(Resources())):

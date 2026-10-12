@@ -28,7 +28,9 @@ from urllib.parse import urljoin, urlsplit
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from agentcanvas import knowledge_search as ks
 from agentcanvas.db.models import KnowledgeBase, KnowledgeChunk, KnowledgeDocument
@@ -37,6 +39,7 @@ from agentcanvas.ids import new_id
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TEXT_CHARS = 2_000_000  # extracted text per document
+MAX_DOCX_UNZIPPED = 100 * 1024 * 1024  # a Word file's parts, uncompressed: refuses zip bombs before parsing
 MAX_CHUNKS = 50_000  # per knowledge base: search runs in memory
 MAX_PAGE_BYTES = 5 * 1024 * 1024
 URL_TIMEOUT_S = 20.0
@@ -150,8 +153,15 @@ def extract(name: str, data: bytes) -> tuple[str, str]:
             meta_title = (reader.metadata.title if reader.metadata else None) or ""
             return (meta_title.strip() or stem), text
         if suffix == ".docx":
+            import zipfile
+
             import docx
 
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                if sum(i.file_size for i in z.infolist()) > MAX_DOCX_UNZIPPED:
+                    raise InvalidInput(
+                        f"'{name}' unpacks to more than {MAX_DOCX_UNZIPPED // (1024 * 1024)} MB; it cannot be read"
+                    )
             d = docx.Document(io.BytesIO(data))
             lines = []
             for para in d.paragraphs:
@@ -230,11 +240,13 @@ async def fetch_url(url: str, transport: Any = None) -> tuple[str, str, str]:
             kind = r.headers.get("content-type", "").split(";")[0].strip().lower()
         name = Path(parts.path).name or parts.hostname
         if kind == "application/pdf" or name.lower().endswith(".pdf"):
-            title, text = extract(name if name.lower().endswith(".pdf") else "page.pdf", bytes(body))
+            title, text = await asyncio.to_thread(
+                extract, name if name.lower().endswith(".pdf") else "page.pdf", bytes(body)
+            )
         elif kind.endswith("wordprocessingml.document"):
-            title, text = extract("page.docx", bytes(body))
+            title, text = await asyncio.to_thread(extract, "page.docx", bytes(body))
         elif kind in ("text/html", "application/xhtml+xml") or not kind:
-            title, text = html_text(body.decode(r.encoding or "utf-8", errors="replace"))
+            title, text = await asyncio.to_thread(html_text, body.decode(r.encoding or "utf-8", errors="replace"))
         elif kind.startswith("text/") or kind in ("application/json",):
             title, text = name, body.decode(r.encoding or "utf-8", errors="replace")
         else:
@@ -382,9 +394,32 @@ class KnowledgeService:
         await self.s.commit()
         forget(kb_id)
 
+    async def _lock(self, kb_id: str) -> KnowledgeBase:
+        """The knowledge base, its row locked until commit: adds and reindexes of one knowledge base take turns, so
+        a reindex never deletes the chunks of a document added while it ran."""
+        kb = await self.s.scalar(
+            select(KnowledgeBase)
+            .where(KnowledgeBase.id == kb_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if kb is None:
+            raise NotFound(f"knowledge base '{kb_id}' not found")
+        return kb
+
     async def _touch(self, kb: KnowledgeBase) -> None:
-        kb.version += 1
+        """Commit, bumping `version` in SQL: an in-memory `+= 1` loses one of two concurrent changes, leaving
+        search caches on the old index."""
         kb.updated_at = datetime.now(UTC)
+        await self.s.flush()
+        version = await self.s.scalar(
+            sql_update(KnowledgeBase)
+            .where(KnowledgeBase.id == kb.id)
+            .values(version=KnowledgeBase.version + 1)
+            .returning(KnowledgeBase.version)
+            .execution_options(synchronize_session=False)
+        )
+        set_committed_value(kb, "version", version)
         await self.s.commit()
 
     # ----------------------------------------------------------------- documents ----
@@ -407,7 +442,7 @@ class KnowledgeService:
         return doc
 
     async def add_file(self, kb_id: str, name: str, data: bytes, user_id: str | None = None) -> KnowledgeDocument:
-        title, text = extract(name, data)
+        title, text = await asyncio.to_thread(extract, name, data)  # parsers are CPU-bound
         return await self.add(kb_id, title=title, text=text, kind="upload", name=name, user_id=user_id)
 
     async def add_url(
@@ -429,7 +464,7 @@ class KnowledgeService:
         user_id: str | None = None,
     ) -> KnowledgeDocument:
         """Add a document: keep its text, chunk and embed it. The same text twice is refused."""
-        kb = await self.get(kb_id)
+        kb = await self._lock(kb_id)
         text = text.replace("\x00", "").strip()
         if not text:
             raise InvalidInput(f"'{name or title}' has no text to search (a scanned PDF needs OCR first)")
@@ -445,7 +480,7 @@ class KnowledgeService:
             sha256=digest, created_by=user_id,
         )  # fmt: skip
         title = (title or doc.name)[:300]
-        pieces = self._chunks(kb, text, title)
+        pieces = await asyncio.to_thread(self._chunks, kb, text, title)
         _, total = await self.counts(kb_id)
         if total + len(pieces) > MAX_CHUNKS:
             raise InvalidInput(f"a knowledge base holds at most {MAX_CHUNKS:,} chunks; this adds {len(pieces)}")
@@ -485,13 +520,13 @@ class KnowledgeService:
 
     async def reindex(self, kb_id: str) -> KnowledgeBase:
         """Chunk and embed every document again with the current settings."""
-        kb = await self.get(kb_id)
+        kb = await self._lock(kb_id)
         docs = await self.documents(kb_id)
         await self.s.execute(delete(KnowledgeChunk).where(KnowledgeChunk.kb_id == kb_id))
         total = 0
         for doc in docs:
             title = self._title(doc)
-            pieces = self._chunks(kb, doc.content, title)
+            pieces = await asyncio.to_thread(self._chunks, kb, doc.content, title)
             total += len(pieces)
             if total > MAX_CHUNKS:
                 raise InvalidInput(f"with these settings the knowledge base needs more than {MAX_CHUNKS:,} chunks")

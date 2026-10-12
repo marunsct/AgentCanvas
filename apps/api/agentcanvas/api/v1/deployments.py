@@ -222,9 +222,11 @@ async def _caller(
     return dep, wf
 
 
-async def count_call(request: Request, session: AsyncSession, dep: Deployment, wf: Workflow) -> None:
-    """Count a call of the deployment (by key, MCP, A2A or share link) against its and its project's rate limits
-    (429 when over)."""
+async def count_call(
+    request: Request, session: AsyncSession, dep: Deployment, wf: Workflow, *extra: tuple[str, int]
+) -> None:
+    """Count a call of the deployment (by key, MCP, A2A or share link) against its and its project's rate limits,
+    and any `extra` (key, limit) buckets, e.g. a share link's per-client one (429 when over)."""
     from agentcanvas.db.models import WorkflowRow
 
     row = await session.get(WorkflowRow, dep.workflow_id)
@@ -235,6 +237,7 @@ async def count_call(request: Request, session: AsyncSession, dep: Deployment, w
     await request.app.state.ratelimit.hit(
         (f"deployment:{dep.id}", per_key),
         (f"project:{row.project_id if row else dep.workflow_id}", settings.rate_limit_per_project),
+        *extra,
     )
 
 

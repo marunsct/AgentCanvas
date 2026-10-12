@@ -20,6 +20,7 @@ from agentcanvas.agentspec import ident
 
 CHAT_INPUT = "{{ state.messages[-1].content }}"  # the person's latest chat message
 AGENT_REPLY = "{{ state.messages[-1].content }}"  # an agent's answer: the last message of the chat
+MAX_STEPS = 2000  # steps in one imported file
 
 
 class ImportError_(ValueError):
@@ -55,6 +56,7 @@ class Builder:
         self._node_names: set[str] = set()
         self.outputs: list[str] = []
         self.chat = False
+        self._unders: dict[str, dict[str, str]] = {}  # step key -> _under(key), reset by build()
 
     # ---- fields ----
     def channel(self, wanted: str, *, io: str = "inout", type_: dict[str, Any] | None = None) -> str:
@@ -117,6 +119,8 @@ class Builder:
              position: dict[str, float] | None = None) -> _Step:  # fmt: skip
         if key in self.steps:
             raise ImportError_(f"two steps share the id '{key}'")
+        if len(self.steps) >= MAX_STEPS:
+            raise ImportError_(f"the {self.source} file has more than {MAX_STEPS} steps; split it before importing")
         st = _Step(key=key, id=f"n_{len(self.steps) + 1}", type=type_, name=ident(name, self._node_names, "step"),
                    config=config, label=(label or None) and str(label)[:120], model=model, tools=list(tools or []),
                    position=position)  # fmt: skip
@@ -143,15 +147,34 @@ class Builder:
             self.report.append(line)
 
     # ---- the workflow ----
-    def _under(self, key: str, seen: frozenset[str] = frozenset()) -> dict[str, str]:
-        """The path choices a step is always behind ({path step key: route})."""
-        if key == "START" or key not in self.steps or key in seen:
-            return {}
-        found: dict[str, str] | None = None
-        for k, route in self.steps[key].after or [("START", None)]:
-            mine = self._under(k, seen | {key}) | ({k: route} if route else {})
-            found = mine if found is None else {r: v for r, v in found.items() if mine.get(r) == v}
-        return found or {}
+    def _under(self, key: str) -> dict[str, str]:
+        """The path choices a step is always behind ({path step key: route}). Iterative and memoized: chains of
+        diamonds would take exponential time and long chains would overflow the stack if walked recursively. An
+        earlier step that is also later (a loop) adds nothing."""
+        memo = self._unders
+        stack, open_ = [key], set()  # open_: steps waiting for their earlier steps
+        while stack:
+            k = stack[-1]
+            if k in memo:
+                stack.pop()
+                continue
+            if k == "START" or k not in self.steps:
+                memo[k] = {}
+                stack.pop()
+                continue
+            earlier = self.steps[k].after or [("START", None)]
+            if k not in open_:
+                open_.add(k)
+                stack.extend(e for e, _ in earlier if e not in memo and e not in open_)
+                continue
+            found: dict[str, str] | None = None
+            for e, route in earlier:
+                mine = memo.get(e, {}) | ({e: route} if route else {})
+                found = mine if found is None else {r: v for r, v in found.items() if mine.get(r) == v}
+            memo[k] = found or {}
+            open_.discard(k)
+            stack.pop()
+        return memo[key]
 
     def _exclusive(self, sources: list[tuple[str, str | None]]) -> bool:
         """Earlier steps on different routes of one path step: only one of them runs, so nothing to wait for."""
@@ -162,6 +185,7 @@ class Builder:
     def build(self) -> tuple[dict[str, Any], list[str], dict[str, Any]]:
         if not self.steps:
             raise ImportError_(f"the {self.source} file has no steps AgentCanvas can import")
+        self._unders = {}
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, Any]] = []
         layout: dict[str, Any] = {}
@@ -384,4 +408,6 @@ def import_document(doc: Any, *, wf_id: str, name: str | None = None) -> tuple[s
         raise
     except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:  # a list where an object belongs...
         raise ImportError_(f"the {FORMATS[kind]} file could not be read ({type(exc).__name__}: {exc})") from exc
+    except RecursionError as exc:  # nesting deeper than any real file
+        raise ImportError_(f"the {FORMATS[kind]} file is nested too deeply to import") from exc
     return kind, ir, report, layout

@@ -32,6 +32,13 @@ from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[1]  # the `agentcanvas` package directory
 PINNED = ["jsonschema", "cel-python", "jinja2"]
+# What an export imports (or its frameworks do) besides the standard library: the flow's own package must not hide
+# one of them on src/, whether or not the server has it installed (`package_name` only sees the server's packages).
+RESERVED = {
+    "agent_framework", "agentcanvas", "agents", "agno", "anyio", "boto3", "botocore", "celpy", "crewai", "google",
+    "httpx", "jinja2", "jsonschema", "llama_index", "mastra", "mcp", "openai", "opentelemetry", "pydantic",
+    "pydantic_ai", "pydantic_core", "pytest", "strands", "tests", "workflows",
+}  # fmt: skip
 
 
 @dataclass
@@ -291,6 +298,13 @@ TARGETS = {
 }
 
 
+def flow_package(name: str, workspace: set[str] | None = None) -> str:
+    """The export's package for a workflow named `name`: `package_name`, prefixed with `wf_` when it would hide a
+    module the export imports (`RESERVED`) or a top-level module of the workspace code bundled next to it."""
+    pkg = package_name(name)
+    return f"wf_{pkg}" if pkg in RESERVED | (workspace or set()) else pkg
+
+
 def _pyproject(wf: Workflow, t: Target, pkg: str, version: str, extra: list[str]) -> str:
     pinned = [*t.pins, *(f"{d}=={v}" if (v := _version(d)) else d for d in PINNED)]
     have = {_dist(d) for d in pinned}
@@ -490,7 +504,7 @@ async def run_once(
         if saved is not None:
             _saved(thread_id).parent.mkdir(parents=True, exist_ok=True)
             _saved(thread_id).write_text(saved.to_json())
-        elif ev["type"] in ("RUN_FINISHED", "RUN_ERROR"):
+        elif ev["type"] == "RUN_FINISHED":  # a failed continue keeps the paused run, to try again
             _saved(thread_id).unlink(missing_ok=True)
         if not quiet:
             print(json.dumps(ev, default=str), flush=True)
@@ -559,18 +573,18 @@ def package(
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated flow for `framework` is `source`."""
     t = TARGETS[framework]
-    pkg = package_name(wf.name)
-    root = f"{pkg.replace('_', '-')}-{t.slug}"
-    models = model_specs(wf)
-    for m in models.values():
-        m.pop("fallbacks", None)  # not exported for these flows (see the README)
-    tools = {r.name: r.config["import_path"] for r in wf.resources if r.type == "tool.python"}
     found = bundle.collect(workspace, wf.id, wf.model_dump_json(), source) if workspace is not None else None
     if found is not None and found.missing:
         raise InvalidInput(
             "the workflow uses code that is not in the workspace: " + ", ".join(found.missing)
             + "; create the file or fix the step's import path, then export again"
         )  # fmt: skip
+    pkg = flow_package(wf.name, {rel.split("/")[0].removesuffix(".py") for rel in found.files} if found else set())
+    root = f"{pkg.replace('_', '-')}-{t.slug}"
+    models = model_specs(wf)
+    for m in models.values():
+        m.pop("fallbacks", None)  # not exported for these flows (see the README)
+    tools = {r.name: r.config["import_path"] for r in wf.resources if r.type == "tool.python"}
     keys = sorted({m["key_env"] for m in models.values()} | _secret_names(wf.model_dump(mode="json")))
     host = HOST.format(models_code=t.models, models=json.dumps(models, indent=4), tools=json.dumps(tools, indent=4))
     files: dict[str, str | bytes] = {

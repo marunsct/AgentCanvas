@@ -24,6 +24,9 @@ RRF_K = 60  # reciprocal-rank fusion constant (Cormack et al. 2009)
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")  # a knowledge base's name: also its file name in exports
 
 _WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
+# A markdown ATX heading line (matched on the right-stripped line). Deliberately simple so matching stays linear:
+# the optional closing `#`s are trimmed in Python, not by a lazy group followed by `\s*#*\s*$` (cubic backtracking).
+_HEADING = re.compile(r" {0,3}#{1,6}[ \t]+(.*)")
 _STOP = frozenset(
     "a an and are as at be by can do does for from has have how i if in is it its me my of on or our so that the "
     "their them there these this to was we what when where which who why will with you your".split()
@@ -56,16 +59,23 @@ def chunk_text(
                 out.extend({"text": t, "page": page, "heading": heading} for t in _pack(_paragraphs(body), size))
 
         for line in text.split("\n"):
-            m = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+            m = _HEADING.match(line.rstrip())
             if m:
                 flush()
-                heading, section = m.group(1).strip(), []
+                heading, section = _heading_text(m.group(1)), []
             else:
                 section.append(line)
         flush()
         return out
     units = _sentences(text) if strategy == "sentences" else _paragraphs(text)
     return [{"text": t, "page": page, "heading": None} for t in _pack(units, size)]
+
+
+def _heading_text(rest: str) -> str:
+    """A heading's text without its optional closing sequence of `#`s."""
+    title = rest.strip()
+    bare = title.rstrip("#").rstrip()
+    return bare or title
 
 
 def _paragraphs(text: str) -> list[str]:

@@ -85,9 +85,11 @@ Once a workflow is published, people who are not developers can use it from a li
    follows the visitor's light or dark setting.
 
 Visitors need no account. Each message they send runs the published version, and the answer streams in as it is
-written. **New conversation** starts over. Thumbs up and down go to the run's feedback, like feedback sent through
-the API (a thumbs-down can put the run in an annotation queue). If the workflow pauses for a person (an approval or
-a question), the visitor sees the question and answers it in the chat (**Yes** / **No** for approvals).
+written (when the workflow has a safety block, the answer appears once it has passed the checks). **New
+conversation** starts over. Thumbs up and down go to the run's feedback, like feedback sent through the API (a
+thumbs-down can put the run in an annotation queue). If the workflow asks a question, the visitor answers it in the
+chat. Approvals are not the visitor's to give: the chat says the conversation waits for approval, and it waits in
+your inbox. Each visitor's address has its own rate limit (`AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT`, 30 a minute by default).
 
 **Put a chat button on your website.** Paste the snippet shown under **Chat widget** before `</body>` on any page:
 

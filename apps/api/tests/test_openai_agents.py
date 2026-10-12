@@ -132,6 +132,40 @@ async def test_edited_tool_call_runs_with_the_new_arguments(adapter):
     assert _said(runs[1]) == ["Sent the edited reply."]
 
 
+async def test_a_tool_block_name_asks_before_its_tool_runs(adapter):
+    """`approve_tools` names the tool block, as the canvas checks it: its tool asks first."""
+    runs = await _run(adapter, _agent_wf(approve_tools=["send"]), {"messages": [ASK]}, {"model": [CALL, "Sent."]})
+    assert runs[0][-1]["outcome"] == "interrupt", runs[0][-1]
+    assert _tool_io(runs) == []
+
+
+async def test_a_failed_continuation_can_be_tried_again(adapter, monkeypatch):
+    """A continuation that ends in RUN_ERROR keeps the paused run: continuing again runs the approved call once."""
+    from agentcanvas.adapters.openai_agents import runtime as rt
+
+    wf, thread, mocks = _agent_wf(approve_tools=["send_reply"]), new_id("th"), {"model": [CALL, "Sent."]}
+    resources = adapter.default_resources()
+
+    async def go(**how: Any) -> list[dict]:
+        spec = RunSpec(workflow=wf, thread_id=thread, run_id=new_id("run"), mocks=mocks, **how)
+        return [ev async for ev in adapter.execute(spec, resources)]
+
+    async def failing(*args: Any, **kwargs: Any):
+        yield {"type": "RUN_ERROR", "code": "error", "message": "the model provider is down"}
+
+    first = await go(input={"messages": [ASK]})
+    assert first[-1]["outcome"] == "interrupt", first[-1]
+    yes = ResumeSpec(value={"decisions": [{"type": "approve"}]})
+    with monkeypatch.context() as m:
+        m.setattr(rt, "run", failing)
+        failed = await go(resume=yes)
+    assert failed[-1]["type"] == "RUN_ERROR", failed[-1]
+    again = await go(resume=yes)
+    assert again[-1]["outcome"] == "success", again[-1]
+    assert [io["output"] for io in _tool_io([first, failed, again])] == ["sent: hi"]
+    assert (await go(resume=yes))[-1]["message"] == "nothing to resume on this conversation"
+
+
 async def test_structured_answer_fills_structured_response(adapter):
     schema = {"type": "object",
               "properties": {"category": {"enum": ["billing", "other"]}, "urgent": {"type": "boolean"}},

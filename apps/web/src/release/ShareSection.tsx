@@ -1,6 +1,6 @@
 /** Share a deployment with people (S23): a public chat page behind a link, and a chat widget for any website. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { DeploymentOut, ShareOut } from "../api/generated";
 import { embedSnippet } from "../share/share";
@@ -22,19 +22,30 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
   const [greeting, setGreeting] = useState("");
   const [suggestions, setSuggestions] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const seeded = useRef<string | null>(null); // the deployment the form was filled from
+  const seed = (d: ShareOut) => {
+    setTitle(d.title);
+    setGreeting(d.greeting);
+    setSuggestions(d.suggestions.join("\n"));
+  };
+  // fill the form once per deployment and after a save of its fields, not on every refetch: the switch and a
+  // new link update the query too, and that must not wipe what is being typed
   useEffect(() => {
-    if (!share.data) return;
-    setTitle(share.data.title);
-    setGreeting(share.data.greeting);
-    setSuggestions(share.data.suggestions.join("\n"));
-  }, [share.data]);
+    if (!share.data || seeded.current === deployment.id) return;
+    seeded.current = deployment.id;
+    seed(share.data);
+  }, [share.data, deployment.id]);
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       apiFetch<ShareOut>(`/deployments/${deployment.id}/share`, { method: "PUT", json: body }),
     onMutate: (body) => { // the switch moves at once
       if (typeof body.enabled === "boolean") qc.setQueryData<ShareOut>(key, (d) => (d ? { ...d, enabled: body.enabled as boolean } : d));
     },
-    onSuccess: (out) => { qc.setQueryData(key, out); setNote("Saved."); },
+    onSuccess: (out, body) => {
+      qc.setQueryData(key, out);
+      if ("title" in body) seed(out);
+      setNote("Saved.");
+    },
     onError: () => { void qc.invalidateQueries({ queryKey: key }); },
   });
   const regenerate = useMutation({

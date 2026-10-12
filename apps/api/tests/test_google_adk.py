@@ -135,8 +135,10 @@ async def test_structured_answer_fills_structured_response(adapter):
     ],
     ids=["approve", "edit", "reject"],
 )  # fmt: skip
-async def test_a_tool_call_waits_for_a_person(adapter, answer, sent):
-    wf = _agent_wf(approve_tools=["send_reply"])
+@pytest.mark.parametrize("approve", ["send", "send_reply"], ids=["block", "tool"])
+async def test_a_tool_call_waits_for_a_person(adapter, answer, sent, approve):
+    """`approve_tools` names the tool block (as the canvas checks it), or the tool it gives."""
+    wf = _agent_wf(approve_tools=[approve])
     runs = await _run(adapter, wf, {"messages": [ASK]}, {"model": [CALL, "Done."]}, [answer])
     first = runs[0][-1]
     assert first["outcome"] == "interrupt", first
@@ -148,6 +150,87 @@ async def test_a_tool_call_waits_for_a_person(adapter, answer, sent):
     assert runs[1][-1]["outcome"] == "success", runs[1][-1]
     assert _said(runs[1]) == ["Done."]
     assert [io["output"] for io in _tool_io(runs)] == ([sent] if sent else [])
+
+
+def _call(text: str) -> dict[str, Any]:
+    return {"content": "", "tool_calls": [{"name": "send_reply", "args": {"text": text}}]}
+
+
+@needs_adk
+async def test_an_approved_call_runs_once_when_the_turn_runs_again(adapter):
+    """Each answer runs the agent's turn again: a call approved before gives its saved result, it is not sent twice."""
+    wf = _agent_wf(approve_tools=["send"])
+    model = [_call("one"), _call("two"), "Done."]
+    runs = await _run(adapter, wf, {"messages": [ASK]}, {"model": model}, [{"approved": True}, {"approved": True}])
+    assert [r[-1]["outcome"] for r in runs] == ["interrupt", "interrupt", "success"], runs[-1][-1]
+    asked = [r[-1]["interrupts"][0]["payload"]["action_requests"][0]["args"] for r in runs[:2]]
+    assert asked == [{"text": "one"}, {"text": "two"}]
+    assert [io["output"] for io in _tool_io(runs)] == ["sent: one", "sent: two"]
+    assert _said(runs[-1]) == ["Done."]
+
+
+@needs_adk
+async def test_an_answer_only_counts_for_the_call_the_person_saw(adapter):
+    """When the turn runs again and the agent now calls the tool with other arguments, the person is asked again."""
+    wf, thread = _agent_wf(approve_tools=["send"]), new_id("th")
+    resources = adapter.default_resources()
+
+    async def go(mocks: dict, **how: Any) -> list[dict]:
+        spec = RunSpec(workflow=wf, thread_id=thread, run_id=new_id("run"), mocks=mocks, **how)
+        return [ev async for ev in adapter.execute(spec, resources)]
+
+    first = await go({"model": [_call("hi"), "Done."]}, input={"messages": [ASK]})
+    assert first[-1]["outcome"] == "interrupt", first[-1]
+    yes = ResumeSpec(value={"approved": True})
+    changed = await go({"model": [_call("bye"), "Done."]}, resume=yes)
+    assert changed[-1]["outcome"] == "interrupt", changed[-1]
+    assert changed[-1]["interrupts"][0]["payload"]["action_requests"][0]["args"] == {"text": "bye"}
+    assert _tool_io([changed]) == []  # the "yes" was for "hi"
+    last = await go({"model": [_call("bye"), "Done."]}, resume=yes)
+    assert last[-1]["outcome"] == "success", last[-1]
+    assert [io["output"] for io in _tool_io([first, changed, last])] == ["sent: bye"]
+
+
+@needs_adk
+async def test_a_failed_continuation_can_be_tried_again(adapter, monkeypatch):
+    """A worker that dies while a paused run continues does not lose the run: it can be continued again."""
+    from agentcanvas.adapters.google_adk import AdkWorker
+
+    wf = _agent_wf(approve_tools=["send"])
+    thread, mocks = new_id("th"), {"model": [CALL, "Done."]}
+    resources = adapter.default_resources()
+    first = [ev async for ev in adapter.execute(
+        RunSpec(workflow=wf, thread_id=thread, run_id=new_id("run"), input={"messages": [ASK]}, mocks=mocks),
+        resources,
+    )]  # fmt: skip
+    assert first[-1]["outcome"] == "interrupt", first[-1]
+
+    def broken(python: str) -> AdkWorker:
+        worker = AdkWorker.__new__(AdkWorker)
+        worker._runs = {}
+
+        def send(msg: dict) -> None:
+            raise BrokenPipeError(32, "Broken pipe")
+
+        worker.send = send  # type: ignore[method-assign]
+        return worker
+
+    resume = ResumeSpec(value={"approved": True})
+    with monkeypatch.context() as m:
+        m.setattr(adapter, "worker", broken)
+        failed = [ev async for ev in adapter.execute(
+            RunSpec(workflow=wf, thread_id=thread, run_id=new_id("run"), resume=resume, mocks=mocks), resources
+        )]  # fmt: skip
+    assert failed[-1]["type"] == "RUN_ERROR" and "worker stopped" in failed[-1]["message"], failed[-1]
+    again = [ev async for ev in adapter.execute(
+        RunSpec(workflow=wf, thread_id=thread, run_id=new_id("run"), resume=resume, mocks=mocks), resources
+    )]  # fmt: skip
+    assert again[-1]["outcome"] == "success", again[-1]
+    assert [io["output"] for io in _tool_io([first, failed, again])] == ["sent: hi"]
+    gone = [ev async for ev in adapter.execute(
+        RunSpec(workflow=wf, thread_id=thread, run_id=new_id("run"), resume=resume, mocks=mocks), resources
+    )]  # fmt: skip
+    assert gone[-1]["type"] == "RUN_ERROR" and "nothing to resume" in gone[-1]["message"]
 
 
 @needs_adk

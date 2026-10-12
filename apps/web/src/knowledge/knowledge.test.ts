@@ -8,6 +8,11 @@ describe("knowledge helpers (S24)", () => {
     expect(NAME_PATTERN.test("Bad Name")).toBe(false);
   });
 
+  it("drops a trailing dash, so the page keeps what was typed and names it only when sending", () => {
+    expect(suggestName("hr ")).toBe("hr"); // applied per keystroke, "hr handbook" could never be typed
+    expect(suggestName("hr handbook")).toBe("hr-handbook");
+  });
+
   it("refuses unknown types and big files before uploading", () => {
     const { ok, refused } = checkFiles([
       { name: "guide.PDF", size: 10 },

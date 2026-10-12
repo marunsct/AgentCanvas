@@ -216,8 +216,8 @@ export async function runOnce(input: Record<string, any> | null, opts: { threadI
       if (paused !== undefined) {
         mkdirSync(join(saved(threadId), ".."), { recursive: true });
         writeFileSync(saved(threadId), JSON.stringify(paused));
-      } else if (ev.type === "RUN_FINISHED" || ev.type === "RUN_ERROR") {
-        rmSync(saved(threadId), { force: true });
+      } else if (ev.type === "RUN_FINISHED") {
+        rmSync(saved(threadId), { force: true }); // a failed continue keeps the paused run, to try again
       }
       if (!opts.quiet) console.log(JSON.stringify(ev));
       last = ev;

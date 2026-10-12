@@ -26,7 +26,30 @@ import type { Flow, Host, ToolSpec } from "./flow.ts";
 import * as runtime from "./runtime.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const send = (msg: Record<string, any>) => writeSync(1, `${JSON.stringify(msg)}\n`);
+const pause = new Int32Array(new SharedArrayBuffer(4));
+
+/** One protocol message on stdout, whole (stdout may be non-blocking: a full pipe says EAGAIN, so wait and go on). */
+function send(msg: Record<string, any>): void {
+  const data = Buffer.from(`${JSON.stringify(msg)}\n`);
+  let at = 0;
+  while (at < data.length) {
+    try {
+      at += writeSync(1, data, at);
+    } catch (exc) {
+      if ((exc as NodeJS.ErrnoException).code !== "EAGAIN") throw exc;
+      Atomics.wait(pause, 0, 0, 5);
+    }
+  }
+}
+
+/** `send`, where a failure must not end the worker (it is reported on stderr). */
+function trySend(msg: Record<string, any>): void {
+  try {
+    send(msg);
+  } catch (exc) {
+    console.error(`could not send ${JSON.stringify(msg).slice(0, 200)}: ${(exc as Error).message}`);
+  }
+}
 // anything else printed goes to stderr: stdout carries the protocol only
 process.stdout.write = process.stderr.write.bind(process.stderr) as typeof process.stdout.write;
 console.log = console.info = console.debug = console.error;
@@ -51,18 +74,36 @@ export function withSettings(settings: Record<string, any>, base: typeof fetch =
 }
 
 class Worker {
-  calls = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  calls = new Map<number, { runId: string; resolve: (v: any) => void; reject: (e: Error) => void }>();
   next = 0;
   runs = new Map<string, AbortController>();
   flows = new Map<string, Flow>();
 
   call(runId: string, op: string, args: Record<string, any>): Promise<any> {
+    if (this.runs.get(runId)?.signal.aborted) return Promise.reject(new Error("the run was cancelled"));
     this.next += 1;
     const n = this.next;
     return new Promise((resolve, reject) => {
-      this.calls.set(n, { resolve, reject });
-      send({ run: runId, call: n, op, args });
+      this.calls.set(n, { runId, resolve, reject });
+      try {
+        send({ run: runId, call: n, op, args });
+      } catch (exc) {
+        this.calls.delete(n);
+        reject(exc as Error);
+      }
     });
+  }
+
+  /** Stop the run `runId`: its model calls are aborted and the calls it waits on fail, so it ends. */
+  cancel(runId: string): void {
+    const running = this.runs.get(runId);
+    if (!running) return;
+    running.abort();
+    for (const [n, waiting] of this.calls) {
+      if (waiting.runId !== runId) continue;
+      this.calls.delete(n);
+      waiting.reject(new Error("the run was cancelled"));
+    }
   }
 
   reply(msg: Record<string, any>): void {
@@ -91,7 +132,7 @@ class Worker {
     this.runs.set(runId, cancel);
     try {
       const flow = await this.flow(msg.source);
-      const host = new RemoteHost(this, runId, msg.models ?? {}, msg.tools ?? {});
+      const host = new RemoteHost(this, runId, msg.models ?? {}, msg.tools ?? {}, cancel.signal);
       const resume = msg.resume ? [JSON.parse(msg.resume.paused), msg.resume.answer] as [any, any] : null;
       for await (const ev of runtime.run(flow, host, { input: msg.input, resume, runId: msg.thread ?? runId })) {
         if (cancel.signal.aborted) return;
@@ -100,10 +141,12 @@ class Worker {
       }
     } catch (exc) {
       const err = exc as Error;
-      send({ run: runId, event: { type: "RUN_ERROR", code: "error", message: `${err.name}: ${err.message}` } });
+      if (!cancel.signal.aborted) {
+        trySend({ run: runId, event: { type: "RUN_ERROR", code: "error", message: `${err?.name}: ${err?.message}` } });
+      }
     } finally {
       this.runs.delete(runId);
-      send({ run: runId, end: true });
+      trySend({ run: runId, end: true });
     }
   }
 }
@@ -114,12 +157,15 @@ class RemoteHost implements Host {
   runId: string;
   models: Record<string, { base_url: string; api_key: string }>;
   specs: Record<string, { name: string; description: string; parameters: Record<string, any> }[]>;
+  signal: AbortSignal;
 
-  constructor(worker: Worker, runId: string, models: RemoteHost["models"], specs: RemoteHost["specs"]) {
+  constructor(worker: Worker, runId: string, models: RemoteHost["models"], specs: RemoteHost["specs"],
+    signal: AbortSignal) {
     this.worker = worker;
     this.runId = runId;
     this.models = models;
     this.specs = specs;
+    this.signal = signal;
   }
 
   model(resource: string, step: string, settings: Record<string, any>): any {
@@ -155,7 +201,7 @@ for await (const line of lines) {
   if (!line.trim()) continue;
   const msg = JSON.parse(line);
   if ("reply" in msg) worker.reply(msg);
-  else if (msg.op === "run") void worker.run(msg);
-  else if (msg.op === "cancel") worker.runs.get(msg.run)?.abort();
+  else if (msg.op === "run") worker.run(msg).catch((exc) => console.error(`run ${msg.run} failed:`, exc));
+  else if (msg.op === "cancel") worker.cancel(msg.run);
 }
 process.exit(0); // the server went away

@@ -17,7 +17,8 @@ from multiprocessing.pool import Pool
 from typing import Any
 
 TIMEOUT_S = 2.0
-MAX_TEXT = 100_000  # characters searched; longer text is cut
+MAX_TEXT = 100_000  # characters searched by `search` (longer text is cut), and per window by `spans`
+OVERLAP = 10_000  # characters each `spans` window shares with the next: matches up to this long are found whole
 MAX_MATCHES = 1_000  # spans returned by `spans`
 
 _state: dict[str, Pool] = {}
@@ -29,13 +30,22 @@ def _search(pattern: str, text: str) -> bool:
 
 
 def _spans(pattern: str, text: str) -> list[tuple[int, int]]:
+    """Every match in the whole text, searched in overlapping windows of MAX_TEXT characters: the cost of a
+    pattern that is slow on long input stays bounded per window, and nothing after the first window is missed
+    (redaction must see all of the text). A match starting in a window's overlap is left to the next window."""
     found: list[tuple[int, int]] = []
-    for m in re.finditer(pattern, text):
-        if m.end() > m.start():
-            found.append(m.span())
-            if len(found) >= MAX_MATCHES:
-                break
-    return found
+    step = MAX_TEXT - OVERLAP
+    start = 0
+    while True:
+        last = start + MAX_TEXT >= len(text)
+        for m in re.finditer(pattern, text[start : start + MAX_TEXT]):
+            if m.end() > m.start() and (last or m.start() < step):
+                found.append((start + m.start(), start + m.end()))
+                if len(found) >= MAX_MATCHES:
+                    return found
+        if last:
+            return found
+        start += step
 
 
 def _get_pool() -> Pool:
@@ -70,6 +80,6 @@ async def search(pattern: str, text: str, timeout: float | None = None) -> bool:
 
 
 async def spans(pattern: str, text: str, timeout: float | None = None) -> list[tuple[int, int]]:
-    """The (start, end) of each non-empty match of `pattern` in `text` (at most MAX_MATCHES, within the first
-    MAX_TEXT characters); TimeoutError when the search takes longer than `timeout` seconds."""
-    return await _run(_spans, (pattern, text[:MAX_TEXT]), timeout)
+    """The (start, end) of each non-empty match of `pattern` in `text` (at most MAX_MATCHES), all of the text
+    searched; TimeoutError when the search takes longer than `timeout` seconds."""
+    return await _run(_spans, (pattern, text), timeout)

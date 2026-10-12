@@ -107,12 +107,16 @@ class Run(supersteps.Run):
         name = agent.name or self.name
         saved = json.loads(self._native) if self._native else None
         prompt: Any = conversation(messages)
+        used, replayed = 0, 0  # model calls made before the run paused; the turn that runs the decided calls
         if saved is not None and (found := self.tool_answers(len(saved["calls"]))) is not None:
+            used, replayed = saved.get("used", 0), 1
             agent.messages = saved["messages"]
             agent._interrupt_state = _InterruptState.from_dict(saved["interrupts"])
             prompt = [{"interruptResponse": {"interruptId": i, "response": d}}
                       for i, d in zip(saved["calls"], found, strict=True)]  # fmt: skip
-        limits: Any = {"turns": max_calls} if max_calls is not None else None
+        # Strands limits the turns of one invocation; a resumed one first runs the decided calls (a turn with no
+        # model call), and then gets what is left of the agent's budget
+        limits: Any = {"turns": max(max_calls - used, 0) + replayed or 1} if max_calls is not None else None
         try:
             result = await agent.invoke_async(prompt, limits=limits)
         except StructuredOutputException:
@@ -120,7 +124,8 @@ class Run(supersteps.Run):
         if result.stop_reason == "interrupt":
             waiting = list(result.interrupts or [])
             native = json.dumps({"messages": agent.messages, "interrupts": agent._interrupt_state.to_dict(),
-                                 "calls": [i.id for i in waiting]}, default=str)  # fmt: skip
+                                 "calls": [i.id for i in waiting], "used": used + _turns(agent) - replayed},
+                                default=str)  # fmt: skip
             raise self.tool_request([(i.reason["name"], i.reason["args"]) for i in waiting], native)
         if result.stop_reason == "limit_turns":
             if not stop_at_limit:
@@ -130,6 +135,12 @@ class Run(supersteps.Run):
         if answer is None:
             answer = _answer_text(agent) if structured else str(result).strip()
         return self.reply(name, answer, output=output, structured=structured)
+
+
+def _turns(agent: Agent) -> int:
+    """The model calls (Strands' turns) of the agent's latest invocation."""
+    invocation = agent.event_loop_metrics.latest_agent_invocation
+    return len(invocation.cycles) if invocation is not None else 0
 
 
 def _answer_text(agent: Agent) -> Any:

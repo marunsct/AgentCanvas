@@ -26,23 +26,140 @@ export type Update = Record<string, any>;
 export type Event = Record<string, any>;
 
 // ------------------------------------------------------------------ expressions ----
+/*
+ * Templates are Jinja as the Python engine reads it (sandboxed, StrictUndefined), on nunjucks. While a template
+ * renders (synchronously), `jinja()` puts in place what nunjucks does differently: a missing field fails but a null
+ * one prints `None`, booleans print `True`/`False`, `[]`, `{}` and `""` are false in `if`, `not`, `and`, `or`,
+ * `| tojson` writes JSON as Jinja does, and nothing reaches `constructor`, `__proto__` or `prototype` (the way
+ * out of the sandbox to run code). Lists and objects print as JSON (Python prints its own repr). Still different:
+ * negative indexes and slices (`state.l[-1]`, `state.s[:2]`), Python string methods (`state.s.upper()`), `%`
+ * formatting, and floats with nothing after the point (`2.0` prints `2`).
+ */
 const templates = new nunjucks.Environment(null, { autoescape: false, throwOnUndefined: true });
 const conditions = new Map<string, (ctx: Record<string, any>) => any>();
+const TRUTHY = "__ac_truthy__";
+const BLOCKED = new Set(["constructor", "prototype", "__proto__", "__defineGetter__", "__defineSetter__",
+  "__lookupGetter__", "__lookupSetter__"]);
+
+/** Whether `value` is true as Python reads it: empty lists, objects and strings are false. */
+export function truthy(value: any): boolean {
+  if (value instanceof String) return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value !== null && typeof value === "object") return Object.keys(value).length > 0;
+  return Boolean(value);
+}
+
+/** JSON as Jinja's `tojson` writes it: keys sorted, `", "` and `": "` between items, safe in HTML. */
+export function tojson(value: any): string {
+  const escape = (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+  const dump = (v: any): string => {
+    if (v === null || v === undefined || typeof v === "function") return "null";
+    if (Array.isArray(v)) return `[${v.map(dump).join(", ")}]`;
+    if (typeof v === "object" && !(v instanceof String)) {
+      return `{${Object.keys(v).sort().map((k) => `${dump(k)}: ${dump(v[k])}`).join(", ")}}`;
+    }
+    if (typeof v === "string" || v instanceof String) {
+      return JSON.stringify(String(v)).replace(/[\u0080-\uffff]/g, escape);
+    }
+    return JSON.stringify(v) ?? "null";
+  };
+  return dump(value).replace(/[<>&']/g, escape);
+}
+templates.addFilter("tojson", (value: any) => new nunjucks.runtime.SafeString(tojson(value)));
+templates.addGlobal(TRUTHY, truthy);
+
+/** What a printed value reads as (Python's `None`, `True` and `False`; lists and objects as JSON). */
+function printed(value: any): any {
+  if (value === null) return "None";
+  if (value === true) return "True";
+  if (value === false) return "False";
+  if (value instanceof String || value === undefined || typeof value !== "object") return value;
+  return JSON.stringify(value);
+}
+
+function allowed(obj: any, key: any): void {
+  if (typeof key !== "string" || !BLOCKED.has(key)) return;
+  // a field of the state that happens to have such a name is data; anything else is the way out of the sandbox
+  if (obj !== null && obj !== undefined && typeof obj === "object" && Object.hasOwn(obj, key)
+    && typeof obj[key] !== "function") return;
+  throw new Error(`access to '${key}' is not allowed in a template`);
+}
+
+const nodes: any = (nunjucks as any).nodes;
+const runtime: any = nunjucks.runtime;
+const compiler: any = (nunjucks as any).compiler.Compiler.prototype;
+const asTruthy = (node: any) => new nodes.FunCall(node.lineno, node.colno, new nodes.Symbol(node.lineno, node.colno,
+  TRUTHY), new nodes.NodeList(node.lineno, node.colno, [node]));
+const patches: [any, string, (orig: any) => any][] = [
+  [runtime, "ensureDefined", () => (value: any, lineno: number, colno: number) => {
+    if (value === undefined) {
+      throw new nunjucks.lib.TemplateError("attempted to output an undefined value", lineno + 1, colno + 1);
+    }
+    return value;
+  }],
+  [runtime, "suppressValue", (orig) => (value: any, autoescape: boolean) => orig(printed(value), autoescape)],
+  [runtime, "memberLookup", (orig) => (obj: any, key: any) => {
+    allowed(obj, key);
+    return orig(obj, key);
+  }],
+  [runtime, "contextOrFrameLookup", (orig) => (context: any, frame: any, name: string) => {
+    allowed(context.ctx, name);
+    return orig(context, frame, name);
+  }],
+  [compiler, "compileIf", (orig) => function (this: any, node: any, frame: any, async: any) {
+    node.cond = asTruthy(node.cond);
+    return orig.call(this, node, frame, async);
+  }],
+  [compiler, "compileInlineIf", (orig) => function (this: any, node: any, frame: any) {
+    node.cond = asTruthy(node.cond);
+    return orig.call(this, node, frame);
+  }],
+  [compiler, "compileNot", (orig) => function (this: any, node: any, frame: any) {
+    node.target = asTruthy(node.target);
+    return orig.call(this, node, frame);
+  }],
+  [compiler, "compileOr", () => function (this: any, node: any, frame: any) {
+    this.compileInlineIf(new nodes.InlineIf(node.lineno, node.colno, node.left, node.left, node.right), frame);
+  }],
+  [compiler, "compileAnd", () => function (this: any, node: any, frame: any) {
+    this.compileInlineIf(new nodes.InlineIf(node.lineno, node.colno, node.left, node.right, node.left), frame);
+  }],
+];
+
+/** `fn` with nunjucks reading templates as Jinja does (see above); put back afterwards. */
+function jinja<T>(fn: () => T): T {
+  const saved = patches.map(([obj, key]) => [obj, key, obj[key]] as const);
+  for (const [obj, key, patch] of patches) obj[key] = patch(obj[key]);
+  try {
+    return fn();
+  } finally {
+    for (const [obj, key, orig] of saved) obj[key] = orig;
+  }
+}
 
 /** A prompt or value with `{{ state.<field> }}` filled in (lists and objects are written as JSON). */
 export function render(template: string, state: State, names: Record<string, any> = {}): string {
   try {
-    return templates.renderString(template, { ...names, state: printable(copy(state)) });
+    return jinja(() => templates.renderString(template, { ...names, state: printable(copy(state)) }));
   } catch (exc) {
     throw new Error(`template error in '${template.slice(0, 40)}…': ${(exc as Error).message}`);
   }
 }
 
+// Lists and objects read as JSON where they become text (`~`, `join`); a field named `toString` stays a field.
+class JsonList extends Array {
+  toString(): string {
+    return JSON.stringify(this);
+  }
+}
+const JSON_OBJECT = Object.create(Object.prototype, { toString: { value(this: any) {
+  return JSON.stringify(this);
+} } });
+
 function printable(value: any): any {
   if (value === null || typeof value !== "object") return value;
   for (const key of Object.keys(value)) value[key] = printable(value[key]);
-  Object.defineProperty(value, "toString", { value: () => JSON.stringify(value), enumerable: false });
-  return value;
+  return Object.setPrototypeOf(value, Array.isArray(value) ? JsonList.prototype : JSON_OBJECT);
 }
 
 /** Whether the CEL rule holds for `state` (whole numbers are CEL ints, as in the Python engine). */
@@ -145,6 +262,8 @@ export type Paused = {
   interrupt_id: string;
   steps: number;
   native: string | null; // the asking step's own Mastra state
+  next_round?: string[]; // steps the round's finished steps lead to
+  arrived?: Record<string, string[]>; // "wait for all" step -> branches in since it ran
 };
 
 export function reduce(reducer: string, old: any, value: any): any {
@@ -170,6 +289,8 @@ export type Host = {
   search(knowledgeBase: string, query: string, opts: { mode: string; top_k: number; min_score: number }):
     Promise<Record<string, any>[]>;
   script(importPath: string, state: State): Promise<Update>;
+  /** Aborted when the run is cancelled (model calls stop with it). */
+  signal?: AbortSignal;
 };
 
 export type ToolSpec = {
@@ -189,7 +310,7 @@ export type RunClass = new (flow: Flow, host: Host, nodeId: string, name: string
  */
 export async function* run(flow: Flow, host: Host, runClass: RunClass, opts: { input?: State | null;
   resume?: [Paused, any] | null; runId?: string } = {}): AsyncGenerator<Event> {
-  let values: State, frontier: string[], done: Set<string>, steps: number;
+  let values: State, frontier: string[], done: Set<string>, steps: number, rounds: Rounds;
   const answers = new Map<string, any>();
   const native = new Map<string, string>();
   try {
@@ -201,14 +322,18 @@ export async function* run(flow: Flow, host: Host, runClass: RunClass, opts: { i
       steps = paused.steps;
       answers.set(paused.node_id, answer);
       if (paused.native) native.set(paused.node_id, paused.native);
+      rounds = new Rounds([...paused.next_round ?? []], Object.fromEntries(Object.entries(paused.arrived ?? {})
+        .map(([k, v]) => [k, new Set(v)])), true);
     } else {
       values = Object.fromEntries(Object.entries(flow.channels).map(([k, [, initial]]) => [k, copy(initial)]));
       Object.assign(values, copy(opts.input ?? {}));
-      frontier = following(flow, "START", values).filter((n) => n !== "END");
+      rounds = new Rounds([], {});
+      frontier = rounds.lead(flow, "START", values).filter((n) => n !== "END");
       done = new Set();
       steps = 0;
     }
-    yield* loop(flow, host, runClass, values, frontier, done, steps, answers, native, opts.runId ?? "run");
+    yield* loop(flow, host, runClass, values, frontier, done, steps, answers, native, opts.runId ?? "run",
+      rounds);
   } catch (exc) {
     if (exc instanceof StopRun) {
       yield { type: "RUN_ERROR", code: exc.code, message: exc.message };
@@ -221,24 +346,18 @@ export async function* run(flow: Flow, host: Host, runClass: RunClass, opts: { i
 
 async function* loop(flow: Flow, host: Host, runClass: RunClass, values: State, frontier: string[],
   done: Set<string>, steps: number, answers: Map<string, any>, native: Map<string, string>,
-  runId: string): AsyncGenerator<Event> {
+  runId: string, rounds: Rounds): AsyncGenerator<Event> {
   const limit = flow.recursionLimit ?? 25;
-  while (frontier.length) {
+  while ((frontier = rounds.ready(flow, frontier)).length) {
     steps += 1;
     if (steps > limit) {
       yield { type: "RUN_ERROR", code: "recursion_limit", message: `stopped after ${limit} steps without reaching END` };
       return;
     }
-    const next: string[] = [];
+    const next = rounds.following;
+    rounds.following = [];
     for (const [i, nodeId] of frontier.entries()) {
       const step = flow.steps[nodeId];
-      if (step.type === "core.join") {
-        const ready = new Set([...done, ...frontier.slice(0, i), "START"]);
-        if (![...before(flow, nodeId)].every((n) => ready.has(n))) {
-          next.push(nodeId); // wait for the other branches
-          continue;
-        }
-      }
       yield { type: "STEP_STARTED", stepName: step.name, canvas_node_id: nodeId, task_id: nodeId };
       const started = performance.now();
       const ctx = new runClass(flow, host, nodeId, step.name, answers.has(nodeId) ? answers.get(nodeId) : MISSING,
@@ -251,8 +370,10 @@ async function* loop(flow: Flow, host: Host, runClass: RunClass, values: State, 
           const info = { id: `${runId}:${nodeId}`, kind: interruptKind(exc.payload), canvas_node_id: nodeId,
             payload: exc.payload };
           const paused: Paused = { values: copy(values), node_id: nodeId,
-            frontier: [nodeId, ...frontier.slice(i + 1), ...next], done: [...done].sort(), payload: exc.payload,
-            interrupt_id: info.id, steps: steps - 1, native: exc.native };
+            frontier: [nodeId, ...frontier.slice(i + 1)], done: [...done].sort(), payload: exc.payload,
+            interrupt_id: info.id, steps: steps - 1, native: exc.native, next_round: next,
+            arrived: Object.fromEntries(Object.entries(rounds.arrived).filter(([, v]) => v.size)
+              .map(([k, v]) => [k, [...v].sort()])) };
           yield { type: "STEP_FINISHED", stepName: step.name, canvas_node_id: nodeId, status: "interrupted",
             task_id: nodeId, duration_ms: ms(started) };
           yield { type: "CUSTOM", name: "ac.interrupt", value: info };
@@ -273,12 +394,51 @@ async function* loop(flow: Flow, host: Host, runClass: RunClass, values: State, 
       yield { type: "STEP_FINISHED", stepName: step.name, canvas_node_id: nodeId, status: "ok", task_id: nodeId,
         duration_ms: ms(started) };
       if (Object.keys(update).length) yield { type: "STATE_DELTA", canvas_node_id: nodeId, delta: copy(update) };
-      for (const n of following(flow, nodeId, values)) if (!next.includes(n)) next.push(n);
+      for (const n of rounds.lead(flow, nodeId, values)) if (!next.includes(n)) next.push(n);
     }
     frontier = next.filter((n) => n !== "END");
   }
   yield { type: "RUN_FINISHED", outcome: "success", breakpoint: false, interrupts: [], next: [], checkpoint_id: null,
     output: outputs(flow, values) };
+}
+
+/**
+ * Which steps run next. A "wait for all" step runs once every branch into it has arrived since it last ran (a loop
+ * waits again on each pass); one still waiting when nothing else is left to run is dropped, as when a path skipped
+ * one of its branches.
+ */
+class Rounds {
+  following: string[]; // the next round, already started (a resumed run)
+  arrived: Record<string, Set<string>>;
+  resumed: boolean;
+
+  constructor(following: string[], arrived: Record<string, Set<string>>, resumed = false) {
+    this.following = following;
+    this.arrived = arrived;
+    this.resumed = resumed;
+  }
+
+  lead(flow: Flow, nodeId: string, values: State): string[] {
+    const nxt = following(flow, nodeId, values);
+    for (const target of nxt) {
+      if (flow.steps[target]?.type === "core.join") (this.arrived[target] ??= new Set()).add(nodeId);
+    }
+    return nxt;
+  }
+
+  ready(flow: Flow, frontier: string[]): string[] {
+    if (this.resumed) { // the paused round goes on as it was
+      this.resumed = false;
+      return frontier;
+    }
+    return frontier.filter((nodeId) => {
+      if (flow.steps[nodeId].type !== "core.join") return true;
+      const arrived = this.arrived[nodeId] ?? new Set();
+      if (![...before(flow, nodeId)].every((n) => arrived.has(n))) return false;
+      this.arrived[nodeId] = new Set();
+      return true;
+    });
+  }
 }
 
 export function outputs(flow: Flow, values: State): State {
@@ -294,7 +454,10 @@ export function copy<T>(value: T): T {
 }
 
 // ------------------------------------------------------------------ steps ----
-const ajv = new Ajv2020({ allErrors: true, strict: false });
+// `addUsedSchema: false`: a schema with an `$id` is not kept, so asking again with it (or another one with the same
+// `$id`) works; validators are kept by schema instead
+const ajv = new Ajv2020({ allErrors: true, strict: false, addUsedSchema: false });
+const validators = new Map<string, ReturnType<typeof ajv.compile>>();
 
 /**
  * What one step of a flow can do: ask a person, search, run workspace code. `runtime.ts` adds the Mastra models,
@@ -352,7 +515,9 @@ export class Run {
     if (opts.schema) request.response_schema = opts.schema;
     if (this.answer === MISSING) throw new Interrupted(request);
     if (opts.schema) {
-      const validate = ajv.compile(opts.schema);
+      const key = JSON.stringify(opts.schema);
+      let validate = validators.get(key);
+      if (validate === undefined) validators.set(key, validate = ajv.compile(opts.schema));
       if (!validate(this.answer)) {
         const first = (validate.errors ?? []).map((e) => `${e.instancePath || "answer"} ${e.message}`).sort()[0];
         throw new Interrupted({ ...request, error: first });
@@ -402,16 +567,30 @@ function isObject(value: any): value is Record<string, any> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** A person's answer to tool approvals as one decision per call (a bare yes/no applies to all). */
+/**
+ * A person's answer to tool approvals as one decision per call, each with its `type` (a bare yes/no applies to all;
+ * a call the answer leaves out is rejected).
+ */
 export function decisions(answer: any, count: number): Record<string, any>[] {
   if (isObject(answer) && Array.isArray(answer.decisions)) {
-    const found = answer.decisions.map((d: any) => (isObject(d) ? d : { type: d ? "approve" : "reject" }));
-    const last = found.length ? found[found.length - 1] : { type: "reject" };
-    return [...found, ...Array(count).fill(last)].slice(0, count);
+    const found = answer.decisions.map(decision);
+    return [...found, ...Array.from({ length: count }, () => ({ type: "reject" }))].slice(0, count);
   }
+  return Array.from({ length: count }, () => ({ type: yes(answer) ? "approve" : "reject" }));
+}
+
+function yes(answer: any): boolean {
   if (isObject(answer)) answer = answer.approved;
-  if (typeof answer === "string") answer = YES_WORDS.has(answer.trim().toLowerCase());
-  return Array(count).fill({ type: answer ? "approve" : "reject" });
+  if (typeof answer === "string") return YES_WORDS.has(answer.trim().toLowerCase()); // "no" is not a yes
+  return (typeof answer === "boolean" || typeof answer === "number") && Boolean(answer);
+}
+
+function decision(given: any): Record<string, any> {
+  if (isObject(given) && ["approve", "edit", "reject"].includes(given.type)) return given;
+  if (typeof given === "string" && ["edit", "reject"].includes(given.trim().toLowerCase())) {
+    return { type: given.trim().toLowerCase() };
+  }
+  return { ...(isObject(given) ? given : {}), type: yes(given) ? "approve" : "reject" };
 }
 
 /** The arguments a person wrote for an edited call (null: not an edit). */

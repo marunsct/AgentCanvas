@@ -8486,7 +8486,7 @@
                 "type": "null"
               }
             ],
-            "description": "the answer to an approval",
+            "description": "not used: approvals cannot be given on a share link",
             "title": "Approve"
           },
           "interrupt_id": {
@@ -8510,7 +8510,7 @@
                 "type": "null"
               }
             ],
-            "description": "the answer to a question (or a comment)",
+            "description": "the answer to a question",
             "title": "Text"
           },
           "visitor": {
@@ -10297,7 +10297,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.26.0"
+    "version": "0.26.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -19457,7 +19457,7 @@
     },
     "/v1/share/{token}/threads/{thread_id}/resume": {
       "post": {
-        "description": "Answer the question (or approval) a visitor's paused conversation asks, streaming what follows (SSE).",
+        "description": "Answer the question a visitor's paused conversation asks, streaming what follows (SSE). Approvals are not\ngiven here: anyone with the link could approve, so they wait for the builders on the Runs page.",
         "operationId": "share_resume_v1_share__token__threads__thread_id__resume_post",
         "parameters": [
           {

@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from agentcanvas import designs
-from agentcanvas.adapters import create_adapter
+from agentcanvas.adapters import create_adapter, flowpackager
 from agentcanvas.adapters.agno import codegen as agno_codegen
 from agentcanvas.adapters.llamaindex import codegen as llama_codegen
 from agentcanvas.adapters.microsoft_agent_framework import codegen as maf_codegen
@@ -163,6 +163,73 @@ async def test_a_tool_call_waits_for_a_person(adapter, answer, sent):
     assert runs[1][-1]["outcome"] == "success", runs[1][-1]
     assert _said(runs[1]) == ["Done."]
     assert [io["output"] for io in _tool_io(runs)] == ([sent] if sent else [])
+
+
+APPROVING = ["microsoft_agent_framework", "strands", "llamaindex"]  # their own way of pausing for a person
+TWO = {"content": "", "tool_calls": [{"name": "send_reply", "args": {"text": "one"}},
+                                     {"name": "send_reply", "args": {"text": "two"}}]}  # fmt: skip
+SAME = {"content": "", "tool_calls": [{"name": "send_reply", "args": {"text": "hi"}},
+                                      {"name": "send_reply", "args": {"text": "hi"}}]}  # fmt: skip
+EDIT = {"type": "edit", "edited_action": {"name": "send_reply", "args": {"text": "EDITED"}}}
+
+
+@pytest.fixture(params=[pytest.param(f, marks=installed(f)) for f in APPROVING])
+async def approving(request):
+    """An adapter whose agents pause for a person natively (the model bridge streams each tool call of a reply in a
+    chunk of its own, as OpenAI does: LlamaIndex reads one tool call per chunk)."""
+    a = create_adapter(request.param)
+    async with a.persistence(None):
+        yield a
+
+
+@pytest.mark.parametrize(
+    ("reply", "decisions", "sent"),
+    [
+        (TWO, [{"type": "approve"}, EDIT], ["sent: EDITED", "sent: one"]),
+        (TWO, [EDIT, {"type": "approve"}], ["sent: EDITED", "sent: two"]),
+        (TWO, [{"type": "reject", "message": "no"}, {"type": "approve"}], ["sent: two"]),
+        (SAME, [{"type": "approve"}, {"type": "reject"}], ["sent: hi"]),
+        (SAME, [{"type": "approve"}, EDIT], ["sent: EDITED", "sent: hi"]),
+    ],
+    ids=["edit-second", "edit-first", "reject-first", "same-args-reject", "same-args-edit"],
+)
+async def test_each_call_of_a_turn_gets_its_own_decision(approving, reply, decisions, sent):
+    """All the calls of a model turn that wait are asked about at once, and each decision applies to its own call
+    (also when a tool is called twice, or with the same arguments)."""
+    wf = _agent_wf(approving.id, approve_tools=["send_reply"])
+    answer = {"decisions": decisions}
+    runs = await _run(approving, wf, {"messages": [ASK]}, {"model": [reply, "Done."]}, [answer, answer])
+    asked = runs[0][-1]["interrupts"][0]["payload"]["action_requests"]
+    assert [r["args"] for r in asked] == [c["args"] for c in reply["tool_calls"]]
+    assert len(runs) == 2 and runs[1][-1]["outcome"] == "success", runs[-1][-1]
+    assert sorted(io["output"] for io in _tool_io(runs)) == sent
+
+
+async def test_a_rejected_call_tells_the_model_why(approving, monkeypatch):
+    from agentcanvas.adapters.langchain.testing import MockChatModel
+
+    seen: list[str] = []
+    generate = MockChatModel._generate
+
+    def recording(self, messages, *args, **kwargs):
+        seen.extend(str(m.content) for m in messages if m.type == "tool")
+        return generate(self, messages, *args, **kwargs)
+
+    monkeypatch.setattr(MockChatModel, "_generate", recording)
+    wf = _agent_wf(approving.id, approve_tools=["send_reply"])
+    answer = {"decisions": [{"type": "reject", "message": "Not now."}]}
+    runs = await _run(approving, wf, {"messages": [ASK]}, {"model": [CALL, "Done."]}, [answer])
+    assert runs[-1][-1]["outcome"] == "success", runs[-1][-1]
+    assert _tool_io(runs) == []
+    assert any("Rejected by a person: Not now." in s for s in seen), seen
+
+
+async def test_a_model_call_limit_holds_across_approvals(approving):
+    wf = _agent_wf(approving.id, approve_tools=["send_reply"], run_limit=2)
+    runs = await _run(approving, wf, {"messages": [ASK]}, {"model": [CALL]}, [{"approved": True}] * 5)
+    assert len(runs) <= 3 and runs[-1][-1]["outcome"] == "success", [r[-1] for r in runs]
+    assert _said(runs[-1]) == ["Stopped: support reached its limit of 2 model calls before finishing."]
+    assert sum(1 for r in runs for ev in r if ev.get("name") == "ac.model_reply") == 2
 
 
 async def test_a_model_call_limit_stops_the_agent(adapter):
@@ -394,6 +461,20 @@ def _export_wf(framework: str) -> Workflow:
     data["edges"] += [_flow("n_agent", "n_draft"), _flow("n_draft", "n_ok"), _flow("n_ok", "END"),
                       _wire("r_model", "n_draft")]  # fmt: skip
     return Workflow.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    ("name", "pkg"),
+    [("Support", "support"), ("Strands", "wf_strands"), ("Llama Index", "wf_llama_index"),
+     ("Workflows", "wf_workflows"), ("Agent Framework", "wf_agent_framework"), ("OpenAI", "wf_openai")],
+)  # fmt: skip
+def test_an_export_package_does_not_hide_what_it_imports(name, pkg):
+    """The flow's package sits on src/ next to the frameworks' imports, which the server may not have installed."""
+    assert flowpackager.flow_package(name) == pkg
+    assert flowpackager.flow_package("tools", {"tools"}) == "wf_tools"  # the workspace code bundled with it
+    data = _agent_wf("strands").model_dump(mode="json") | {"name": name}
+    _, zipped = create_adapter("strands").package(Workflow.model_validate(data))
+    assert f"src/{pkg}/workflow.py" in {n.split("/", 1)[1] for n in zipfile.ZipFile(io.BytesIO(zipped)).namelist()}
 
 
 @pytest.mark.parametrize("framework", FRAMEWORKS)

@@ -110,7 +110,8 @@ class Paused:
     done: list[list[Any]]  # [node id, occurrence, route or None] for each finished step, in order
     payload: dict[str, Any]
     interrupt_id: str
-    answers: list[Any] = field(default_factory=list)  # earlier answers to the asking step (one per tool call)
+    answers: list[Any] = field(default_factory=list)  # earlier answers to the asking step
+    calls: list[list[Any]] = field(default_factory=list)  # [tool, args, result] of the asking step's answered calls
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), default=str)
@@ -171,13 +172,19 @@ class _Execution:
         self.done: list[list[Any]] = []
         self.replay: dict[tuple[str, int], str | None] = {}
         self.answers: tuple[str, int, list[Any]] | None = None  # the step that asked, and its answers so far
-        # node id, occurrence, payload, interrupt id, the step's answers so far
-        self.asked: tuple[str, int, dict[str, Any], str, list[Any]] | None = None
+        # the asking step's tool calls: the one the person was asked about with their answer ([tool, args, answer]),
+        # and the calls answered before ([tool, args, result], replayed instead of run again)
+        self.calls: tuple[list[Any] | None, list[list[Any]]] = (None, [])
+        # node id, occurrence, payload, interrupt id, the step's answers so far, its answered tool calls
+        self.asked: tuple[str, int, dict[str, Any], str, list[Any], list[list[Any]]] | None = None
         if resume is not None:
             paused, answer = resume
             self.done = [list(d) for d in paused.done]
             self.replay = {(d[0], d[1]): d[2] for d in paused.done}
             self.answers = (paused.node_id, paused.occurrence, [*paused.answers, answer])
+            request = (paused.payload.get("action_requests") or [None])[0]
+            pending = [request.get("name"), request.get("args") or {}, answer] if isinstance(request, dict) else None
+            self.calls = (pending, [list(c) for c in paused.calls])
 
     def emit(self, event: dict[str, Any]) -> None:
         self.events.put_nowait(event)
@@ -195,8 +202,9 @@ class _Execution:
             )
         started = time.perf_counter()
         self.emit({"type": "STEP_STARTED", "stepName": name, "canvas_node_id": node_id, "task_id": f"{node_id}#{n}"})
-        answers = self.answers[2] if self.answers and self.answers[:2] == (node_id, n) else []
-        run = Run(self, ctx, node_id, name, answers)
+        mine = self.answers is not None and self.answers[:2] == (node_id, n)
+        answers = self.answers[2] if self.answers and mine else []
+        run = Run(self, ctx, node_id, name, answers, calls=self.calls if mine else None)
         try:
             try:
                 out = None if disabled else await fn(run)
@@ -205,7 +213,7 @@ class _Execution:
         except Interrupted as intr:
             interrupt_id = f"{self.run_id}:{node_id}"
             if self.asked is None:  # one question at a time: the first step that asks is the one continued
-                self.asked = (node_id, n, intr.payload, interrupt_id, list(answers))
+                self.asked = (node_id, n, intr.payload, interrupt_id, list(answers), run.answered_calls())
             self.emit({
                 "type": "STEP_FINISHED", "stepName": name, "canvas_node_id": node_id, "status": "interrupted",
                 "task_id": f"{node_id}#{n}", "duration_ms": _ms(started),
@@ -323,9 +331,10 @@ async def run(
     if "error" in outcome:
         yield outcome["error"]
     elif ex.asked is not None:
-        node_id, occurrence, payload, interrupt_id, answers = ex.asked
+        node_id, occurrence, payload, interrupt_id, answers, calls = ex.asked
         paused = Paused(values=_copy(ex.values), node_id=node_id, occurrence=occurrence, done=list(ex.done),
-                        payload=payload, interrupt_id=interrupt_id, answers=_copy(answers))  # fmt: skip
+                        payload=payload, interrupt_id=interrupt_id, answers=_copy(answers),
+                        calls=_copy(calls))  # fmt: skip
         info = {"id": interrupt_id, "kind": interrupt_kind(payload), "canvas_node_id": node_id, "payload": payload}
         yield {
             "type": "RUN_FINISHED", "outcome": "interrupt", "breakpoint": False, "interrupts": [info],
@@ -365,11 +374,27 @@ def outputs(canvas: Canvas, values: dict[str, Any]) -> dict[str, Any]:
 class Run:
     """What one step can do: call models and agents, pick a path, ask a person, search, run code."""
 
-    def __init__(self, ex: _Execution, ctx: Context, node_id: str, name: str, answers: list[Any] | None = None):
+    def __init__(
+        self,
+        ex: _Execution,
+        ctx: Context,
+        node_id: str,
+        name: str,
+        answers: list[Any] | None = None,
+        *,
+        calls: tuple[list[Any] | None, list[list[Any]]] | None = None,
+    ):
         self._ex, self.ctx, self.node_id, self.name = ex, ctx, node_id, name
         self._answers = list(answers or [])  # a person's answers to this step, oldest first
         self._answer = self._answers[-1] if self._answers else _MISSING  # an approval or question: the latest
-        self._tool_answers = iter(self._answers)  # tool approvals: one answer per call, in order
+        pending, earlier = calls or (None, [])
+        self._pending = pending  # [tool, args, answer]: the call a person was asked about, and their answer
+        self._earlier = [list(c) for c in earlier]  # [tool, args, result] of calls answered before, not replayed yet
+        self._answered: list[list[Any]] = []  # [tool, args, result] of the calls answered so far in this run
+
+    def answered_calls(self) -> list[list[Any]]:
+        """The step's tool calls a person answered (approved, edited or rejected), with their results."""
+        return [*self._answered, *self._earlier]
 
     @property
     def state(self) -> dict[str, Any]:
@@ -383,29 +408,41 @@ class Run:
     def tools(self, resources: list[str], *, approve: list[str] | None = None) -> list[Any]:
         """ADK tools for the canvas tool blocks `resources`; the calls of the tools named in `approve` wait for a
         person (they approve, edit the arguments or reject the call)."""
-        found = self._ex.host.tools(resources, self.name)
-        return [self._approved(t) if t.__name__ in (approve or []) else t for t in found]
+        wanted = set(approve or [])  # tool block names (or the names of their tools)
+        return [
+            self._approved(t) if res in wanted or t.__name__ in wanted else t
+            for res in resources
+            for t in self._ex.host.tools([res], self.name)
+        ]
 
     def _approved(self, tool: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+        name = tool.__name__
+
         @functools.wraps(tool)
         async def ask_first(**args: Any) -> Any:
-            answer = next(self._tool_answers, _MISSING)
-            if answer is _MISSING:  # the agent's turn runs again when the person answers, up to this call
-                request = {"name": tool.__name__, "args": args, "description": f"{self.name} wants to call "
-                           f"{tool.__name__}"}  # fmt: skip
+            # the agent's whole turn runs again after each answer: a call answered before gives its result again
+            for i, (done, done_args, result) in enumerate(self._earlier):
+                if done == name and _same(done_args, args):
+                    self._answered.append(self._earlier.pop(i))
+                    return result
+            pending = self._pending
+            if pending is None or pending[0] != name or not _same(pending[1], args):  # a new call: ask about it
+                request = {"name": name, "args": args, "description": f"{self.name} wants to call {name}"}
                 raise Interrupted({
                     "action_requests": [request], "canvas_node_id": self.node_id,
-                    "review_configs": [{"action_name": tool.__name__, "allowed_decisions": ["approve", "edit",
-                                                                                             "reject"]}],
+                    "review_configs": [{"action_name": name, "allowed_decisions": ["approve", "edit", "reject"]}],
                 })  # fmt: skip
-            decision = _decision(answer)
+            self._pending = None  # an answer counts for the very call the person saw, once
+            decision = _decision(pending[2])
             kind = decision.get("type", "approve")
             if kind not in ("approve", "edit"):
-                return str(decision.get("message") or "A person rejected this tool call.")
-            if kind == "edit":
-                args = (decision.get("edited_action") or {}).get("args") or args
-            out = tool(**args)
-            return await out if inspect.isawaitable(out) else out
+                result: Any = str(decision.get("message") or "A person rejected this tool call.")
+            else:
+                given = ((decision.get("edited_action") or {}).get("args") or args) if kind == "edit" else args
+                out = tool(**given)
+                result = await out if inspect.isawaitable(out) else out
+            self._answered.append([name, _copy(args), _copy(result)])
+            return result
 
         return ask_first
 
@@ -502,6 +539,11 @@ class Run:
 
 
 # ------------------------------------------------------------------ helpers ----
+def _same(a: Any, b: Any) -> bool:
+    """The same tool arguments (compared as JSON)."""
+    return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
+
+
 def _decision(answer: Any) -> dict[str, Any]:
     """A person's answer to one tool call as a decision (approve, edit or reject)."""
     if isinstance(answer, dict) and isinstance(answer.get("decisions"), list):

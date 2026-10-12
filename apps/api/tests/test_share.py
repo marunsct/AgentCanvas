@@ -155,8 +155,9 @@ async def test_share_calls_count_against_the_deployment_limit(api_client, limits
     assert refused.status_code == 429
 
 
-async def test_a_paused_conversation_asks_the_visitor(app, api_client):
-    """A run that pauses for approval shows the visitor a question; their answer continues it."""
+async def test_a_paused_conversation_waits_for_the_builders_approval(app, api_client):
+    """A run that pauses for approval tells the visitor it waits; a visitor cannot approve it (anyone with the
+    link could), the builders do."""
     from agentcanvas.testing import DemoResources
 
     app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(HIGH_CASE["mocks"])
@@ -166,15 +167,101 @@ async def test_a_paused_conversation_asks_the_visitor(app, api_client):
     assert share["input"] == {"field": "ticket", "chat": False}
     evs = events((await say(api_client, share["token"], "Site down")).text)
     done = evs[-1]
-    assert done["status"] == "interrupted" and done["answer"] == ""
-    assert done["interrupts"][0]["kind"] == "approval" and done["interrupts"][0]["question"]
+    assert done["status"] == "interrupted" and done["interrupts"] == [] and "needs approval" in done["answer"]
     thread = evs[0]["threadId"]
     resume = f"/v1/share/{share['token']}/threads/{thread}/resume"
     assert (await api_client.post(resume, json={"visitor": BO, "approve": True})).status_code == 404
-    after = events((await api_client.post(resume, json={"visitor": ADA, "approve": True})).text)
-    assert after[-1]["type"] == "RUN_FINISHED" and after[-1]["status"] == "success"
-    again = await api_client.post(resume, json={"visitor": ADA, "approve": True})
+    for body in ({"approve": True}, {"text": "yes"}):
+        refused = await api_client.post(resume, json={"visitor": ADA, **body})
+        assert refused.status_code == 422 and "cannot be approved from a share link" in refused.text
+    inbox = (await api_client.get("/v1/inbox")).json()
+    assert [i for i in inbox if i["thread_id"] == thread]  # still waiting for a builder
+
+
+async def test_a_visitor_answers_a_question(app, api_client):
+    """An 'Ask a person' step is the visitor's to answer."""
+    wf = await make_greeter(api_client)
+    cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    ir = cur["ir"]
+    ir["state"]["channels"].append({"name": "nick", "type": {"type": "string"}, "io": "out"})
+    ir["nodes"].append({"id": "n_ask", "type": "core.human_input", "name": "ask",
+                        "config": {"prompt": "What should I call you?", "output": "nick"}})  # fmt: skip
+    for e in ir["edges"]:
+        if e["kind"] == "flow" and e["source"]["node"] == "START":
+            first, e["target"]["node"] = e["target"]["node"], "n_ask"
+    ir["edges"].append({"id": "e_ask", "kind": "flow", "source": {"node": "n_ask"}, "target": {"node": first}})
+    r = await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
+    assert r.status_code == 200, r.text
+    dep = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()["deployment"]["id"]
+    token = (await share_on(api_client, dep))["token"]
+    evs = events((await say(api_client, token, "Ada")).text)
+    done = evs[-1]
+    assert done["status"] == "interrupted" and done["interrupts"][0]["kind"] == "input"
+    assert done["interrupts"][0]["question"] == "What should I call you?"
+    resume = f"/v1/share/{token}/threads/{evs[0]['threadId']}/resume"
+    after = events((await api_client.post(resume, json={"visitor": ADA, "text": "Ace"})).text)
+    assert after[-1]["type"] == "RUN_FINISHED" and after[-1]["status"] == "success", after
+    again = await api_client.post(resume, json={"visitor": ADA, "text": "Ace"})
     assert again.status_code == 422  # nothing is waiting any more
+
+
+async def test_visitors_see_only_the_answer_steps_text(app, api_client):
+    """Text an earlier step writes (a classifier's label) never streams to a visitor; the final step's does,
+    and nothing streams when the workflow has a safety block (the text before the check must not leak)."""
+    from agentcanvas.api.v1.share import _answer_steps
+    from agentcanvas.testing import DemoResources
+
+    mocks = {"fast_model": ["low"], "smart_model": ["Use the reset link."]}
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(mocks)
+    wf = await new_triage(api_client)
+    dep = (await api_client.post(f"/v1/workflows/{wf['id']}/publish", json={})).json()["deployment"]["id"]
+    token = (await share_on(api_client, dep))["token"]
+    evs = events((await say(api_client, token, "How do I reset my password?")).text)
+    streamed = "".join(e["delta"] for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
+    assert streamed == "Use the reset link." == evs[-1]["answer"]  # the classifier's "low" stays inside
+
+    triage = Workflow.model_validate(wf["ir"])
+    assert _answer_steps(triage) == {"n_ag"}
+    guarded = triage.model_dump(mode="json")
+    guarded["nodes"].append({"id": "n_g", "type": "guard.pii", "name": "pii", "config": {}})
+    assert _answer_steps(Workflow.model_validate(guarded)) == set()
+
+
+async def test_one_visitor_cannot_use_up_the_deployment_limit(api_client, limits):  # noqa: F811
+    """Share requests also count per client address on each link, so one visitor (whatever secrets they send)
+    runs out before the deployment does."""
+    limits.rate_limit_per_deployment, limits.rate_limit_per_project, limits.rate_limit_per_share_client = 10, 0, 2
+    _, dep, key = await publish(api_client)
+    token = (await share_on(api_client, dep))["token"]
+    assert (await say(api_client, token, "Ada")).status_code == 200
+    assert (await say(api_client, token, "Ada", visitor=BO)).status_code == 200
+    refused = await say(api_client, token, "Ada", visitor="visitor-cy-0123456789ab")
+    assert refused.status_code == 429 and "visitor" in refused.text
+    run = await api_client.post(f"/v1/deployments/{dep}/runs/wait", json={"input": {"who": "Cy"}}, headers=bearer(key))
+    assert run.status_code == 200  # the deployment itself still has room
+
+
+async def test_concurrent_first_reads_of_a_share_create_it_once(app, api_client):
+    """Two first GETs at once: the one that loses the insert race reads the other's row (no 500)."""
+    import asyncio
+
+    from agentcanvas.services.share import ShareService
+
+    _, dep, _ = await publish(api_client)
+    async with app.state.db.sessionmaker() as s1, app.state.db.sessionmaker() as s2:
+        first = await ShareService(s1).ensure(dep)
+        await s1.commit()
+        late = ShareService(s2)
+
+        async def missed(_dep_id: str) -> None:  # it looked before the other request's insert was committed
+            return None
+
+        late.get = missed  # type: ignore[method-assign]
+        second = await late.ensure(dep)
+        await s2.commit()
+        assert second.token == first.token
+    gets = await asyncio.gather(*(api_client.get(f"/v1/deployments/{dep}/share") for _ in range(4)))
+    assert {g.status_code for g in gets} == {200} and len({g.json()["token"] for g in gets}) == 1
 
 
 def test_input_shape_and_answer():

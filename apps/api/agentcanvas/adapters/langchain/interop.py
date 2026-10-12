@@ -669,7 +669,8 @@ def designed_agent_node(
 
         async def call(t: Any, args: dict[str, Any]) -> Any:
             nonlocal asked_count
-            if t.name in approve:
+            # `approve_tools` names tool blocks (or the tools they give): a block's tools carry its name
+            if t.name in approve or (getattr(t, "metadata", None) or {}).get("ac_resource") in approve:
                 from langchain_core.runnables.config import var_child_runnable_config
 
                 asking = json.dumps({"tool": t.name, "args": args}, sort_keys=True, default=str)

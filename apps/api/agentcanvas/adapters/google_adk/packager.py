@@ -263,8 +263,8 @@ async def run_once(
         if saved is not None:
             _saved(thread_id).parent.mkdir(parents=True, exist_ok=True)
             _saved(thread_id).write_text(saved.to_json())
-        elif ev["type"] in ("RUN_FINISHED", "RUN_ERROR"):
-            _saved(thread_id).unlink(missing_ok=True)
+        elif ev["type"] == "RUN_FINISHED" or (ev["type"] == "RUN_ERROR" and paused is None):
+            _saved(thread_id).unlink(missing_ok=True)  # a failed continuation keeps the saved run, to try again
         if not quiet:
             print(json.dumps(ev, default=str), flush=True)
         last = ev

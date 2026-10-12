@@ -19,7 +19,8 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function KnowledgePage() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(""); // as typed; the name sent is suggestName(name)
+  const kbName = suggestName(name);
   const kbs = useQuery({
     queryKey: ["knowledge", PROJECT_ID],
     queryFn: () => apiFetch<KnowledgeBaseOut[]>(`/projects/${PROJECT_ID}/knowledge`),
@@ -36,7 +37,7 @@ export function KnowledgePage() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (NAME_PATTERN.test(name)) create.mutate({ name });
+    if (NAME_PATTERN.test(kbName)) create.mutate({ name: kbName });
   };
 
   return (
@@ -52,8 +53,9 @@ export function KnowledgePage() {
         <div className="row gap wrap kb-create">
           <form onSubmit={submit} className="row gap">
             <input aria-label="new knowledge base name" placeholder="New knowledge base, e.g. handbook" value={name}
-              onChange={(e) => setName(suggestName(e.target.value))} />
-            <button type="submit" disabled={!NAME_PATTERN.test(name) || create.isPending}>Create</button>
+              onChange={(e) => setName(e.target.value)} />
+            <button type="submit" disabled={!NAME_PATTERN.test(kbName) || create.isPending}>Create</button>
+            {kbName && kbName !== name && <span className="muted small" data-testid="kb-name-hint">Name: {kbName}</span>}
           </form>
           {kbs.isSuccess && !hasSample && ( // not while the list loads: the sample may be there already
             <button type="button" data-testid="load-sample" disabled={create.isPending}

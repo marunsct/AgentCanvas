@@ -22,8 +22,10 @@ def limits(app, monkeypatch):
     monkeypatch.setattr(ratelimit, "time", SimpleNamespace(time=lambda: 1_800_000_030.0))
     s = app.state.settings
     saved = (s.rate_limit_per_deployment, s.rate_limit_per_webhook, s.rate_limit_per_project)
+    saved_share = s.rate_limit_per_share_client
     yield s
     s.rate_limit_per_deployment, s.rate_limit_per_webhook, s.rate_limit_per_project = saved
+    s.rate_limit_per_share_client = saved_share
     s.rate_limit_by_environment = {}
 
 
