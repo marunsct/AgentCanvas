@@ -129,4 +129,5 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S29–S30: Google ADK flows (v0.21.0) | ✅ done: workflows as native ADK graph workflows, ADK agents with tool approvals, pauses for people, ADK project export |
 | S31: Onboarding and switching (v0.22.0) | ✅ done: Langflow, Flowise and n8n importers, a Playground, Simple mode, Push to GitHub |
 | S32: Pydantic AI and Agno flows (v0.23.0) | ✅ done: workflows run and export as Pydantic AI or Agno flows, with the frameworks' own agents and tool approvals |
-| S33–S36: framework flows | ⏸ next (S33–S34 Microsoft Agent Framework flows); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S33–S34: Microsoft Agent Framework flows (v0.24.0) | ✅ done: workflows run and export as Agent Framework flows, with its own agents and tool approvals |
+| S35–S36: framework flows | ⏸ next (S35 Strands and LlamaIndex Workflows flows); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |

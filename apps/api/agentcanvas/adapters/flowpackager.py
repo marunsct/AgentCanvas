@@ -1,4 +1,4 @@
-"""Export a Pydantic AI or Agno flow as a project of its own (S32).
+"""Export a Pydantic AI, Agno or Microsoft Agent Framework flow as a project of its own (S32).
 
 The project holds the generated flow, the runtime it runs on (the flow engine, the framework's runtime and the
 expression and knowledge-search modules, vendored), a host that reaches each model over its provider's
@@ -17,6 +17,10 @@ from typing import Any
 
 from agentcanvas.adapters.agno.codegen import AGNO_VERSION, OPENAI_VERSION
 from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _secret_names, _version, package_name
+from agentcanvas.adapters.microsoft_agent_framework.codegen import (
+    AGENT_FRAMEWORK_OPENAI_VERSION,
+    AGENT_FRAMEWORK_VERSION,
+)
 from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.adapters.pydantic_ai.codegen import PYDANTIC_AI_VERSION
 from agentcanvas.errors import InvalidInput
@@ -112,6 +116,29 @@ def scripted_model(replies: list[Any]) -> Any:
     return OpenAILike(id="scripted", base_url="http://scripted/v1", api_key="scripted", http_client=client)
 '''
 
+AGENT_FRAMEWORK_MODELS = '''from agent_framework.openai import OpenAIChatCompletionClient
+
+from agentcanvas.adapters.microsoft_agent_framework.runtime import Scripted, Settings
+
+
+def make_model(resource: str, spec: dict[str, Any], settings: dict[str, Any]) -> Any:
+    """The model block `resource` as an Agent Framework chat client over its provider's OpenAI-compatible API."""
+    env = resource.upper()
+    return OpenAIChatCompletionClient(
+        os.environ.get(f"{env}_MODEL") or spec["model"],
+        base_url=os.environ.get(f"{env}_BASE_URL") or os.environ.get("MODEL_BASE_URL") or spec["base_url"],
+        api_key=os.environ.get(spec["key_env"]) or "not-needed",
+        middleware=[Settings(settings)] if settings else None,
+    )
+
+
+def scripted_model(replies: list[Any]) -> Any:
+    """Scripted replies, as the canvas's mock mode gives them (see `Scripted`): the chat client is the Agent
+    Framework's own, and nothing reaches a provider."""
+    return OpenAIChatCompletionClient("scripted", base_url="http://scripted/v1", api_key="scripted",
+                                      middleware=[Scripted(replies)])
+'''
+
 TARGETS = {
     "pydantic_ai": Target(
         label="Pydantic AI",
@@ -128,6 +155,18 @@ TARGETS = {
         docs="https://docs.agno.com/",
         how="an Agno `Agent` for each AI block (an `OpenAILike` model, tools, an `output_schema` for typed answers)",
         models=AGNO_MODELS,
+    ),
+    "microsoft_agent_framework": Target(
+        label="Microsoft Agent Framework",
+        slug="microsoft-agent-framework",
+        pins=[
+            f"agent-framework-core=={AGENT_FRAMEWORK_VERSION}",
+            f"agent-framework-openai=={AGENT_FRAMEWORK_OPENAI_VERSION}",
+        ],
+        docs="https://learn.microsoft.com/agent-framework/",
+        how="an Agent Framework `Agent` for each AI block (an `OpenAIChatCompletionClient`, tools, a `response_format` "
+        "for typed answers)",
+        models=AGENT_FRAMEWORK_MODELS,
     ),
 }
 

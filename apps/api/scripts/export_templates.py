@@ -30,7 +30,14 @@ def main(out: Path) -> None:
             _, data = get_adapter(wf.framework).package(wf, default_registry(), target=target, version="1.0.0")
             zipfile.ZipFile(io.BytesIO(data)).extractall(out / target / f.name.removesuffix(".ir.json"))
     counts = {}
-    frameworks = ("openai_agents", "crewai", "google_adk", "pydantic_ai", "agno")  # S25, S27, S29, S32
+    frameworks = (
+        "openai_agents",
+        "crewai",
+        "google_adk",
+        "pydantic_ai",
+        "agno",  # S25, S27, S29, S32
+        "microsoft_agent_framework",
+    )  # S33-S34
     for framework in frameworks:  # each template it can run, as a project
         adapter, counts[framework] = get_adapter(framework), 0
         for f in files:
@@ -44,7 +51,8 @@ def main(out: Path) -> None:
     print(
         f"exported {len(files)} templates to {len(TARGETS)} targets, {counts['openai_agents']} to the OpenAI Agents "
         f"SDK, {counts['crewai']} to CrewAI, {counts['google_adk']} to Google ADK, {counts['pydantic_ai']} to Pydantic "
-        f"AI and {counts['agno']} to Agno, in {out}"
+        f"AI, {counts['agno']} to Agno and {counts['microsoft_agent_framework']} to the Microsoft Agent Framework, "
+        f"in {out}"
     )
 
 

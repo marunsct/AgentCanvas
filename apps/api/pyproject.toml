@@ -87,13 +87,15 @@ asyncio_mode = "auto"
 
 [tool.pyright]
 include = ["agentcanvas"]
-# S27/S29/S32: these run in the frameworks' own environments (make crewai, make framework FW=<id>), which the API's
+# S27/S29/S32/S33: these run in the frameworks' own environments (make crewai, make framework FW=<id>), which the API's
 # own does not install
 exclude = [
   "agentcanvas/adapters/crewai/runtime.py", "agentcanvas/adapters/crewai/worker.py",
   "agentcanvas/adapters/google_adk/runtime.py", "agentcanvas/adapters/google_adk/worker.py",
   "agentcanvas/adapters/pydantic_ai/runtime.py", "agentcanvas/adapters/pydantic_ai/worker.py",
   "agentcanvas/adapters/agno/runtime.py", "agentcanvas/adapters/agno/worker.py",
+  "agentcanvas/adapters/microsoft_agent_framework/runtime.py",
+  "agentcanvas/adapters/microsoft_agent_framework/worker.py",
 ]
 typeCheckingMode = "standard"
 

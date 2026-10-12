@@ -1,5 +1,6 @@
-"""The Pydantic AI and Agno adapters (S32): flows run by the flow engine with the frameworks' own agents, tools that
-wait for a person, typed answers, model call limits, every template they can run, and exports.
+"""The Pydantic AI and Agno (S32) and Microsoft Agent Framework (S33-S34) adapters: flows run by the flow engine with
+the frameworks' own agents, tools that wait for a person, typed answers, model call limits, every template they can
+run, and exports.
 
 Runs need the framework's Python environment (`make framework FW=pydantic_ai`, `make framework FW=agno`); without
 one these tests skip, except those that only generate code or check what a server without it says.
@@ -20,6 +21,7 @@ import pytest
 from agentcanvas import designs
 from agentcanvas.adapters import create_adapter
 from agentcanvas.adapters.agno import codegen as agno_codegen
+from agentcanvas.adapters.microsoft_agent_framework import codegen as maf_codegen
 from agentcanvas.adapters.pydantic_ai import codegen as pai_codegen
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -27,8 +29,13 @@ from agentcanvas.registry.adapters import all_manifests
 from agentcanvas.runtime.types import ResumeSpec, RunSpec
 
 TEMPLATES = Path(__file__).parents[1] / "agentcanvas" / "registry" / "templates"
-FRAMEWORKS = ["pydantic_ai", "agno"]
-CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen}
+FRAMEWORKS = ["pydantic_ai", "agno", "microsoft_agent_framework"]
+CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen, "microsoft_agent_framework": maf_codegen}
+PINS = {
+    "pydantic_ai": "pydantic-ai-slim[openai]==2.54.0",
+    "agno": "agno==3.1.1",
+    "microsoft_agent_framework": "agent-framework-core==1.20.0",
+}
 MODEL = {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}}
 ASK = {"role": "user", "content": "Tell the customer hi"}
 CALL = {"content": "", "tool_calls": [{"name": "send_reply", "args": {"text": "hi"}}]}
@@ -223,6 +230,47 @@ def test_generated_agno_flow_is_native_code():
     assert "FLOW = rt.Flow(" in source and "@canvas-node n_agent " in source
 
 
+def test_generated_agent_framework_flow_is_native_code():
+    schema = {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}
+    source = maf_codegen.generate(_agent_wf("microsoft_agent_framework", approve_tools=["send_reply"], run_limit=3,
+                                            response_format=schema))  # fmt: skip
+    ast.parse(source)
+    assert "from agent_framework import Agent" in source
+    assert 'run.model("model"),' in source and "instructions=SUPPORT_INSTRUCTIONS," in source
+    assert 'tools=run.tools(["send"], approve=["send_reply"])' in source
+    assert 'default_options={"response_format": SupportAnswer}' in source
+    assert "class SupportAnswer(BaseModel):" in source
+    assert 'run.agent(support_agent(run), state.get("messages"), structured=True, max_calls=3)' in source
+    assert "FLOW = rt.Flow(" in source and "@canvas-node n_agent " in source
+
+
+async def test_agent_framework_asks_only_about_the_tools_that_wait():
+    """The Agent Framework asks about every call of a model turn once one tool needs approval: the others go ahead
+    without asking a person."""
+    if designs.part_python("microsoft_agent_framework") is None:
+        pytest.skip("no microsoft_agent_framework here (make framework)")
+    data = _agent_wf("microsoft_agent_framework", approve_tools=["send_reply"]).model_dump(mode="json")
+    data["resources"].append(
+        {
+            "id": "r_note",
+            "type": "tool.python",
+            "name": "note",
+            "config": {"import_path": "examples.tools:lookup_order"},
+        }
+    )
+    data["edges"].append(_wire("r_note", "n_agent", "tools"))
+    wf = Workflow.model_validate(data)
+    both = {"content": "", "tool_calls": [{"name": "lookup_order", "args": {"order_id": "A1"}},
+                                          {"name": "send_reply", "args": {"text": "hi"}}]}  # fmt: skip
+    a = create_adapter("microsoft_agent_framework")
+    async with a.persistence(None):
+        runs = await _run(a, wf, {"messages": [ASK]}, {"model": [both, "Done."]}, [{"approved": True}])
+    asked = runs[0][-1]["interrupts"][0]["payload"]["action_requests"]
+    assert [r["name"] for r in asked] == ["send_reply"]
+    assert runs[1][-1]["outcome"] == "success", runs[1][-1]
+    assert sorted(io["tool"] for io in _tool_io(runs)) == ["lookup_order", "send_reply"]
+
+
 @pytest.mark.parametrize("framework", FRAMEWORKS)
 def test_paths_joins_and_loops_become_the_flow(framework):
     from agentcanvas.conformance import CASES
@@ -342,8 +390,7 @@ def test_export_is_a_project_of_its_own(framework, tmp_path):
             "tests/test_workflow.py", "tests/test_cases.json"} <= names  # fmt: skip
     assert not any("langchain" in n for n in names)
     pyproject = (project / "pyproject.toml").read_text()
-    pin = "pydantic-ai-slim[openai]==2.54.0" if framework == "pydantic_ai" else "agno==3.1.1"
-    assert pin in pyproject
+    assert PINS[framework] in pyproject
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     for py in project.rglob("*.py"):
         compile(py.read_text(), str(py), "exec")
