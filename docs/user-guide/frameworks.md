@@ -1,7 +1,7 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. A server offers seven:
+for. A server offers nine:
 
 - **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
   long-term memory and breakpoints. New workflows use it.
@@ -17,6 +17,8 @@ for. A server offers seven:
   [Run a workflow on Pydantic AI or Agno](#run-a-workflow-on-pydantic-ai-or-agno).
 - **Microsoft Agent Framework** does the same with Agent Framework agents. See
   [Run a workflow on the Microsoft Agent Framework](#run-a-workflow-on-the-microsoft-agent-framework).
+- **Strands Agents** and **LlamaIndex** do the same with Strands agents and LlamaIndex function agents. See
+  [Run a workflow on Strands or LlamaIndex](#run-a-workflow-on-strands-or-llamaindex).
 
 More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
 
@@ -280,6 +282,33 @@ What is its own:
 
 `GET /v1/workflows/{id}/code?framework=microsoft_agent_framework` previews the converted code.
 
+## Run a workflow on Strands or LlamaIndex
+
+Pick **Strands Agents** or **LlamaIndex** as the workflow's framework. Runs need it installed on the server in a
+Python environment of its own: `make framework FW=strands` or `make framework FW=llamaindex` (the Docker image takes
+`--build-arg WITH_STRANDS=true` and `--build-arg WITH_LLAMAINDEX=true`). Without it you can still design, check and
+export these workflows; a run says how to install it.
+
+They work like [Pydantic AI and Agno](#run-a-workflow-on-pydantic-ai-or-agno): the same `async def` per block and
+`FLOW`, run the way the canvas draws it, with the same shape, models, approvals, questions, limits and export.
+What is each one's own:
+
+- **Strands.** Agents are Strands `Agent`s with an `OpenAIModel`, tools and a `structured_output_model` for typed
+  answers, run with `agent.invoke_async`. **Ask before using** is an `AskBefore` hook that uses Strands' own
+  interrupts: the agent's messages and interrupt state are saved, and it continues with your answer (approve, change
+  the arguments, or reject with a reason the agent reads). The model call limit is Strands' own `Limits(turns=...)`.
+- **LlamaIndex.** Agents are `FunctionAgent`s with an `OpenAILike` LLM, tools and an `output_cls` for typed answers,
+  run with `agent.run`. A tool in **Ask before using** waits inside the agent's own workflow (an
+  `InputRequiredEvent`, answered with a `HumanResponseEvent`); the agent's serialized `Context` and its chat memory
+  are saved, and when the model calls several such tools you answer them one at a time. The model call limit is the
+  agent's own `max_iterations`.
+- **Typed answers with a model that answers in text.** When the model writes the JSON answer as text instead of
+  using the framework's answer tool (scripted test replies do), AgentCanvas reads the text as the typed answer.
+- **Not yet:** the flow is not written as a Strands `GraphBuilder` graph or as one LlamaIndex `Workflow` with an event
+  per edge. Saved history, state editing, replay and breakpoints are missing here too.
+
+`GET /v1/workflows/{id}/code?framework=strands` (or `llamaindex`) previews the converted code.
+
 ## What each framework can do
 
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
@@ -288,7 +317,7 @@ framework cannot do one of them, AgentCanvas says so plainly instead of failing;
 to use it.
 
 Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
-`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework`).
+`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex`).
 
 ## The Echo demo engine
 

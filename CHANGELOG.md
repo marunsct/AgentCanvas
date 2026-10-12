@@ -2,6 +2,21 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.25.0 — Strands and LlamaIndex flows (not tagged yet)
+
+### Added
+- **Strands Agents and LlamaIndex as workflow frameworks.** Pick either in the workflow settings and the workflow is generated as a flow of async Python on the shared flow engine. Strands agents are `Agent`s with an `OpenAIModel`, tools and a `structured_output_model` (`strands-agents` 1.58.1); LlamaIndex agents are `FunctionAgent`s with an `OpenAILike` LLM, tools and an `output_cls` (`llama-index-core` 0.14.25). Both pass the 12-case conformance kit; 22 of the 27 templates run on each.
+- **Ask before a tool call, each framework's way.** On Strands, an `AskBefore` hook interrupts the call with `BeforeToolCallEvent.interrupt`; the agent's messages and interrupt state are saved and it continues with an `interruptResponse` (approve, edited arguments, or a rejection whose reason the agent reads). On LlamaIndex, the tool waits inside the agent's workflow with an `InputRequiredEvent` and a `HumanResponseEvent`; the serialized `Context` and the chat memory are saved, and calls are asked about one at a time.
+- **Model call limits** use Strands' `Limits(turns=...)` and LlamaIndex's `max_iterations`.
+- **Exports** to a Strands or LlamaIndex project, like the other flow frameworks; their tests script the model with an OpenAI-compatible endpoint in memory that streams. CI exports every template each can run and runs each project's tests.
+- Servers offer both by default; `make framework FW=strands` / `FW=llamaindex`, and the API image takes `--build-arg WITH_STRANDS=true` and `WITH_LLAMAINDEX=true`.
+
+### Changed
+- `flowgen.Dialect` names the class an agent builder returns (`FunctionAgent` for LlamaIndex).
+
+### Fixed
+- The demo model no longer fails with "unhashable type: 'list'" on a tool argument whose type is a list such as `["string", "null"]` (Strands sends typed answers that way).
+
 ## v0.24.0 — Microsoft Agent Framework flows (not tagged yet)
 
 ### Added

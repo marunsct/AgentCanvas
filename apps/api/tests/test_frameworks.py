@@ -54,7 +54,7 @@ async def greeter(api, framework: str = "langchain") -> dict:
     return r.json()
 
 
-async def test_the_default_server_offers_seven_frameworks(api_client):
+async def test_the_default_server_offers_nine_frameworks(api_client):
     ids = [f["id"] for f in (await api_client.get("/v1/frameworks")).json()]
     assert ids == [
         "langchain",
@@ -64,6 +64,8 @@ async def test_the_default_server_offers_seven_frameworks(api_client):
         "pydantic_ai",
         "agno",
         "microsoft_agent_framework",
+        "strands",
+        "llamaindex",
     ]
 
 

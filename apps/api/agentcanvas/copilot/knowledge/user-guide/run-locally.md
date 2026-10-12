@@ -124,7 +124,8 @@ The first run downloads a few hundred MB and can take a few minutes.
 
 To run workflows designed for CrewAI, also run `make crewai`: it installs CrewAI in a Python environment of its own
 (`apps/api/.frameworks/crewai`, about 800 MB), because CrewAI needs other package versions than AgentCanvas. The same goes
-for workflows designed for Google ADK, Pydantic AI, Agno or the Microsoft Agent Framework, and for agents designed for
+for workflows designed for Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands or LlamaIndex, and for
+agents designed for
 Google ADK, Agno, Strands Agents or LlamaIndex in a mixed flow: `make framework FW=google_adk` (or `pydantic_ai`,
 `agno`, `microsoft_agent_framework`, `strands`, `llamaindex`) gives that framework an environment of its own.
 

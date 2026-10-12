@@ -1,0 +1,39 @@
+{
+  "id": "strands",
+  "label": "Strands Agents",
+  "framework": "strands-agents 1.58.1",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes a Strands Agents flow: an async function for each block, Strands Agents (OpenAIModel, tools, structured_output_model for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's approval (a hook that uses Strands' own interrupts). Runs need Strands installed on the server (`make framework FW=strands`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "python"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "emulated",
+    "core.join": "emulated",
+    "core.llm": "native",
+    "core.agent": "native",
+    "core.approval": "emulated",
+    "core.human_input": "emulated",
+    "model.chat": "native",
+    "tool.python": "native",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "an async function that returns the fields it sets",
+    "core.router": "the flow engine follows the first route whose CEL rule matches (generated orchestration: the flow does not use Strands' GraphBuilder yet)",
+    "core.join": "the flow engine waits for every branch before the block runs",
+    "core.approval": "the run pauses and is saved as JSON; it continues from that step when a person answers",
+    "core.human_input": "the run pauses and asks again when an answer does not fit",
+    "core.script": "your workspace function is called from the flow",
+    "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
+    "core.llm": "a Strands Agent with the block's model, asked once with agent.invoke_async",
+    "core.agent": "a Strands Agent (system prompt, OpenAIModel, tools, structured_output_model); tools named in 'Ask before using' are interrupted by an AskBefore hook (BeforeToolCallEvent.interrupt): the agent's messages and interrupt state are saved with the pause, and it continues with an interruptResponse once a person approves, edits or rejects each call",
+    "mw.model_call_limit": "Strands' own Limits(turns=...): past the limit the agent stops with a note, or the run fails when the block says so"
+  }
+}

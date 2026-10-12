@@ -11,7 +11,7 @@ setup:      ## install Python and web dependencies
 crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai
 	cd apps/api && uv venv --allow-existing .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25
 
-framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent Framework (S33) workflows: a framework in its own environment, e.g. make framework FW=agno
+framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent Framework (S33), Strands and LlamaIndex (S35) workflows: a framework in its own environment, e.g. make framework FW=agno
 	cd apps/api && uv venv --allow-existing .frameworks/$(FW) && uv pip install --python .frameworks/$(FW)/bin/python \
 	  $$(uv run python -c "from agentcanvas.designs import AGENT_FRAMEWORKS as A; print(' '.join(A['$(FW)'].packages))") \
 	  cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0

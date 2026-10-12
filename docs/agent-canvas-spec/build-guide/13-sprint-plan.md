@@ -55,7 +55,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers (✅ done) |
 | **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier (✅ done) |
 | **S33–S34** | 4 | Microsoft Agent Framework flows → v0.24.0 (was S30–S31) | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Authoring tier; Full later if users ask (✅ done) |
-| **S35** | 2 | Strands & LlamaIndex flows → v0.25.0 (was S29) | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier |
+| **S35** | 2 | Strands & LlamaIndex flows → v0.25.0 (was S29) | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier (✅ done) |
 | **S36** | 2 | Mastra → v0.26.0 (was S32) | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
 | **Later** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, Git sync, hosted trial | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
 
@@ -550,6 +550,27 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S35 — Strands and LlamaIndex Workflows flows → v0.25.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Strands | B | 2 | AI blocks as Strands `Agent`s (`OpenAIModel`, `@tool`, `structured_output_model`); *Ask before using* as an `AskBefore` hook with `BeforeToolCallEvent.interrupt`, resumed across processes from the saved messages and interrupt state; call limits as `Limits(turns=...)` |
+| 2 | LlamaIndex | B | 2 | AI blocks as `FunctionAgent`s (`OpenAILike`, tools, `output_cls`); *Ask before using* as tools that wait for a `HumanResponseEvent` after an `InputRequiredEvent`, resumed from the serialized `Context` and chat memory; call limits as `max_iterations` |
+| 3 | Running and exporting | B | 1 | On the S32 flow engine and worker; exports script the model with a streaming endpoint in memory |
+| 4 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-12).** `adapters/strands/` and `adapters/llamaindex/` (dialect, runtime, worker entry, adapter),
+manifests `registry/adapters/{strands,llamaindex}.json` (tier T2), `strands` and `llamaindex` targets in
+`adapters/flowpackager.py`, both in the default `AGENTCANVAS_ADAPTERS`, `make framework FW=strands` / `FW=llamaindex`
+(API image: `--build-arg WITH_STRANDS=true`, `WITH_LLAMAINDEX=true`), `tests/test_flow_frameworks.py` parametrized
+over five frameworks, `e2e/s35.spec.ts`, both in `scripts/export_templates.py`. Exit met: 22 of the 27 templates
+compile and run end to end on each, and their exports pass their own tests; the conformance kit passes on both (12 of
+12). Deviations from the adapter specs: the flow runs on AgentCanvas's flow engine, not a Strands `GraphBuilder` graph
+or one LlamaIndex `Workflow` with an event per edge (their "native" shapes, later if users ask). LlamaIndex does not
+serialize an agent's chat memory with its `Context`, so the runtime saves the memory beside it and sets it again on
+resume; its approvals are asked one at a time. When a model writes a typed answer as JSON text instead of calling the
+framework's answer tool, the runtime reads the text. The demo model now takes tool arguments typed as a list (`["string", "null"]`).
 
 ### S33–S34 — Microsoft Agent Framework flows → v0.24.0 (✅ done)
 

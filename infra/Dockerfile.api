@@ -46,6 +46,17 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_MICROSOFT_AGENT_FRAMEW
       uv venv .frameworks/microsoft_agent_framework && uv pip install \
       --python .frameworks/microsoft_agent_framework/bin/python agent-framework-core==1.20.0 \
       agent-framework-openai==1.16.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+# 7) optional (S35): Strands Agents and LlamaIndex, each in an environment of its own:
+#   docker build --build-arg WITH_STRANDS=true --build-arg WITH_LLAMAINDEX=true ...
+ARG WITH_STRANDS=false
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_STRANDS" = "true" ]; then \
+      uv venv .frameworks/strands && uv pip install --python .frameworks/strands/bin/python \
+      "strands-agents[openai]==1.58.1" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+ARG WITH_LLAMAINDEX=false
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ]; then \
+      uv venv .frameworks/llamaindex && uv pip install --python .frameworks/llamaindex/bin/python \
+      llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1 cel-python==0.5.0 jinja2==3.1.6 \
+      jsonschema==4.26.0; fi
 
 FROM python AS runtime
 # git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)
