@@ -1,6 +1,6 @@
 """Framework adapters (spec doc 11/12): LangChain/LangGraph, the OpenAI Agents SDK (S25), CrewAI (S27), Google ADK
-(S29), Pydantic AI and Agno (S32), the Microsoft Agent Framework (S33-S34), Strands Agents and LlamaIndex (S35) and the
-Echo demo engine that proves the seams (S20).
+(S29), Pydantic AI and Agno (S32), the Microsoft Agent Framework (S33-S34), Strands Agents and LlamaIndex (S35), Mastra
+(S36, TypeScript on Node.js) and the Echo demo engine that proves the seams (S20).
 
 `get_adapter(id)` is the process-wide adapter for a framework; `create_adapter(id)` a fresh one (tests, the
 conformance kit). Which ones a server offers is `AGENTCANVAS_ADAPTERS` (`registry.adapters.installed_ids`).
@@ -25,6 +25,7 @@ KNOWN = (
     "microsoft_agent_framework",
     "strands",
     "llamaindex",
+    "mastra",
 )
 
 
@@ -69,6 +70,10 @@ def create_adapter(framework: str = "langchain") -> FrameworkAdapter:
         from agentcanvas.adapters.llamaindex import LlamaIndexAdapter
 
         return LlamaIndexAdapter()
+    if framework == "mastra":
+        from agentcanvas.adapters.mastra import MastraAdapter
+
+        return MastraAdapter()
     raise ValueError(f"no adapter installed for framework '{framework}'")
 
 

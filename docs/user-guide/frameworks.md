@@ -1,7 +1,7 @@
 # Choosing a framework
 
 Every workflow is designed for one **framework**: the agent framework that runs it and that its export is written
-for. A server offers nine:
+for. A server offers ten:
 
 - **LangGraph** (LangChain's graph runtime) runs every block in the palette, with saved history, time travel,
   long-term memory and breakpoints. New workflows use it.
@@ -19,8 +19,10 @@ for. A server offers nine:
   [Run a workflow on the Microsoft Agent Framework](#run-a-workflow-on-the-microsoft-agent-framework).
 - **Strands Agents** and **LlamaIndex** do the same with Strands agents and LlamaIndex function agents. See
   [Run a workflow on Strands or LlamaIndex](#run-a-workflow-on-strands-or-llamaindex).
+- **Mastra**, a TypeScript framework, turns the workflow into a TypeScript flow with Mastra agents that runs on
+  Node.js and exports as a TypeScript project. See [Run a workflow on Mastra](#run-a-workflow-on-mastra).
 
-More frameworks arrive in the next releases; the editor already shows which ones a workflow could move to.
+The editor shows which of them a workflow could move to.
 
 ## Pick the workflow's framework
 
@@ -309,6 +311,36 @@ What is each one's own:
 
 `GET /v1/workflows/{id}/code?framework=strands` (or `llamaindex`) previews the converted code.
 
+## Run a workflow on Mastra
+
+Pick **Mastra** as the workflow's framework. Mastra is a TypeScript framework, so its workflows run on Node.js
+(22.18 or later) next to the server: `make mastra` installs Mastra and what the flow needs from npm in
+`apps/api/.frameworks/mastra` (or set `AGENTCANVAS_MASTRA_DIR` to a folder whose `node_modules` has them, and
+`AGENTCANVAS_NODE` to a Node.js other than the one on the `PATH`). Without it you can still design, check and export
+these workflows; a run says how to install it. The Docker image has no Node.js.
+
+The workflow becomes a TypeScript module, read in the **Code** tab: a Mastra `Agent` for each AI block, an
+`async function` for each block and a `FLOW` that says which step follows which. It runs the way the canvas draws it,
+like the Python flows above (steps side by side, **Wait for all**, paths by CEL rules, loops with a limit, field
+reducers). What is Mastra's own:
+
+- **Agents** have an AI SDK model that reaches the canvas model over the OpenAI chat-completions API, `createTool`
+  tools and a Zod schema for typed answers (`structuredOutput`), and run with `agent.generate`.
+- **Ask before using** sets `requireApproval` on those tools. Mastra suspends the agent's run at the call; the run's
+  snapshot is saved with the pause, and the agent continues with your answer (approve, change the arguments, or reject
+  with a reason the agent reads). When the model calls two such tools, you answer them one after the other.
+- **The model call limit** is Mastra's own `maxSteps`.
+- **Your tools and Python steps stay Python.** Inside AgentCanvas they run on the server as for any framework.
+- **Not yet:** the flow is not written as Mastra's own `createWorkflow` chain. Saved history, state editing, replay
+  and breakpoints are missing here too.
+
+**Export** gives a TypeScript project: `npm install`, then `node src/main.ts '{"input": {...}}'` runs it (a pause is
+saved in `.runs/` and continued with `{"thread_id": ..., "resume": ...}`) and `npm test` replays the saved test cases
+with a scripted model. Node.js runs the TypeScript as it is, with no build step. When the workflow has tools, Python
+steps or knowledge bases, a small Python helper in `python/` runs them with `python3`.
+
+`GET /v1/workflows/{id}/code?framework=mastra` previews the converted code.
+
 ## What each framework can do
 
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
@@ -317,7 +349,7 @@ framework cannot do one of them, AgentCanvas says so plainly instead of failing;
 to use it.
 
 Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
-`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex`).
+`langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra`).
 
 ## The Echo demo engine
 

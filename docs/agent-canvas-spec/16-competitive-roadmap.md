@@ -151,7 +151,7 @@ the ones below assume each sprint merges in this order.
 | **S32** | v0.23.0 | **Pydantic AI and Agno flows (was S24)** ✅ done (S32 PR) | Authoring tier | Templates compile and deploy on both |
 | **S33–S34** | v0.24.0 | **Microsoft Agent Framework flows (was S30–S31)** ✅ done (S33–S34 PR) | Authoring tier; Full later if users ask | Conformance suite passes on the portable set |
 | **S35** | v0.25.0 | **Strands and LlamaIndex Workflows flows (was S29)** ✅ done (S35 PR) | Authoring tier | Templates compile and deploy on both |
-| S36 | v0.26.0 | Mastra (was S32) | Authoring tier with a Node.js sidecar host | A TypeScript project exports and runs |
+| **S36** | v0.26.0 | **Mastra (was S32)** ✅ done (S36 PR) | Authoring tier with a Node.js sidecar host | A TypeScript project exports and runs |
 
 The S17 number now holds the owner's workspace and editor fixes; the old S17 "Ship to users" is S23. Later, if
 demand shows: real-time co-editing, two-way Git sync, Data Studio, learning loops, a hosted cloud trial, and

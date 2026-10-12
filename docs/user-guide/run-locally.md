@@ -127,7 +127,9 @@ To run workflows designed for CrewAI, also run `make crewai`: it installs CrewAI
 for workflows designed for Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands or LlamaIndex, and for
 agents designed for
 Google ADK, Agno, Strands Agents or LlamaIndex in a mixed flow: `make framework FW=google_adk` (or `pydantic_ai`,
-`agno`, `microsoft_agent_framework`, `strands`, `llamaindex`) gives that framework an environment of its own.
+`agno`, `microsoft_agent_framework`, `strands`, `llamaindex`) gives that framework an environment of its own. Workflows
+designed for Mastra, a TypeScript framework, run on Node.js 22.18 or later: `make mastra` installs Mastra from npm in
+`apps/api/.frameworks/mastra`.
 
 ### 4. Start the API (terminal 1)
 

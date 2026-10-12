@@ -56,7 +56,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier (✅ done) |
 | **S33–S34** | 4 | Microsoft Agent Framework flows → v0.24.0 (was S30–S31) | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Authoring tier; Full later if users ask (✅ done) |
 | **S35** | 2 | Strands & LlamaIndex flows → v0.25.0 (was S29) | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier (✅ done) |
-| **S36** | 2 | Mastra → v0.26.0 (was S32) | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
+| **S36** | 2 | Mastra → v0.26.0 (was S32) | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar (✅ done) |
 | **Later** | — | GA backlog (M9) | multiplayer, Data Studio, learning loops, Git sync, hosted trial | FR-X-03/04/05/06/09/11/12/16/20/21/23 | — | Prioritised per quarter |
 
 From S15 the order follows the value-first [competitive roadmap](../16-competitive-roadmap.md), approved 2026-10-07. S18 and S19 were built first (their drafts predated the reorder) and finished on 2026-10-08 at the owner's request, so release numbers follow merge order: S18 v0.8.0, S19 v0.9.0, S16 v0.10.0. On 2026-10-09 the owner re-planned from S17 on after the [framework coverage review](../17-framework-coverage-review.md): S17 is now the owner's workspace and editor fixes, then S20–S22 bring framework design forward; the old S17–S32 moved to S23–S36 ("was" in the table).
@@ -550,6 +550,30 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S36 — Mastra → v0.26.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Node.js host | B | 2 | A Node.js worker started from the Mastra environment speaks the flow workers' JSON lines; models, tools, knowledge bases and code stay on the server |
+| 2 | Flow engine in TypeScript | B | 2 | `flow.ts` runs a flow exactly as `supersteps.py` does (rounds, joins, CEL paths, loops, reducers, pauses as JSON); the conformance kit passes |
+| 3 | Mastra agents | B | 2 | AI blocks as Mastra `Agent`s (AI SDK model, `createTool`, Zod typed answers); *Ask before using* as `requireApproval`, resumed in another process from the saved snapshot; call limits as `maxSteps` |
+| 4 | TypeScript export | B | 1 | A project Node.js runs and tests as it is (exit criterion); workspace Python through a helper |
+| 5 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-12).** `adapters/mastra/` (`codegen.py` writes TypeScript; `flow.ts`, `runtime.ts` and `worker.ts`
+run on Node.js 22.18+ with type stripping; `packager.py`; the adapter with a `MastraWorker` that starts `node`),
+manifest `registry/adapters/mastra.json` (tier T2, language TypeScript), in the default `AGENTCANVAS_ADAPTERS`,
+`make mastra` (npm packages pinned in `adapters/mastra/package.json`), `tests/test_mastra.py`, `e2e/s36.spec.ts`, in
+`scripts/export_templates.py` and CI (Node.js 22 in the API and export jobs). `CrewWorker.prepare()` now lays out a
+worker and names its command, so a worker need not be Python. Exit met: a TypeScript project exports, runs from the
+command line (pausing and continuing across processes) and passes its own `node --test` tests; 22 of the 27 templates
+run end to end on Mastra; the conformance kit passes (12 of 12). Deviations from the adapter spec: no JSON-RPC
+"Node Adapter Host" with `lower/generate/start` methods and no `ts-morph`: the worker reuses the flow workers' protocol
+and the server generates the TypeScript; the flow runs on the TypeScript flow engine, not a `createWorkflow` chain
+(the "Full" tier, later if users ask). Workspace code stays Python (a helper runs it in exports). The API image has no
+Node.js. Also fixed: the demo model now picks the first choice for an enum tool argument, so
+typed answers through a tool (Strands, LlamaIndex) are valid with it and Lead qualification runs on both again.
 
 ### S35 — Strands and LlamaIndex Workflows flows → v0.25.0 (✅ done)
 

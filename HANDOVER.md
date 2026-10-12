@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-12, after Sprint 35 (Strands and LlamaIndex Workflows flows → v0.25.0). Previous update: after Sprints 33–34 (Microsoft Agent Framework flows → v0.24.0, [#38](https://github.com/marunsct/AgentCanvas/pull/38)).
+- **Last updated:** 2026-10-12, after Sprint 36 (Mastra → v0.26.0, the last sprint of the competitive roadmap). Previous update: after Sprint 35 (Strands and LlamaIndex Workflows flows → v0.25.0, [#39](https://github.com/marunsct/AgentCanvas/pull/39)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,24 +14,24 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S35 Strands and LlamaIndex Workflows flows → v0.25.0** (the S35 PR): `adapters/strands/` (an `AskBefore` hook on Strands interrupts, resumed from saved messages and interrupt state; `Limits(turns=...)`) and `adapters/llamaindex/` (`FunctionAgent`s; tools that wait for a `HumanResponseEvent`, resumed from the serialized `Context` plus the chat memory; `max_iterations`) on the S32 flow engine; manifests `registry/adapters/{strands,llamaindex}.json`; export targets in `adapters/flowpackager.py` |
-| Before that | S31 Onboarding and switching → v0.22.0 ([#35](https://github.com/marunsct/AgentCanvas/pull/35), merged `2e10fff`); S29–S30 Google ADK flows → v0.21.0 (#34, `c038d0e`); S28 Mixed-flow export → v0.20.0 (#33, `b8b2e01`) |
-| Version in code | API `0.25.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.25.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.25.0 are all left to the owner (see §2) |
-| Next sprint | **S36 Mastra → v0.26.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): Authoring tier with a Node.js host; exit: a TypeScript project exports and runs. Node 22 and npm are available here (`@mastra/core` 1.x on npm) |
-| Work status | S35 is in its PR; the owner asked on 2026-10-12 to finish the remaining sprints in one pass, so it is merged on local checks and S36 follows at once |
-| Open PRs | the S35 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S36 Mastra → v0.26.0** (the S36 PR): `adapters/mastra/` — `codegen.py` writes the workflow as TypeScript with Mastra `Agent`s; `flow.ts` (the flow engine's TypeScript twin), `runtime.ts` (models, `createTool` with `requireApproval`, Zod typed answers, `maxSteps`; a suspended run's snapshot saved with the pause) and `worker.ts` (the flow workers' JSON lines) run on Node.js 22.18+ as they are; `packager.py` exports a TypeScript project (Python helper for workspace code); manifest `registry/adapters/mastra.json`; `make mastra` |
+| Before that | S35 Strands and LlamaIndex Workflows flows → v0.25.0 ([#39](https://github.com/marunsct/AgentCanvas/pull/39), merged `f813972`); S33–S34 Microsoft Agent Framework flows → v0.24.0 (#38, `8e307ad`); S32 Pydantic AI and Agno flows → v0.23.0 (#37, `63be5ca`) |
+| Version in code | API `0.26.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.26.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.26.0 are all left to the owner (see §2) |
+| Next sprint | **None planned: the competitive roadmap (S15–S36) is complete.** Per the owner's standing grant, the next step is the full-codebase review after a major milestone; then the GA backlog in [the sprint plan](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) ("Later") or new direction from the owner |
+| Work status | S36 is in its PR; the owner asked on 2026-10-12 to finish the remaining sprints in one pass, so it is merged on local checks |
+| Open PRs | the S36 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S35** (all green locally):
+**Test totals at the end of S36** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 1312 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai`, the ADK tests and the kit on ADK `make framework FW=google_adk`, the Pydantic AI, Agno, Agent Framework, Strands and LlamaIndex tests and the kit on them `make framework FW=<id>` for each | see §5 |
+| API (pytest, Postgres) | 1382 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai`, the ADK tests and the kit on ADK `make framework FW=google_adk`, the Pydantic AI, Agno, Agent Framework, Strands and LlamaIndex tests and the kit on them `make framework FW=<id>` for each, the Mastra tests and the kit on Mastra `make mastra` (Node.js 22.18+) | see §5 |
 | Web unit (vitest) | 97 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 68 (the S27 and S28 journeys need `make crewai`, the S29 journey `make framework FW=google_adk`, the S32 journeys `FW=pydantic_ai` and `FW=agno`, the S33 journey `FW=microsoft_agent_framework`, the S35 journeys `FW=strands` and `FW=llamaindex`) | see §5 |
+| Browser journeys (Playwright, prod build under the prod CSP) | 69 (the S27 and S28 journeys need `make crewai`, the S29 journey `make framework FW=google_adk`, the S32 journeys `FW=pydantic_ai` and `FW=agno`, the S33 journey `FW=microsoft_agent_framework`, the S35 journeys `FW=strands` and `FW=llamaindex`, the S36 journey `make mastra`) | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 27 templates on LangGraph (the Mixed-framework team export also deployed with Docker Compose and passed `make smoke`, S28), and the 22 each that the OpenAI Agents SDK (S25), CrewAI (S27), Google ADK (S29), Pydantic AI and Agno (S32) the Microsoft Agent Framework (S33–S34), Strands and LlamaIndex (S35) can run, in `<dir>/<framework>/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `make test` in each `<dir>/local/*/*` (it installs the parts) |
+| Exported templates, each export's own tests | 27 templates on LangGraph (the Mixed-framework team export also deployed with Docker Compose and passed `make smoke`, S28), and the 22 each that the OpenAI Agents SDK (S25), CrewAI (S27), Google ADK (S29), Pydantic AI and Agno (S32) the Microsoft Agent Framework (S33–S34), Strands and LlamaIndex (S35) can run, and the 22 Mastra (S36) can run as TypeScript projects (`npm test` in each), in `<dir>/<framework>/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `make test` in each `<dir>/local/*/*` (it installs the parts) |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -101,6 +101,7 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   adapters/pydantic_ai/, adapters/agno/   S32: codegen.py (a Dialect), runtime.py (Run with the framework's agents, native tool approvals), worker.py, __init__.py (adapter); run in .frameworks/<id>
   adapters/microsoft_agent_framework/   S33–S34: the same four files for the Microsoft Agent Framework (chat middleware for limits, settings and scripted test replies)
   adapters/strands/, adapters/llamaindex/   S35: the same four files for Strands (AskBefore hook on interrupts) and LlamaIndex (FunctionAgent, HumanResponseEvent waits)
+  adapters/mastra/         S36: TypeScript. codegen.py writes TS; flow.ts (engine twin), runtime.ts, worker.ts run on Node.js from .frameworks/mastra (make mastra; package.json pins npm packages); packager.py (TS project + python/sidecar.py)
   importers/               S31: Langflow, Flowise and n8n JSON to workflows (Builder + one module per builder); samples in tests/importers/
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
@@ -203,7 +204,17 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.25.0 not created (owner).
+- **Release tags** v0.1.0 to v0.26.0 not created (owner).
+- **S36 limits:** Mastra flows run on `flow.ts`, the TypeScript twin of the flow engine, not as Mastra's own
+  `createWorkflow` chain (the "Full" tier, if users ask). There is no JSON-RPC Node Adapter Host with
+  `lower/generate/start` methods as the adapter spec sketched: the server generates the TypeScript and the Node.js
+  worker speaks the flow workers' JSON lines. Approvals use Mastra's `requireApproval`; the pause keeps every workflow
+  snapshot of an in-memory store (about 26 KB) and writes them into a fresh store to continue. Mastra suspends at
+  each call that needs approval, so calls are asked about one at a time. `flow.ts` must stay in step with
+  `supersteps.py` (the conformance kit and `tests/test_mastra.py` check both). Prompts render with Nunjucks (no
+  negative list indexes; objects print as JSON where Jinja prints Python reprs). Workspace code stays Python (a helper
+  runs it in exports). The API image has no Node.js. Typed checks: `tsc` (5.9, with `@types/node`) passes on the
+  exported project; it is not part of CI.
 - **S35 limits:** Strands and LlamaIndex flows run on the S32 flow engine, not a Strands `GraphBuilder` graph or one
   LlamaIndex `Workflow` with an event per edge. Strands' resume sets the agent's private `_interrupt_state` from the
   saved dict (what its session managers do). LlamaIndex does not serialize an agent's chat memory with its `Context`,
@@ -379,7 +390,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S31 Onboarding and switching | #35 | `2e10fff` | v0.22.0 |
 | S32 Pydantic AI and Agno flows | #37 | `63be5ca` | v0.23.0 |
 | S33–S34 Microsoft Agent Framework flows | #38 | `8e307ad` | v0.24.0 |
-| S35 Strands and LlamaIndex Workflows flows | the S35 PR | (after merge) | v0.25.0 |
+| S35 Strands and LlamaIndex Workflows flows | #39 | `f813972` | v0.25.0 |
+| S36 Mastra | the S36 PR | (after merge) | v0.26.0 |
 
 ## 11. Sprint-end checklist
 

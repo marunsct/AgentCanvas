@@ -1,0 +1,15 @@
+{
+  "name": "agentcanvas-mastra",
+  "private": true,
+  "description": "What Mastra flows need on an AgentCanvas server (make mastra installs it in apps/api/.frameworks/mastra)",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.67",
+    "@marcbachmann/cel-js": "8.0.0",
+    "@mastra/core": "1.76.0",
+    "ajv": "8.20.0",
+    "nunjucks": "3.2.4",
+    "zod": "4.6.6"
+  }
+}

@@ -131,4 +131,4 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S32: Pydantic AI and Agno flows (v0.23.0) | ✅ done: workflows run and export as Pydantic AI or Agno flows, with the frameworks' own agents and tool approvals |
 | S33–S34: Microsoft Agent Framework flows (v0.24.0) | ✅ done: workflows run and export as Agent Framework flows, with its own agents and tool approvals |
 | S35: Strands and LlamaIndex flows (v0.25.0) | ✅ done: workflows run and export as Strands or LlamaIndex flows, with the frameworks' own agents and tool approvals |
-| S36: Mastra | ⏸ next (a TypeScript framework with a Node.js host); order in the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) |
+| S36: Mastra flows (v0.26.0) | ✅ done: workflows run on Node.js and export as TypeScript Mastra projects, with Mastra's own agents and tool approvals; the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) is complete |
