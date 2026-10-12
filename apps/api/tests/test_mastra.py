@@ -12,6 +12,7 @@ import io
 import json
 import shutil
 import subprocess
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -159,6 +160,209 @@ async def test_without_mastra_a_run_says_how_to_install_it(monkeypatch):
         RunSpec(workflow=_agent_wf("mastra"), thread_id="t", run_id="r"), a.default_resources()
     )]  # fmt: skip
     assert events[-1]["type"] == "RUN_ERROR" and "make mastra" in events[-1]["message"]
+
+
+# ------------------------------------------------------------------ the engine (flow.ts) ----
+ENGINE = Path(mastra_adapter.__file__).parent
+
+
+def _engine_dir(tmp_path: Path) -> Path:
+    """A folder with the engine, the runtime and the worker next to the Mastra environment's `node_modules`."""
+    env_dir = mastra_adapter.mastra_dir()
+    assert env_dir is not None
+    for name in ("flow.ts", "runtime.ts", "worker.ts"):
+        shutil.copyfile(ENGINE / name, tmp_path / name)
+    (tmp_path / "package.json").write_text('{"type": "module"}\n')
+    (tmp_path / "node_modules").symlink_to(Path(env_dir) / "node_modules", target_is_directory=True)
+    return tmp_path
+
+
+def _node(tmp_path: Path, script: str) -> Any:
+    """Run `script` (TypeScript next to `flow.ts`) and read the JSON it prints last."""
+    folder = _engine_dir(tmp_path)
+    (folder / "script.ts").write_text(script)
+    out = subprocess.run([mastra_adapter.node() or "node", "script.ts"], cwd=folder, capture_output=True, text=True,
+                         timeout=60, check=False, env={"PATH": "/usr/bin:/bin", "NODE_NO_WARNINGS": "1"})  # fmt: skip
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout.splitlines()[-1])
+
+
+RUN_FLOW = """
+import { run, Run } from "./flow.ts";
+const set = (values: Record<string, any>) => async () => values;
+const ask = async (state: any, r: Run) => r.ask(state, { prompt: "Which?", output: "picked" });
+export async function events(flow: any, opts: any) {
+  const out: any[] = [];
+  for await (const ev of run(flow, {} as any, Run, opts)) out.push(ev);
+  return out;
+}
+const started = (evs: any[]) => evs.filter((e) => e.type === "STEP_STARTED").map((e) => e.canvas_node_id);
+"""
+
+
+@installed
+def test_a_join_in_a_loop_waits_for_every_branch_on_each_pass(tmp_path):
+    script = """
+const flow = { name: "loop", start: ["a", "b1"], outputs: ["j"], channels: { j: ["sum", 0] },
+  steps: { a: { name: "a", type: "core.set", run: set({}) }, b1: { name: "b1", type: "core.set", run: set({}) },
+           b2: { name: "b2", type: "core.set", run: set({}) }, j: { name: "j", type: "core.join" },
+           count: { name: "count", type: "core.set", run: set({ j: 1 }) },
+           r: { name: "r", type: "core.router", cases: [["state.j < 2", "again"]], default: "done" } },
+  next: { a: ["j"], b1: ["b2"], b2: ["j"], j: ["count"], count: ["r"], r: { again: ["a", "b1"], done: ["END"] } } };
+const evs = await events(flow, { input: {} });
+console.log(JSON.stringify({ started: started(evs), last: evs.at(-1) }));
+"""
+    out = _node(tmp_path, RUN_FLOW + script)
+    assert out["last"]["outcome"] == "success", out["last"]
+    assert out["last"]["output"] == {"j": 2}
+    assert out["started"] == ["a", "b1", "b2", "j", "count", "r"] * 2
+
+
+@installed
+def test_a_join_waiting_on_a_skipped_path_is_dropped(tmp_path):
+    script = """
+const flow = { name: "skip", start: ["r"], outputs: ["x"], channels: { x: ["replace", ""] },
+  steps: { r: { name: "r", type: "core.router", cases: [["true", "left"]], default: "right" },
+           l: { name: "l", type: "core.set", run: set({ x: "left" }) },
+           rt: { name: "rt", type: "core.set", run: set({ x: "right" }) }, j: { name: "j", type: "core.join" },
+           after: { name: "after", type: "core.set", run: set({ x: "joined" }) } },
+  next: { r: { left: ["l"], right: ["rt"] }, l: ["j"], rt: ["j"], j: ["after"], after: ["END"] } };
+const evs = await events(flow, { input: {} });
+console.log(JSON.stringify({ started: started(evs), last: evs.at(-1) }));
+"""
+    out = _node(tmp_path, RUN_FLOW + script)
+    assert out["last"]["type"] == "RUN_FINISHED" and out["last"]["outcome"] == "success", out["last"]
+    assert out["started"] == ["r", "l"] and out["last"]["output"] == {"x": "left"}
+
+
+@installed
+def test_a_resumed_run_does_not_run_the_next_round_twice(tmp_path):
+    script = """
+const flow = { name: "resume", start: ["b", "a"], outputs: ["picked", "n"],
+  channels: { picked: ["replace", null], n: ["sum", 0] },
+  steps: { b: { name: "b", type: "core.set", run: set({}) }, a: { name: "a", type: "human.input", run: ask },
+           d: { name: "d", type: "core.set", run: set({ n: 1 }) } },
+  next: { b: ["d"], a: ["d"], d: ["END"] } };
+const first = await events(flow, { input: {} });
+const paused = JSON.parse(JSON.stringify(first.at(-1).paused));
+const second = await events(flow, { resume: [paused, "x"] });
+console.log(JSON.stringify({ first: started(first), second: started(second), paused, last: second.at(-1) }));
+"""
+    out = _node(tmp_path, RUN_FLOW + script)
+    assert out["first"] == ["b", "a"] and out["second"] == ["a", "d"], out
+    assert out["paused"]["frontier"] == ["a"] and out["paused"]["next_round"] == ["d"]
+    assert out["last"]["output"] == {"picked": "x", "n": 1}, out["last"]
+
+
+@installed
+def test_tool_decisions_always_have_a_type(tmp_path):
+    cases = [
+        ({"decisions": ["reject"]}, 2, [{"type": "reject"}, {"type": "reject"}]),
+        ({"decisions": [{"approved": False}]}, 1, [{"approved": False, "type": "reject"}]),
+        ({"decisions": [{"type": "approve"}]}, 3, [{"type": "approve"}, {"type": "reject"}, {"type": "reject"}]),
+        ({"decisions": ["edit", "ok", "no", True]}, 4,
+         [{"type": "edit"}, {"type": "approve"}, {"type": "reject"}, {"type": "approve"}]),
+        ({"approved": "no"}, 2, [{"type": "reject"}, {"type": "reject"}]),
+        ("Approve ", 1, [{"type": "approve"}]),
+        ("maybe", 1, [{"type": "reject"}]),
+        ({"approved": [1]}, 1, [{"type": "reject"}]),
+        (1, 1, [{"type": "approve"}]),
+    ]  # fmt: skip
+    script = f"""
+import {{ decisions }} from "./flow.ts";
+const cases = {json.dumps([[a, n] for a, n, _ in cases])};
+console.log(JSON.stringify(cases.map(([a, n]: any) => decisions(a, n))));
+"""
+    got = _node(tmp_path, script)
+    assert got == [want for _, _, want in cases]
+
+
+@installed
+def test_templates_read_like_jinja(tmp_path):
+    state = {"b": True, "f": False, "n": None, "e": [], "o": {}, "l": ["a"], "d": {"z": 1, "a": "<é>"},
+             "t": {"toString": "mine"}}  # fmt: skip
+    templates = ["{{ state.b }} {{ state.f }} {{ state.n }}", "{% if state.e %}T{% else %}F{% endif %}",
+                 "{{ 'T' if state.o else 'F' }}", "{{ state.e or 'empty' }}", "{{ not state.l }}",
+                 "{{ state.d | tojson }}", "{{ state.t.toString }} {{ state.t }}", "{{ state.missing }}",
+                 "{{ state.n | default('x') }}"]  # fmt: skip
+    script = f"""
+import {{ render }} from "./flow.ts";
+const state = {json.dumps(state)};
+console.log(JSON.stringify({json.dumps(templates)}.map((t: string) => {{
+  try {{ return render(t, state); }} catch (e) {{ return "ERR " + (e as Error).message; }}
+}})));
+"""
+    got = _node(tmp_path, script)
+    assert got[:7] == ["True False None", "F", "F", "empty", "False", '{"a": "\\u003c\\u00e9\\u003e", "z": 1}',
+                       'mine {"toString":"mine"}']  # fmt: skip
+    assert got[7].startswith("ERR ") and "undefined" in got[7]  # a missing field fails, as with StrictUndefined
+    assert got[8] == "None"
+
+
+@installed
+def test_templates_cannot_run_code(tmp_path):
+    attempts = ['{{ range.constructor("return process.env.HOME")() }}',
+                '{{ cycler["constr" ~ "uctor"]("return process.pid")() }}',
+                "{{ state.l.__proto__ }}", "{{ constructor.constructor('return 1')() }}",
+                "{{ (state.l | first).constructor }}", "{{ joiner.prototype }}"]  # fmt: skip
+    script = f"""
+import {{ render }} from "./flow.ts";
+console.log(JSON.stringify({json.dumps(attempts)}.map((t: string) => {{
+  try {{ return render(t, {{ l: ["x"], constructor: "data" }}); }} catch (e) {{ return "ERR " + (e as Error).message; }}
+}}).concat([render("{{{{ state.constructor }}}}", {{ constructor: "data" }})])));
+"""
+    got = _node(tmp_path, script)
+    for attempt, out in zip(attempts, got, strict=False):
+        assert out.startswith("ERR ") and "is not allowed in a template" in out, (attempt, out)
+    assert got[-1] == "data"  # a field with such a name is only data
+
+
+@installed
+def test_an_answer_schema_with_an_id_can_be_asked_again(tmp_path):
+    script = """
+import { Run } from "./flow.ts";
+const schema = () => ({ $id: "answer", type: "object", properties: { n: { type: "integer" } }, required: ["n"] });
+const out = [{ n: "x" }, { n: 1 }, { n: 2 }].map((a) => {
+  const asking = new Run({} as any, {} as any, "n1", "ask", a, null);
+  try { return asking.ask({}, { prompt: "q", output: "o", schema: schema() }); }
+  catch (e) { return { error: (e as any).payload?.error ?? (e as Error).message }; }
+});
+console.log(JSON.stringify(out));
+"""
+    got = _node(tmp_path, script)
+    assert got == [{"error": "/n must be integer"}, {"o": {"n": 1}}, {"o": {"n": 2}}]
+
+
+@installed
+def test_cancelling_a_run_ends_it_while_it_waits_on_the_server(tmp_path):
+    folder = _engine_dir(tmp_path)
+    source = (
+        'import * as rt from "./runtime.ts";\n'
+        "export async function s(state: rt.State, run: rt.Run): Promise<rt.Update> "
+        '{ return await run.script("m:f", state); }\n'
+        'export const FLOW: rt.Flow = { name: "x", steps: { n1: { name: "s", type: "core.script", run: s } }, '
+        'start: ["n1"], next: {}, channels: {}, outputs: [] };\n'
+    )
+    proc = subprocess.Popen([mastra_adapter.node() or "node", "worker.ts"], cwd=folder, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                            env={"PATH": "/usr/bin:/bin", "NODE_NO_WARNINGS": "1"})  # fmt: skip
+    assert proc.stdin is not None and proc.stdout is not None
+    timer = threading.Timer(60, proc.kill)  # a worker that never ends the run fails the test instead of hanging it
+    timer.start()
+    try:
+        assert json.loads(proc.stdout.readline())["ready"]
+        proc.stdin.write(json.dumps({"op": "run", "run": "r1", "source": source, "input": {}}) + "\n")
+        proc.stdin.flush()
+        while "call" not in (msg := json.loads(proc.stdout.readline())):
+            pass
+        assert msg["op"] == "script"  # the run now waits on the server, which cancels it instead of answering
+        proc.stdin.write(json.dumps({"op": "cancel", "run": "r1"}) + "\n")
+        proc.stdin.flush()
+        assert json.loads(proc.stdout.readline()) == {"run": "r1", "end": True}
+    finally:
+        timer.cancel()
+        proc.kill()
+        proc.wait()
 
 
 # ------------------------------------------------------------------ code ----

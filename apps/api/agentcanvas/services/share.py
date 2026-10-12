@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Deployment, DeploymentShare, ShareThread, WorkflowVersion
@@ -155,12 +156,19 @@ class ShareService:
         return await self.s.get(DeploymentShare, dep_id)
 
     async def ensure(self, dep_id: str) -> DeploymentShare:
+        """The deployment's share settings, created (switched off) on first use. Two first requests at once both
+        try to create them: the loser of the race reads the winner's row."""
         share = await self.get(dep_id)
         if share is None:
             share = DeploymentShare(deployment_id=dep_id, token=new_token(), enabled=False, title="", greeting="",
                                     suggestions=[])  # fmt: skip
-            self.s.add(share)
-            await self.s.flush()
+            try:
+                async with self.s.begin_nested():
+                    self.s.add(share)
+            except IntegrityError:
+                share = await self.s.get(DeploymentShare, dep_id, populate_existing=True)
+                if share is None:  # pragma: no cover - the row that clashed was deleted at once
+                    raise
         return share
 
     async def update(self, dep_id: str, body: ShareSettingsIn, user_id: str) -> DeploymentShare:

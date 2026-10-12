@@ -23,13 +23,7 @@ export function CodePanel() {
     lastSeen.set(workflowId, lines);
     if (prev && prev.join("\n") !== data) setChanged(changedLines(prev, lines));
   }, [data, lines, workflowId]);
-  const [start, end] = useMemo(() => {
-    if (!selected) return [-1, -1];
-    const s = lines.findIndex((l) => l.includes(`@canvas-node ${selected} `) || l.includes(`@canvas-resource ${selected} `));
-    if (s < 0) return [-1, -1];
-    const e = lines.findIndex((l, i) => i > s && /@canvas-(node|resource)|── flow edges ──/.test(l));
-    return [s, e < 0 ? lines.length : e];
-  }, [lines, selected]);
+  const [start, end] = useMemo(() => blockRange(lines, selected), [lines, selected]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     ref.current?.querySelector(".hl")?.scrollIntoView({ block: "nearest" });
@@ -56,6 +50,19 @@ export function CodePanel() {
       ))}
     </div>
   );
+}
+
+/** Where a block's code ends: the next block, or the trailing section every generator writes after the last one
+ * (LangGraph's flow edges, the flow engine's `FLOW` in Python or TypeScript, `CANVAS`, Google ADK's `build()`). */
+const BLOCK_END = /@canvas-(node|resource)|── flow edges ──|^(FLOW\b|export const FLOW\b|CANVAS\b|def build\b)/;
+
+/** Lines [start, end) of the selected block or resource in generated code; [-1, -1] when it is not there. */
+export function blockRange(lines: string[], selected: string | null | undefined): [number, number] {
+  if (!selected) return [-1, -1];
+  const s = lines.findIndex((l) => l.includes(`@canvas-node ${selected} `) || l.includes(`@canvas-resource ${selected} `));
+  if (s < 0) return [-1, -1];
+  const e = lines.findIndex((l, i) => i > s && BLOCK_END.test(l));
+  return [s, e < 0 ? lines.length : e];
 }
 
 const lastSeen = new Map<string, string[]>(); // workflow id -> last generated code shown

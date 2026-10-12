@@ -163,13 +163,11 @@ class ModelBridge:
             return await _send(writer, 200, {**base, "object": "chat.completion", "choices": [choice],
                                              "usage": openai_usage})  # fmt: skip
         chunk = {**base, "object": "chat.completion.chunk"}
-        delta: dict[str, Any] = {"role": "assistant", "content": text or ""}
-        if tool_calls:
-            delta["tool_calls"] = [{**c, "index": i} for i, c in enumerate(tool_calls)]
-        events: list[Any] = [
-            {**chunk, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]},
-            {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]},
-        ]
+        deltas: list[dict[str, Any]] = [{"role": "assistant", "content": text or ""}]
+        for i, c in enumerate(tool_calls):  # one call per chunk, as OpenAI streams them (some parsers keep one)
+            deltas.append({"tool_calls": [{**c, "index": i}]})
+        events: list[Any] = [{**chunk, "choices": [{"index": 0, "delta": d, "finish_reason": None}]} for d in deltas]
+        events.append({**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]})
         if (body.get("stream_options") or {}).get("include_usage"):
             events.append({**chunk, "choices": [], "usage": openai_usage})
         await _stream(writer, [(None, e) for e in events] + [(None, "[DONE]")])

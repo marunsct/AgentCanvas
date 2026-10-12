@@ -2,6 +2,33 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.26.1 — Review after the competitive roadmap (not tagged yet)
+
+A whole-codebase review after S23–S36 found 40 bugs; all are fixed.
+
+### Security
+- **A workflow's name, description or block ids can no longer become code.** Generated Pydantic AI, Agno, Microsoft Agent Framework, Strands, LlamaIndex, OpenAI Agents SDK, CrewAI and Google ADK modules escape them in docstrings and comments, and Mastra's TypeScript escapes `*/` in its header. Before, a name such as `x"""; import os; ...` ran on the server when the flow loaded, and a name with `C:\Users` or a quote at the end could not run or export.
+- **Mastra prompt templates are sandboxed** like Python's: `constructor`, `prototype` and `__proto__` are refused, so a template cannot run JavaScript in the worker.
+- **Public share links:** a visitor no longer sees the raw tokens of internal steps or the text before a safety block redacts it (only the final step's text streams, and nothing streams when the workflow has a safety block); a visitor can answer questions but cannot approve an approval step (it waits in the inbox); each visitor address has its own rate limit (`rate_limit_per_share_client`, default 30 a minute), so one visitor cannot use up an API key's quota.
+- **Knowledge uploads:** a Markdown heading with a long run of spaces no longer freezes the server for minutes (the heading pattern is linear); a Word file that unpacks to more than 100 MB is refused before it is read; parsing and chunking run off the event loop.
+- **Imports:** an n8n, Langflow or Flowise file with many branches that join again no longer takes exponential time, and a very deep one gives a clear error instead of a 500.
+- **Personal data patterns** are matched across the whole text, not only its first 100,000 characters.
+
+### Fixed
+- **The flow engine** (Pydantic AI, Agno, Microsoft Agent Framework, Strands, LlamaIndex and Mastra): a *Wait for all* step inside a loop waits for every branch on each pass instead of running early and twice; one after a path that was not taken ends the run instead of failing at the step limit; a step after an approval no longer runs twice when the run continues.
+- **Tool approvals** never read a "no" as a "yes": `"reject"`, `{"approved": false}` and a missing decision all reject, and one edit is no longer copied onto other calls.
+- **A failed continue keeps the paused run** (on the server and in exports), so the person can try again; a worker that stops mid-run ends the run with an error.
+- **Microsoft Agent Framework:** each decision applies to its own call when a turn calls the same tool twice, and a rejection's reason reaches the model.
+- **LlamaIndex:** every call of a turn that needs a person is asked about, not just the first; the model bridge streams one tool call per chunk, as OpenAI does, so LlamaIndex agents see parallel tool calls.
+- **Model call limits** hold across approvals on the Microsoft Agent Framework and Strands.
+- **Google ADK:** *Ask before using* works with the tool block's name (the one validation accepts); a call approved earlier is not run again when the run continues; a call whose arguments changed is asked about again. LangChain designed agents also accept the block name.
+- **Exports:** a workflow named after a package it imports (`Strands`, `Agent Framework`, `workflows`) gets a `wf_` package name; the export download keeps its `.zip` name when the workflow searches a knowledge base.
+- **Mastra:** an empty field prints `None` and booleans `True`/`False` as in Python, empty lists are false in `{% if %}`, `tojson` works; an answer schema with `$id` no longer breaks later answers; cancelling a run ends it even while a tool runs; protocol writes retry when stdout is busy.
+- **Budgets** count the spend of runs still going, so runs at the same time cannot all spend up to the limit (per API instance).
+- **Knowledge bases:** two uploads at once no longer leave search on a stale index, and a reindex no longer misses a document added meanwhile.
+- Two first opens of a deployment's share settings at once no longer give a 500.
+- **Web:** typing in the share settings is kept when the switch is flipped; a knowledge base name can be typed with spaces and dashes; *Alert at* takes at most 5 values; Clear in the Playground drops a reply still on its way; the Code tab's highlight stops before `FLOW`.
+
 ## v0.26.0 — Mastra flows in TypeScript (not tagged yet)
 
 ### Added

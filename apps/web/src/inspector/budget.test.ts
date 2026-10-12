@@ -8,4 +8,9 @@ describe("cost alert shares (S26)", () => {
     expect(parseAlertShares("120")).toBeUndefined();
     expect(parseAlertShares("eighty")).toBeUndefined();
   });
+
+  it("allows at most 5 alerts, counted after removing repeats", () => {
+    expect(parseAlertShares("10, 20, 30, 40, 50, 50")).toEqual([0.1, 0.2, 0.3, 0.4, 0.5]);
+    expect(parseAlertShares("10, 20, 30, 40, 50, 60")).toBeUndefined();
+  });
 });

@@ -238,6 +238,57 @@ async def test_without_crewai_a_run_says_how_to_install_it(adapter, monkeypatch)
     assert events[-1]["type"] == "RUN_ERROR" and "make crewai" in events[-1]["message"]
 
 
+async def test_a_paused_run_is_kept_until_its_continuation_ends(adapter, monkeypatch):
+    """A continuation that fails (the worker died, the run errored) keeps the paused run, to be continued again; a new
+    pause replaces it and the end of the run forgets it."""
+
+    class Worker:
+        def __init__(self) -> None:
+            self.events: list[dict[str, Any]] = []
+            self.sent: list[Any] = []
+
+        async def run(self, run_id: str, request: dict[str, Any], handle: Any):
+            self.sent.append(request["resume"]["paused"])
+            for ev in self.events:
+                yield dict(ev)
+
+    worker = Worker()
+    monkeypatch.setattr(adapter, "python", lambda: "python")
+    monkeypatch.setattr(adapter, "worker", lambda python: worker)
+    adapter._paused["t"] = '{"saved": 1}'
+
+    async def resume() -> dict[str, Any]:
+        spec = RunSpec(workflow=_agent_wf(), thread_id="t", run_id=new_id("run"), resume=ResumeSpec(value="yes"),
+                       mocks={"model": ["hi"]})  # fmt: skip
+        return [ev async for ev in adapter.execute(spec, adapter.default_resources())][-1]
+
+    worker.events = [{"type": "RUN_ERROR", "code": "error", "message": "the CrewAI worker stopped"}]
+    assert (await resume())["type"] == "RUN_ERROR"
+    assert adapter._paused["t"] == '{"saved": 1}'
+    worker.events = [{"type": "RUN_FINISHED", "outcome": "interrupt", "paused": '{"saved": 2}'}]
+    assert (await resume())["outcome"] == "interrupt"
+    assert adapter._paused["t"] == '{"saved": 2}'
+    worker.events = [{"type": "RUN_FINISHED", "outcome": "success"}]
+    assert (await resume())["outcome"] == "success"
+    assert "t" not in adapter._paused
+    assert worker.sent == ['{"saved": 1}', '{"saved": 1}', '{"saved": 2}']
+    assert (await resume())["message"] == "nothing to resume on this conversation"
+
+
+async def test_a_worker_that_cannot_take_a_run_ends_it_with_run_error():
+    worker = crewai_adapter.CrewWorker.__new__(crewai_adapter.CrewWorker)
+    worker._runs = {}
+
+    def send(msg: dict[str, Any]) -> None:
+        raise BrokenPipeError(32, "Broken pipe")
+
+    worker.send = send  # type: ignore[method-assign]
+    events = [ev async for ev in worker.run("r", {}, lambda op, args: None)]
+    assert len(events) == 1 and events[0]["type"] == "RUN_ERROR", events
+    assert "the CrewAI worker stopped" in events[0]["message"]
+    assert worker._runs == {}
+
+
 def test_asking_before_a_tool_call_is_refused_plainly():
     wf = _agent_wf(approve_tools=["send_reply"])
     with pytest.raises(Exception, match="cannot ask a person before a tool call"):

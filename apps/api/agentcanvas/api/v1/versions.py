@@ -200,9 +200,9 @@ async def _export(
     if used := knowledge.used_knowledge_bases(wf.model_dump(mode="json")):  # S24: ship the knowledge bases it searches
         ks = knowledge.KnowledgeService(session)
         files = {}
-        for name in sorted(used):  # one the project lacks is left out: the export's search then says it is missing
-            if (kb := await ks.find(view.row.project_id, name)) is not None:
-                files[name] = await ks.export(kb)
+        for kb_name in sorted(used):  # one the project lacks is left out: the export's search says it is missing
+            if (kb := await ks.find(view.row.project_id, kb_name)) is not None:
+                files[kb_name] = await ks.export(kb)
         data = knowledge.bundle(data, files) if files else data
     return view, name, data
 

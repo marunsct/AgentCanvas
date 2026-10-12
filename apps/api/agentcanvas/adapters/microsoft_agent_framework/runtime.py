@@ -7,7 +7,9 @@ settings applied by a chat middleware), tools (`@tool(approval_mode="always_requ
 first), "Ask AI" and agent steps (`agent.run`). A tool call that needs approval pauses the agent's run the Agent
 Framework way: its `AgentSession` and the response holding the approval requests are saved with the pause, and the
 agent continues in that session with a function approval response for each call once a person has approved, edited
-or rejected it.
+or rejected it. The Agent Framework runs an approved call as the model made it, so a function middleware (`Decided`)
+applies a person's decision to each call by its call id: an edited call runs with their arguments, and a rejected call
+answers the model "Rejected by a person: <why>" without running the tool.
 
 The same module runs inside AgentCanvas (in a worker process with the Agent Framework) and in exports. What differs is
 the `Host`, which gives steps their models, tools, knowledge bases and workspace functions.
@@ -20,6 +22,7 @@ from __future__ import annotations
 import functools
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextvars import ContextVar
 from typing import Any
 
 from agent_framework import (
@@ -30,6 +33,8 @@ from agent_framework import (
     ChatMiddleware,
     ChatResponse,
     Content,
+    FunctionInvocationContext,
+    FunctionMiddleware,
     Message,
     tool,
 )
@@ -67,7 +72,6 @@ class Run(supersteps.Run):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._approve: set[str] = set()  # tools of this step's agent that wait for a person
-        self._edits: dict[str, list[dict[str, Any]]] = {}  # arguments a person wrote, per tool, in call order
 
     # ---- models and tools ----
     def model(self, resource: str, **settings: Any) -> Any:
@@ -81,8 +85,7 @@ class Run(supersteps.Run):
         found = self.host.tools(resources, self.name)
         self._approve |= {fn.__name__ for fn in found if fn.__name__ in (approve or [])}
         return [
-            tool(_edited(fn, self._edits), approval_mode="always_require") if fn.__name__ in self._approve else fn
-            for fn in found
+            tool(_edited(fn), approval_mode="always_require") if fn.__name__ in self._approve else fn for fn in found
         ]
 
     # ---- AI ----
@@ -104,13 +107,17 @@ class Run(supersteps.Run):
         `response_format`, also written to `structured_response`). Tools that need approval pause the run here. After
         `max_calls` model calls the agent stops with a note (or, `stop_at_limit=False`, the run fails)."""
         name = agent.name or self.name
-        middleware = [CallLimit(max_calls)] if max_calls is not None else []
         saved = json.loads(self._native) if self._native else None
+        found = self.tool_answers(len(saved["calls"])) if saved is not None else None
+        resumed = saved if found is not None else None  # continuing after a person decided on the paused calls
+        limit = CallLimit(max_calls, used=(resumed or {}).get("used", 0)) if max_calls is not None else None
+        middleware: list[Any] = [limit] if limit is not None else []
         try:
-            if saved is not None and (found := self.tool_answers(len(saved["calls"]))) is not None:
-                session = AgentSession.from_dict(saved["session"])
-                decided = dict(zip(saved["calls"], found, strict=True))
-                answers = self._answers(AgentResponse.from_dict(saved["response"]), decided)
+            if resumed is not None and found is not None:
+                session = AgentSession.from_dict(resumed["session"])
+                decided = dict(zip(resumed["calls"], found, strict=True))
+                answers, by_call = _answers(AgentResponse.from_dict(resumed["response"]), decided)
+                middleware.append(Decided(by_call))
                 result = await agent.run(Message("user", answers), session=session, middleware=middleware)
             else:
                 session = AgentSession()
@@ -123,21 +130,24 @@ class Run(supersteps.Run):
         if result.user_input_requests:
             waiting = [r for r in result.user_input_requests if _call(r)[0] in self._approve]
             native = json.dumps({"session": session.to_dict(), "response": result.to_dict(),
-                                 "calls": [r.id for r in waiting]}, default=str)  # fmt: skip
+                                 "calls": [r.id for r in waiting], "used": limit.calls if limit else 0},
+                                default=str)  # fmt: skip
             raise self.tool_request([_call(r) for r in waiting], native)
         return self.reply(name, result.value if structured else result.text, output=output, structured=structured)
 
-    def _answers(self, paused: AgentResponse, decided: dict[str, dict[str, Any]]) -> list[Content]:
-        """A function approval response for each approval request of the paused run. The Agent Framework asks about
-        every call the model made with a tool that needs approval; calls of the other tools go ahead."""
-        answers = []
-        for request in paused.user_input_requests:
-            decision = decided.get(str(request.id), {"type": "approve"})
-            if (args := supersteps.edited_args(decision)) is not None:
-                self._edits.setdefault(_call(request)[0], []).append(args)
-            approved = decision.get("type", "approve") in ("approve", "edit")
-            answers.append(request.to_function_approval_response(approved))
-        return answers
+
+def _answers(
+    paused: AgentResponse, decided: dict[str, dict[str, Any]]
+) -> tuple[list[Content], dict[str, dict[str, Any]]]:
+    """A function approval response for each approval request of the paused run, and a person's decision on each
+    call by its call id (for `Decided`). The Agent Framework asks about every call the model made with a tool that
+    needs approval; calls of the other tools go ahead. Every call is approved: `Decided` answers a rejected one."""
+    answers, by_call = [], {}
+    for request in paused.user_input_requests:
+        call: Any = request.function_call
+        by_call[str(call.call_id)] = decided.get(str(request.id), {"type": "approve"})
+        answers.append(request.to_function_approval_response(True))
+    return answers, by_call
 
 
 class LimitReached(Exception):
@@ -145,16 +155,39 @@ class LimitReached(Exception):
 
 
 class CallLimit(ChatMiddleware):
-    """Counts an agent's model calls in one run; past the limit, the next call ends the run."""
+    """Counts an agent's model calls in one run (`used`: the calls made before the run paused for a person); past
+    the limit, the next call ends the run."""
 
-    def __init__(self, limit: int):
-        self.limit, self.calls = limit, 0
+    def __init__(self, limit: int, used: int = 0):
+        self.limit, self.calls = limit, used
 
     async def process(self, context: ChatContext, call_next: Callable[[], Awaitable[None]]) -> None:
         self.calls += 1
         if self.calls > self.limit:
             raise LimitReached(f"more than {self.limit} model calls")
         await call_next()
+
+
+_EDITED: ContextVar[dict[str, Any] | None] = ContextVar("agentcanvas_edited_args", default=None)
+
+
+class Decided(FunctionMiddleware):
+    """A person's decision on each approved call, by call id: an edited call runs with the arguments they wrote (see
+    `_edited`), a rejected call answers the model with their reason instead of running."""
+
+    def __init__(self, decided: dict[str, dict[str, Any]]):
+        self.decided = decided
+
+    async def process(self, context: FunctionInvocationContext, call_next: Callable[[], Awaitable[None]]) -> None:
+        decision = self.decided.get(str(context.metadata.get("call_id")), {"type": "approve"})
+        if decision.get("type", "approve") not in ("approve", "edit"):
+            context.result = f"Rejected by a person: {decision.get('message') or 'no reason given'}"
+            return
+        token = _EDITED.set(supersteps.edited_args(decision))
+        try:
+            await call_next()
+        finally:
+            _EDITED.reset(token)
 
 
 class Settings(ChatMiddleware):
@@ -205,14 +238,14 @@ def _call(request: Content) -> tuple[str, dict[str, Any]]:
     return str(call.name), dict(args or {})
 
 
-def _edited(fn: Callable[..., Any], edits: dict[str, list[dict[str, Any]]]) -> Callable[..., Any]:
+def _edited(fn: Callable[..., Any]) -> Callable[..., Any]:
     """`fn`, called with the arguments a person wrote when they edited the call (the Agent Framework approves a call
-    as the model made it)."""
+    as the model made it; `Decided` gives this call's edit)."""
 
     @functools.wraps(fn)
     async def call(*args: Any, **kwargs: Any) -> Any:
-        if queued := edits.get(fn.__name__):
-            args, kwargs = (), queued.pop(0)
+        if (edited := _EDITED.get()) is not None:
+            args, kwargs = (), edited
         out = fn(*args, **kwargs)
         return await out if hasattr(out, "__await__") else out
 

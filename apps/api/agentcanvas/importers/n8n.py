@@ -11,6 +11,7 @@ become `{{ state.<field> }}`; ones that do not translate are kept as text and li
 from __future__ import annotations
 
 import re
+from collections import deque
 from typing import Any
 
 from agentcanvas.importers import (
@@ -144,10 +145,11 @@ class _N8n:
             self.declare(n)
         for n in ordered:
             self.fill(n)
+        into: dict[str, list[tuple[str, int]]] = {}
+        for src, index, dst in self.main:
+            into.setdefault(dst, []).append((src, index))
         for n in ordered:
-            for src, index, dst in self.main:
-                if dst != n:
-                    continue
+            for src, index in into.get(n, ()):
                 earlier = self.through(src)
                 for key in earlier:
                     route = None
@@ -170,8 +172,9 @@ class _N8n:
                 b.note(f"'{n}' ({t.rsplit('.', 1)[-1]}) was plugged into an AI node; it has no counterpart and was "
                        "left out.")  # fmt: skip
         if not b.outputs:
+            later = {k for s in b.steps.values() for k, _ in s.after}
             for key, st in b.steps.items():
-                if not any(k == key for s in b.steps.values() for k, _ in s.after):
+                if key not in later:
                     if st.type == "core.llm":
                         b.output(st.config["output"])
                     elif st.type == "core.agent":
@@ -180,15 +183,19 @@ class _N8n:
 
     def order(self, steps: list[str]) -> list[str]:
         """Steps from the trigger onwards (so expressions see earlier steps first), then any others."""
-        seen: list[str] = []
-        queue = [n for n in self.nodes if self.is_trigger(n)]
+        nexts: dict[str, list[str]] = {}
+        for s, _, t in self.main:
+            nexts.setdefault(s, []).append(t)
+        seen: dict[str, None] = {}  # insertion-ordered set: linear on large files
+        queue = deque(n for n in self.nodes if self.is_trigger(n))
         while queue:
-            n = queue.pop(0)
+            n = queue.popleft()
             if n in seen:
                 continue
-            seen.append(n)
-            queue += [t for s, _, t in self.main if s == n]
-        return [n for n in seen if n in steps] + [n for n in steps if n not in seen]
+            seen[n] = None
+            queue.extend(nexts.get(n, ()))
+        wanted = set(steps)
+        return [n for n in seen if n in wanted] + [n for n in steps if n not in seen]
 
     def through(self, src: str) -> list[str]:
         """The step keys an item from `src` comes from: triggers are the start, ignored nodes are looked through."""

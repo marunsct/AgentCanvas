@@ -1,6 +1,6 @@
 /** Playground (S31): chat with a model and its instructions before building anything; then make it a workflow. */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import type { ChatOut } from "../api/generated";
@@ -21,12 +21,16 @@ export function PlaygroundPage() {
   const [draft, setDraft] = useState("");
   const [name, setName] = useState("My assistant");
   const chosen = model || undefined;
+  const conversation = useRef(0); // bumped by Clear: a reply to an earlier conversation is dropped
 
   const send = useMutation({
-    mutationFn: (messages: Turn[]) => apiFetch<ChatOut>(`/projects/${PROJECT_ID}/playground/chat`, {
-      method: "POST", json: { messages, system_prompt: system, model: chosen },
-    }),
-    onSuccess: (out) => setTurns((t) => [...t, { role: "assistant", content: out.reply }]),
+    mutationFn: ({ messages }: { messages: Turn[]; conversation: number }) =>
+      apiFetch<ChatOut>(`/projects/${PROJECT_ID}/playground/chat`, {
+        method: "POST", json: { messages, system_prompt: system, model: chosen },
+      }),
+    onSuccess: (out, sent) => {
+      if (sent.conversation === conversation.current) setTurns((t) => [...t, { role: "assistant", content: out.reply }]);
+    },
   });
   const make = useMutation({
     mutationFn: () => apiFetch<{ id: string }>(`/projects/${PROJECT_ID}/playground/workflow`, {
@@ -43,7 +47,7 @@ export function PlaygroundPage() {
     const next: Turn[] = [...turns, { role: "user", content: text }];
     setTurns(next);
     setDraft("");
-    send.mutate(next);
+    send.mutate({ messages: next, conversation: conversation.current });
   };
 
   return (
@@ -89,7 +93,8 @@ export function PlaygroundPage() {
             <label htmlFor="pg-input" className="visually-hidden">Your message</label>
             <input id="pg-input" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask something…" />
             <button type="submit" className="primary" disabled={send.isPending || !draft.trim()}>Send</button>
-            <button type="button" onClick={() => { setTurns([]); send.reset(); }} disabled={turns.length === 0}>Clear</button>
+            <button type="button" onClick={() => { conversation.current += 1; setTurns([]); send.reset(); }}
+              disabled={turns.length === 0 || send.isPending}>Clear</button>
           </form>
         </section>
       </div>

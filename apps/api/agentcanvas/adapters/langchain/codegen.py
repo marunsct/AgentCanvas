@@ -39,6 +39,16 @@ def one_line(value: object) -> str:
     return _LINE_BREAKS.sub(" ", str(value))
 
 
+def doc_line(value: object) -> str:
+    """Text for a line of a generated Python docstring: also no backslash escapes and no quote that ends it."""
+    return one_line(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def ts_doc_line(value: object) -> str:
+    """Text for a line of a generated TypeScript `/** */` comment: no `*/` that ends it."""
+    return one_line(value).replace("*/", "*\\/")
+
+
 _env.filters["line"] = one_line
 
 CompileError = WorkflowHasErrors  # backwards-compatible name

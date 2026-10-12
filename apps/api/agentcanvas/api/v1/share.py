@@ -3,10 +3,12 @@
 Builders manage a deployment's link under `/v1/deployments/{dep_id}/share` (signed in). Visitors use the public
 `/v1/share/{token}` endpoints: no sign-in, no key; the token is the capability. They see the page's title, greeting
 and suggestions, never the workflow, its keys or secrets, and the run stream they get carries only the answer text
-and the questions a paused run asks them.
+and the questions a paused run asks them. Visitors answer a step that asks for input; approvals are left to the
+builders (Runs page), since anyone with the link could otherwise approve.
 
 Runs started here are ordinary deployment runs (Runs, online evaluators, feedback) with the same rate limits as calls
-with the deployment's key; their end user is `share:<deployment>:<visitor>`.
+with the deployment's key, plus a per-client-address limit on each link; their end user is
+`share:<deployment>:<visitor>`.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.deployments import FeedbackIn, _continue_on, count_call
-from agentcanvas.api.v1.protocols import YES, _pending, answer_value
+from agentcanvas.api.v1.protocols import _pending, answer_value
 from agentcanvas.api.v1.runs import SSE_HEADERS, _context
 from agentcanvas.db.models import Deployment, DeploymentShare, Project, Run, RunScore, WorkflowRow
 from agentcanvas.errors import InvalidInput, NotFound
@@ -142,8 +144,8 @@ class ShareRunIn(BaseModel):
 class ShareResumeIn(BaseModel):
     visitor: Visitor
     interrupt_id: str | None = None
-    approve: bool | None = Field(None, description="the answer to an approval")
-    text: str | None = Field(None, max_length=20_000, description="the answer to a question (or a comment)")
+    approve: bool | None = Field(None, description="not used: approvals cannot be given on a share link")
+    text: str | None = Field(None, max_length=20_000, description="the answer to a question")
 
 
 class ShareFeedbackIn(FeedbackIn):
@@ -152,8 +154,10 @@ class ShareFeedbackIn(FeedbackIn):
 
 async def _open(request: Request, session: AsyncSession, token: str, count: bool = True):
     share, dep, wf = await ShareService(session).open(token)
-    if count:
-        await count_call(request, session, dep, wf)
+    if count:  # the deployment's and project's limits, and this link's per-client one (visitor secrets are free)
+        client = request.client.host if request.client else "unknown"
+        per_client = request.app.state.settings.rate_limit_per_share_client
+        await count_call(request, session, dep, wf, (f"visitor:{dep.id}:{client}", per_client))
     return share, dep, wf
 
 
@@ -176,9 +180,40 @@ async def _visitor_context(session: AsyncSession, dep: Deployment, wf: Workflow,
     return _context(wf, {}, CurrentUser(id=end_user, org_id=project.org_id if project else "", role="api"))
 
 
-def _visitor_events(h: RunHandle, runner: Any, shape: InputShape) -> AsyncIterator[str]:
-    """The run's stream as a visitor may see it: the answer text as it is written, then the final answer or the
-    question a pause asks; step names, state and error details stay inside."""
+APPROVAL_WAIT = "This needs approval from the people who run this assistant before it can continue."
+GUARD_PREFIX = "guard."
+STREAMED = ("core.llm", "core.agent")  # steps whose written text is the answer when they finish the run
+
+
+def _answer_steps(wf: Workflow) -> set[str]:
+    """The steps whose text may reach a visitor as it is written: AI steps and agents that finish the run. None when
+    the workflow has a safety block anywhere (subflows included): text written before the check must not leak, so
+    the visitor gets only the final, checked answer. Text of earlier steps (drafts, classifiers, tool reasoning)
+    is never streamed."""
+    found_guard = False
+
+    def walk(value: Any) -> None:
+        nonlocal found_guard
+        if isinstance(value, dict):
+            if isinstance(value.get("type"), str) and value["type"].startswith(GUARD_PREFIX):
+                found_guard = True
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+
+    walk(wf.model_dump(mode="json"))
+    if found_guard:
+        return set()
+    last = {e.source.node for e in wf.edges if e.kind == "flow" and e.target.node == "END"}
+    return {n.id for n in wf.nodes if n.type in STREAMED and n.id in last}
+
+
+def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) -> AsyncIterator[str]:
+    """The run's stream as a visitor may see it: the answer text as it is written (`_answer_steps` only), then the
+    final answer or the question a pause asks; step names, state and error details stay inside."""
+    streamed = _answer_steps(wf)
 
     async def gen() -> AsyncIterator[str]:
         def sse(ev: dict[str, Any]) -> str:
@@ -187,17 +222,24 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape) -> AsyncIterat
         yield sse({"type": "RUN_STARTED", "runId": h.run_id, "threadId": h.thread_id})
         async for ev in runner.subscribe(h.run_id):
             kind = ev.get("type")
-            if kind == "TEXT_MESSAGE_CONTENT" and isinstance(ev.get("delta"), str):
+            if (
+                kind == "TEXT_MESSAGE_CONTENT"
+                and isinstance(ev.get("delta"), str)
+                and ev.get("canvas_node_id") in streamed
+            ):
                 yield sse({"type": "TEXT_MESSAGE_CONTENT", "delta": ev["delta"]})
             elif kind == "RUN_FINISHED":
-                interrupts = [
-                    {"id": i.get("id"), "kind": i.get("kind") or "input", "question": question_of(i)}
-                    for i in ev.get("interrupts") or []
+                paused = ev.get("interrupts") or []
+                interrupts = [  # only questions: approvals are not the visitor's to give
+                    {"id": i.get("id"), "kind": "input", "question": question_of(i)}
+                    for i in paused
+                    if (i.get("kind") or "input") == "input"
                 ]
+                answer = APPROVAL_WAIT if paused and not interrupts else answer_text(ev.get("output"), shape)
                 yield sse({
                     "type": "RUN_FINISHED", "runId": h.run_id, "threadId": h.thread_id,
-                    "status": "interrupted" if interrupts else (ev.get("status") or "success"),
-                    "answer": "" if interrupts else answer_text(ev.get("output"), shape), "interrupts": interrupts,
+                    "status": "interrupted" if paused else (ev.get("status") or "success"),
+                    "answer": "" if interrupts else answer, "interrupts": interrupts,
                 })  # fmt: skip
             elif kind == "RUN_ERROR":
                 busy = ev.get("code") == "redeploy"
@@ -209,10 +251,10 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape) -> AsyncIterat
     return gen()
 
 
-def _stream(request: Request, h: RunHandle, shape: InputShape) -> Response:
+def _stream(request: Request, h: RunHandle, shape: InputShape, wf: Workflow) -> Response:
     headers = {**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id}
     return StreamingResponse(
-        _visitor_events(h, request.app.state.runner, shape), media_type="text/event-stream", headers=headers
+        _visitor_events(h, request.app.state.runner, shape, wf), media_type="text/event-stream", headers=headers
     )
 
 
@@ -240,30 +282,33 @@ async def share_run_stream(
     if new:
         await shares.claim_thread(dep.id, thread_id, body.visitor)
     await session.close()
-    return _stream(request, h, shape)
+    return _stream(request, h, shape, wf)
 
 
 @public_router.post("/share/{token}/threads/{thread_id}/resume")
 async def share_resume(
     token: str, thread_id: str, body: ShareResumeIn, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
-    """Answer the question (or approval) a visitor's paused conversation asks, streaming what follows (SSE)."""
+    """Answer the question a visitor's paused conversation asks, streaming what follows (SSE). Approvals are not
+    given here: anyone with the link could approve, so they wait for the builders on the Runs page."""
     share, dep, wf = await _open(request, session, token)
     await ShareService(session).check_thread(dep.id, thread_id, body.visitor)
     pending = await _pending(request, session, thread_id, body.interrupt_id)
     if pending is None:
         raise InvalidInput("this conversation is not waiting for an answer")
-    approve = body.approve
-    if approve is None and pending.get("kind") in ("approval", "tool_approval") and body.text is not None:
-        approve = body.text.strip().lower() in YES
-    value = answer_value(pending, approve, body.text, None)
+    if (pending.get("kind") or "input") != "input":
+        raise InvalidInput(
+            "this conversation is waiting for approval from the people who run this assistant; it cannot be "
+            "approved from a share link"
+        )
+    value = answer_value(pending, None, body.text, None)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(value, pending.get("id")), deployment_id=dep.id,
         version_id=version_id, decided_by=None, labels={"channel": "share"},
     )  # fmt: skip
     await session.close()
-    return _stream(request, h, input_shape(wf, share.input_field))
+    return _stream(request, h, input_shape(wf, share.input_field), wf)
 
 
 @public_router.post("/share/{token}/runs/{run_id}/feedback", status_code=204)

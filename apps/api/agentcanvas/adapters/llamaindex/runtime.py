@@ -6,7 +6,8 @@ parts: models (an `OpenAILike` LLM over an OpenAI-compatible address), tools, "A
 (`agent.run`), typed answers (`output_cls`) and model call limits (`max_iterations`). A tool a person approves first
 waits inside the agent's own workflow the LlamaIndex way: it emits an `InputRequiredEvent` and waits for a
 `HumanResponseEvent`. The agent's `Context` (serialized) and its chat memory are saved with the pause; the agent
-continues from them when a person has approved, edited or rejected the call. Calls are asked about one at a time.
+continues from them when a person has decided on the calls. All the calls of a model turn that wait are asked about
+together, and each gets its own `HumanResponseEvent` (keyed by the tool call id).
 
 The same module runs inside AgentCanvas (in a worker process with LlamaIndex) and in exports. What differs is the
 `Host`, which gives steps their models, tools, knowledge bases and workspace functions.
@@ -26,6 +27,7 @@ from llama_index.core.llms import ChatMessage
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.workflow import Context, HumanResponseEvent, InputRequiredEvent
 from workflows.errors import WorkflowRuntimeError
+from workflows.runtime.types.results import StepWorkerStateContextVar  # the event a step is handling
 
 from agentcanvas.adapters import supersteps
 from agentcanvas.adapters.supersteps import (  # noqa: F401 - what generated flows use as `rt.<name>`
@@ -57,6 +59,10 @@ async def run(
 class Run(supersteps.Run):
     """What one step can do: LlamaIndex models, tools and agents, people, knowledge bases and workspace code."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._approve: set[str] = set()  # tools of this step's agent that wait for a person
+
     # ---- models and tools ----
     def model(self, resource: str, **settings: Any) -> Any:
         """The LlamaIndex LLM for the canvas model block `resource` (with `temperature`, `max_tokens`)."""
@@ -66,7 +72,8 @@ class Run(supersteps.Run):
         """Tools for the canvas tool blocks `resources`; calls of the tools named in `approve` wait for a person (they
         approve, edit the arguments or reject the call)."""
         found = self.host.tools(resources, self.name)
-        return [ask_before(fn) if fn.__name__ in (approve or []) else fn for fn in found]
+        self._approve |= {fn.__name__ for fn in found if fn.__name__ in (approve or [])}
+        return [ask_before(fn) if fn.__name__ in self._approve else fn for fn in found]
 
     # ---- AI ----
     async def text(self, agent: FunctionAgent, prompt: str) -> str:
@@ -88,25 +95,33 @@ class Run(supersteps.Run):
         `max_calls` model calls the agent stops with a note (or, `stop_at_limit=False`, the run fails)."""
         name = agent.name or self.name
         saved = json.loads(self._native) if self._native else None
-        if saved is not None and (found := self.tool_answers(1)) is not None:
+        calls: list[str] = (saved.get("calls") or [saved["call"]]) if saved is not None else []
+        if saved is not None and (found := self.tool_answers(len(calls))) is not None:
             handler = agent.run(ctx=Context.from_dict(agent, saved["context"]))
             history = [ChatMessage.model_validate(m) for m in saved["memory"]]
             await handler.ctx.store.set("memory", ChatMemoryBuffer.from_defaults(chat_history=history))
-            handler.ctx.send_event(HumanResponseEvent(response=json.dumps(found[0]), call=saved["call"]))
+            for call, decision in zip(calls, found, strict=True):
+                handler.ctx.send_event(HumanResponseEvent(response=json.dumps(decision), call=call))
         else:
             kw: dict[str, Any] = {"max_iterations": max_calls} if max_calls is not None else {}
             handler = agent.run(user_msg=conversation(messages), **kw)
         last: AgentOutput | None = None
+        asked: list[InputRequiredEvent] = []
         try:
             async for ev in handler.stream_events():
                 if isinstance(ev, AgentOutput):
-                    last = ev
+                    last, asked = ev, []
                 elif isinstance(ev, InputRequiredEvent) and ev.get("call"):
+                    asked.append(ev)
+                    # every call of the model turn that waits is asked about at once
+                    waiting = [c for c in (last.tool_calls if last is not None else []) if c.tool_name in self._approve]
+                    if len(asked) < len(waiting):
+                        continue
                     memory = await handler.ctx.store.get("memory")
-                    native = json.dumps({"context": handler.ctx.to_dict(), "call": ev.get("call"),
+                    native = json.dumps({"context": handler.ctx.to_dict(), "calls": [a.get("call") for a in asked],
                                          "memory": [m.model_dump(mode="json") for m in memory.get_all()]})  # fmt: skip
                     await handler.cancel_run()
-                    raise self.tool_request([(ev.get("tool"), ev.get("args"))], native)
+                    raise self.tool_request([(a.get("tool"), a.get("args")) for a in asked], native)
             result: AgentOutput = await handler
         except WorkflowRuntimeError as exc:
             if max_calls is None or "Max iterations" not in str(exc):
@@ -135,13 +150,22 @@ def _typed(agent: FunctionAgent, text: str) -> Any:
     return text
 
 
+def _tool_id() -> str:
+    """The id of the tool call being run (the `ToolCall` event of the agent's `call_tool` step), so that two calls
+    with the same arguments wait for answers of their own."""
+    try:
+        return str(getattr(StepWorkerStateContextVar.get().event, "tool_id", "") or "")
+    except LookupError:
+        return ""
+
+
 def ask_before(fn: Callable[..., Any]) -> Callable[..., Any]:
     """`fn` as a tool that waits for a person inside the agent's workflow: it writes an `InputRequiredEvent` to the
     event stream and waits for the `HumanResponseEvent` that approves, edits or rejects the call."""
     name = fn.__name__
 
     async def call(ctx: Context, **kwargs: Any) -> Any:
-        key = f"{name}:{json.dumps(kwargs, sort_keys=True, default=str)}"
+        key = f"{name}:{_tool_id()}:{json.dumps(kwargs, sort_keys=True, default=str)}"
         asked = InputRequiredEvent(prefix=f"approve {name}", call=key, tool=name, args=kwargs)
         answer = await ctx.wait_for_event(HumanResponseEvent, waiter_id=key, waiter_event=asked,
                                           requirements={"call": key})  # fmt: skip

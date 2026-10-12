@@ -123,6 +123,8 @@ class Paused:
     interrupt_id: str
     steps: int
     native: str | None = None  # the asking step's own framework state
+    next_round: list[str] = field(default_factory=list)  # steps the round's finished steps lead to
+    arrived: dict[str, list[str]] = field(default_factory=dict)  # "wait for all" step -> branches in since it ran
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), default=str)
@@ -166,13 +168,15 @@ async def run(
         values, frontier, done, steps = copy(paused.values), list(paused.frontier), set(paused.done), paused.steps
         answers = {paused.node_id: answer}
         native = {paused.node_id: paused.native} if paused.native else {}
+        rounds = _Rounds(list(paused.next_round), {k: set(v) for k, v in paused.arrived.items()}, resumed=True)
     else:
         values = {k: copy(default) for k, (_, default) in flow.channels.items()}
         values.update(copy(input or {}))
-        frontier = [n for n in flow.following("START", values) if n != "END"]
+        rounds = _Rounds([], {})
+        frontier = [n for n in rounds.lead(flow, "START", values) if n != "END"]
         done, steps, answers, native = set(), 0, {}, {}
     try:
-        async for ev in _loop(flow, host, run_class, values, frontier, done, steps, answers, native, run_id):
+        async for ev in _loop(flow, host, run_class, values, frontier, done, steps, answers, native, run_id, rounds):
             yield ev
     except StopRun as exc:
         yield {"type": "RUN_ERROR", "code": exc.code, "message": str(exc)}
@@ -191,8 +195,9 @@ async def _loop(
     answers: dict[str, Any],
     native: dict[str, str],
     run_id: str,
+    rounds: _Rounds,
 ) -> AsyncIterator[dict[str, Any]]:
-    while frontier:
+    while frontier := rounds.ready(flow, frontier):
         steps += 1
         if steps > flow.recursion_limit:
             yield {
@@ -201,12 +206,9 @@ async def _loop(
                 "message": f"stopped after {flow.recursion_limit} steps without reaching END",
             }
             return
-        following: list[str] = []
+        following, rounds.following = rounds.following, []
         for i, node_id in enumerate(frontier):
             step = flow.steps[node_id]
-            if step.type == "core.join" and not flow.before(node_id) <= done | set(frontier[:i]) | {"START"}:
-                following.append(node_id)  # wait for the other branches
-                continue
             yield {"type": "STEP_STARTED", "stepName": step.name, "canvas_node_id": node_id, "task_id": node_id}
             started = time.perf_counter()
             ctx = run_class(flow, host, node_id, step.name, answers.get(node_id, MISSING), native.get(node_id))
@@ -220,9 +222,9 @@ async def _loop(
                     "payload": intr.payload,
                 }
                 paused = Paused(
-                    values=copy(values), node_id=node_id, frontier=[node_id, *frontier[i + 1 :], *following],
-                    done=sorted(done), payload=intr.payload, interrupt_id=info["id"], steps=steps - 1,
-                    native=intr.native,
+                    values=copy(values), node_id=node_id, frontier=[node_id, *frontier[i + 1 :]], done=sorted(done),
+                    payload=intr.payload, interrupt_id=info["id"], steps=steps - 1, native=intr.native,
+                    next_round=following, arrived={k: sorted(v) for k, v in rounds.arrived.items() if v},
                 )  # fmt: skip
                 yield {
                     "type": "STEP_FINISHED", "stepName": step.name, "canvas_node_id": node_id, "status": "interrupted",
@@ -251,7 +253,7 @@ async def _loop(
             }  # fmt: skip
             if update:
                 yield {"type": "STATE_DELTA", "canvas_node_id": node_id, "delta": copy(update)}
-            for nxt in flow.following(node_id, values):
+            for nxt in rounds.lead(flow, node_id, values):
                 if nxt not in following:
                     following.append(nxt)
         frontier = [n for n in following if n != "END"]
@@ -259,6 +261,37 @@ async def _loop(
         "type": "RUN_FINISHED", "outcome": "success", "breakpoint": False, "interrupts": [], "next": [],
         "checkpoint_id": None, "output": outputs(flow, values),
     }  # fmt: skip
+
+
+@dataclass
+class _Rounds:
+    """Which steps run next. A "wait for all" step runs once every branch into it has arrived since it last ran
+    (a loop waits again on each pass); one still waiting when nothing else is left to run is dropped, as when a
+    path skipped one of its branches."""
+
+    following: list[str]  # the next round, already started (a resumed run)
+    arrived: dict[str, set[str]]
+    resumed: bool = False
+
+    def lead(self, flow: Flow, node_id: str, values: dict[str, Any]) -> list[str]:
+        nxt = flow.following(node_id, values)
+        for target in nxt:
+            if target in flow.steps and flow.steps[target].type == "core.join":
+                self.arrived.setdefault(target, set()).add(node_id)
+        return nxt
+
+    def ready(self, flow: Flow, frontier: list[str]) -> list[str]:
+        if self.resumed:  # the paused round goes on as it was
+            self.resumed = False
+            return frontier
+        out = []
+        for node_id in frontier:
+            if flow.steps[node_id].type != "core.join":
+                out.append(node_id)
+            elif flow.before(node_id) <= self.arrived.get(node_id, set()):
+                self.arrived[node_id] = set()
+                out.append(node_id)
+        return out
 
 
 def outputs(flow: Flow, values: dict[str, Any]) -> dict[str, Any]:
@@ -366,15 +399,28 @@ class Run:
 
 # ------------------------------------------------------------------ helpers ----
 def decisions(answer: Any, count: int) -> list[dict[str, Any]]:
-    """A person's answer to tool approvals as one decision per call (a bare yes/no applies to all)."""
+    """A person's answer to tool approvals as one decision per call, each with its `type` (a bare yes/no applies
+    to all; a call the answer leaves out is rejected)."""
     if isinstance(answer, dict) and isinstance(answer.get("decisions"), list):
-        found = [d if isinstance(d, dict) else {"type": "approve" if d else "reject"} for d in answer["decisions"]]
-        return (found + [found[-1] if found else {"type": "reject"}] * count)[:count]
+        found = [_decision(d) for d in answer["decisions"]]
+        return (found + [{"type": "reject"}] * count)[:count]
+    return [{"type": "approve" if _yes(answer) else "reject"}] * count
+
+
+def _yes(answer: Any) -> bool:
     if isinstance(answer, dict):
         answer = answer.get("approved")
-    if isinstance(answer, str):
-        answer = answer.strip().lower() in YES_WORDS
-    return [{"type": "approve" if answer else "reject"}] * count
+    if isinstance(answer, str):  # "no" / "reject" must not read as approval
+        return answer.strip().lower() in YES_WORDS
+    return isinstance(answer, bool | int | float) and bool(answer)
+
+
+def _decision(given: Any) -> dict[str, Any]:
+    if isinstance(given, dict) and given.get("type") in ("approve", "edit", "reject"):
+        return given
+    if isinstance(given, str) and given.strip().lower() in ("edit", "reject"):
+        return {"type": given.strip().lower()}
+    return {**(given if isinstance(given, dict) else {}), "type": "approve" if _yes(given) else "reject"}
 
 
 def edited_args(decision: dict[str, Any]) -> dict[str, Any] | None:

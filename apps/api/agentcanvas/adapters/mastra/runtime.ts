@@ -68,7 +68,8 @@ export class Run extends engine.Run {
   // ---- AI ----
   /** One answer from `agent` to `prompt` (an "Ask AI" step). */
   async text(agent: Agent, prompt: string): Promise<string> {
-    return String((await agent.generate(prompt)).text ?? "").trim();
+    const options = this.host.signal ? { abortSignal: this.host.signal } : {};
+    return String((await agent.generate(prompt, options)).text ?? "").trim();
   }
 
   /**
@@ -82,6 +83,7 @@ export class Run extends engine.Run {
     const options: Record<string, any> = {};
     if (opts.answer) options.structuredOutput = { schema: opts.answer };
     if (opts.maxCalls !== undefined) options.maxSteps = opts.maxCalls;
+    if (this.host.signal) options.abortSignal = this.host.signal;
     const store = new InMemoryStore();
     const mastra = new Mastra({ agents: { agent }, storage: store, logger: false });
     const running = mastra.getAgent("agent");

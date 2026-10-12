@@ -32,6 +32,31 @@ def test_chunking_strategies():
     assert ks.chunk_text("word " * 500, strategy="paragraphs", size=300)  # a long paragraph is split at words
 
 
+def test_markdown_headings_are_parsed_in_linear_time():
+    """A heading line with a long run of spaces made the old pattern backtrack cubically (seconds per line)."""
+    import time
+
+    started = time.perf_counter()
+    assert ks.chunk_text("# a" + " " * 40_000 + "x\nbody", strategy="markdown")[0]["text"] == "body"
+    ks.chunk_text("## a" + " #" * 20_000 + " " * 20_000 + "\n# b" + "\t" * 40_000 + "y", strategy="markdown")
+    assert time.perf_counter() - started < 1.0
+    text = "# Title ##\nbody\n   ## C# tips #\nmore\n#not a heading\n    # indented code"
+    md = ks.chunk_text(text, strategy="markdown", size=200)
+    assert [(c["heading"], c["text"]) for c in md] == [
+        ("Title", "body"),
+        ("C# tips", "more\n#not a heading\n    # indented code"),
+    ]
+
+
+def test_word_zip_bombs_are_refused_before_parsing(monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("word/document.xml", b"\0" * (2 * 1024 * 1024))
+    monkeypatch.setattr(kn, "MAX_DOCX_UNZIPPED", 1024 * 1024)
+    with pytest.raises(Exception, match="unpacks to more than 1 MB"):
+        kn.extract("bomb.docx", buf.getvalue())
+
+
 def test_builtin_embedder_matches_word_forms_and_typos():
     a, b, c = ks.builtin_embed(["reimbursement of expenses", "expense reimbursed", "parental leave for fathers"])
     assert len(a) == ks.DIM and abs(sum(x * x for x in a) - 1) < 1e-3
@@ -150,6 +175,21 @@ async def new_kb(api, name: str = "docs", **body) -> dict:
     r = await api.post(f"{P}/knowledge", json={"name": name, **body})
     assert r.status_code == 201, r.text
     return r.json()
+
+
+async def test_concurrent_changes_each_bump_the_version(app, api_client):
+    """Two changes made from stale copies both count: `version` is bumped in SQL, so no search cache keeps an index
+    one of them made stale."""
+    kb = await new_kb(api_client)
+    async with app.state.db.sessionmaker() as s1, app.state.db.sessionmaker() as s2:
+        a, b = kn.KnowledgeService(s1), kn.KnowledgeService(s2)
+        start = (await a.get(kb["id"])).version
+        assert (await b.get(kb["id"])).version == start  # both hold the same version
+        await a.update(kb["id"], description="one")
+        after = await b.update(kb["id"], description="two")
+        assert after.version == start + 2
+    async with app.state.db.sessionmaker() as s:
+        assert (await kn.KnowledgeService(s).get(kb["id"])).version == start + 2
 
 
 async def test_knowledge_base_lifecycle(api_client):
@@ -292,7 +332,10 @@ async def test_search_block_runs_on_the_server_and_ships_in_exports(api_client, 
     r = await api_client.post(f"/v1/workflows/{missing}/runs/stream", json={"input": {"question": "x"}})
     assert "knowledge base 'nothing-here' not found" in r.text
 
-    data = (await api_client.get(f"/v1/workflows/{wf}/export.zip")).content
+    export = await api_client.get(f"/v1/workflows/{wf}/export.zip")
+    assert "handbook" not in export.headers["content-disposition"]  # named after the workflow, not a knowledge base
+    assert export.headers["content-disposition"].endswith('.zip"')
+    data = export.content
     z = zipfile.ZipFile(io.BytesIO(data))
     shipped = [n for n in z.namelist() if n.endswith("/src/knowledge/handbook.jsonl")]
     assert shipped and any(n.endswith("src/agentcanvas/knowledge_search.py") for n in z.namelist())

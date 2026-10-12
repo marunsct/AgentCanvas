@@ -1725,12 +1725,12 @@ export type Title2 = string;
 export type Token = string;
 export type UpdatedAt8 = string | null;
 /**
- * the answer to an approval
+ * not used: approvals cannot be given on a share link
  */
 export type Approve = boolean | null;
 export type InterruptId2 = string | null;
 /**
- * the answer to a question (or a comment)
+ * the answer to a question
  */
 export type Text5 = string | null;
 /**

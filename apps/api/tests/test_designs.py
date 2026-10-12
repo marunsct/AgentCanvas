@@ -239,14 +239,17 @@ class InOrder(MockChatModel):
 
 
 async def run_designed(
-    approve: bool, replies: list[AIMessage] | None = None, ran: list[str] | None = None, in_order: bool = False
+    approve: bool | list[str],
+    replies: list[AIMessage] | None = None,
+    ran: list[str] | None = None,
+    in_order: bool = False,
 ):
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.graph import END, START, MessagesState, StateGraph
     from langgraph.types import Command
 
     from agentcanvas.adapters.langchain.interop import designed_agent_node
-    from agentcanvas.adapters.langchain.nodes import as_tool
+    from agentcanvas.adapters.langchain.nodes import as_tool, tagged
 
     async def lookup_order(order_id: str) -> str:
         """Look up an order."""
@@ -260,8 +263,9 @@ async def run_designed(
     ])  # fmt: skip
     node = designed_agent_node(
         node_id="n_a", name="helper", framework="stand_in", label="Stand-in", api="openai", requires="json",
-        source="import json\n" + STAND_IN, model=model, tools=[as_tool(lookup_order)],
-        approve_tools=["lookup_order"] if approve else None,
+        source="import json\n" + STAND_IN, model=model,
+        tools=[tagged(as_tool(lookup_order), "lookup")],  # the tool block "lookup" gives the tool "lookup_order"
+        approve_tools=approve if isinstance(approve, list) else ["lookup_order"] if approve else None,
     )  # fmt: skip
     g = StateGraph(MessagesState)
     g.add_node("helper", node)
@@ -278,8 +282,10 @@ async def test_a_designed_agent_runs_as_a_step_with_canvas_tools():
     assert out["messages"][-1].content == "It ships tomorrow" and out["messages"][-1].name == "helper"
 
 
-async def test_a_designed_agent_asks_before_an_approved_tool():
-    graph, cfg, out, Command = await run_designed(approve=True)
+@pytest.mark.parametrize("approve", [True, ["lookup"]], ids=["tool", "block"])
+async def test_a_designed_agent_asks_before_an_approved_tool(approve):
+    """`approve_tools` names the tool (or, as the canvas checks it, the tool block that gives it)."""
+    graph, cfg, out, Command = await run_designed(approve=approve)
     assert out["__interrupt__"][0].value["kind"] == "approval"
     assert "lookup_order" in out["__interrupt__"][0].value["value"]["input"]
     out = await graph.ainvoke(Command(resume={"approved": True}), cfg)

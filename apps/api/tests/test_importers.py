@@ -168,6 +168,44 @@ def test_parallel_langflow_inputs_wait_for_all():
     assert combine.config["prompt"] == "A: {{ state.other_reply }} B: {{ state.refunds_reply }}"
 
 
+def _n8n_chain(diamonds: int, plain: int = 0, kind: str = "noOp") -> dict:
+    """An n8n file: a chain of `diamonds` (two steps meeting again), then `plain` nodes of `kind` and a step."""
+    nodes = [{"name": "T", "type": "n8n-nodes-base.manualTrigger", "parameters": {}}]
+    conns: dict = {}
+    prev = "T"
+
+    def to(*names: str) -> dict:
+        return {"main": [[{"node": n, "type": "main", "index": 0} for n in names]]}
+
+    for i in range(diamonds):
+        a, b, j = f"A{i}", f"B{i}", f"J{i}"
+        nodes += [{"name": x, "type": "n8n-nodes-base.set", "parameters": {}} for x in (a, b, j)]
+        conns[prev], conns[a], conns[b], prev = to(a, b), to(j), to(j), j
+    for i in range(plain):
+        nodes.append({"name": f"N{i}", "type": f"n8n-nodes-base.{kind}", "parameters": {}})
+        conns[prev], prev = to(f"N{i}"), f"N{i}"
+    nodes.append({"name": "Z", "type": "n8n-nodes-base.set", "parameters": {}})
+    conns[prev] = to("Z")
+    return {"nodes": nodes, "connections": conns}
+
+
+def test_large_and_deep_files_import_quickly_or_fail_plainly():
+    """Chains of diamonds took exponential time and deep chains overflowed the stack (a 500); now they import in
+    linear time, and files too large or too deep get the importer's usual message."""
+    import time
+
+    started = time.perf_counter()
+    _, ir, _, _ = import_document(_n8n_chain(600), wf_id="wf_new")
+    assert len([n for n in ir["nodes"] if n["type"] == "core.join"]) == 600
+    _, ir, _, _ = import_document(_n8n_chain(1, plain=1990, kind="set"), wf_id="wf_new")  # deeper than the stack
+    assert len(ir["nodes"]) == 1995
+    assert time.perf_counter() - started < 5
+    with pytest.raises(ImportError_, match="more than 2000 steps"):
+        import_document(_n8n_chain(700), wf_id="wf_new")
+    with pytest.raises(ImportError_, match="nested too deeply"):
+        import_document(_n8n_chain(0, plain=5000), wf_id="wf_new")  # ignored nodes looked through recursively
+
+
 @pytest.mark.parametrize(
     ("doc", "message"),
     [

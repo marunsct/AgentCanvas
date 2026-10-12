@@ -4,7 +4,7 @@ import { apiFetch } from "../api/client";
 import type { SpendOut } from "../api/types";
 import { useEditor } from "../editor/store";
 import { FrameworkPicker } from "../editor/Frameworks";
-import { parseAlertShares } from "./budget";
+import { MAX_ALERTS, parseAlertShares } from "./budget";
 import { StateDesigner } from "./StateDesigner";
 
 export function WorkflowPanel() {
@@ -80,8 +80,8 @@ function BudgetEditor() {
           </label>
         ))}
         <label>
-          Alert at (% of day or month)
-          <input placeholder="80" aria-label="budget alert at percent"
+          Alert at (% of day or month, up to {MAX_ALERTS})
+          <input placeholder="80" aria-label="budget alert at percent" title={`Up to ${MAX_ALERTS} percents, e.g. 50, 80`}
             defaultValue={alertAt ? alertAt.map((x) => Math.round(x * 100)).join(", ") : ""}
             onChange={(e) => {
               const shares = parseAlertShares(e.target.value);

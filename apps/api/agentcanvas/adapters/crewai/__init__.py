@@ -152,7 +152,8 @@ class CrewAIAdapter:
                 resources = resources.with_dry_run(dry_run_tools(wf, _registry(resources)))
             request: dict[str, Any] = {"source": source, "thread": spec.thread_id}
             if spec.resume is not None:
-                saved = self._paused.pop(spec.thread_id, None)
+                # kept until the continued run ends or pauses again: a failed continuation can be tried again
+                saved = self._paused.get(spec.thread_id)
                 if saved is None:
                     yield {"type": "RUN_ERROR", "code": "error", "message": "nothing to resume on this conversation"}
                     return
@@ -178,6 +179,8 @@ class CrewAIAdapter:
                 paused = ev.pop("paused", None)
                 if paused is not None:
                     self._paused[spec.thread_id] = paused
+                elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
+                    self._paused.pop(spec.thread_id, None)
                 yield ev
 
 
@@ -342,7 +345,12 @@ class CrewWorker:
         pending: set[asyncio.Task[None]] = set()
         ended = False
         try:
-            self.send({"op": "run", "run": run_id, **request})
+            try:
+                self.send({"op": "run", "run": run_id, **request})
+            except OSError as exc:  # the worker died before it got the run (a broken pipe)
+                ended = True
+                yield {"type": "RUN_ERROR", "code": "error", "message": f"the {self.label} worker stopped: {exc}"}
+                return
             while True:
                 msg = await queue.get()
                 if "event" in msg:

@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     rate_limit_per_webhook: int = 120
     rate_limit_per_project: int = 600
     rate_limit_by_environment: dict[str, int] = {}
+    # share links (S23): requests per minute from one client address to one link, on top of the deployment's and
+    # project's limits, so one anonymous visitor cannot use up a deployment's whole budget
+    rate_limit_per_share_client: int = 30
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
     # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
