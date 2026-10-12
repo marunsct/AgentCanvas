@@ -21,8 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 HERE = Path(__file__).parent / "adapters"
 DEFAULT_FRAMEWORK = "langchain"
-DEFAULT_ADAPTERS = (
-    "langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex"  # S25-S35
+DEFAULT_ADAPTERS = (  # S25-S36
+    "langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra"
 )
 
 Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs"]

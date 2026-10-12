@@ -623,10 +623,25 @@ async def test_rubric_sends_the_answer_back_until_it_passes(tmp_path):
 
 
 @pytest.mark.asyncio
+class Undecided(DemoChatModel):
+    """A grader that never returns a valid verdict: it calls its verdict tool without arguments, every time."""
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> Undecided:  # type: ignore[override]
+        return Undecided(tool_specs=DemoChatModel().bind_tools(tools).tool_specs)
+
+    def _reply(self, messages: list[BaseMessage]) -> AIMessage:
+        name = self.tool_specs[0]["name"] if self.tool_specs else "verdict"
+        return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": f"undecided_{len(messages)}"}])
+
+
 async def test_a_grader_that_never_decides_ends_the_round(tmp_path):
-    """A grader model that never returns a verdict (the demo model) ends grading as `grader_error`, not a hang."""
+    """A grader model that never returns a verdict ends grading as `grader_error`, not a hang."""
     from agentcanvas.adapters.langchain.events import translate
     from agentcanvas.adapters.langchain.testing import DemoResources
+
+    class UndecidedGrader(DemoResources):
+        def model(self, name: str, config: dict[str, Any]) -> Any:
+            return Undecided() if name == "grader" else super().model(name, config)
 
     wf = agent_wf(
         resources=[
@@ -645,7 +660,7 @@ async def test_a_grader_that_never_decides_ends_the_round(tmp_path):
             results += [e["value"].get("result") for e in translate(part, {}) if e.get("name") == "ac.rubric"]
         return [r for r in results if r]
 
-    a, b = await both(wf, tmp_path, DemoResources, run)
+    a, b = await both(wf, tmp_path, UndecidedGrader, run)
     assert a == b == ["grader_error"]
 
 

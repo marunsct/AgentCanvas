@@ -266,7 +266,8 @@ def test_the_copilot_knows_the_target_framework():
     assert "Pydantic AI Agents" in framework_note("pydantic_ai") and "Agno Agents" in framework_note("agno")  # S32
     assert "Agent Framework Agents" in framework_note("microsoft_agent_framework")  # S33-S34
     assert "Strands Agents" in framework_note("strands") and "FunctionAgents" in framework_note("llamaindex")  # S35
-    assert "no adapter" in framework_note("mastra")
+    assert "TypeScript Mastra flow" in framework_note("mastra")  # S36
+    assert "no adapter" in framework_note("semantic_kernel")
     assert "CrewAI (`crewai`)" in framework_note("langchain")  # S21: agents designed for other frameworks
 
 

@@ -191,6 +191,8 @@ def _demo_value(schema: dict[str, Any], name: str = "", asked: str = "") -> Any:
         return _DEMO_ARGS[name]
     if name == "content":
         return f"Notes (demo model):\n{asked[:500]}"
+    if schema.get("enum"):  # a choice: the first one, so typed answers (Strands, LlamaIndex) are valid
+        return schema["enum"][0]
     t = schema.get("type", "string")
     if isinstance(t, list):  # a nullable argument, as some frameworks (Strands) send them: ["string", "null"]
         t = next((x for x in t if x != "null"), "string")

@@ -2,6 +2,26 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.26.0 — Mastra flows in TypeScript (not tagged yet)
+
+### Added
+- **Mastra as a workflow framework, the first TypeScript one.** Pick it in the workflow settings and the workflow is generated as a TypeScript module: a Mastra `Agent` for each AI block (an AI SDK model over an OpenAI-compatible address, `createTool` tools, a Zod schema for typed answers through `structuredOutput`), an `async function` per block and a `FLOW` that says which step follows which (`@mastra/core` 1.76.0). It passes the 12-case conformance kit; 22 of the 27 templates run on it.
+- **A TypeScript twin of the flow engine** (`adapters/mastra/flow.ts`) runs the flow as the canvas draws it, like `supersteps.py` does for the Python frameworks: steps side by side, Wait for all, paths by CEL rules (`@marcbachmann/cel-js`, with whole numbers read as CEL ints as in cel-python), loops stopped at the step limit, field reducers, prompts with `{{ state.<field> }}` (Nunjucks; lists and objects are written as JSON), answers checked against a schema (Ajv). Node.js 22.18+ runs the TypeScript as it is, with no build step.
+- **A Node.js worker** (`adapters/mastra/worker.ts`) runs Mastra flows next to the server and speaks the same JSON lines as the Python frameworks' workers, so models, tools, knowledge bases, workspace code, usage and recorded tool calls all stay on the server. `make mastra` installs Mastra and the runtime's packages from npm into `apps/api/.frameworks/mastra`.
+- **Ask before a tool call, the Mastra way.** Tools named in *Ask before using* get `requireApproval`: the agent's run suspends, its snapshot is saved with the pause (so it continues in another process too), and the agent continues with `approveToolCallGenerate` or `declineToolCallGenerate` (the person's reason reaches the model). Edited arguments are applied when the approved call runs. Two calls that need a person are asked about one after the other.
+- **Model call limits** use Mastra's `maxSteps`: past the limit the agent stops with a note, or the run fails when the block says so.
+- **Export to a TypeScript project**: `package.json` with pinned packages, `src/workflow.ts`, the vendored `flow.ts` and `runtime.ts`, a host that reaches each model over its provider's OpenAI-compatible API, a command-line runner (`node src/main.ts`) that saves a paused run in `.runs/` and continues it, and `node --test` tests that replay saved test cases with a scripted model. Workspace code stays Python: tools, code steps and knowledge-base search run in a small Python helper (`python/sidecar.py`) when the flow has them. CI exports every template Mastra can run and runs each project's tests.
+- Servers offer Mastra by default (`AGENTCANVAS_ADAPTERS=...,llamaindex,mastra`).
+
+### Changed
+- `CrewWorker.prepare()` lays out a worker's files and names its command, so a worker can be something other than Python.
+
+### Fixed
+- The demo model picks the first choice for a tool argument that has a list of choices, instead of "demo". Typed answers on Strands and LlamaIndex (which ask for them through a tool) are valid again with the demo model, so the Lead qualification template runs on both.
+
+### Known limits
+- The flow is not written as Mastra's own `createWorkflow` chain (the roadmap's "Full" tier, if users ask). The API image has no Node.js: Mastra workflows run there only once the image is extended with Node.js and `make mastra`.
+
 ## v0.25.0 — Strands and LlamaIndex flows (not tagged yet)
 
 ### Added

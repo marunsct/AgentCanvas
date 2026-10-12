@@ -262,6 +262,19 @@ class CrewWorker:
     def __init__(self, python: str):
         self.python = python
         self._dir = tempfile.mkdtemp(prefix=f"agentcanvas-{self.package}-")
+        command, env = self.prepare()
+        self.proc = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self._dir, env=env
+        )
+        self._lock = threading.Lock()
+        self._runs: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]] = {}
+        self.version: str | None = None
+        self.stderr: list[str] = []
+        threading.Thread(target=self._read, daemon=True, name=f"{self.package}-worker-out").start()
+        threading.Thread(target=self._read_errors, daemon=True, name=f"{self.package}-worker-err").start()
+
+    def prepare(self) -> tuple[list[str], dict[str, str]]:
+        """Lay out the worker's files in its folder; (the command that starts it, its environment)."""
         for rel in self.files:
             dest = Path(self._dir) / "agentcanvas" / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -272,16 +285,7 @@ class CrewWorker:
                **self.extra_env}  # fmt: skip
         for leaked in ("VIRTUAL_ENV", "PYTHONHOME"):
             env.pop(leaked, None)
-        self.proc = subprocess.Popen(
-            [python, "-m", f"agentcanvas.adapters.{self.package}.worker"], stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self._dir, env=env,
-        )  # fmt: skip
-        self._lock = threading.Lock()
-        self._runs: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]] = {}
-        self.version: str | None = None
-        self.stderr: list[str] = []
-        threading.Thread(target=self._read, daemon=True, name=f"{self.package}-worker-out").start()
-        threading.Thread(target=self._read_errors, daemon=True, name=f"{self.package}-worker-err").start()
+        return [self.python, "-m", f"agentcanvas.adapters.{self.package}.worker"], env
 
     @property
     def alive(self) -> bool:

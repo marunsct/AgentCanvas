@@ -2,7 +2,8 @@
 
 Writes <dir>/<target>/<template>/<project>/ so CI can lint the deploy files, run each export's own tests and
 deploy some of them for real; and <dir>/<framework>/<template>/<project>/ for every template the OpenAI Agents SDK
-(S25), CrewAI (S27), Google ADK (S29), Pydantic AI and Agno (S32) can run.
+(S25), CrewAI (S27), Google ADK (S29), Pydantic AI and Agno (S32), the Microsoft
+Agent Framework (S33-S34), Strands and LlamaIndex (S35) and Mastra (S36, TypeScript projects) can run.
 """
 
 from __future__ import annotations
@@ -39,7 +40,8 @@ def main(out: Path) -> None:
         "microsoft_agent_framework",
         "strands",
         "llamaindex",
-    )  # S25, S27, S29, S32, S33-S34, S35
+        "mastra",
+    )  # S25, S27, S29, S32, S33-S34, S35, S36
     for framework in frameworks:  # each template it can run, as a project
         adapter, counts[framework] = get_adapter(framework), 0
         for f in files:
@@ -54,7 +56,7 @@ def main(out: Path) -> None:
         f"exported {len(files)} templates to {len(TARGETS)} targets, {counts['openai_agents']} to the OpenAI Agents "
         f"SDK, {counts['crewai']} to CrewAI, {counts['google_adk']} to Google ADK, {counts['pydantic_ai']} to Pydantic "
         f"AI, {counts['agno']} to Agno, {counts['microsoft_agent_framework']} to the Microsoft Agent Framework, "
-        f"{counts['strands']} to Strands and {counts['llamaindex']} to LlamaIndex, "
+        f"{counts['strands']} to Strands, {counts['llamaindex']} to LlamaIndex and {counts['mastra']} to Mastra, "
         f"in {out}"
     )
 

@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -15,6 +15,10 @@ framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent F
 	cd apps/api && uv venv --allow-existing .frameworks/$(FW) && uv pip install --python .frameworks/$(FW)/bin/python \
 	  $$(uv run python -c "from agentcanvas.designs import AGENT_FRAMEWORKS as A; print(' '.join(A['$(FW)'].packages))") \
 	  cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0
+
+mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm in apps/api/.frameworks/mastra (needs Node.js 22.18+)
+	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json .frameworks/mastra/ \
+	  && npm install --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
 
 infra:      ## start local Postgres + Redis (Docker)
 	docker compose -f infra/docker-compose.yml up -d postgres redis

@@ -1,0 +1,40 @@
+{
+  "id": "mastra",
+  "label": "Mastra",
+  "framework": "@mastra/core 1.76.0",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes a TypeScript Mastra flow: an async function for each block, Mastra Agents (an AI SDK model, createTool tools, a Zod schema for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine (in TypeScript) runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's approval (Mastra's own requireApproval, which suspends the agent's run). Runs need Node.js 22.18+ and Mastra on the server (`make mastra`); designing and exporting do not. Exports are TypeScript projects that Node.js runs as they are. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "typescript"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "emulated",
+    "core.join": "emulated",
+    "core.llm": "native",
+    "core.agent": "native",
+    "core.approval": "emulated",
+    "core.human_input": "emulated",
+    "model.chat": "native",
+    "tool.python": "emulated",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "an async function that returns the fields it sets",
+    "core.router": "the flow engine follows the first route whose CEL rule matches (generated orchestration: the flow does not use Mastra's createWorkflow yet)",
+    "core.join": "the flow engine waits for every branch before the block runs",
+    "core.approval": "the run pauses and is saved as JSON; it continues from that step when a person answers",
+    "core.human_input": "the run pauses and asks again when an answer does not fit",
+    "core.script": "your workspace function (Python) is called from the flow: on the server inside AgentCanvas, with python3 in exports",
+    "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder (with python3)",
+    "core.llm": "a Mastra Agent with the block's model, asked once with agent.generate",
+    "core.agent": "a Mastra Agent (instructions, an AI SDK model, createTool tools, structuredOutput with a Zod schema); tools named in 'Ask before using' get requireApproval: the agent's run suspends, its snapshot is saved with the pause, and it continues with approveToolCallGenerate or declineToolCallGenerate once a person approves, edits or rejects the call (one call per pause)",
+    "mw.model_call_limit": "Mastra's own maxSteps: past the limit the agent stops with a note, or the run fails when the block says so",
+    "tool.python": "your workspace tool (Python) runs on the server inside AgentCanvas, and with python3 in exports"
+  }
+}

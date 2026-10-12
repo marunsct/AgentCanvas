@@ -27,6 +27,9 @@ jobs:
       - run: make -C ../.. framework FW=pydantic_ai && make -C ../.. framework FW=agno  # S32: and Pydantic AI, Agno
       - run: make -C ../.. framework FW=microsoft_agent_framework  # S33–S34: and the Microsoft Agent Framework
       - run: make -C ../.. framework FW=strands && make -C ../.. framework FW=llamaindex  # S35: Strands, LlamaIndex
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: make -C ../.. mastra  # S36: Mastra workflows run on Node.js
       - run: uv run pytest -q
         env:
           AGENTCANVAS_ENV: test
@@ -209,6 +212,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v7  # S36: Mastra exports are TypeScript projects
+        with: { node-version: 22 }
       - uses: azure/setup-helm@v4
       - run: cd apps/api && uv sync --frozen && uv run python scripts/export_templates.py "$EXPORTS"
       - name: Lint the deploy files
@@ -228,6 +233,7 @@ jobs:
         run: |
           for d in "$EXPORTS"/local/*/*; do (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
           for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/* "$EXPORTS"/google_adk/*/* "$EXPORTS"/pydantic_ai/*/* "$EXPORTS"/agno/*/* "$EXPORTS"/microsoft_agent_framework/*/* "$EXPORTS"/strands/*/* "$EXPORTS"/llamaindex/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
+          for d in "$EXPORTS"/mastra/*/*; do (cd "$d" && npm install -s --no-audit --no-fund && npm test) || exit 1; done  # S36: TypeScript
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
         run: |
@@ -276,6 +282,7 @@ jobs:
       - run: make framework FW=pydantic_ai && make framework FW=agno  # S32: the Pydantic AI and Agno journeys
       - run: make framework FW=microsoft_agent_framework  # S33–S34: the Microsoft Agent Framework journey
       - run: make framework FW=strands && make framework FW=llamaindex  # S35: the Strands and LlamaIndex journeys
+      - run: make mastra  # S36: the Mastra journey runs a TypeScript flow on Node.js
       - run: cd apps/web && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
       - run: cd apps/web && pnpm e2e
       - name: Print the page state of failed tests
