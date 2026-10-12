@@ -54,9 +54,9 @@ async def greeter(api, framework: str = "langchain") -> dict:
     return r.json()
 
 
-async def test_the_default_server_offers_langgraph_the_openai_agents_sdk_and_crewai(api_client):
+async def test_the_default_server_offers_six_frameworks(api_client):
     ids = [f["id"] for f in (await api_client.get("/v1/frameworks")).json()]
-    assert ids == ["langchain", "openai_agents", "crewai", "google_adk"]
+    assert ids == ["langchain", "openai_agents", "crewai", "google_adk", "pydantic_ai", "agno"]
 
 
 async def test_the_server_lists_its_frameworks(two):

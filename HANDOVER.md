@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-10, after Sprint 27 (CrewAI flows → v0.19.0). Previous update: after Sprint 26 (Model gateway and cost controls → v0.18.0, [#31](https://github.com/marunsct/AgentCanvas/pull/31)).
+- **Last updated:** 2026-10-12, after Sprint 32 (Pydantic AI and Agno flows → v0.23.0). Previous update: after Sprint 31 (Onboarding and switching → v0.22.0, [#35](https://github.com/marunsct/AgentCanvas/pull/35)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,24 +14,24 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last sprint done | **S31 Onboarding and switching → v0.22.0** (the S31 PR): `agentcanvas/importers/` (`Builder` in `__init__.py`, `langflow.py`, `flowise.py`, `n8n.py`) and `POST /v1/projects/{id}/workflows/import`; `api/v1/playground.py` (chat, make it a workflow); `services/github.py` and `POST /v1/workflows/{id}/github`; web `release/Import.tsx`, `playground/PlaygroundPage.tsx`, `editor/simple.ts` (Simple / Full switch), the GitHub form in Export |
-| Before that | S29–S30 Google ADK flows → v0.21.0 ([#34](https://github.com/marunsct/AgentCanvas/pull/34), merged `c038d0e`); S28 Mixed-flow export → v0.20.0 (#33, `b8b2e01`); S27 CrewAI flows → v0.19.0 (#32, `43d4a71`) |
-| Version in code | API `0.22.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.22.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.22.0 are all left to the owner (see §2) |
-| Next sprint | **S32 Pydantic AI and Agno flows → v0.23.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): Authoring tier for both; exit: templates compile and deploy on both |
-| Work status | S31 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S32 starts |
-| Open PRs | the S31 PR (`claude/project-thread-nz5vdj`) until it is merged |
+| Last sprint done | **S32 Pydantic AI and Agno flows → v0.23.0** (the S32 PR): `adapters/supersteps.py` (the flow engine for frameworks without a graph), `adapters/flowgen.py` (shared code generator with a `Dialect` per framework), `adapters/flowworker.py` (shared JSON-lines worker), `adapters/flowadapter.py` (shared server side, on `CrewAIAdapter`), `adapters/flowpackager.py` (exports); `adapters/pydantic_ai/` and `adapters/agno/` (codegen dialect, runtime, worker entry, adapter); manifests `registry/adapters/{pydantic_ai,agno}.json` |
+| Before that | S31 Onboarding and switching → v0.22.0 ([#35](https://github.com/marunsct/AgentCanvas/pull/35), merged `2e10fff`); S29–S30 Google ADK flows → v0.21.0 (#34, `c038d0e`); S28 Mixed-flow export → v0.20.0 (#33, `b8b2e01`) |
+| Version in code | API `0.23.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.23.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.23.0 are all left to the owner (see §2) |
+| Next sprint | **S33–S34 Microsoft Agent Framework flows → v0.24.0** ([roadmap §7](docs/agent-canvas-spec/16-competitive-roadmap.md#7-sprint-plan)): Authoring tier; exit: the conformance suite passes on the portable set. Its workflows (graph-based) can use the framework's own Workflow builder like ADK, or the S32 flow engine |
+| Work status | S32 is in its PR; under the owner's standing grant of 2026-10-09 (see §2) it is merged on local checks, then S33 starts |
+| Open PRs | the S32 PR (`claude/project-thread-nz5vdj`) until it is merged |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
-**Test totals at the end of S31** (all green locally):
+**Test totals at the end of S32** (all green locally):
 
 | Suite | Count | Command |
 |---|---|---|
-| API (pytest, Postgres) | 956 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai`, the ADK tests and the kit on ADK `make framework FW=google_adk` | see §5 |
+| API (pytest, Postgres) | 1098 passed, 1 xfail (known upstream canary), 1 skipped here (the Docker sandbox test needs a running dockerd); the CrewAI tests, the kit on CrewAI and the CrewAI parts (S28) need `make crewai`, the ADK tests and the kit on ADK `make framework FW=google_adk`, the Pydantic AI and Agno tests and the kit on them `make framework FW=pydantic_ai` and `FW=agno` | see §5 |
 | Web unit (vitest) | 97 | `cd apps/web && pnpm exec vitest run` |
-| Browser journeys (Playwright, prod build under the prod CSP) | 63 (the S27 and S28 journeys need `make crewai`, the S29 journey `make framework FW=google_adk`) | see §5 |
+| Browser journeys (Playwright, prod build under the prod CSP) | 65 (the S27 and S28 journeys need `make crewai`, the S29 journey `make framework FW=google_adk`, the S32 journeys `FW=pydantic_ai` and `FW=agno`) | see §5 |
 | Real frameworks (S16, S21, S22) | 9 frameworks: wrapped agent, designed agent (plain, typed, approval), its export's tests; Agent Spec check; whole-flow exports (`bridge_langgraph`, `bridge_wayflow`, `bridge_openai_agents`): every template's export tests pass, 4/4/2 run end to end | `cd apps/api && uv run --with <package> python scripts/smoke_frameworks.py <framework>` (packages in `ci.yml` job `frameworks`) |
-| Exported templates, each export's own tests | 27 templates on LangGraph (the Mixed-framework team export also deployed with Docker Compose and passed `make smoke`, S28), and the 22 each that the OpenAI Agents SDK (S25), CrewAI (S27) and Google ADK (S29) can run, in `<dir>/openai_agents/*/*`, `<dir>/crewai/*/*` and `<dir>/google_adk/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `make test` in each `<dir>/local/*/*` (it installs the parts) |
+| Exported templates, each export's own tests | 27 templates on LangGraph (the Mixed-framework team export also deployed with Docker Compose and passed `make smoke`, S28), and the 22 each that the OpenAI Agents SDK (S25), CrewAI (S27), Google ADK (S29), Pydantic AI and Agno (S32) can run, in `<dir>/<framework>/*/*` (their tests pass; CI runs them) | `uv run python scripts/export_templates.py <dir>`, then `make test` in each `<dir>/local/*/*` (it installs the parts) |
 | MCP gallery smoke | 30/30 | `cd apps/api && uv run python scripts/smoke_mcp_gallery.py` |
 
 ## 2. Owner decisions and working agreements
@@ -97,6 +97,8 @@ apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
   adapters/langchain/parts.py + part_worker.py   S28: agents of frameworks that clash with LangGraph run as parts in their own environment (.frameworks/<id>, make framework FW=<id>); typed contracts
   adapters/crewai/         S27: workflows as native CrewAI flows (codegen.py); runtime.py + worker.py run in .frameworks/crewai (make crewai); packager.py
   adapters/google_adk/     S29: workflows as native ADK graph workflows (codegen.py); runtime.py + worker.py run in .frameworks/google_adk (make framework FW=google_adk); packager.py; server side shared with adapters/crewai
+  adapters/supersteps.py   S32: the flow engine (FLOW of steps run in supersteps, pauses as JSON) for frameworks without a graph; flowgen.py (codegen + Dialect), flowworker.py, flowadapter.py, flowpackager.py are shared by:
+  adapters/pydantic_ai/, adapters/agno/   S32: codegen.py (a Dialect), runtime.py (Run with the framework's agents, native tool approvals), worker.py, __init__.py (adapter); run in .frameworks/<id>
   importers/               S31: Langflow, Flowise and n8n JSON to workflows (Builder + one module per builder); samples in tests/importers/
   bridges/                 S22: whole workflows to LangGraph/WayFlow/OpenAI Agents through Agent Spec; kit/flowkit.py
   services/                triggers, projects, trace_export.py (OTel spans), ...
@@ -199,7 +201,14 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.22.0 not created (owner).
+- **Release tags** v0.1.0 to v0.23.0 not created (owner).
+- **S32 limits:** Pydantic AI and Agno flows run like the CrewAI and ADK ones (a worker from `.frameworks/<id>`, models
+  through the model bridge, a paused run in the API's memory). The flow shape is AgentCanvas's own engine
+  (`supersteps`), not `pydantic_graph` or Agno `Workflow` steps: neither maps the canvas's cycles and joins one to one.
+  An agent is asked the conversation as one text (earlier turns quoted before the latest message), not as a message
+  history. Agno has no model call limit of its own, so the runtime counts the agent's model calls (`model.ainvoke`).
+  The OpenAI Agents SDK runtime (S25) still has its own copy of the superstep engine; it could move onto
+  `supersteps.py`.
 - **S31 limits:** the importers read each builder's export format as documented and as the hand-written samples in
   `apps/api/tests/importers/` show; real exports from newer builder versions may name components differently (unknown
   ones become placeholders, never errors). Langflow custom components, loops and multi-output components, n8n
@@ -353,7 +362,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S27 CrewAI flows | #32 | `43d4a71` | v0.19.0 |
 | S28 Mixed-flow export | #33 | `b8b2e01` | v0.20.0 |
 | S29–S30 Google ADK flows | #34 | `c038d0e` | v0.21.0 |
-| S31 Onboarding and switching | the S31 PR | (after merge) | v0.22.0 |
+| S31 Onboarding and switching | #35 | `2e10fff` | v0.22.0 |
+| S32 Pydantic AI and Agno flows | the S32 PR | (after merge) | v0.23.0 |
 
 ## 11. Sprint-end checklist
 

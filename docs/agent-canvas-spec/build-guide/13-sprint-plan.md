@@ -53,7 +53,7 @@ The milestone plan ([04-implementation-plan.md](./04-implementation-plan.md)) sa
 | **S28** | 2 | Mixed-flow export → v0.20.0 (new) | doc 12 WS7, doc 17 | — | — | One deployable project with several frameworks and typed boundaries (✅ done) |
 | **S29–S30** | 4 | Google ADK flows → v0.21.0 (was S27–S28) | [adapters/google-adk.md](../adapters/google-adk.md) | — | — | Full (✅ done) |
 | **S31** | 2 | Onboarding & switching → v0.22.0 (was S23) | doc 16 | — | — | Beginner items (old S18–S19) + Langflow/Flowise/n8n importers (✅ done) |
-| **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier |
+| **S32** | 2 | Pydantic AI & Agno flows → v0.23.0 (was S24) | [adapters/pydantic-ai.md](../adapters/pydantic-ai.md) | — | — | Authoring tier (✅ done) |
 | **S33–S34** | 4 | Microsoft Agent Framework flows → v0.24.0 (was S30–S31) | [adapters/microsoft-agent-framework.md](../adapters/microsoft-agent-framework.md) | — | — | Authoring tier; Full later if users ask |
 | **S35** | 2 | Strands & LlamaIndex flows → v0.25.0 (was S29) | [adapters/strands.md](../adapters/strands.md), [adapters/llamaindex-workflows.md](../adapters/llamaindex-workflows.md) | — | — | Authoring tier |
 | **S36** | 2 | Mastra → v0.26.0 (was S32) | [adapters/mastra.md](../adapters/mastra.md) | — | — | Authoring tier with a Node.js sidecar |
@@ -550,6 +550,31 @@ E043 (private networks in the hosted edition), E051 (secret names). New migratio
 (one deployment per environment, project `secrets_version`). Left as is: designed-agent approvals are remembered
 in the server process only (fails closed after a restart); a helper module edit does not reload an in-process
 code evaluator until the evaluator file changes (the gate's hash still catches it).
+
+### S32 — Pydantic AI and Agno flows → v0.23.0 (✅ done)
+
+| # | Item | Role | Days | Acceptance |
+|---|------|------|-----:|------------|
+| 1 | Flow engine | B | 2 | A framework-neutral engine for frameworks without a graph: a `FLOW` of steps run in supersteps (parallel rounds, wait for all, CEL paths, loops with a limit, reducers), pauses as JSON with the asking step's own framework state |
+| 2 | Pydantic AI | B | 2 | AI blocks as Pydantic AI `Agent`s (`OpenAIChatModel`, `Tool`, `NativeOutput`); *Ask before using* as `requires_approval` tools, continued with `DeferredToolResults` from the saved message history; call limits as `UsageLimits` |
+| 3 | Agno | B | 2 | AI blocks as Agno `Agent`s (`OpenAILike`, tools, `output_schema`); *Ask before using* as `@tool(requires_confirmation=True)`, the paused `RunOutput` saved and continued with `acontinue_run`; call limits counted by the runtime |
+| 4 | Running and exporting | B | 2 | Each framework in its own environment with one worker (shared with CrewAI and ADK); exports with a CLI that pauses and continues and tests with a scripted model; every template either runs exports and passes its tests |
+| 5 | Docs | all | 1 | User guide, changelog, handover |
+
+**Done (2026-10-12).** `adapters/supersteps.py` (the engine and the base `Run`), `adapters/flowgen.py` (code
+generation with a `Dialect` per framework), `adapters/flowworker.py` (the JSON-lines worker, from the ADK one),
+`adapters/flowadapter.py` (server side, on `CrewAIAdapter`), `adapters/flowpackager.py` (exports, a host per
+framework: Pydantic AI's `FunctionModel` and an in-memory OpenAI endpoint for Agno script the models in tests),
+`adapters/pydantic_ai/` and `adapters/agno/` (dialect, runtime, worker entry, adapter), manifests
+`registry/adapters/{pydantic_ai,agno}.json` (tier T2), both in the default `AGENTCANVAS_ADAPTERS`, `make framework
+FW=pydantic_ai` / `FW=agno` (API image: `--build-arg WITH_PYDANTIC_AI=true`, `WITH_AGNO=true`),
+`tests/test_flow_frameworks.py`, `e2e/s32.spec.ts`, both in `scripts/export_templates.py`. Exit met: 22 of the 27
+templates compile and run end to end on each framework, and their exports pass their own tests (deploy = the export's
+CLI and tests; the deploy kit stays LangGraph's); the conformance kit passes on both (12 of 12 cases each). Unlike ADK,
+tool approvals use each framework's own mechanism, so the agent's turn is not run again. Deviations from the adapter
+spec: the graph tier is AgentCanvas's flow engine rather than `pydantic_graph` (and not Agno `Workflow` steps), because
+neither maps the canvas's loops and joins one to one; flows run in a worker from the framework's own environment;
+agents are asked the conversation as one text. There is no Agno adapter spec; the Pydantic AI one served for both.
 
 ### S31 — Onboarding and switching → v0.22.0 (✅ done)
 

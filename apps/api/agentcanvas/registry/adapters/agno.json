@@ -1,0 +1,39 @@
+{
+  "id": "agno",
+  "label": "Agno",
+  "framework": "agno 3.1.1",
+  "version": "0.1.0",
+  "tier": "T2",
+  "description": "The workflow becomes an Agno flow: an async function for each block, Agno Agents (OpenAILike models, tools, output_schema for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's confirmation (Agno's requires_confirmation). Runs need Agno installed on the server (`make framework FW=agno`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",
+  "languages": [
+    "python"
+  ],
+  "abilities": [],
+  "nodes": {
+    "core.set": "native",
+    "core.router": "emulated",
+    "core.join": "emulated",
+    "core.llm": "native",
+    "core.agent": "native",
+    "core.approval": "emulated",
+    "core.human_input": "emulated",
+    "model.chat": "native",
+    "tool.python": "native",
+    "core.script": "emulated",
+    "knowledge.search": "emulated",
+    "mw.model_call_limit": "emulated",
+    "*": "unsupported"
+  },
+  "notes": {
+    "core.set": "an async function that returns the fields it sets",
+    "core.router": "the flow engine follows the first route whose CEL rule matches (generated orchestration: Agno has no graph of its own)",
+    "core.join": "the flow engine waits for every branch before the block runs",
+    "core.approval": "the run pauses and is saved as JSON; it continues from that step when a person answers",
+    "core.human_input": "the run pauses and asks again when an answer does not fit",
+    "core.script": "your workspace function is called from the flow",
+    "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
+    "core.llm": "an Agno Agent with the block's model, asked once with agent.arun",
+    "core.agent": "an Agno Agent (instructions, model, tools, output_schema); tools named in 'Ask before using' use @tool(requires_confirmation=True): the run pauses, its RunOutput is saved, and acontinue_run goes on once a person confirms, edits or rejects each call",
+    "mw.model_call_limit": "the runtime counts the agent's model calls in one turn (Agno's own tool_call_limit counts tool calls): past the limit the agent stops with a note, or the run fails when the block says so"
+  }
+}

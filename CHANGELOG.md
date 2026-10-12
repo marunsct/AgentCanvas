@@ -2,6 +2,22 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.23.0 — Pydantic AI and Agno flows (not tagged yet)
+
+### Added
+- **Pydantic AI and Agno as workflow frameworks.** Pick either in the workflow settings and the workflow is generated as a flow of async Python with the framework's own agents: an agent builder per AI agent block, an `async def` per block and a `FLOW` that says which step follows which. Pydantic AI agents are `Agent`s with an `OpenAIChatModel`, `Tool`s and `NativeOutput` for typed answers (`pydantic-ai-slim` 2.54.0); Agno agents are `Agent`s with an `OpenAILike` model, tools and an `output_schema` (`agno` 3.1.1). Both pass the 12-case conformance kit; 22 of the 27 templates run on each.
+- **A shared flow engine** (`adapters/supersteps.py`) runs those flows as the canvas draws them: steps side by side in the same round, Wait for all, paths by CEL rules, loops stopped at the workflow's step limit, field reducers; a pause is saved as JSON with the asking step's own framework state.
+- **Ask before a tool call, the framework's way.** On Pydantic AI, tools named in *Ask before using* are `requires_approval` tools: the run pauses on `DeferredToolRequests` and continues from the saved message history with `DeferredToolResults` (approve, edited arguments through `ToolApproved(override_args=...)`, or `ToolDenied`). On Agno they use `requires_confirmation`: the paused `RunOutput` is saved and continued with `acontinue_run`. The agent's turn is not run again.
+- **Model call limits** cap an agent's model calls in one turn on both (Pydantic AI's `UsageLimits`; on Agno the runtime counts them): the agent stops with a note, or the run fails when the block says so.
+- **Exports** to a Pydantic AI or Agno project: the flow, the vendored engine and runtime (no LangChain), a host that reaches each model over its provider's OpenAI-compatible API, a command-line runner that saves a paused run in `.runs/` and continues it, and tests that replay saved test cases with a scripted model. CI exports every template each can run and runs each project's tests.
+- Servers offer both by default (`AGENTCANVAS_ADAPTERS=langchain,openai_agents,crewai,google_adk,pydantic_ai,agno`). Their workflows run in a worker process from the environment `make framework FW=pydantic_ai` / `FW=agno` makes (the ones mixed flows use for their agents); the API image takes `--build-arg WITH_PYDANTIC_AI=true` and `WITH_AGNO=true`.
+
+### Changed
+- The new adapters reuse the CrewAI adapter's server side through `adapters/flowadapter.py`; their worker loop, `adapters/flowworker.py`, is the Google ADK worker's made framework-neutral.
+
+### Fixed
+- The framework badges in the editor's top bar stay on one line (the bar scrolls sideways); with six frameworks they wrapped out of sight and could not be clicked.
+
 ## v0.22.0 — Onboarding and switching (not tagged yet)
 
 ### Added
