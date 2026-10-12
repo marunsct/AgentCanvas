@@ -191,9 +191,10 @@ def _demo_value(schema: dict[str, Any], name: str = "", asked: str = "") -> Any:
         return _DEMO_ARGS[name]
     if name == "content":
         return f"Notes (demo model):\n{asked[:500]}"
-    return {"string": "demo", "integer": 1, "number": 1.0, "boolean": True, "array": [], "object": {}}.get(
-        schema.get("type", "string"), "demo"
-    )
+    t = schema.get("type", "string")
+    if isinstance(t, list):  # a nullable argument, as some frameworks (Strands) send them: ["string", "null"]
+        t = next((x for x in t if x != "null"), "string")
+    return {"string": "demo", "integer": 1, "number": 1.0, "boolean": True, "array": [], "object": {}}.get(t, "demo")
 
 
 def demo_answer(schema: dict[str, Any], asked: str = "") -> Any:

@@ -1,4 +1,5 @@
-"""Export a Pydantic AI, Agno or Microsoft Agent Framework flow as a project of its own (S32).
+"""Export a flow of the flow engine (Pydantic AI, Agno, Microsoft Agent Framework, Strands, LlamaIndex) as a
+project of its own (S32).
 
 The project holds the generated flow, the runtime it runs on (the flow engine, the framework's runtime and the
 expression and knowledge-search modules, vendored), a host that reaches each model over its provider's
@@ -17,12 +18,14 @@ from typing import Any
 
 from agentcanvas.adapters.agno.codegen import AGNO_VERSION, OPENAI_VERSION
 from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _secret_names, _version, package_name
+from agentcanvas.adapters.llamaindex.codegen import LLAMA_INDEX_CORE_VERSION, OPENAI_LIKE_VERSION
 from agentcanvas.adapters.microsoft_agent_framework.codegen import (
     AGENT_FRAMEWORK_OPENAI_VERSION,
     AGENT_FRAMEWORK_VERSION,
 )
 from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.adapters.pydantic_ai.codegen import PYDANTIC_AI_VERSION
+from agentcanvas.adapters.strands.codegen import STRANDS_VERSION
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
 from agentcanvas.workspace import bundle
@@ -139,6 +142,105 @@ def scripted_model(replies: list[Any]) -> Any:
                                       middleware=[Scripted(replies)])
 '''
 
+STRANDS_MODELS = '''import httpx
+from openai import AsyncOpenAI
+from strands.models.openai import OpenAIModel
+
+
+def make_model(resource: str, spec: dict[str, Any], settings: dict[str, Any]) -> Any:
+    """The model block `resource` as a Strands `OpenAIModel` over its provider's OpenAI-compatible API."""
+    env = resource.upper()
+    client_args = {
+        "base_url": os.environ.get(f"{env}_BASE_URL") or os.environ.get("MODEL_BASE_URL") or spec["base_url"],
+        "api_key": os.environ.get(spec["key_env"]) or "not-needed",
+    }
+    return OpenAIModel(client_args=client_args, model_id=os.environ.get(f"{env}_MODEL") or spec["model"],
+                       params=settings or None)
+
+
+def scripted_model(replies: list[Any]) -> Any:
+    """Scripted replies (see `_streamed`): the model is Strands' own, and nothing reaches a provider."""
+    client = AsyncOpenAI(base_url="http://scripted/v1", api_key="scripted", http_client=_streamed(replies))
+    return OpenAIModel(client=client, model_id="scripted")
+
+
+def _streamed(replies: list[Any]) -> Any:
+    """An OpenAI-compatible endpoint in memory that streams scripted replies, as the canvas's mock mode gives them:
+    the n-th model turn of an agent's run gets reply n (the last one repeats). A reply is text, or
+    {"content": ..., "tool_calls": [{"name": ..., "args": {...}}]}."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        turn = sum(1 for m in body.get("messages", []) if m.get("role") == "assistant")
+        reply = (replies or [""])[min(turn, len(replies or [""]) - 1)]
+        calls = reply.get("tool_calls") or [] if isinstance(reply, dict) else []
+        text = reply.get("content", "") if isinstance(reply, dict) else str(reply)
+        base = {"id": f"mock_{turn}", "object": "chat.completion.chunk", "created": 0, "model": "scripted"}
+        deltas: list[dict[str, Any]] = [{"role": "assistant", "content": text}]
+        deltas += [{"tool_calls": [{"index": i, "id": f"mock_{turn}_{i}", "type": "function",
+                                    "function": {"name": c["name"], "arguments": json.dumps(c.get("args") or {})}}]}
+                   for i, c in enumerate(calls)]
+        chunks = [{**base, "choices": [{"index": 0, "delta": d, "finish_reason": None}]} for d in deltas]
+        chunks.append({**base, "choices": [{"index": 0, "delta": {},
+                                            "finish_reason": "tool_calls" if calls else "stop"}]})
+        chunks.append({**base, "choices": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+                                                        "total_tokens": 0}})
+        data = "".join(f"data: {json.dumps(c)}\\n\\n" for c in chunks) + "data: [DONE]\\n\\n"
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=data.encode())
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(answer))
+'''
+
+LLAMAINDEX_MODELS = '''import httpx
+from llama_index.llms.openai_like import OpenAILike
+
+
+def make_model(resource: str, spec: dict[str, Any], settings: dict[str, Any]) -> Any:
+    """The model block `resource` as a LlamaIndex `OpenAILike` LLM over its provider's OpenAI-compatible API."""
+    env = resource.upper()
+    return OpenAILike(
+        model=os.environ.get(f"{env}_MODEL") or spec["model"],
+        api_base=os.environ.get(f"{env}_BASE_URL") or os.environ.get("MODEL_BASE_URL") or spec["base_url"],
+        api_key=os.environ.get(spec["key_env"]) or "not-needed",
+        is_chat_model=True,
+        is_function_calling_model=True,
+        **settings,
+    )
+
+
+def scripted_model(replies: list[Any]) -> Any:
+    """Scripted replies (see `_streamed`): the LLM is LlamaIndex's own, and nothing reaches a provider."""
+    return OpenAILike(model="scripted", api_base="http://scripted/v1", api_key="scripted", is_chat_model=True,
+                      is_function_calling_model=True, async_http_client=_streamed(replies))
+
+
+def _streamed(replies: list[Any]) -> Any:
+    """An OpenAI-compatible endpoint in memory that streams scripted replies, as the canvas's mock mode gives them:
+    the n-th model turn of an agent's run gets reply n (the last one repeats). A reply is text, or
+    {"content": ..., "tool_calls": [{"name": ..., "args": {...}}]}."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        turn = sum(1 for m in body.get("messages", []) if m.get("role") == "assistant")
+        reply = (replies or [""])[min(turn, len(replies or [""]) - 1)]
+        calls = reply.get("tool_calls") or [] if isinstance(reply, dict) else []
+        text = reply.get("content", "") if isinstance(reply, dict) else str(reply)
+        base = {"id": f"mock_{turn}", "object": "chat.completion.chunk", "created": 0, "model": "scripted"}
+        deltas: list[dict[str, Any]] = [{"role": "assistant", "content": text}]
+        deltas += [{"tool_calls": [{"index": i, "id": f"mock_{turn}_{i}", "type": "function",
+                                    "function": {"name": c["name"], "arguments": json.dumps(c.get("args") or {})}}]}
+                   for i, c in enumerate(calls)]
+        chunks = [{**base, "choices": [{"index": 0, "delta": d, "finish_reason": None}]} for d in deltas]
+        chunks.append({**base, "choices": [{"index": 0, "delta": {},
+                                            "finish_reason": "tool_calls" if calls else "stop"}]})
+        chunks.append({**base, "choices": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+                                                        "total_tokens": 0}})
+        data = "".join(f"data: {json.dumps(c)}\\n\\n" for c in chunks) + "data: [DONE]\\n\\n"
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=data.encode())
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(answer))
+'''
+
 TARGETS = {
     "pydantic_ai": Target(
         label="Pydantic AI",
@@ -167,6 +269,24 @@ TARGETS = {
         how="an Agent Framework `Agent` for each AI block (an `OpenAIChatCompletionClient`, tools, a `response_format` "
         "for typed answers)",
         models=AGENT_FRAMEWORK_MODELS,
+    ),
+    "strands": Target(
+        label="Strands Agents",
+        slug="strands",
+        pins=[f"strands-agents[openai]=={STRANDS_VERSION}"],
+        docs="https://strandsagents.com/",
+        how="a Strands `Agent` for each AI block (an `OpenAIModel`, tools, an `AskBefore` hook for approvals, a "
+        "`structured_output_model` for typed answers)",
+        models=STRANDS_MODELS,
+    ),
+    "llamaindex": Target(
+        label="LlamaIndex",
+        slug="llamaindex",
+        pins=[f"llama-index-core=={LLAMA_INDEX_CORE_VERSION}", f"llama-index-llms-openai-like=={OPENAI_LIKE_VERSION}"],
+        docs="https://docs.llamaindex.ai/",
+        how="a LlamaIndex `FunctionAgent` for each AI block (an `OpenAILike` LLM, tools, an `output_cls` for typed "
+        "answers)",
+        models=LLAMAINDEX_MODELS,
     ),
 }
 

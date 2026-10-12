@@ -96,6 +96,8 @@ exclude = [
   "agentcanvas/adapters/agno/runtime.py", "agentcanvas/adapters/agno/worker.py",
   "agentcanvas/adapters/microsoft_agent_framework/runtime.py",
   "agentcanvas/adapters/microsoft_agent_framework/worker.py",
+  "agentcanvas/adapters/strands/runtime.py", "agentcanvas/adapters/strands/worker.py",
+  "agentcanvas/adapters/llamaindex/runtime.py", "agentcanvas/adapters/llamaindex/worker.py",
 ]
 typeCheckingMode = "standard"
 

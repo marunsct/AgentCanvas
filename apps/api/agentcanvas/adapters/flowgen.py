@@ -3,7 +3,7 @@
 The module reads like code a person would write with the framework: an agent builder per AI agent block, one
 `async def` per block of the canvas (marked with `@canvas-node` so the code view jumps back to the block), and a
 `FLOW` that says which step follows which. What is the framework's own (its imports, how an "Ask AI" step and an
-agent are written) comes from a `Dialect`; everything else is shared by Pydantic AI and Agno.
+agent are written) comes from a `Dialect`; everything else is shared by the frameworks that use it.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ STEP_TYPES = {
     "core.agent", "knowledge.search",
 }  # fmt: skip
 RESOURCE_TYPES = {"model.chat", "tool.python", "mw.model_call_limit"}
-_TAKEN = {"rt", "Agent", "NativeOutput", "BaseModel", "Field", "Any", "Literal", "FLOW", "annotations", "run",
-          "state"}  # fmt: skip
+_TAKEN = {"rt", "Agent", "FunctionAgent", "NativeOutput", "BaseModel", "Field", "Any", "Literal", "FLOW",
+          "annotations", "run", "state"}  # fmt: skip
 
 
 @dataclass
@@ -49,6 +49,7 @@ class Dialect:
     imports: list[str]  # framework imports, always
     doc: str  # how the AI blocks are written, for the module docstring
     structured_imports: list[str] = field(default_factory=list)  # instead of `imports` when an agent has a typed answer
+    agent_class: str = "Agent"  # what an agent builder returns
 
     def text_agent(self, name: str, model: str) -> str:
         raise NotImplementedError
@@ -181,11 +182,12 @@ def _agent(wf: Workflow, n: Node, fn: str, names: _Names, head: str, dialect: Di
         answer=answer, call_limit=limit, fail_at_limit=fail,
     )  # fmt: skip
     args, run_kw = dialect.agent(spec)
+    cls = dialect.agent_class
     body = ",\n".join(f"        {a}" for a in args)
     code = (
         f"{instructions} = {_lit(c.get('system_prompt') or 'Help the user.')}\n\n\n"
         + (f"{models}\n\n\n" if models else "")
-        + f"def {builder}(run: rt.Run) -> Agent:\n    return Agent(\n{body},\n    )\n\n\n"
+        + f"def {builder}(run: rt.Run) -> {cls}:\n    return {cls}(\n{body},\n    )\n\n\n"
         + head
         + f'    return await run.agent({builder}(run), state.get("messages"){", structured=True" if structured else ""}'
         + f"{run_kw})"

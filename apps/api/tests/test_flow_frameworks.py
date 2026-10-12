@@ -1,6 +1,6 @@
-"""The Pydantic AI and Agno (S32) and Microsoft Agent Framework (S33-S34) adapters: flows run by the flow engine with
-the frameworks' own agents, tools that wait for a person, typed answers, model call limits, every template they can
-run, and exports.
+"""The Pydantic AI and Agno (S32), Microsoft Agent Framework (S33-S34), Strands and LlamaIndex (S35) adapters: flows
+run by the flow engine with the frameworks' own agents, tools that wait for a person, typed answers, model call
+limits, every template they can run, and exports.
 
 Runs need the framework's Python environment (`make framework FW=pydantic_ai`, `make framework FW=agno`); without
 one these tests skip, except those that only generate code or check what a server without it says.
@@ -21,20 +21,25 @@ import pytest
 from agentcanvas import designs
 from agentcanvas.adapters import create_adapter
 from agentcanvas.adapters.agno import codegen as agno_codegen
+from agentcanvas.adapters.llamaindex import codegen as llama_codegen
 from agentcanvas.adapters.microsoft_agent_framework import codegen as maf_codegen
 from agentcanvas.adapters.pydantic_ai import codegen as pai_codegen
+from agentcanvas.adapters.strands import codegen as strands_codegen
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry.adapters import all_manifests
 from agentcanvas.runtime.types import ResumeSpec, RunSpec
 
 TEMPLATES = Path(__file__).parents[1] / "agentcanvas" / "registry" / "templates"
-FRAMEWORKS = ["pydantic_ai", "agno", "microsoft_agent_framework"]
-CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen, "microsoft_agent_framework": maf_codegen}
+FRAMEWORKS = ["pydantic_ai", "agno", "microsoft_agent_framework", "strands", "llamaindex"]
+CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen, "microsoft_agent_framework": maf_codegen,
+           "strands": strands_codegen, "llamaindex": llama_codegen}  # fmt: skip
 PINS = {
     "pydantic_ai": "pydantic-ai-slim[openai]==2.54.0",
     "agno": "agno==3.1.1",
     "microsoft_agent_framework": "agent-framework-core==1.20.0",
+    "strands": "strands-agents[openai]==1.58.1",
+    "llamaindex": "llama-index-core==0.14.25",
 }
 MODEL = {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}}
 ASK = {"role": "user", "content": "Tell the customer hi"}
@@ -269,6 +274,30 @@ async def test_agent_framework_asks_only_about_the_tools_that_wait():
     assert [r["name"] for r in asked] == ["send_reply"]
     assert runs[1][-1]["outcome"] == "success", runs[1][-1]
     assert sorted(io["tool"] for io in _tool_io(runs)) == ["lookup_order", "send_reply"]
+
+
+def test_generated_strands_flow_is_native_code():
+    schema = {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}
+    source = strands_codegen.generate(_agent_wf("strands", approve_tools=["send_reply"], run_limit=3,
+                                                response_format=schema))  # fmt: skip
+    ast.parse(source)
+    assert "from strands import Agent" in source
+    assert 'model=run.model("model"),' in source and "system_prompt=SUPPORT_INSTRUCTIONS," in source
+    assert 'tools=run.tools(["send"]),' in source and 'hooks=[rt.AskBefore(["send_reply"])],' in source
+    assert "structured_output_model=SupportAnswer," in source and "callback_handler=None," in source
+    assert 'run.agent(support_agent(run), state.get("messages"), structured=True, max_calls=3)' in source
+
+
+def test_generated_llamaindex_flow_is_native_code():
+    schema = {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}
+    source = llama_codegen.generate(_agent_wf("llamaindex", approve_tools=["send_reply"], run_limit=3,
+                                              response_format=schema))  # fmt: skip
+    ast.parse(source)
+    assert "from llama_index.core.agent.workflow import FunctionAgent" in source
+    assert "def support_agent(run: rt.Run) -> FunctionAgent:" in source
+    assert 'llm=run.model("model"),' in source and "system_prompt=SUPPORT_INSTRUCTIONS," in source
+    assert 'tools=run.tools(["send"], approve=["send_reply"])' in source and "output_cls=SupportAnswer," in source
+    assert 'run.agent(support_agent(run), state.get("messages"), structured=True, max_calls=3)' in source
 
 
 @pytest.mark.parametrize("framework", FRAMEWORKS)

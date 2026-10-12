@@ -26,6 +26,7 @@ jobs:
       - run: make -C ../.. framework FW=google_adk  # S29: so do Google ADK workflows
       - run: make -C ../.. framework FW=pydantic_ai && make -C ../.. framework FW=agno  # S32: and Pydantic AI, Agno
       - run: make -C ../.. framework FW=microsoft_agent_framework  # S33–S34: and the Microsoft Agent Framework
+      - run: make -C ../.. framework FW=strands && make -C ../.. framework FW=llamaindex  # S35: Strands, LlamaIndex
       - run: uv run pytest -q
         env:
           AGENTCANVAS_ENV: test
@@ -226,7 +227,7 @@ jobs:
       - name: Each export passes its own tests (uv sync with the exported pins)
         run: |
           for d in "$EXPORTS"/local/*/*; do (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
-          for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/* "$EXPORTS"/google_adk/*/* "$EXPORTS"/pydantic_ai/*/* "$EXPORTS"/agno/*/* "$EXPORTS"/microsoft_agent_framework/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
+          for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/* "$EXPORTS"/google_adk/*/* "$EXPORTS"/pydantic_ai/*/* "$EXPORTS"/agno/*/* "$EXPORTS"/microsoft_agent_framework/*/* "$EXPORTS"/strands/*/* "$EXPORTS"/llamaindex/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
         run: |
@@ -274,6 +275,7 @@ jobs:
       - run: make framework FW=google_adk  # S29: the Google ADK journey runs an ADK workflow
       - run: make framework FW=pydantic_ai && make framework FW=agno  # S32: the Pydantic AI and Agno journeys
       - run: make framework FW=microsoft_agent_framework  # S33–S34: the Microsoft Agent Framework journey
+      - run: make framework FW=strands && make framework FW=llamaindex  # S35: the Strands and LlamaIndex journeys
       - run: cd apps/web && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
       - run: cd apps/web && pnpm e2e
       - name: Print the page state of failed tests
