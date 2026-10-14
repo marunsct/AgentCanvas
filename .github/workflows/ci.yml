@@ -214,7 +214,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-node@v7  # S36: Mastra exports are TypeScript projects
         with: { node-version: 22 }
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: cd apps/api && uv sync --frozen && uv run python scripts/export_templates.py "$EXPORTS"
       - name: Lint the deploy files
         run: |
