@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,6 +145,7 @@ async def export_plan(
     wf_id: str,
     target: ExportTarget = "local",
     version: str | None = None,
+    framework: str | None = Query(None, description="another installed framework to export the workflow for"),
     session: AsyncSession = Depends(get_session),
     svc: WorkflowService = Depends(service),
 ) -> ExportPlanOut:
@@ -152,6 +153,8 @@ async def export_plan(
     from agentcanvas.adapters.langchain import deploykit
 
     _, wf, semver = await _export_source(session, svc, wf_id, version)
+    if framework and framework != wf.framework:
+        wf = wf.model_copy(update={"framework": framework})
     if wf.framework != "langchain":  # the deploy kit builds LangGraph services (S20: other frameworks export as is)
         raise Conflict(
             f"the deploy kit builds LangGraph services; a {framework_adapter(wf.framework).manifest.label} workflow "
@@ -170,21 +173,30 @@ async def export_zip(
     request: Request,
     version: str | None = None,
     target: ExportTarget = "local",
+    framework: str | None = Query(None, description="another installed framework to export the workflow for"),
     session: AsyncSession = Depends(get_session),
     svc: WorkflowService = Depends(service),
 ) -> Response:
-    """The workflow (draft, or `?version=`) as a deployable Python project with the deploy kit for `target`
-    (M6-T2/T3, S16)."""
-    _, name, data = await _export(request, session, svc, wf_id, version, target)
+    """The workflow (draft, or `?version=`) as a deployable project of its framework (or `?framework=`), with the
+    deploy kit for `target` when it is a LangGraph service (M6-T2/T3, S16)."""
+    _, name, data = await _export(request, session, svc, wf_id, version, target, framework)
     return Response(
         data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
     )
 
 
 async def _export(
-    request: Request, session: AsyncSession, svc: WorkflowService, wf_id: str, version: str | None, target: str
+    request: Request,
+    session: AsyncSession,
+    svc: WorkflowService,
+    wf_id: str,
+    version: str | None,
+    target: str,
+    framework: str | None = None,
 ) -> tuple[Any, str, bytes]:
     view, wf, semver = await _export_source(session, svc, wf_id, version)
+    if framework and framework != wf.framework:  # the same workflow written for another framework (as the Code tab)
+        wf = wf.model_copy(update={"framework": framework})
     cases = [
         {"name": c.name, "input": c.input, "context": c.context, "mocks": c.mocks, "pins": c.pins, "expect": c.expect}
         for c in await TestCaseService(session).list(wf_id)

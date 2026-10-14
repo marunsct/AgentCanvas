@@ -3,6 +3,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiDownload, apiFetch } from "../api/client";
+import { useAgentFrameworks, useFrameworks } from "../api/queries";
+import { useEditor } from "../editor/store";
+import { portability } from "../ir/portability";
 import type { BridgesOut, ExportPlanOut, GitHubPushOut, VersionOut } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
 
@@ -16,13 +19,25 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
   const [open, setOpen] = useState(false);
   const [version, setVersion] = useState("");
   const [target, setTarget] = useState("local");
-  const [framework, setFramework] = useState("");  // "" = the AgentCanvas service; else a bridge (S22)
+  // "" = the workflow's own framework; "fw:<id>" another installed one; "<bridge id>" through Agent Spec (S22)
+  const [framework, setFramework] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const query = new URLSearchParams({ target, ...(version ? { version } : {}) }).toString();
+  const wf = useEditor((s) => s.wf);
+  const { data: frameworks = [] } = useFrameworks();
+  const { data: agents = [] } = useAgentFrameworks();
+  const own = wf?.framework ?? "langchain";
+  const fits = wf ? portability(wf, frameworks, new Set(agents.map((a) => a.id))) : [];
+  const as = framework.startsWith("fw:") ? framework.slice(3) : framework ? null : own; // a framework project
+  const bridgeId = as === null ? framework : "";
+  const service = as === "langchain"; // a LangGraph service: the deploy kit and "where it will run"
+  const label = (id: string) => frameworks.find((f) => f.id === id)?.label ?? id;
+  const query = new URLSearchParams({
+    target, ...(version ? { version } : {}), ...(as && as !== own ? { framework: as } : {}),
+  }).toString();
   const only = version ? `?version=${encodeURIComponent(version)}` : "";
   const plan = useQuery({
-    queryKey: ["export-plan", wfId, version, target],
-    enabled: open && !framework,
+    queryKey: ["export-plan", wfId, version, target, as],
+    enabled: open && service,
     queryFn: () => apiFetch<ExportPlanOut>(`/workflows/${wfId}/export/plan?${query}`),
   });
   const bridges = useQuery({
@@ -30,13 +45,13 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
     enabled: open,
     queryFn: () => apiFetch<BridgesOut>(`/workflows/${wfId}/bridges${only}`),
   });
-  const bridge = bridges.data?.targets.find((t) => t.id === framework);
+  const bridge = bridges.data?.targets.find((t) => t.id === bridgeId);
   const p = plan.data?.prerequisites as Prerequisites | undefined;
   const download = () => {
     setError(null);
-    const done = framework
-      ? apiDownload(`/workflows/${wfId}/bridges/${framework}/export.zip${only}`, `export-${version || "draft"}-${framework}.zip`)
-      : apiDownload(`/workflows/${wfId}/export.zip?${query}`, `export-${version || "draft"}-${target}.zip`);
+    const done = bridgeId
+      ? apiDownload(`/workflows/${wfId}/bridges/${bridgeId}/export.zip${only}`, `export-${version || "draft"}-${bridgeId}.zip`)
+      : apiDownload(`/workflows/${wfId}/export.zip?${query}`, `export-${version || "draft"}-${service ? target : as}.zip`);
     done.catch((e: Error) => setError(e.message));
   };
 
@@ -55,8 +70,9 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
         <button type="button" className="link small" onClick={() => setOpen(false)}>close</button>
       </div>
       <p className="small muted">
-        A ready-to-deploy project: the workflow as a service with the same API as a deployment, deploy files for the
-        place you choose, and step-by-step guides with this workflow's keys and settings filled in.
+        A project to run in your own environment: the workflow in the framework you pick, with its tests. A LangGraph
+        service also gets the same API as a deployment, deploy files for the place you choose, and step-by-step guides
+        with this workflow's keys and settings filled in.
       </p>
       <label htmlFor="export-version">Version</label>
       <select id="export-version" value={version} onChange={(e) => setVersion(e.target.value)}>
@@ -65,14 +81,34 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
       </select>
       <label htmlFor="export-framework">Framework</label>
       <select id="export-framework" value={framework} onChange={(e) => setFramework(e.target.value)}>
-        <option value="">AgentCanvas service (LangGraph, with the deploy kit)</option>
-        {(bridges.data?.targets ?? []).map((t) => (
-          <option key={t.id} value={t.id}>{t.label} (preview{t.runs ? "" : ", needs work"})</option>
-        ))}
+        <option value="">{label(own)}{own === "langchain" ? " service, with the deploy kit" : " project"} (this workflow's framework)</option>
+        {fits.some((f) => f.id !== own) && (
+          <optgroup label="Other workflow frameworks (the same workflow, written for it)">
+            {fits.filter((f) => f.id !== own).map((f) => (
+              <option key={f.id} value={`fw:${f.id}`} disabled={!f.ok}>
+                {f.label}{f.ok ? "" : ` (cannot run: ${f.blockers.map((b) => b.name).join(", ")})`}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {(bridges.data?.targets ?? []).length > 0 && (
+          <optgroup label="Through Agent Spec (preview)">
+            {(bridges.data?.targets ?? []).map((t) => (
+              <option key={t.id} value={t.id}>{t.label} (preview{t.runs ? "" : ", needs work"})</option>
+            ))}
+          </optgroup>
+        )}
       </select>
       <QueryStatus q={bridges} what="the other frameworks" />
       {bridge && <BridgeGaps bridge={bridge} notOffered={bridges.data?.not_offered ?? []} />}
-      {!framework && (
+      {as && !service && (
+        <p className="small muted" data-testid="export-framework-note">
+          A {label(as)} project: the workflow&apos;s code, a runner, pinned packages, a README and tests that need no
+          API key. Where it runs is up to you: the deploy kit&apos;s targets are for LangGraph services.
+          {as !== own && " The workflow itself stays as it is; this only writes it for another framework."}
+        </p>
+      )}
+      {service && (
         <>
           <label htmlFor="export-target">Where it will run</label>
           <select id="export-target" value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -83,7 +119,7 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
           <QueryStatus q={plan} what="what the export needs" />
         </>
       )}
-      {!framework && p && (
+      {service && p && (
         <div className="export-needs small" data-testid="export-needs">
           <p>{p.summary}</p>
           <h4>You will need</h4>
@@ -108,7 +144,7 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
         <button type="button" className="primary" data-testid="export-download" onClick={download}>⬇ Download</button>
       </div>
       {error && <p className="error-text small" role="alert">{error}</p>}
-      {!framework && <GitHubPush wfId={wfId} version={version} target={target} />}
+      {as === own && <GitHubPush wfId={wfId} version={version} target={target} />}
     </section>
   );
 }

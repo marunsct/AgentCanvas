@@ -139,7 +139,8 @@ test("convert steps to a subgraph, open it, and inline it back", async ({ page }
   await openTriage(page);
   await page.getByTestId("node-escalate").click();
   await page.getByTestId("node-manager_approval").click({ modifiers: ["ControlOrMeta"] });
-  await page.getByRole("button", { name: "⧉ Subgraph" }).click();
+  await page.getByTestId("more-menu").click();
+  await page.getByRole("menuitem", { name: "⧉ Subgraph" }).click();
   await expect(page.getByTestId("node-escalate_group")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("node-escalate")).toHaveCount(0);
   await expect(page.locator(".save-state")).toHaveText("Saved");

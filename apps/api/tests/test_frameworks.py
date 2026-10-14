@@ -70,6 +70,29 @@ async def test_the_default_server_offers_ten_frameworks(api_client):
     ]
 
 
+async def test_each_framework_says_whether_it_is_set_up_and_how(api_client, monkeypatch):
+    from agentcanvas.adapters.agno import AgnoAdapter
+
+    monkeypatch.setattr(AgnoAdapter, "python", lambda self: None)  # `make framework FW=agno` not run here
+    listed = {f["id"]: f for f in (await api_client.get("/v1/frameworks")).json()}
+    assert listed["langchain"]["ready"] is True and listed["langchain"]["setup"] is None
+    assert listed["agno"]["ready"] is False and "make framework FW=agno" in listed["agno"]["setup"]
+    monkeypatch.setenv("AGENTCANVAS_IN_DOCKER", "1")  # the Docker app: a make on the host does not reach it
+    agno = {f["id"]: f for f in (await api_client.get("/v1/frameworks")).json()}["agno"]
+    assert "make docker-up FRAMEWORKS=agno" in agno["setup"]
+
+
+async def test_a_workflow_exports_for_another_installed_framework(api_client):
+    wf = (await api_client.post(P, json={"name": "Any", "template": "classify_and_route"})).json()
+    r = await api_client.get(f"/v1/workflows/{wf['id']}/export.zip?framework=crewai")
+    assert r.status_code == 200, r.text
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert any(n.endswith("crew.py") or "crewai" in n for n in names)
+    assert (await api_client.get(f"/v1/workflows/{wf['id']}")).json()["ir"]["framework"] == "langchain"  # unchanged
+    plan = await api_client.get(f"/v1/workflows/{wf['id']}/export/plan?framework=crewai")
+    assert plan.status_code == 409  # the deploy kit is for LangGraph services
+
+
 async def test_the_server_lists_its_frameworks(two):
     both = (await two.get("/v1/frameworks")).json()
     assert [f["id"] for f in both] == ["langchain", "echo"]

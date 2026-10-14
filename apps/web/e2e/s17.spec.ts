@@ -69,6 +69,7 @@ test("a workflow's own code: starter file, Copilot help, and the way back to the
   await expect(page).toHaveURL(editorUrl);
   await expect(page.getByLabel("node name")).toHaveValue(`count_${stamp}`);
   // the browser's Back button works too
+  await page.getByTestId("more-menu").click();
   await page.getByTestId("workspace-link").click();
   await expect(page.getByTestId("back-to-workflow")).toContainText(`Own code ${stamp}`);
   await page.goBack();

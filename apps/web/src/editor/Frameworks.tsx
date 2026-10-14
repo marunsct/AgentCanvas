@@ -24,6 +24,11 @@ export function FrameworkPicker() {
         {frameworks.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
       </select>
       {current?.description && <small className="muted">{current.description}</small>}
+      {current && current.ready === false && (
+        <small className="warn-text" role="note" data-testid="framework-setup">
+          Not set up on this server, so runs stop with an error. {current.setup}
+        </small>
+      )}
     </label>
   );
 }
@@ -37,24 +42,40 @@ export function FrameworkBadges() {
   const fits = useMemo(
     () => (wf ? portability(wf, frameworks, new Set(agents.map((a) => a.id))) : []), [wf, frameworks, agents],
   );
+  const [open, setOpen] = useState<{ left: number } | null>(null);
   if (!wf || fits.length === 0) return null;
+  const ready = new Map(frameworks.map((f) => [f.id, f.ready !== false]));
+  // the top bar shows the workflow's own framework; the others open from "+N" so the bar fits a laptop window
+  const shown = open ? fits : fits.filter((f) => f.id === wf.framework);
+  const others = fits.filter((f) => f.id !== wf.framework);
+  const otherOk = others.filter((f) => f.ok).length;
   return (
-    <div className="framework-badges" role="list" aria-label="frameworks this workflow can run on">
-      {fits.map((f) => {
+    <div className={`framework-badges${open ? " open" : ""}`} role="list" aria-label="frameworks this workflow can run on"
+      style={open ? { left: open.left } : undefined}>
+      {shown.map((f) => {
         const mine = f.id === wf.framework;
         const names = f.blockers.map((b) => b.name);
-        const title = f.ok
+        const setUp = ready.get(f.id) !== false;
+        const title = (f.ok
           ? `${f.label} can run every block${f.emulated.length ? ` (imitates ${f.emulated.map((b) => b.name).join(", ")})` : ""}`
-          : `${f.label} cannot run: ${names.join(", ")}`;
+          : `${f.label} cannot run: ${names.join(", ")}`) + (setUp ? "" : ". Not set up on this server yet (see the Framework setting)");
         return (
           <span key={f.id} role="listitem"><button type="button" title={title}
             className={`framework-badge ${f.ok ? "ok" : "blocked"}${mine ? " mine" : ""}`}
             aria-label={`${f.label}: ${f.ok ? "ready" : `${names.length} block${names.length === 1 ? "" : "s"} it cannot run`}${mine ? " (this workflow's framework)" : ""}`}
             onClick={() => f.blockers[0] && select(f.blockers[0].id)}>
-            {f.ok ? "✓" : "✕"} {f.label}{f.ok ? "" : ` · ${names.length}`}
+            {f.ok ? "✓" : "✕"} {f.label}{f.ok ? "" : ` · ${names.length}`}{setUp ? "" : " · not set up"}
           </button></span>
         );
       })}
+      {others.length > 0 && (
+        <span role="listitem"><button type="button" className="framework-badge more" data-testid="framework-more"
+          aria-expanded={Boolean(open)}
+          onClick={(e) => setOpen(open ? null : { left: Math.max(14, (e.currentTarget.closest("[role=list]")?.getBoundingClientRect().left ?? 14) - 8) })}
+          title={open ? "Show only this workflow's framework" : `${otherOk} of ${others.length} other frameworks can run this workflow`}>
+          {open ? "less" : `+${others.length} (${otherOk} ✓)`}
+        </button></span>
+      )}
     </div>
   );
 }

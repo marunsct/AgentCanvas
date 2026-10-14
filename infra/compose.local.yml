@@ -20,7 +20,12 @@ services:
     restart: unless-stopped
 
   api:
-    build: { context: ../apps/api, dockerfile: ../../infra/Dockerfile.api }
+    build:
+      context: ../apps/api
+      dockerfile: ../../infra/Dockerfile.api
+      args:  # frameworks whose workflows run here, built into the image: make docker-up FRAMEWORKS=all (or ids)
+        FRAMEWORKS: ${FRAMEWORKS:-}
+        WITH_MASTRA: ${WITH_MASTRA:-false}
     image: ${API_IMAGE:-agentcanvas-api:latest}
     environment:
       DATABASE_URL: postgresql://agentcanvas:${POSTGRES_PASSWORD:-agentcanvas-local}@postgres:5432/agentcanvas

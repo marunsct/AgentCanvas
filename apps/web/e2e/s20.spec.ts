@@ -14,6 +14,7 @@ test("the badges, the framework picker and a block's own framework", async ({ pa
   await newWorkflow(page, `Frameworks ${Date.now()}`);
   const badges = page.getByRole("list", { name: "frameworks this workflow can run on" });
   await expect(badges.getByRole("button", { name: /^LangGraph: ready/ })).toBeVisible();
+  await page.getByTestId("framework-more").click(); // the other frameworks open from "+N"
   await expect(badges.getByRole("button", { name: /^Echo \(demo engine\): ready/ })).toBeVisible();
 
   // an AI agent is a LangGraph block: Echo cannot run it, and its badge leads to it

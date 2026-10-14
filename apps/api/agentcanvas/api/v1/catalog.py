@@ -7,7 +7,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Request
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agentcanvas.api.deps import get_settings_dep
 from agentcanvas.expr import ExpressionError, check_condition
@@ -37,11 +37,24 @@ def node_types(request: Request, project_id: str | None = None) -> list[NodeMani
     return default_registry().all()
 
 
-@router.get("/frameworks", response_model=list[AdapterManifest])
-def frameworks() -> list[AdapterManifest]:
+class FrameworkOut(AdapterManifest):
+    ready: bool = Field(True, description="its runtime is set up here, so its workflows run (else see `setup`)")
+    setup: str | None = Field(None, description="what to do so its workflows run on this server")
+
+
+@router.get("/frameworks", response_model=list[FrameworkOut])
+def frameworks() -> list[FrameworkOut]:
     """The frameworks this server can run workflows on (S20): abilities and which blocks each runs, natively or by
-    emulation. The first one is the default for new workflows."""
-    return adapters.installed()
+    emulation, and whether each one's runtime is set up here. The first one is the default for new workflows."""
+    from agentcanvas.adapters import installed_adapters
+    from agentcanvas.adapters.setup import setup_hint
+
+    ready = installed_adapters()
+    out = []
+    for m in adapters.installed():
+        hint = setup_hint(ready[m.id]) if m.id in ready else None
+        out.append(FrameworkOut(**m.model_dump(), ready=hint is None, setup=hint))
+    return out
 
 
 @router.get("/models", response_model=list[ModelInfo])

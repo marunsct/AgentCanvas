@@ -31,6 +31,7 @@ test("research template: map fans out per topic and the Deep Agent saves finding
   await expect(page.getByTestId("code-view")).toContainText("ac.deep_agent_node(");
 
   // memory inspector (M4-T12): the Deep Agent's /memories/ file is a memory of the signed-in user
+  await page.getByTestId("more-menu").click();
   await page.getByTestId("memory-link").click();
   await page.getByRole("button", { name: "memories/user/usr_dev" }).click();
   await page.getByLabel("search memories").fill("cocoa");

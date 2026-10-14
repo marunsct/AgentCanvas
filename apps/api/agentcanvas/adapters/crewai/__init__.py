@@ -33,6 +33,7 @@ from agentcanvas.adapters.crewai import codegen
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.bridge import model_bridge
 from agentcanvas.adapters.langchain.events import UsageTracker, node_index
+from agentcanvas.adapters.setup import setup_hint
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
@@ -142,7 +143,7 @@ class CrewAIAdapter:
         try:
             python = self.python()
             if python is None:
-                raise RuntimeError(self.install_hint)
+                raise RuntimeError(setup_hint(self) or self.install_hint)
             if blocked := self._blocked(wf):
                 raise WorkflowHasErrors("; ".join(f"{d['code']} {d['message']}" for d in blocked), errors=blocked)
             source = self.source(wf)

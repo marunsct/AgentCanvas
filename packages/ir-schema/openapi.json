@@ -1,92 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AdapterManifest": {
-        "additionalProperties": false,
-        "properties": {
-          "abilities": {
-            "items": {
-              "enum": [
-                "thread_state",
-                "time_travel",
-                "memory_store",
-                "mcp_inspect",
-                "breakpoints",
-                "agent_designs"
-              ],
-              "type": "string"
-            },
-            "title": "Abilities",
-            "type": "array"
-          },
-          "description": {
-            "default": "",
-            "title": "Description",
-            "type": "string"
-          },
-          "framework": {
-            "title": "Framework",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "languages": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Languages",
-            "type": "array"
-          },
-          "nodes": {
-            "additionalProperties": {
-              "enum": [
-                "native",
-                "emulated",
-                "unsupported"
-              ],
-              "type": "string"
-            },
-            "title": "Nodes",
-            "type": "object"
-          },
-          "notes": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Notes",
-            "type": "object"
-          },
-          "tier": {
-            "enum": [
-              "T1",
-              "T2",
-              "T3",
-              "community"
-            ],
-            "title": "Tier",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "label",
-          "framework",
-          "version",
-          "tier"
-        ],
-        "title": "AdapterManifest",
-        "type": "object"
-      },
       "AddNode": {
         "additionalProperties": false,
         "properties": {
@@ -4146,6 +4060,110 @@
           "checkpoint_id"
         ],
         "title": "ForkRequest",
+        "type": "object"
+      },
+      "FrameworkOut": {
+        "additionalProperties": false,
+        "properties": {
+          "abilities": {
+            "items": {
+              "enum": [
+                "thread_state",
+                "time_travel",
+                "memory_store",
+                "mcp_inspect",
+                "breakpoints",
+                "agent_designs"
+              ],
+              "type": "string"
+            },
+            "title": "Abilities",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "framework": {
+            "title": "Framework",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Languages",
+            "type": "array"
+          },
+          "nodes": {
+            "additionalProperties": {
+              "enum": [
+                "native",
+                "emulated",
+                "unsupported"
+              ],
+              "type": "string"
+            },
+            "title": "Nodes",
+            "type": "object"
+          },
+          "notes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "object"
+          },
+          "ready": {
+            "default": true,
+            "description": "its runtime is set up here, so its workflows run (else see `setup`)",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "setup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "what to do so its workflows run on this server",
+            "title": "Setup"
+          },
+          "tier": {
+            "enum": [
+              "T1",
+              "T2",
+              "T3",
+              "community"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "framework",
+          "version",
+          "tier"
+        ],
+        "title": "FrameworkOut",
         "type": "object"
       },
       "FromRunIn": {
@@ -10297,7 +10315,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.26.1"
+    "version": "0.26.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13668,7 +13686,7 @@
     },
     "/v1/frameworks": {
       "get": {
-        "description": "The frameworks this server can run workflows on (S20): abilities and which blocks each runs, natively or by\nemulation. The first one is the default for new workflows.",
+        "description": "The frameworks this server can run workflows on (S20): abilities and which blocks each runs, natively or by\nemulation, and whether each one's runtime is set up here. The first one is the default for new workflows.",
         "operationId": "frameworks_v1_frameworks_get",
         "parameters": [
           {
@@ -13696,7 +13714,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/AdapterManifest"
+                    "$ref": "#/components/schemas/FrameworkOut"
                   },
                   "title": "Response Frameworks V1 Frameworks Get",
                   "type": "array"
@@ -22671,7 +22689,7 @@
     },
     "/v1/workflows/{wf_id}/export.zip": {
       "get": {
-        "description": "The workflow (draft, or `?version=`) as a deployable Python project with the deploy kit for `target`\n(M6-T2/T3, S16).",
+        "description": "The workflow (draft, or `?version=`) as a deployable project of its framework (or `?framework=`), with the\ndeploy kit for `target` when it is a LangGraph service (M6-T2/T3, S16).",
         "operationId": "export_zip_v1_workflows__wf_id__export_zip_get",
         "parameters": [
           {
@@ -22715,6 +22733,24 @@
               ],
               "title": "Target",
               "type": "string"
+            }
+          },
+          {
+            "description": "another installed framework to export the workflow for",
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "another installed framework to export the workflow for",
+              "title": "Framework"
             }
           },
           {
@@ -22808,6 +22844,24 @@
                 }
               ],
               "title": "Version"
+            }
+          },
+          {
+            "description": "another installed framework to export the workflow for",
+            "in": "query",
+            "name": "framework",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "another installed framework to export the workflow for",
+              "title": "Framework"
             }
           },
           {

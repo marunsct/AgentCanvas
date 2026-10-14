@@ -838,6 +838,33 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .framework-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 /* S32: in the top bar the badges stay on one line (it scrolls sideways); squeezed, they wrapped out of sight */
 .topbar .framework-badges { flex-wrap: nowrap; flex-shrink: 0; }
+/* the top bar shows the workflow's framework and "+N"; opened, the others list below the bar so it still fits */
+.topbar .framework-badges.open {
+  position: fixed; top: calc(var(--topbar-h) + 4px); right: 14px; z-index: 40; flex-wrap: wrap; max-width: 760px;
+  padding: 8px; background: var(--raised); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+}
+.framework-badge.more { cursor: pointer; color: var(--text-2); }
+
+/* the editor's "More" menu (pages and less frequent canvas tools), below the top bar */
+.more-menu > button { padding: 5px 10px; font-size: 13px; white-space: nowrap; box-shadow: none; background: transparent; border-color: transparent; color: var(--text-2); }
+.more-menu > button:hover, .more-menu > button[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.more-menu-list {
+  position: fixed; z-index: 40; min-width: 200px; display: flex; flex-direction: column; padding: 6px;
+  background: var(--raised); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+}
+.more-menu-list > a, .more-menu-list > button {
+  text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--text); background: transparent;
+  border: 0; box-shadow: none;
+}
+.more-menu-list > a:hover, .more-menu-list > button:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+.more-menu-list > button.active { color: var(--accent); }
+.more-menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+/* narrower windows: tighter top bar */
+@media (max-width: 1360px) {
+  .topbar { gap: 3px; padding: 0 10px; }
+  .topbar > button, .topbar .toolbar-group button, .more-menu > button { padding-left: 7px; padding-right: 7px; }
+  .topbar > a:not(.brand), .topbar .inbox-link { padding-left: 7px; padding-right: 7px; }
+}
 .framework-badge {
   font-size: 11px; line-height: 1; padding: 4px 8px; border-radius: 999px; cursor: default;
   border: 1px solid var(--border); background: var(--surface-2, transparent); color: var(--muted);
