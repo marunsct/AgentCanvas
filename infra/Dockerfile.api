@@ -22,8 +22,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 # 3)-7) optional frameworks, each in a Python environment of its own so its workflows run here: name them in
 #   FRAMEWORKS (space- or comma-separated ids, or "all"), e.g. --build-arg FRAMEWORKS="crewai google_adk" (the Docker
-#   app: `make docker-up FRAMEWORKS=all`), or with the older WITH_<ID>=true arguments. Without them those workflows can
-#   still be designed and exported.
+#   app: `make docker-up`, all by default), or with the older WITH_<ID>=true arguments. Without them those workflows can
+#   still be designed and exported. The Docker app (infra/compose.local.yml) passes FRAMEWORKS=all by default.
 ARG FRAMEWORKS=""
 # 3) optional (S27): CrewAI in an environment of its own, so workflows designed for CrewAI run here (about 800 MB):
 #   docker build --build-arg WITH_CREWAI=true ...   Without it they can still be designed and exported.
@@ -66,7 +66,7 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ]
       jsonschema==4.26.0; fi
 
 # 8) optional (S36): Mastra workflows run on Node.js 22.18+ with Mastra from npm, in /opt/mastra (node in bin/):
-#   --build-arg WITH_MASTRA=true (the Docker app: FRAMEWORKS=mastra or all). Otherwise the folder stays empty.
+#   --build-arg WITH_MASTRA=true (the Docker app sets it unless FRAMEWORKS leaves Mastra out). Otherwise the folder stays empty.
 FROM node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e AS mastra-true
 WORKDIR /opt/mastra
 COPY agentcanvas/adapters/mastra/package.json ./

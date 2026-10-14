@@ -2,6 +2,11 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.26.3 — Every framework in the Docker app by default (not tagged yet)
+
+### Changed
+- **`make docker-up` builds every framework's runtime into the API image** (CrewAI, Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex and Mastra), so their workflows run in the Docker app without extra steps. `docker compose -f infra/compose.local.yml up --build` does the same. The image is several GB; `FRAMEWORKS="crewai mastra"` builds only some, `FRAMEWORKS=none` none. An image built with v0.26.2 or earlier needs one `make docker-up` to rebuild. The production images (`compose.prod.yml`, Helm) are unchanged and still opt in.
+
 ## v0.26.2 — Framework setup, export to any framework, Full mode fits (not tagged yet)
 
 ### Fixed

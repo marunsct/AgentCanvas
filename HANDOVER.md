@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-14, after the owner's report that frameworks set up with `make` still showed as missing (the app ran in Docker), Export listed one framework, *Where it will run* errored and Full mode overflowed (→ v0.26.2). Previous update: 2026-10-12, after the whole-codebase review that followed the competitive roadmap (40 fixes → v0.26.1). Previous update: after Sprint 36 (Mastra → v0.26.0, [#40](https://github.com/marunsct/AgentCanvas/pull/40)).
+- **Last updated:** 2026-10-14, v0.26.3 (Docker app builds every framework by default), after the owner's report that frameworks set up with `make` still showed as missing (the app ran in Docker), Export listed one framework, *Where it will run* errored and Full mode overflowed (→ v0.26.2). Previous update: 2026-10-12, after the whole-codebase review that followed the competitive roadmap (40 fixes → v0.26.1). Previous update: after Sprint 36 (Mastra → v0.26.0, [#40](https://github.com/marunsct/AgentCanvas/pull/40)).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,10 +14,10 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last work done | **Framework setup, export to any framework, Full mode fits → v0.26.2** (the fix PR): the owner ran `make` for every framework but the app (in Docker) still said the runtimes were missing. The API image now builds framework runtimes in (`make docker-up FRAMEWORKS=all`, `infra/Dockerfile.api` ARG `FRAMEWORKS`/`WITH_MASTRA`, Mastra stage with Node); `/frameworks` gives `ready` and `setup` (`adapters/setup.py`, Docker-aware via `AGENTCANVAS_IN_DOCKER`); Export packages any installed framework (`export.zip?framework=`) and shows the deploy kit only for LangGraph; the editor top bar moved links/tools into `MoreMenu.tsx` and collapses framework badges, so Full mode fits at 1280 px (`e2e/fit.spec.ts`) |
+| Last work done | **Every framework in the Docker app by default → v0.26.3** (the fix PR): the owner runs the Docker app and asked for all frameworks there; `infra/compose.local.yml` now defaults `FRAMEWORKS=all`, `WITH_MASTRA=true`, and `make docker-up` passes all unless `FRAMEWORKS=` names fewer (`none` for none). Before it: **Framework setup, export to any framework, Full mode fits → v0.26.2** (the fix PR): the owner ran `make` for every framework but the app (in Docker) still said the runtimes were missing. The API image now builds framework runtimes in (`make docker-up FRAMEWORKS=all`, `infra/Dockerfile.api` ARG `FRAMEWORKS`/`WITH_MASTRA`, Mastra stage with Node); `/frameworks` gives `ready` and `setup` (`adapters/setup.py`, Docker-aware via `AGENTCANVAS_IN_DOCKER`); Export packages any installed framework (`export.zip?framework=`) and shows the deploy kit only for LangGraph; the editor top bar moved links/tools into `MoreMenu.tsx` and collapses framework badges, so Full mode fits at 1280 px (`e2e/fit.spec.ts`) |
 | Before that | Review after the competitive roadmap → v0.26.1 ([#41](https://github.com/marunsct/AgentCanvas/pull/41), merged `f5786d1`, 40 fixes); S36 Mastra → v0.26.0 ([#40](https://github.com/marunsct/AgentCanvas/pull/40), merged `0334885`); S35 Strands and LlamaIndex Workflows flows → v0.25.0 ([#39](https://github.com/marunsct/AgentCanvas/pull/39), merged `f813972`); S33–S34 Microsoft Agent Framework flows → v0.24.0 (#38, `8e307ad`); S32 Pydantic AI and Agno flows → v0.23.0 (#37, `63be5ca`) |
-| Version in code | API `0.26.2` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.26.2 |
-| Git tags | **none pushed.** v0.1.0 … v0.26.2 are all left to the owner (see §2) |
+| Version in code | API `0.26.3` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.26.3 |
+| Git tags | **none pushed.** v0.1.0 … v0.26.3 are all left to the owner (see §2) |
 | Next sprint | **None planned: the competitive roadmap (S15–S36) is complete and reviewed.** Next: the GA backlog in [the sprint plan](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) ("Later") or new direction from the owner |
 | Work status | The review is in its PR; under the owner's standing grant it is merged on local checks |
 | Open PRs | the review PR (`claude/project-thread-nz5vdj`) until it is merged |
@@ -204,7 +204,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
-- **Release tags** v0.1.0 to v0.26.2 not created (owner).
+- **Release tags** v0.1.0 to v0.26.3 not created (owner).
 - **Left from the review after the roadmap (v0.26.1):** Home opens an imported file straight away when nothing needs checking, so its "Everything carried over." note never shows; node policies (retry, timeout, error route) are ignored without
   a warning on the flow-engine frameworks, CrewAI and ADK; personal-data patterns stop after 1,000 matches; Mastra
   templates still differ from Jinja on negative indexes, slices and Python string methods; tools wrapped for dry runs
@@ -398,7 +398,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | S35 Strands and LlamaIndex Workflows flows | #39 | `f813972` | v0.25.0 |
 | S36 Mastra | #40 | `0334885` | v0.26.0 |
 | Review after the competitive roadmap (40 fixes) | [#41](https://github.com/marunsct/AgentCanvas/pull/41) | `f5786d1` | v0.26.1 |
-| Framework setup, export to any framework, Full mode fits | the fix PR | (after merge) | v0.26.2 |
+| Framework setup, export to any framework, Full mode fits | [#42](https://github.com/marunsct/AgentCanvas/pull/42) | `df98d9d` | v0.26.2 |
+| Every framework in the Docker app by default | the fix PR | (after merge) | v0.26.3 |
 
 ## 11. Sprint-end checklist
 

@@ -26,15 +26,19 @@ used.
 
 The first build takes a few minutes. Then open <http://localhost:7777>: Home shows **Set up your model**.
 
-**Workflows designed for other frameworks.** LangGraph and the OpenAI Agents SDK run in this image as it is. CrewAI,
-Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex and Mastra each need a runtime of
-their own, built into the image when you ask for it (a `make crewai` or `make framework` on your computer does not
+**Workflows designed for other frameworks.** The image includes every framework's runtime by default (CrewAI, Google
+ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex and Mastra, next to LangGraph and the
+OpenAI Agents SDK), so their workflows run as they are. This makes the image several GB and the first build longer;
+for a smaller one, name only the frameworks you use (a `make crewai` or `make framework` on your computer does not
 reach the container):
 
 ```bash
-make docker-up FRAMEWORKS=all                  # every framework (a larger image, several GB)
-make docker-up FRAMEWORKS="crewai mastra"      # or only the ones you use
+make docker-up                                 # every framework (the default)
+make docker-up FRAMEWORKS="crewai mastra"      # only these, next to LangGraph and the OpenAI Agents SDK
+make docker-up FRAMEWORKS=none                 # LangGraph and the OpenAI Agents SDK only
 ```
+
+An image built before this default (v0.26.2 and earlier) has none of them: run `make docker-up` again to rebuild it.
 
 The workflow's **Framework** setting says when its framework is not set up on the server, and what to run.
 
@@ -283,7 +287,7 @@ from **Members**.
 | **Test connection** to Ollama / LM Studio fails with a connection error | The local server is not running, or listens on another port: start it, or enter its address under *Server address*. In Docker, the address must use `host.docker.internal`, not `localhost`. |
 | A model shows *integration is not installed on this server* | Run `make setup` again (it installs every provider), or `docker compose … up --build`. |
 | `make docker-up` fails with *port is already allocated* | Something else uses 7777: set `WEB_PORT=7778` in `infra/.env.local`. |
-| A workflow's run stops with *… is not installed on this server* (or the **Framework** setting says it is not set up) | From source: run the `make` command it names, in the same checkout as the API. In Docker: `make docker-up FRAMEWORKS=<id>` (or `all`); a `make` on your computer does not reach the container. Mastra also needs Node.js 22.18 or later (`node --version`). |
+| A workflow's run stops with *… is not installed on this server* (or the **Framework** setting says it is not set up) | From source: run the `make` command it names, in the same checkout as the API. In Docker: rebuild the image with `make docker-up` (every framework by default, or `FRAMEWORKS=<id>`); a `make` on your computer does not reach the container. Mastra also needs Node.js 22.18 or later (`node --version`). |
 | `git` errors when the API starts or saves a workspace file | Install Git and make sure it is on `PATH`. |
 | Startup says *AGENTCANVAS_AUTH_MODE=dev gives every request admin rights* | You set `AGENTCANVAS_ENV` to `staging`/`prod`; use `dev` locally or configure OIDC. |
 | Startup says *oidc needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE* | Set both, or leave `AGENTCANVAS_AUTH_MODE` unset for local mode. |
