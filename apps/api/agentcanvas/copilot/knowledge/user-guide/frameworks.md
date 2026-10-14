@@ -351,7 +351,7 @@ to use it.
 Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
 `langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra`).
 Frameworks other than LangGraph and the OpenAI Agents SDK also need their runtime set up on the server (`make crewai`,
-`make framework FW=<id>`, `make mastra`, or in Docker `make docker-up FRAMEWORKS=<id>`). The **Framework** setting
+`make framework FW=<id>`, `make mastra`); the Docker app (`make docker-up`) includes them all by default. The **Framework** setting
 says when the workflow's framework is not set up yet, and what to run; the badge of one that is not reads *not set
 up*. The top bar shows the workflow's own framework; **+N** opens the others.
 

@@ -33,8 +33,8 @@ dev-web:    ## web app on http://localhost:5173
 	cd apps/web && pnpm dev
 
 comma := ,
-docker-up:  ## the whole app in Docker on http://localhost:7777 (builds the images); FRAMEWORKS=all (or ids) adds frameworks
-	$(if $(FRAMEWORKS),FRAMEWORKS="$(FRAMEWORKS)" WITH_MASTRA=$(if $(filter all mastra,$(subst $(comma), ,$(FRAMEWORKS))),true,false)) \
+docker-up:  ## the whole app in Docker on http://localhost:7777 (builds the images) with every framework; FRAMEWORKS=none (or ids) for fewer
+	FRAMEWORKS="$(or $(FRAMEWORKS),all)" WITH_MASTRA=$(if $(filter all mastra,$(subst $(comma), ,$(or $(FRAMEWORKS),all))),true,false) \
 	  docker compose -f infra/compose.local.yml $(if $(wildcard infra/.env.local),--env-file infra/.env.local) up -d --build --wait
 	@echo "AgentCanvas is running on http://localhost:$${WEB_PORT:-7777}"
 
