@@ -71,7 +71,7 @@ export function useManifests(): Map<string, NodeManifest> {
 
 /** The frameworks this server can run workflows on (S20): abilities and which blocks each runs. */
 export function useFrameworks() {
-  return useQuery({ queryKey: ["frameworks"], queryFn: () => apiFetch<AdapterManifest[]>("/frameworks"), staleTime: Infinity });
+  return useQuery({ queryKey: ["frameworks"], queryFn: () => apiFetch<AdapterManifest[]>("/frameworks"), staleTime: 30_000 }); // set-up state can change
 }
 
 /** Frameworks an Agent block can be designed for, in their own code (S21). */

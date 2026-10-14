@@ -21,6 +21,7 @@ test("design an agent for another framework, read its code, see where it can run
   // only frameworks that can host designed agents run it
   const badges = page.getByRole("list", { name: "frameworks this workflow can run on" });
   await expect(badges.getByRole("button", { name: /^LangGraph: ready/ })).toBeVisible();
+  await page.getByTestId("framework-more").click(); // the other frameworks open from "+N"
   await expect(badges.getByRole("button", { name: /^Echo \(demo engine\): 1 block it cannot run/ })).toBeVisible();
 
   // back to the workflow's own framework: the panel goes away

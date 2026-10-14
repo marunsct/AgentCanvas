@@ -4,6 +4,8 @@
 # Runs as uid 10001. Migrations: `alembic upgrade head` (the compose `migrate` service, the Helm hook Job).
 # Base images are pinned by digest (Dependabot proposes updates weekly). To pull one from a mirror, replace the
 # exact reference: --build-context 'python:3.12-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/python@sha256:<digest>'
+# Mastra (step 8) is built from the Node.js image only when asked for
+ARG WITH_MASTRA=false
 FROM ghcr.io/astral-sh/uv:0.12@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 AS uv
 
 FROM python:3.12-slim@sha256:02108f5d322dd89f1c9e552442c25acb0543dfdbc455693a5599624f20d9155d AS python
@@ -18,47 +20,60 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-ins
 # 2) the application
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
+# 3)-7) optional frameworks, each in a Python environment of its own so its workflows run here: name them in
+#   FRAMEWORKS (space- or comma-separated ids, or "all"), e.g. --build-arg FRAMEWORKS="crewai google_adk" (the Docker
+#   app: `make docker-up FRAMEWORKS=all`), or with the older WITH_<ID>=true arguments. Without them those workflows can
+#   still be designed and exported.
+ARG FRAMEWORKS=""
 # 3) optional (S27): CrewAI in an environment of its own, so workflows designed for CrewAI run here (about 800 MB):
 #   docker build --build-arg WITH_CREWAI=true ...   Without it they can still be designed and exported.
 ARG WITH_CREWAI=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_CREWAI" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_CREWAI" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|crewai) "; then \
       uv venv .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25; fi
 # 4) optional (S29): Google ADK in an environment of its own, for workflows designed for ADK and ADK agents in mixed
 #   flows (about 350 MB): docker build --build-arg WITH_GOOGLE_ADK=true ...
 ARG WITH_GOOGLE_ADK=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_GOOGLE_ADK" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_GOOGLE_ADK" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|google_adk) "; then \
       uv venv .frameworks/google_adk && uv pip install --python .frameworks/google_adk/bin/python \
       google-adk==2.11.0 litellm==1.104.2 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 5) optional (S32): Pydantic AI and Agno, each in an environment of its own, for workflows designed for them and their
 #   agents in mixed flows: docker build --build-arg WITH_PYDANTIC_AI=true --build-arg WITH_AGNO=true ...
 ARG WITH_PYDANTIC_AI=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_PYDANTIC_AI" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_PYDANTIC_AI" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|pydantic_ai) "; then \
       uv venv .frameworks/pydantic_ai && uv pip install --python .frameworks/pydantic_ai/bin/python \
       "pydantic-ai-slim[openai]==2.54.0" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 ARG WITH_AGNO=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_AGNO" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_AGNO" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|agno) "; then \
       uv venv .frameworks/agno && uv pip install --python .frameworks/agno/bin/python \
       agno==3.1.1 openai==2.54.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 6) optional (S33–S34): the Microsoft Agent Framework in an environment of its own, for workflows designed for it:
 #   docker build --build-arg WITH_MICROSOFT_AGENT_FRAMEWORK=true ...
 ARG WITH_MICROSOFT_AGENT_FRAMEWORK=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_MICROSOFT_AGENT_FRAMEWORK" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_MICROSOFT_AGENT_FRAMEWORK" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|microsoft_agent_framework) "; then \
       uv venv .frameworks/microsoft_agent_framework && uv pip install \
       --python .frameworks/microsoft_agent_framework/bin/python agent-framework-core==1.20.0 \
       agent-framework-openai==1.16.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 7) optional (S35): Strands Agents and LlamaIndex, each in an environment of its own:
 #   docker build --build-arg WITH_STRANDS=true --build-arg WITH_LLAMAINDEX=true ...
 ARG WITH_STRANDS=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_STRANDS" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_STRANDS" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|strands) "; then \
       uv venv .frameworks/strands && uv pip install --python .frameworks/strands/bin/python \
       "strands-agents[openai]==1.58.1" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 ARG WITH_LLAMAINDEX=false
-RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|llamaindex) "; then \
       uv venv .frameworks/llamaindex && uv pip install --python .frameworks/llamaindex/bin/python \
       llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1 cel-python==0.5.0 jinja2==3.1.6 \
       jsonschema==4.26.0; fi
-# Mastra workflows (S36) run on Node.js 22.18+, which this image does not have: to run them, extend the image with
-#   Node.js and `make mastra` (or set AGENTCANVAS_MASTRA_DIR). Without it they can still be designed and exported.
+
+# 8) optional (S36): Mastra workflows run on Node.js 22.18+ with Mastra from npm, in /opt/mastra (node in bin/):
+#   --build-arg WITH_MASTRA=true (the Docker app: FRAMEWORKS=mastra or all). Otherwise the folder stays empty.
+FROM node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e AS mastra-true
+WORKDIR /opt/mastra
+COPY agentcanvas/adapters/mastra/package.json ./
+RUN npm install --no-audit --no-fund --loglevel=error && mkdir bin && cp /usr/local/bin/node bin/node
+FROM python AS mastra-false
+RUN mkdir -p /opt/mastra
+FROM mastra-${WITH_MASTRA} AS mastra
 
 FROM python AS runtime
 # git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)
@@ -67,8 +82,11 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && useradd --create-home --uid 10001 app \
     && mkdir -p /data/workspaces && chown app:app /data/workspaces
 COPY --from=build --chown=app:app /app /app
+COPY --from=mastra --chown=app:app /opt/mastra /opt/mastra
 WORKDIR /app
-ENV PATH=/app/.venv/bin:$PATH \
+ENV PATH=/app/.venv/bin:/opt/mastra/bin:$PATH \
+    AGENTCANVAS_IN_DOCKER=1 \
+    AGENTCANVAS_MASTRA_DIR=/opt/mastra \
     PYTHONUNBUFFERED=1 \
     AGENTCANVAS_WORKSPACES_DIR=/data/workspaces \
     AGENTCANVAS_LOG_JSON=true \

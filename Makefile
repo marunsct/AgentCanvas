@@ -32,8 +32,10 @@ dev-fake:   ## API with scripted fake models (no keys)
 dev-web:    ## web app on http://localhost:5173
 	cd apps/web && pnpm dev
 
-docker-up:  ## the whole app in Docker on http://localhost:7777 (builds the images)
-	docker compose -f infra/compose.local.yml $(if $(wildcard infra/.env.local),--env-file infra/.env.local) up -d --build --wait
+comma := ,
+docker-up:  ## the whole app in Docker on http://localhost:7777 (builds the images); FRAMEWORKS=all (or ids) adds frameworks
+	$(if $(FRAMEWORKS),FRAMEWORKS="$(FRAMEWORKS)" WITH_MASTRA=$(if $(filter all mastra,$(subst $(comma), ,$(FRAMEWORKS))),true,false)) \
+	  docker compose -f infra/compose.local.yml $(if $(wildcard infra/.env.local),--env-file infra/.env.local) up -d --build --wait
 	@echo "AgentCanvas is running on http://localhost:$${WEB_PORT:-7777}"
 
 docker-down: ## stop the Docker app (your data stays; add -v to the compose command to delete it)

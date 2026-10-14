@@ -2,6 +2,15 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.26.2 — Framework setup, export to any framework, Full mode fits (not tagged yet)
+
+### Fixed
+- **"Runtime not available" when the app runs in Docker.** `make crewai` / `make framework FW=…` on your computer does not reach the server inside Docker. The API image can now include them: `make docker-up FRAMEWORKS=all` (or a comma list such as `FRAMEWORKS=crewai,google_adk,mastra`). The server says in Docker which command to run instead of the from-source one.
+- **The Framework setting says when a framework is not set up** and what to run (`/frameworks` gives `ready` and `setup`); the top bar marks such badges "not set up". The list refreshes every 30 seconds, so a framework set up meanwhile shows as ready.
+- **Export lists every framework.** *Download code* can package a workflow for any installed framework (`export.zip?framework=`), not only its own; the workflow itself is unchanged.
+- **"Where it will run" no longer fails** on a workflow that is not LangGraph: the deploy kit is for LangGraph services, so it shows only for them, with a note for the others.
+- **Full mode fits the window.** The top bar needed about 1,830 px and cut off its right side. Rarely used links and tools moved into a **More ▾** menu, the framework badges collapse into "+N", and the bar fits at 1,280 px.
+
 ## v0.26.1 — Review after the competitive roadmap (not tagged yet)
 
 A whole-codebase review after S23–S36 found 40 bugs; all are fixed.

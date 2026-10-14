@@ -23,6 +23,7 @@ import { CommandPalette } from "./CommandPalette";
 import { runErrorHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
 import { FrameworkBadges } from "./Frameworks";
+import { MoreMenu } from "./MoreMenu";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
 import { recallView } from "./viewMemory";
@@ -122,28 +123,14 @@ export function EditorPage() {
           <button type="button" className={simple ? "" : "active"} aria-pressed={!simple} data-testid="full-toggle"
             onClick={() => useUi.getState().setSimple(false)} title="Every block, panel and tool">Full</button>
         </div>
-        {!simple && <>
-        <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link">Evaluate</Link>
-        <Link to={`/workflows/${wf.id}/workspace`} className="inbox-link" data-testid="workspace-link"
-          title="This workflow's code (scripts, tools, custom blocks) and the project's shared code">Workspace</Link>
-        <Link to="/knowledge" className="inbox-link" data-testid="knowledge-link">Knowledge</Link>
-        <Link to="/memory" className="inbox-link" data-testid="memory-link">Memory</Link>
-        </>}
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}
         </Link>
         <div className="toolbar-group" role="group" aria-label="Canvas tools">
           <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
           <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
-          {!simple && <>
-          <button type="button" className={blast ? "active" : ""} aria-pressed={blast} onClick={() => useUi.getState().toggleBlast()}
-            title="Show what each step can do to the outside world, and whether a human approves it first">Blast radius</button>
-          <button type="button" onClick={() => void useEditor.getState().group?.()}
-            title="Turn the selected steps into one subgraph step (Ctrl/⌘+G)">⧉ Subgraph</button>
-          <button type="button" onClick={() => useEditor.getState().frame?.()}
-            title="Draw a labelled frame around the selected steps (layout only — nothing changes at run time)">▭ Frame</button>
-          </>}
         </div>
+        {!simple && <MoreMenu wfId={wf.id} blast={blast} />}
         <div className="toolbar-group" role="group" aria-label="History">
           <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)" aria-label="Undo">↶</button>
           <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo">↷</button>

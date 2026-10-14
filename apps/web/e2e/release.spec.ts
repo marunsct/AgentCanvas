@@ -118,7 +118,8 @@ test("blast radius overlay and dry-run toggle", async ({ page }) => {
   const api = page.request;
   const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Blast ${Date.now()}`, template: "ticket_triage" } })).json();
   await page.goto(`/workflows/${wf.id}`);
-  await page.getByRole("button", { name: "Blast radius" }).click();
+  await page.getByTestId("more-menu").click();
+  await page.getByRole("menuitemcheckbox", { name: "Blast radius" }).click();
   await expect(page.getByTestId("blast-classify")).toHaveText("$"); // model calls spend money
   await page.getByRole("tab", { name: "Run" }).click();
   await page.getByLabel("dry run").check();
@@ -131,7 +132,8 @@ test("frame steps with a labelled visual group, then remove it", async ({ page }
   await page.goto(`/workflows/${wf.id}`);
   await page.getByTestId("node-classify").click();
   page.once("dialog", (d) => void d.accept("Intake"));
-  await page.getByRole("button", { name: "▭ Frame" }).click();
+  await page.getByTestId("more-menu").click();
+  await page.getByRole("menuitem", { name: "▭ Frame" }).click();
   await expect(page.getByTestId("frame-Intake")).toBeVisible();
   await expect(page.locator(".save-state")).toHaveText("Saved");
   const saved = await (await api.get(`/api/v1/workflows/${wf.id}`)).json();
