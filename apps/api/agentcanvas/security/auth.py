@@ -11,7 +11,7 @@ environments refuse to start in that mode (see `check_auth_settings`).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -32,6 +32,7 @@ class Identity:
     email: str
     name: str | None
     email_verified: bool
+    claims: dict[str, Any] = field(default_factory=dict, repr=False)  # all of them (Matura reads `tid`, `perms`)
 
 
 DEV_SECRET_KEY = "dev-only-change-me"
@@ -44,8 +45,12 @@ def check_auth_settings(settings: Settings) -> None:
             "AGENTCANVAS_AUTH_MODE=dev gives every request admin rights; set AGENTCANVAS_AUTH_MODE=oidc "
             "with AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE for staging, prod or the hosted edition"
         )
-    if settings.auth_mode == "oidc" and not (settings.oidc_issuer and settings.oidc_audience):
-        raise RuntimeError("AGENTCANVAS_AUTH_MODE=oidc needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE")
+    if settings.auth_mode in ("oidc", "matura") and not (settings.oidc_issuer and settings.oidc_audience):
+        raise RuntimeError(
+            f"AGENTCANVAS_AUTH_MODE={settings.auth_mode} needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE"
+        )
+    if settings.auth_mode == "matura" and settings.matura_url and not settings.matura_client_secret:
+        raise RuntimeError("AGENTCANVAS_MATURA_URL needs AGENTCANVAS_MATURA_CLIENT_SECRET to read the change feed")
     production = settings.env in ("staging", "prod") or settings.edition == "hosted"
     if production and (settings.secret_key == DEV_SECRET_KEY or len(settings.secret_key) < 32):
         raise RuntimeError(
@@ -131,6 +136,7 @@ class Authenticator:
             email=str(email),
             name=claims.get("name") or claims.get("preferred_username"),
             email_verified=_verified(claims.get("email_verified"), trust_absent=s.oidc_trust_email),
+            claims=claims,
         )
 
 

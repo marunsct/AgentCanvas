@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { accessToken, initAuth, signInAgain, signInEnabled } from "./auth";
+import { accessToken, initAuth, maturaMode, portalUrl, signInAgain, signInEnabled } from "./auth";
 import { apiFetch, authFetch } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -17,6 +17,16 @@ describe("sign-in", () => {
 
   it("refuses an OIDC configuration without a client", async () => {
     await expect(initAuth({ mode: "oidc", issuer: "https://idp.test" })).rejects.toThrow(/no OIDC client/);
+  });
+
+  it("Matura mode signs in like OIDC and knows its portal", async () => {
+    await expect(initAuth({ mode: "matura", issuer: "https://matura.test/realms/matura", portal_url: "https://portal.test" }))
+      .rejects.toThrow(/no OIDC client/);
+    expect(maturaMode()).toBe(true);
+    expect(portalUrl()).toBe("https://portal.test");
+    expect(await initAuth({ mode: "dev" })).toBeNull();
+    expect(maturaMode()).toBe(false);
+    expect(portalUrl()).toBeNull();
   });
 
   it("dev mode never redirects on 401 and does not retry", async () => {

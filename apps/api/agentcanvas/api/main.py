@@ -38,6 +38,7 @@ from agentcanvas.services import projects as projects_module
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.knowledge import Searcher, knowledge_embedder
+from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
@@ -64,7 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.seed_dev_data:
             async with db.sessionmaker() as s:
                 await seed_dev(s)
-        if settings.auth_mode == "oidc":
+        if settings.auth_mode in ("oidc", "matura"):
             async with db.sessionmaker() as s:
                 await retire_dev_user(s)
         app.state.db = db
@@ -134,6 +135,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.handover.start()
                 app.state.online.start()
                 app.state.secrets.start()
+            app.state.matura_feed = None
+            if settings.auth_mode == "matura" and settings.matura_url:
+                app.state.matura_feed = MaturaFeed(db, settings)
+                if settings.env != "test":
+                    app.state.matura_feed.start()
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
             log.info(
@@ -148,6 +154,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.cron.stop()
                 await app.state.retention.stop()
                 await app.state.secrets.stop()
+                if app.state.matura_feed is not None:
+                    await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 await app.state.online.stop()  # after the drain: runs finishing in it are scored too
                 await runner.shutdown()
@@ -157,7 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.26.3", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.27.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
-from agentcanvas.errors import Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
+from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
 from agentcanvas.security.auth import Authenticator
+from agentcanvas.services import matura
 from agentcanvas.settings import Settings
 
 
@@ -64,7 +65,8 @@ async def current_user(
     """The signed-in user and the organisation this request acts in.
 
     `auth_mode = dev` (local work, tests): the seeded development admin. `oidc`: the bearer token's
-    subject, provisioned on first sign-in; 401 without a valid token, 403 without a membership.
+    subject, provisioned on first sign-in; 401 without a valid token, 403 without a membership. `matura`: the
+    token's organisation (`tid`) and the role its permissions give (`services/matura.py`).
     """
     settings: Settings = request.app.state.settings
     if settings.auth_mode == "dev":
@@ -72,6 +74,11 @@ async def current_user(
     if credentials is None or not credentials.credentials:
         raise Unauthorized("sign in: send Authorization: Bearer <token>")
     identity = await _authenticator(request).verify(credentials.credentials)
+    if settings.auth_mode == "matura":  # the token names the organisation and the permissions (TS9a)
+        uid, org_id, role, email, memberships = await matura.sign_in(
+            session, identity.claims, org, settings.matura_portal_url
+        )
+        return CurrentUser(id=uid, org_id=org_id, role=role, email=email, memberships=memberships)
     repo = UserRepo(session)
     # only a verified email is stored: invitations and the admin bootstrap match people by it
     email = identity.email if identity.email_verified else ""
@@ -179,6 +186,12 @@ async def role_policy(request: Request, user: CurrentUser = Depends(current_user
     needed = required_role(request.method, getattr(route, "path", request.url.path))
     if RANK.get(user.role, -1) < RANK[needed]:
         raise Forbidden(f"your role '{user.role}' cannot do this; it needs '{needed}' or above")
+
+
+def members_here(settings: Settings = Depends(get_settings_dep)) -> None:
+    """With Matura, members, invitations and roles are managed there: the local endpoints refuse changes."""
+    if settings.auth_mode == "matura":
+        raise Conflict("members and roles are managed" + matura.portal_hint(settings.matura_portal_url))
 
 
 def if_match(if_match: str | None = Header(default=None, alias="If-Match")) -> int:

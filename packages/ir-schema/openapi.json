@@ -662,10 +662,22 @@
           "mode": {
             "enum": [
               "dev",
-              "oidc"
+              "oidc",
+              "matura"
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "portal_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Portal Url"
           },
           "scopes": {
             "anyOf": [
@@ -677,6 +689,17 @@
               }
             ],
             "title": "Scopes"
+          },
+          "tenant_param": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Param"
           }
         },
         "required": [
@@ -5483,6 +5506,14 @@
           "org_id": {
             "title": "Org Id",
             "type": "string"
+          },
+          "org_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Org Names",
+            "type": "object"
           },
           "role": {
             "title": "Role",
@@ -10315,7 +10346,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.26.3"
+    "version": "0.27.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10999,7 +11030,7 @@
     },
     "/v1/auth/config": {
       "get": {
-        "description": "How the web app signs in: `dev` (no sign-in) or `oidc` with the public client details.",
+        "description": "How the web app signs in: `dev` (no sign-in), `oidc` with the public client details, or `matura` (the same,\nplus the portal and the parameter that signs in to another organisation).",
         "operationId": "auth_config_v1_auth_config_get",
         "responses": {
           "200": {

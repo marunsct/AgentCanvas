@@ -66,6 +66,37 @@ Migrations run as a Helm hook Job before the API starts.
 The API checks every token against the provider's keys. `AGENTCANVAS_AUTH_MODE=dev` (no sign-in) is refused in
 `staging` and `prod`.
 
+### Sign-in through Matura
+
+[Matura](https://github.com/marunsct/Platform) manages sign-in, organisations, members and roles for several apps.
+With it, an organisation in AgentCanvas is a Matura tenant, and people's roles come from the roles Matura assigns them.
+
+1. Register AgentCanvas in Matura with [`matura/manifest.json`](https://github.com/marunsct/AgentCanvas/blob/main/matura/manifest.json)
+   (its four permissions and starter roles `viewer`, `reviewer`, `builder`, `admin`; tenant owners and admins get
+   `admin`). Matura creates the public client `agentcanvas`; add `https://<your app>/*` to its redirect URIs.
+2. In Matura, create an app secret and a webhook to `https://<your app>/api/v1/matura/events`.
+3. Set:
+
+| Setting | Value |
+|---|---|
+| `AGENTCANVAS_AUTH_MODE` | `matura` |
+| `AGENTCANVAS_OIDC_ISSUER` | Matura's realm, e.g. `https://login.example.com/realms/matura` |
+| `AGENTCANVAS_OIDC_AUDIENCE`, `AGENTCANVAS_OIDC_CLIENT_ID` | `agentcanvas` |
+| `AGENTCANVAS_MATURA_URL`, `AGENTCANVAS_MATURA_CLIENT_SECRET` | Matura's API and the app secret: the change feed is read at start-up and every hour (`AGENTCANVAS_MATURA_SYNC_INTERVAL_S`) |
+| `AGENTCANVAS_MATURA_WEBHOOK_SECRET` | the webhook's signing secret |
+| `AGENTCANVAS_MATURA_PORTAL_URL` | where admins manage members and roles; AgentCanvas links to it |
+
+What changes for people:
+
+- Each sign-in is for one organisation. People in several switch with the organisation picker on the home page,
+  which signs in again for the one they pick.
+- What someone may do follows the strongest permission their Matura roles give: `canvas.read` (viewer),
+  `inbox.review` (reviewer), `workflow.build` (builder), `org.admin` (admin). Someone whose roles give none of these
+  cannot open AgentCanvas in that organisation.
+- **Members** shows who has access, read-only, with a link to the portal. Inviting, changing roles and removing
+  people happen in Matura; the API answers 409 to the old member and invitation endpoints.
+- Changes made in Matura reach AgentCanvas by webhook within seconds; a person's next token carries them anyway.
+
 ## Observability
 
 - **Health:** `/healthz` (process up) and `/readyz` (database and run store reachable).

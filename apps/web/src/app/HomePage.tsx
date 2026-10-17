@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
-import { signInEnabled, signOut } from "../api/auth";
+import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
 import { PROJECT_ID, useSetup, useTemplates, useWorkflows } from "../api/queries";
 import { can, ME } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
@@ -57,6 +57,12 @@ export function HomePage() {
         {can("admin") && <Link to="/members" data-testid="members-link">Members</Link>}
         {can("admin") && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
         <Link to="/policies" data-testid="policies-link">Policies</Link>
+        {maturaMode() && Object.keys(ME.memberships).length > 1 && (
+          <select aria-label="organisation" data-testid="org-switcher" value={ME.org_id}
+            onChange={(e) => void switchOrganisation(e.target.value)}>
+            {Object.keys(ME.memberships).map((id) => <option key={id} value={id}>{ME.org_names?.[id] ?? id}</option>)}
+          </select>
+        )}
         <span className="me-chip" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
         {signInEnabled() && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
         <ThemeSwitcher />

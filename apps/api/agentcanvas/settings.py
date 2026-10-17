@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     kms_previous_keys: list[str] = []
     # Authentication (M7-T1). dev = every request is the seeded development admin (refused in staging/prod);
     # oidc = bearer JWTs from the identity provider, checked against its JWKS.
-    auth_mode: Literal["dev", "oidc"] = "dev"
+    # matura = bearer JWTs from Matura (oidc_issuer = its realm, oidc_audience = this app's client id): the token
+    # names the organisation (`tid`) and its permissions (`perms`); members and roles are managed in Matura (TS9a).
+    auth_mode: Literal["dev", "oidc", "matura"] = "dev"
     oidc_issuer: str | None = None  # e.g. https://login.example.com/realms/acme (the token's `iss`)
     oidc_audience: str | None = None  # the token's `aud` the API accepts
     oidc_client_id: str | None = None  # public SPA client id, handed to the web app by /v1/auth/config
@@ -39,6 +41,14 @@ class Settings(BaseSettings):
     oidc_trust_email: bool = False
     oidc_jwks_cache_s: int = 3600
     oidc_leeway_s: int = 30  # clock skew tolerated on exp/nbf/iat
+    # Matura (auth_mode = matura). The API URL, app slug and client secret read the change feed; the webhook
+    # secret checks POST /v1/matura/events; the portal is where admins manage members and roles.
+    matura_url: str | None = None  # e.g. https://matura.example.com
+    matura_app: str = "agentcanvas"
+    matura_client_secret: str | None = None
+    matura_webhook_secret: str | None = None
+    matura_portal_url: str | None = None
+    matura_sync_interval_s: int = 3600  # how often the change feed is read (webhooks bring changes in between)
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
     bootstrap_admin_emails: list[str] = []
     allow_local_mcp: bool = False

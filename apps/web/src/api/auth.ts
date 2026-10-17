@@ -1,21 +1,45 @@
 /** Sign-in (M7-T1): OIDC authorization code + PKCE with oidc-client-ts, or nothing in the API's dev mode.
  *
- * The API says which at `GET /v1/auth/config`. oidc-client-ts is loaded only when sign-in is on, so the
+ * The API says which at `GET /v1/auth/config`. `matura` is OIDC against Matura (TS9a): the token names one
+ * organisation, so switching organisation signs in again with Matura's tenant parameter, and members and roles are
+ * managed in Matura's portal. oidc-client-ts is loaded only when sign-in is on, so the
  * dev build's entry bundle does not grow. */
 import type { User, UserManager } from "oidc-client-ts";
 
 export interface AuthConfig {
-  mode: "dev" | "oidc";
+  mode: "dev" | "oidc" | "matura";
   issuer?: string | null;
   client_id?: string | null;
   scopes?: string | null;
   audience?: string | null;
+  portal_url?: string | null;
+  tenant_param?: string | null;
 }
 
 export const CALLBACK_PATH = "/auth/callback";
 
 let manager: UserManager | null = null;
 let user: User | null = null;
+let config: AuthConfig = { mode: "dev" };
+
+/** Whether organisations, members and roles come from Matura. */
+export function maturaMode(): boolean {
+  return config.mode === "matura";
+}
+
+/** Matura's portal, where admins manage members and roles (null outside Matura mode). */
+export function portalUrl(): string | null {
+  return maturaMode() ? config.portal_url ?? null : null;
+}
+
+/** Matura mode: sign in again to act in another organisation (the token names one). */
+export async function switchOrganisation(orgId: string): Promise<void> {
+  if (!manager || !maturaMode()) return;
+  await manager.signinRedirect({
+    state: "/",
+    extraQueryParams: { ...(config.audience ? { audience: config.audience } : {}), [config.tenant_param ?? "matura_tenant"]: orgId },
+  });
+}
 
 /** The bearer token for API calls, or null in dev mode / before sign-in. */
 export function accessToken(): string | null {
@@ -85,8 +109,9 @@ export async function fetchAuthConfig(): Promise<AuthConfig> {
 
 /** Start sign-in for this page load. Resolves to where the app should be (the callback restores the page the
  * user was on); never resolves while the browser is being redirected to the identity provider. */
-export async function initAuth(config: AuthConfig): Promise<string | null> {
-  if (config.mode !== "oidc") return null;
+export async function initAuth(cfg: AuthConfig): Promise<string | null> {
+  config = cfg;
+  if (config.mode === "dev") return null;
   if (!config.issuer || !config.client_id) throw new Error("sign-in is on but the API has no OIDC client configured");
   const { UserManager, WebStorageStateStore } = await import("oidc-client-ts");
   manager = new UserManager({
