@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
-import { can } from "../api/session";
+import { maturaMode } from "../api/auth";
+import { can, orgPortalUrl } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
@@ -51,9 +52,16 @@ export function PoliciesPage() {
   const admin = can("admin");
   const error = (create.error ?? update.error ?? remove.error) as Error | null;
   const edit = (patch: Partial<PolicyIn>) => setDraft((d) => ({ ...d, ...patch }));
+  const portal = orgPortalUrl();
   return (
     <div className="page">
       <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Policies</span><span className="spacer" /><ThemeSwitcher /></header>
+      {maturaMode() && (
+        <p className="muted" data-testid="org-settings-in-matura">
+          Sign-in, single sign-on, security and member settings of this organisation are in Matura
+          {portal ? <>: <a href={portal} target="_blank" rel="noreferrer" data-testid="portal-link">open its settings</a></> : "."}
+        </p>
+      )}
       <p className="small muted">
         Each policy checks every step, resource or workflow its <b>match</b> picks and requires <b>require</b> to hold.
         Policies for named environments block publishing there and show as warnings in the editor.

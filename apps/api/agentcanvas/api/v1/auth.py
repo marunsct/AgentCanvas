@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, members_here
 from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import UserRepo
+from agentcanvas.services import matura as matura_svc
 from agentcanvas.settings import Settings
 
 public_router = APIRouter(tags=["auth"])
@@ -36,6 +37,8 @@ class MeOut(BaseModel):
     role: str
     memberships: dict[str, str]
     org_names: dict[str, str] = {}  # organisation id -> name, for each membership
+    # Matura mode: this organisation's page in Matura's customer portal (members, roles, SSO, security settings)
+    portal_url: str | None = None
 
 
 @public_router.get("/auth/config", response_model=AuthConfig)
@@ -48,19 +51,25 @@ def auth_config(settings: Settings = Depends(get_settings_dep)) -> AuthConfig:
     return AuthConfig(
         mode=settings.auth_mode, issuer=settings.oidc_issuer, client_id=settings.oidc_client_id,
         scopes=settings.oidc_scopes, audience=settings.oidc_audience,
-        portal_url=settings.matura_portal_url if matura else None, tenant_param="matura_tenant" if matura else None,
+        portal_url=matura_svc.portal_base(settings) if matura else None,
+        tenant_param="matura_tenant" if matura else None,
     )  # fmt: skip
 
 
 @router.get("/me", response_model=MeOut)
-async def me(user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)) -> MeOut:
+async def me(
+    user: CurrentUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> MeOut:
     """The signed-in user, the organisation this request acts in and their role there."""
     rows = await session.execute(
         select(Organization.id, Organization.name).where(Organization.id.in_(user.memberships))
     )
+    portal = matura_svc.portal_link(settings, user.org_id) if settings.auth_mode == "matura" else None
     return MeOut(
         id=user.id, email=user.email, org_id=user.org_id, role=user.role, memberships=user.memberships,
-        org_names={i: n for i, n in rows.all()},
+        org_names={i: n for i, n in rows.all()}, portal_url=portal,
     )  # fmt: skip
 
 

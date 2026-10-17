@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
-import { PROJECT_ID, useSetup, useTemplates, useWorkflows } from "../api/queries";
+import { chooseWorkspace, PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows, WORKSPACE_ID, WORKSPACES } from "../api/queries";
 import { can, ME } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
@@ -19,6 +19,12 @@ export function HomePage() {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [imported, setImported] = useState<ImportOut | null>(null);
+  // Matura workspaces (TS26): picking one moves the page to one of its projects
+  const [, setWorkspace] = useState(WORKSPACE_ID);
+  const pickWorkspace = useMutation({
+    mutationFn: (id: string | null) => chooseWorkspace(id),
+    onSettled: () => { setWorkspace(WORKSPACE_ID); void qc.invalidateQueries(); },
+  });
   const onImported = (out: ImportOut) => {
     void qc.invalidateQueries({ queryKey: ["workflows"] });
     // a file AgentCanvas wrote comes back exactly: open it; otherwise show what was approximated first
@@ -46,7 +52,15 @@ export function HomePage() {
   return (
     <div className="page home">
       <header className="topbar">
-        <span className="brand">AgentCanvas</span><span className="crumb">/ Default project</span><span className="spacer" />
+        <span className="brand">AgentCanvas</span><span className="crumb" data-testid="project-name">/ {PROJECT_NAME}</span>
+        {WORKSPACES.length > 0 && (
+          <select aria-label="workspace" data-testid="workspace-switcher" value={WORKSPACE_ID ?? ""} disabled={pickWorkspace.isPending}
+            onChange={(e) => pickWorkspace.mutate(e.target.value || null)}>
+            <option value="">All workspaces</option>
+            {WORKSPACES.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        )}
+        <span className="spacer" />
         {can("builder") && <Link to="/setup" data-testid="setup-link">Model</Link>}
         {can("builder") && <Link to="/playground" data-testid="playground-link">Playground</Link>}
         <Link to="/inbox">Inbox</Link>
@@ -68,6 +82,7 @@ export function HomePage() {
         <ThemeSwitcher />
       </header>
       <Invitations />
+      {pickWorkspace.error && <p className="error-text" role="alert">{(pickWorkspace.error as Error).message}</p>}
       {!can("builder") && (
         <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({ME.role}) cannot create or edit them.</p>
       )}

@@ -974,6 +974,7 @@ export type ReadOnly = boolean;
 export type Email = string;
 export type Id40 = string;
 export type OrgId1 = string;
+export type PortalUrl1 = string | null;
 export type Role2 = string;
 export type Email1 = string;
 export type Role3 = "admin" | "builder" | "reviewer" | "viewer";
@@ -1171,9 +1172,12 @@ export type Done = number;
 export type Pending1 = number;
 export type Total = number;
 export type Name40 = string;
+export type WorkspaceId = string | null;
 export type CreatedAt23 = string;
 export type Id44 = string;
 export type Name41 = string;
+export type WorkspaceId1 = string | null;
+export type WorkspaceId2 = string | null;
 export type Status11 = "accepted" | "rejected";
 export type BaseUrl3 = string | null;
 export type BaseUrlRequired = boolean;
@@ -1909,6 +1913,9 @@ export type UpdatedAt11 = string;
 export type Version14 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
+export type Id57 = string;
+export type IsDefault = boolean;
+export type Name53 = string;
 export type Error7 = string | null;
 export type Ok3 = boolean;
 export type Reply1 = string | null;
@@ -2065,6 +2072,7 @@ export interface ApiSchemas {
   Progress?: Progress;
   ProjectIn?: ProjectIn;
   ProjectOut?: ProjectOut;
+  ProjectWorkspaceIn?: ProjectWorkspaceIn;
   ProposalDecision?: ProposalDecision;
   ProviderInfo?: ProviderInfo;
   PublishIn?: PublishIn;
@@ -2143,6 +2151,7 @@ export interface ApiSchemas {
   WorkflowOut?: WorkflowOut;
   WorkflowPage?: WorkflowPage;
   WorkflowSummary?: WorkflowSummary;
+  WorkspaceOut?: WorkspaceOut;
   agentcanvas__api__v1__setup__TestOut?: TestOut;
   agentcanvas__api__v1__traces__TestOut?: TestOut1;
 }
@@ -4046,6 +4055,7 @@ export interface MeOut {
   memberships: Memberships;
   org_id: OrgId1;
   org_names?: OrgNames;
+  portal_url?: PortalUrl1;
   role: Role2;
 }
 export interface Memberships {
@@ -4321,6 +4331,7 @@ export interface Progress {
  */
 export interface ProjectIn {
   name: Name40;
+  workspace_id?: WorkspaceId;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4330,6 +4341,14 @@ export interface ProjectOut {
   created_at: CreatedAt23;
   id: Id44;
   name: Name41;
+  workspace_id?: WorkspaceId1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ProjectWorkspaceIn".
+ */
+export interface ProjectWorkspaceIn {
+  workspace_id?: WorkspaceId2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5031,6 +5050,15 @@ export interface WorkflowSummary {
   name: Name52;
   updated_at: UpdatedAt11;
   version: Version14;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "WorkspaceOut".
+ */
+export interface WorkspaceOut {
+  id: Id57;
+  is_default: IsDefault;
+  name: Name53;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

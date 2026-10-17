@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-17, v0.27.0 (sign-in through Matura, the owner's identity and tenancy platform, marunsct/Platform sprint TS9a), after the owner asked Matura to start with AgentCanvas. Previous update: 2026-10-14, v0.26.3 (Docker app builds every framework by default), after the owner's report that frameworks set up with `make` still showed as missing (the app ran in Docker), Export listed one framework, *Where it will run* errored and Full mode overflowed (→ v0.26.2). Previous update: 2026-10-12, after the whole-codebase review that followed the competitive roadmap (40 fixes → v0.26.1). Previous update: after Sprint 36 (Mastra → v0.26.0, [#40](https://github.com/marunsct/AgentCanvas/pull/40)).
+- **Last updated:** 2026-10-17, v0.28.0 (AgentCanvas on Matura: workspaces, row-level security, portal links, audit sink; the rest of Matura sprint TS26 that fits today). Previous update: 2026-10-17, v0.27.0 (sign-in through Matura, the owner's identity and tenancy platform, marunsct/Platform sprint TS9a), after the owner asked Matura to start with AgentCanvas. Previous update: 2026-10-14, v0.26.3 (Docker app builds every framework by default).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,13 +14,14 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last work done | **Sign-in through Matura → v0.27.0** (PR on `claude/project-thread-nhbr1g`): `AGENTCANVAS_AUTH_MODE=matura` reads the organisation (`tid`) and permissions (`perms`) from Matura's token; `services/matura.py` maps the permissions `canvas.read`/`inbox.review`/`workflow.build`/`org.admin` to the four roles, provisions organisation, user and membership just in time, and mirrors Matura's webhooks (`POST /v1/matura/events`) and change feed (`MaturaFeed`) through the `matura_*` contract tables (migration `f2b6d0a4c8e1`). The Matura Python SDK is vendored in `agentcanvas/vendor/matura` (the Platform repo is private; replace with the package once published). `matura/manifest.json` registers the app. Members and invitations are read-only in that mode (409), the web app has an organisation picker that signs in again with `matura_tenant`. `dev` and `oidc` modes are unchanged |
-| Before that | **Every framework in the Docker app by default → v0.26.3**; Review after the competitive roadmap → v0.26.1 ([#41](https://github.com/marunsct/AgentCanvas/pull/41), merged `f5786d1`, 40 fixes); S36 Mastra → v0.26.0 ([#40](https://github.com/marunsct/AgentCanvas/pull/40), merged `0334885`); S35 Strands and LlamaIndex Workflows flows → v0.25.0 ([#39](https://github.com/marunsct/AgentCanvas/pull/39), merged `f813972`); S33–S34 Microsoft Agent Framework flows → v0.24.0 (#38, `8e307ad`); S32 Pydantic AI and Agno flows → v0.23.0 (#37, `63be5ca`) |
-| Version in code | API `0.27.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.27.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.27.0 are all left to the owner (see §2) |
+| Last work done | **AgentCanvas on Matura → v0.28.0** (branch `claude/project-thread-nhbr1g`, after #49 merged): projects can belong to a Matura workspace (`project.workspace_id`, `GET /v1/workspaces`, `?workspace_id=` filter, `PUT /v1/projects/{id}/workspace`, picker on the home page); forced Postgres row-level security on the 35 organisation-owned tables (`db/rls.py`, migration `a3c7e9b1d5f2`): Matura requests set `matura.tenant_id` per transaction, API connections otherwise start with `agentcanvas.all_tenants=on`, a bare connection sees nothing; `/v1/me` `portal_url` deep link (`AGENTCANVAS_MATURA_PUBLIC_URL` → `<url>/portal/t/<tenant id>/`) linked from Members and Policies; `AuditSink` (no-op default, `MaturaWebhookSink` placeholder via `AGENTCANVAS_MATURA_AUDIT_URL`) for security-relevant audit actions; tokens with `pmode` other than `shared` get 503 (shared mode only, as the manifest declares) |
+| Before that | **Sign-in through Matura → v0.27.0** (#49): `AGENTCANVAS_AUTH_MODE=matura`, permissions to roles, contract tables, webhooks and change feed, organisation picker |
+| Earlier | **Every framework in the Docker app by default → v0.26.3**; Review after the competitive roadmap → v0.26.1 ([#41](https://github.com/marunsct/AgentCanvas/pull/41), merged `f5786d1`, 40 fixes); S36 Mastra → v0.26.0 ([#40](https://github.com/marunsct/AgentCanvas/pull/40), merged `0334885`); S35 Strands and LlamaIndex Workflows flows → v0.25.0 ([#39](https://github.com/marunsct/AgentCanvas/pull/39), merged `f813972`); S33–S34 Microsoft Agent Framework flows → v0.24.0 (#38, `8e307ad`); S32 Pydantic AI and Agno flows → v0.23.0 (#37, `63be5ca`) |
+| Version in code | API `0.28.0` (`apps/api/agentcanvas/api/main.py`), CHANGELOG top entry v0.28.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.28.0 are all left to the owner (see §2) |
 | Next sprint | **None planned: the competitive roadmap (S15–S36) is complete and reviewed.** Next: the GA backlog in [the sprint plan](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) ("Later") or new direction from the owner |
-| Work status | The Matura PR is open as a draft. It is Matura's sprint TS9a, not an AgentCanvas sprint, so the standing merge grant does not cover it: ask the owner before merging |
-| Open PRs | Sign-in through Matura (`claude/project-thread-nhbr1g`) |
+| Work status | #49 (v0.27.0) merged. v0.28.0 (TS26 adoption) is on `claude/project-thread-nhbr1g`, not yet a PR. It is Matura's sprint TS26, not an AgentCanvas sprint, so the standing merge grant does not cover it: ask the owner before merging |
+| Open PRs | none yet for v0.28.0 (branch `claude/project-thread-nhbr1g`) |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
 **Test totals after v0.26.2** (all green locally):
@@ -204,6 +205,16 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
+- **Matura TS26 left out (v0.28.0):** schema- or database-per-tenant placement (AgentCanvas has one engine and
+  background jobs that work across organisations; shared mode only, `pmode` other than `shared` → 503); workspaces
+  only group projects (no per-workspace roles: grants in non-default workspaces still do not count, and the token's
+  `wid` is not used); Matura has no audit ingest API, so `MaturaWebhookSink` (`AGENTCANVAS_MATURA_AUDIT_URL`) is an
+  untested placeholder; the `matura_*` contract tables have no RLS in AgentCanvas (its one API role writes them for
+  every tenant and the organisation picker reads all of a user's memberships); `organization`, `app_user`,
+  `membership` and `rate_window` are exempt from RLS (reasons in `db/rls.py`), LangGraph's checkpoint/store tables
+  are not covered; portal links follow Matura's portal routes (`<public URL>/portal/t/<tenant id>/members`, from
+  Platform `web/portal/src/app/router.tsx`). Members are not migrated from `oidc` mode; agent identity, backup, privacy and the
+  AI readiness pack of TS26 are not started.
 - **Release tags** v0.1.0 to v0.26.3 not created (owner).
 - **Left from the review after the roadmap (v0.26.1):** Home opens an imported file straight away when nothing needs checking, so its "Everything carried over." note never shows; node policies (retry, timeout, error route) are ignored without
   a warning on the flow-engine frameworks, CrewAI and ADK; personal-data patterns stop after 1,000 matches; Mastra

@@ -9,6 +9,7 @@ from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.db import rls
 from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
@@ -76,8 +77,9 @@ async def current_user(
     identity = await _authenticator(request).verify(credentials.credentials)
     if settings.auth_mode == "matura":  # the token names the organisation and the permissions (TS9a)
         uid, org_id, role, email, memberships = await matura.sign_in(
-            session, identity.claims, org, settings.matura_portal_url
+            session, identity.claims, org, matura.portal_base(settings)
         )
+        await rls.scope(session, org_id)  # Postgres: this request's queries see only this organisation's rows
         return CurrentUser(id=uid, org_id=org_id, role=role, email=email, memberships=memberships)
     repo = UserRepo(session)
     # only a verified email is stored: invitations and the admin bootstrap match people by it
@@ -191,7 +193,7 @@ async def role_policy(request: Request, user: CurrentUser = Depends(current_user
 def members_here(settings: Settings = Depends(get_settings_dep)) -> None:
     """With Matura, members, invitations and roles are managed there: the local endpoints refuse changes."""
     if settings.auth_mode == "matura":
-        raise Conflict("members and roles are managed" + matura.portal_hint(settings.matura_portal_url))
+        raise Conflict("members and roles are managed" + matura.portal_hint(matura.portal_base(settings)))
 
 
 def if_match(if_match: str | None = Header(default=None, alias="If-Match")) -> int:

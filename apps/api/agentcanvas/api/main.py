@@ -35,6 +35,7 @@ from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
+from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.knowledge import Searcher, knowledge_embedder
@@ -140,6 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.matura_feed = MaturaFeed(db, settings)
                 if settings.env != "test":
                     app.state.matura_feed.start()
+            app.state.audit_sink = sink_for(settings)  # TS26: security-relevant entries also leave the app
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
             log.info(
@@ -161,11 +163,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()
+                if isinstance(app.state.audit_sink, MaturaWebhookSink):
+                    await app.state.audit_sink.aclose()
                 await db.dispose()
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.27.0", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.28.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)
