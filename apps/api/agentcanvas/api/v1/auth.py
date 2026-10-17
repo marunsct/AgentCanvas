@@ -66,7 +66,7 @@ async def me(
     rows = await session.execute(
         select(Organization.id, Organization.name).where(Organization.id.in_(user.memberships))
     )
-    portal = await matura_svc.portal_link(session, settings, user.org_id) if settings.auth_mode == "matura" else None
+    portal = matura_svc.portal_link(settings, user.org_id) if settings.auth_mode == "matura" else None
     return MeOut(
         id=user.id, email=user.email, org_id=user.org_id, role=user.role, memberships=user.memberships,
         org_names={i: n for i, n in rows.all()}, portal_url=portal,

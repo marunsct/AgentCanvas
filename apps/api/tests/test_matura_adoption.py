@@ -99,12 +99,8 @@ class TestInMatura:
 
     async def test_me_links_to_the_organisation_in_the_portal(self, client):
         assert (await client.get("/v1/auth/config")).json()["portal_url"] == "https://id.matura.test/portal/"
-        # before Matura has sent the organisation, the link uses its id; afterwards its slug
         me = (await client.get("/v1/me", headers=as_user(ANA, ACME, "admin", slug="acme"))).json()
-        assert me["portal_url"] in (f"https://id.matura.test/portal/{ACME}/", "https://id.matura.test/portal/acme/")
-        await send(client, event("tenant", "tenant.updated", tenant(slug="acme-corp"), version=1_000))
-        me = (await client.get("/v1/me", headers=as_user(ANA, ACME, "admin"))).json()
-        assert me["portal_url"] == "https://id.matura.test/portal/acme-corp/"
+        assert me["portal_url"] == f"https://id.matura.test/portal/t/{ACME}/"  # Matura's portal routes by tenant id
 
     async def test_only_the_shared_data_mode_is_supported(self, client):
         r = await client.get("/v1/me", headers=as_user(ANA, ACME, "builder", pmode="schema"))

@@ -258,20 +258,11 @@ def portal_base(settings: Any) -> str | None:
     return None
 
 
-async def portal_link(session: AsyncSession, settings: Any, tenant_id: str) -> str | None:
-    """The portal page of one organisation (`<portal>/<tenant slug>/`), where its admins manage members, roles, SSO
-    and security settings. The slug is Matura's, from the contract tables; the id when it is not known yet."""
+def portal_link(settings: Any, tenant_id: str) -> str | None:
+    """The portal page of one organisation (`<portal>/t/<tenant id>/`; `members`, `invitations`, `apps`, `workspaces`
+    and `roles` are below it), where its admins manage members, roles and workspaces."""
     base = portal_base(settings)
-    if base is None:
-        return None
-    conn = await session.connection()
-    try:
-        tid = _id(conn, tenant_id)
-    except ValueError:  # not a Matura id (an organisation from before Matura)
-        tid = None
-    q = text("SELECT slug FROM matura_tenant WHERE id = :t")
-    slug = (await conn.execute(q, {"t": tid})).scalar() if tid is not None else None
-    return f"{base}{slug or tenant_id}/"
+    return None if base is None else f"{base}t/{tenant_id}/"
 
 
 # --- requests --------------------------------------------------------------------------------------------------------

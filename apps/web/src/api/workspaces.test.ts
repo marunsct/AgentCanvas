@@ -65,10 +65,10 @@ describe("Matura workspaces (TS26)", () => {
     try {
       ME.org_id = "t-1";
       ME.portal_url = null;
-      expect(orgPortalUrl("members")).toBe("https://id.test/portal/t-1/members");
-      ME.portal_url = "https://id.test/portal/acme/";
-      expect(orgPortalUrl("members")).toBe("https://id.test/portal/acme/members");
-      expect(orgPortalUrl()).toBe("https://id.test/portal/acme/");
+      expect(orgPortalUrl("members")).toBe("https://id.test/portal/t/t-1/members");
+      ME.portal_url = "https://id.test/portal/t/t-1/";
+      expect(orgPortalUrl("members")).toBe("https://id.test/portal/t/t-1/members");
+      expect(orgPortalUrl()).toBe("https://id.test/portal/t/t-1/");
     } finally {
       Object.assign(ME, saved);
     }

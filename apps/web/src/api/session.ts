@@ -33,5 +33,5 @@ export function can(role: Role): boolean {
 export function orgPortalUrl(page = ""): string | null {
   const base = portalUrl();
   if (base === null) return null;
-  return (ME.portal_url ?? `${base.replace(/\/?$/, "/")}${encodeURIComponent(ME.org_id)}/`) + page;
+  return (ME.portal_url ?? `${base.replace(/\/?$/, "/")}t/${encodeURIComponent(ME.org_id)}/`) + page;
 }

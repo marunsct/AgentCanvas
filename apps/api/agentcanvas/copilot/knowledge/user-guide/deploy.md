@@ -84,7 +84,7 @@ With it, an organisation in AgentCanvas is a Matura tenant, and people's roles c
 | `AGENTCANVAS_OIDC_AUDIENCE`, `AGENTCANVAS_OIDC_CLIENT_ID` | `agentcanvas` |
 | `AGENTCANVAS_MATURA_URL`, `AGENTCANVAS_MATURA_CLIENT_SECRET` | Matura's API and the app secret: the change feed is read at start-up and every hour (`AGENTCANVAS_MATURA_SYNC_INTERVAL_S`) |
 | `AGENTCANVAS_MATURA_WEBHOOK_SECRET` | the webhook's signing secret |
-| `AGENTCANVAS_MATURA_PUBLIC_URL` | where people reach Matura (its `MATURA_PUBLIC_URL`); AgentCanvas links to its customer portal at `<this>/portal/<organisation>/` |
+| `AGENTCANVAS_MATURA_PUBLIC_URL` | where people reach Matura (its `MATURA_PUBLIC_URL`); AgentCanvas links to its customer portal at `<this>/portal/t/<tenant id>/` (`members` below it) |
 | `AGENTCANVAS_MATURA_PORTAL_URL` | optional: the portal's address when it is not `<public URL>/portal/` |
 | `AGENTCANVAS_MATURA_AUDIT_URL` | optional, for later: where security-relevant audit entries are sent (see below) |
 

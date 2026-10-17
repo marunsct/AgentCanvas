@@ -20,7 +20,7 @@ The rest of Matura's sprint TS26 (full adoption) that fits AgentCanvas today.
   SQLite is unchanged. `db/rls.py` lists every table as covered or exempt (with the reason), and a test fails when a
   new table is neither.
 - **Links to Matura's customer portal**: `AGENTCANVAS_MATURA_PUBLIC_URL` gives `<public URL>/portal/` (or
-  `AGENTCANVAS_MATURA_PORTAL_URL`); `GET /v1/me` returns `portal_url`, the organisation's page there (by slug), which
+  `AGENTCANVAS_MATURA_PORTAL_URL`); `GET /v1/me` returns `portal_url`, the organisation's page there (`<portal>/t/<tenant id>/`), which
   Members (`…/members`) and Policies (organisation settings) link to.
 - **Audit sink.** Security-relevant audit entries (publish, unpublish, key rotation, secrets, approvals, members,
   organisation settings and policies, release gates, trace export, project workspaces) also go to an `AuditSink`. The
