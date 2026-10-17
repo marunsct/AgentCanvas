@@ -1,7 +1,9 @@
-/** Members (M7-T3): who belongs to the organisation and with which role. Admins invite, change roles and remove. */
+/** Members (M7-T3): who belongs to the organisation and with which role. Admins invite, change roles and remove.
+ * With Matura (TS9a) the list is read-only here: members and roles are managed in Matura's portal. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
+import { maturaMode, portalUrl } from "../api/auth";
 import { apiFetch } from "../api/client";
 import { can, ME, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -30,12 +32,18 @@ export function MembersPage() {
     mutationFn: (id: string) => apiFetch(`/org/members/${id}`, { method: "DELETE" }),
     onSuccess: done,
   });
-  const admin = can("admin");
+  const admin = can("admin") && !maturaMode();
+  const portal = portalUrl();
   const error = (set.error ?? remove.error) as Error | null;
   return (
     <div className="page">
       <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Members</span><span className="spacer" /><ThemeSwitcher /></header>
       <ul className="small muted">{ROLES.map((r) => <li key={r.role}><b>{r.role}</b> {r.what}</li>)}</ul>
+      {maturaMode() && (
+        <p className="muted" data-testid="managed-in-matura">
+          Members and roles are managed in Matura{portal ? <>: <a href={portal} target="_blank" rel="noreferrer">open the portal</a></> : "."}
+        </p>
+      )}
       {admin && (
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); set.mutate({ email: email.trim(), role }); }}>
           <input type="email" required placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="email" />

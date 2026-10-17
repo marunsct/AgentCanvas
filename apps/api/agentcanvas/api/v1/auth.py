@@ -6,9 +6,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, members_here
+from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import UserRepo
 from agentcanvas.settings import Settings
 
@@ -17,11 +19,14 @@ router = APIRouter(tags=["auth"])
 
 
 class AuthConfig(BaseModel):
-    mode: Literal["dev", "oidc"]
+    mode: Literal["dev", "oidc", "matura"]
     issuer: str | None = None
     client_id: str | None = None
     scopes: str | None = None
     audience: str | None = None
+    # matura: where admins manage members and roles, and the sign-in parameter that picks the organisation
+    portal_url: str | None = None
+    tenant_param: str | None = None
 
 
 class MeOut(BaseModel):
@@ -30,23 +35,33 @@ class MeOut(BaseModel):
     org_id: str
     role: str
     memberships: dict[str, str]
+    org_names: dict[str, str] = {}  # organisation id -> name, for each membership
 
 
 @public_router.get("/auth/config", response_model=AuthConfig)
 def auth_config(settings: Settings = Depends(get_settings_dep)) -> AuthConfig:
-    """How the web app signs in: `dev` (no sign-in) or `oidc` with the public client details."""
+    """How the web app signs in: `dev` (no sign-in), `oidc` with the public client details, or `matura` (the same,
+    plus the portal and the parameter that signs in to another organisation)."""
     if settings.auth_mode == "dev":
         return AuthConfig(mode="dev")
+    matura = settings.auth_mode == "matura"
     return AuthConfig(
-        mode="oidc", issuer=settings.oidc_issuer, client_id=settings.oidc_client_id,
+        mode=settings.auth_mode, issuer=settings.oidc_issuer, client_id=settings.oidc_client_id,
         scopes=settings.oidc_scopes, audience=settings.oidc_audience,
+        portal_url=settings.matura_portal_url if matura else None, tenant_param="matura_tenant" if matura else None,
     )  # fmt: skip
 
 
 @router.get("/me", response_model=MeOut)
-def me(user: CurrentUser = Depends(current_user)) -> MeOut:
+async def me(user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)) -> MeOut:
     """The signed-in user, the organisation this request acts in and their role there."""
-    return MeOut(id=user.id, email=user.email, org_id=user.org_id, role=user.role, memberships=user.memberships)
+    rows = await session.execute(
+        select(Organization.id, Organization.name).where(Organization.id.in_(user.memberships))
+    )
+    return MeOut(
+        id=user.id, email=user.email, org_id=user.org_id, role=user.role, memberships=user.memberships,
+        org_names={i: n for i, n in rows.all()},
+    )  # fmt: skip
 
 
 class InvitationOut(BaseModel):
@@ -64,7 +79,7 @@ async def my_invitations(
     return [InvitationOut(org_id=o.id, org_name=o.name, role=role) for o, role in rows]
 
 
-@router.post("/me/invitations/{org_id}/accept", status_code=204)
+@router.post("/me/invitations/{org_id}/accept", status_code=204, dependencies=[Depends(members_here)])
 async def accept_invitation(
     org_id: str, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -73,7 +88,7 @@ async def accept_invitation(
     return Response(status_code=204)
 
 
-@router.delete("/me/invitations/{org_id}", status_code=204)
+@router.delete("/me/invitations/{org_id}", status_code=204, dependencies=[Depends(members_here)])
 async def decline_invitation(
     org_id: str, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
 ) -> Response:

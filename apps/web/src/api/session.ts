@@ -10,6 +10,7 @@ export interface Me {
   org_id: string;
   role: Role;
   memberships: Record<string, Role>;
+  org_names?: Record<string, string>;
 }
 
 // dev-mode default until `loadMe` answers (and in unit tests)

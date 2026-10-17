@@ -71,7 +71,10 @@ packages = ["agentcanvas"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-extend-exclude = ["agentcanvas/copilot/knowledge/user-guide"]  # copies of docs/user-guide, kept verbatim
+extend-exclude = [
+  "agentcanvas/copilot/knowledge/user-guide",  # copies of docs/user-guide, kept verbatim
+  "agentcanvas/vendor",  # the Matura SDK, copied verbatim from its own repository
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "RUF", "BLE", "PLW"]

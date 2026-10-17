@@ -2,6 +2,26 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.27.0 — Sign-in through Matura (not tagged yet)
+
+### Added
+- **`AGENTCANVAS_AUTH_MODE=matura`**: sign-in, organisations, members and roles come from Matura, the owner's identity
+  and tenancy platform (its sprint TS9a). The token names the organisation (`tid`) and what the person may do there
+  (`perms`); the highest role whose permissions the token carries in full decides the role (a role edited in Matura
+  that skips a rung gets only the rungs below it), so every existing role check works unchanged. People in several organisations switch with a picker that signs in again for the one they choose.
+- **Matura's webhooks** (`POST /v1/matura/events`, HMAC-signed) and **its change feed** keep organisations, people and
+  roles current: a role granted, changed or revoked in Matura, a member removed or AgentCanvas turned off for an
+  organisation applies here at once, and whatever a missed webhook carried arrives at the next feed read.
+- **Matura contract tables** (`matura_*`, migration `f2b6d0a4c8e1`) on every install; empty unless Matura is used.
+- **`matura/manifest.json`**: what Matura needs to register AgentCanvas (four permissions, four starter roles).
+  Its `conformance` section lets Matura's `matura-conformance` check AgentCanvas from outside; it passes all 19 checks
+  (token refusals, permissions, organisation isolation on projects, signed webhooks).
+- `GET /v1/me` also returns `org_names`.
+
+### Changed
+- In Matura mode the member and invitation endpoints answer 409 and the Members page is read-only with a link to
+  Matura's portal. `dev` and `oidc` modes are unchanged.
+
 ## v0.26.3 — Every framework in the Docker app by default (not tagged yet)
 
 ### Changed

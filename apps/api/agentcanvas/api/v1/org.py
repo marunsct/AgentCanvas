@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
-from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.deps import CurrentUser, current_user, get_session, members_here
 from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import InvalidInput, NotFound
@@ -51,7 +51,7 @@ async def list_members(
     return [_out(u, m.role, m.accepted) for u, m in await MemberRepo(session).list(user.org_id)]
 
 
-@router.put("/members", response_model=MemberOut)
+@router.put("/members", response_model=MemberOut, dependencies=[Depends(members_here)])
 async def set_member(
     body: MemberIn,
     request: Request,
@@ -66,7 +66,7 @@ async def set_member(
     return _out(u, role, accepted)
 
 
-@router.delete("/members/{user_id}", status_code=204)
+@router.delete("/members/{user_id}", status_code=204, dependencies=[Depends(members_here)])
 async def remove_member(
     user_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> Response:

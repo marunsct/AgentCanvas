@@ -15,6 +15,14 @@ from agentcanvas.settings import Settings
 ROOT = pathlib.Path(__file__).parents[1]
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")  # set in CI to run against Postgres
 TABLES = [
+    "matura_inbox",
+    "matura_sync_cursor",
+    "matura_app_role",
+    "matura_role_grant",
+    "matura_membership",
+    "matura_user",
+    "matura_workspace",
+    "matura_tenant",
     "rate_window",
     "release_gate",
     "experiment_result",

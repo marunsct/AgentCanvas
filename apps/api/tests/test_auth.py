@@ -108,7 +108,8 @@ async def test_org_header_must_name_a_membership(client):
 async def test_public_routes_need_no_sign_in(client):
     cfg = (await client.get("/v1/auth/config")).json()
     assert cfg == {"mode": "oidc", "issuer": ISSUER, "client_id": "spa",
-                   "scopes": "openid profile email offline_access", "audience": AUDIENCE}  # fmt: skip
+                   "scopes": "openid profile email offline_access", "audience": AUDIENCE,
+                   "portal_url": None, "tenant_param": None}  # fmt: skip
     # deployment and webhook endpoints keep their own credentials: no sign-in, but still refused without them
     assert (await client.post("/v1/deployments/dep_x/runs/wait", json={})).status_code in (401, 404)
     assert (await client.post("/v1/hooks/trg_x", content=b"{}")).status_code in (401, 404)

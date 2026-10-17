@@ -99,8 +99,10 @@ export type Target = string;
 export type Audience = string | null;
 export type ClientId = string | null;
 export type Issuer = string | null;
-export type Mode = "dev" | "oidc";
+export type Mode = "dev" | "oidc" | "matura";
+export type PortalUrl = string | null;
 export type Scopes = string | null;
+export type TenantParam = string | null;
 export type Effect = string;
 export type Gated = boolean;
 export type Source = string;
@@ -2451,7 +2453,9 @@ export interface AuthConfig {
   client_id?: ClientId;
   issuer?: Issuer;
   mode: Mode;
+  portal_url?: PortalUrl;
   scopes?: Scopes;
+  tenant_param?: TenantParam;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4041,9 +4045,13 @@ export interface MeOut {
   id: Id40;
   memberships: Memberships;
   org_id: OrgId1;
+  org_names?: OrgNames;
   role: Role2;
 }
 export interface Memberships {
+  [k: string]: string;
+}
+export interface OrgNames {
   [k: string]: string;
 }
 /**

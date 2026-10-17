@@ -2,7 +2,8 @@
 
 Every route requires a signed-in user (M7-T1), and every id it names must belong to the user's
 organisation (M7-T2) and the user's role must allow it (M7-T3), except the deployment endpoints and their MCP and A2A
-faces (deployment API keys), signed webhooks (HMAC), share links (their token) and the sign-in configuration.
+faces (deployment API keys), signed webhooks (HMAC, from triggers and Matura), share links (their token) and the
+sign-in configuration.
 """
 
 from fastapi import APIRouter, Depends
@@ -22,6 +23,7 @@ from agentcanvas.api.v1 import (
     experiments,
     gates,
     knowledge,
+    matura,
     memory,
     online,
     org,
@@ -77,3 +79,4 @@ router.include_router(deployments.public_router)
 router.include_router(protocols.router)  # MCP and A2A, deployment keys
 router.include_router(triggers.public_router)
 router.include_router(share.public_router)  # share links (S23): the token is the capability
+router.include_router(matura.public_router)  # Matura's webhooks (TS9a): HMAC
