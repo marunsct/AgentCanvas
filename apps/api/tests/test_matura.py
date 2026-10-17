@@ -96,7 +96,11 @@ async def roles_defined(client):
 def test_roles_follow_the_strongest_permission_and_match_the_manifest():
     assert role_for(["canvas.read"]) == "viewer"
     assert role_for(["canvas.read", "inbox.review", "workflow.build"]) == "builder"
-    assert role_for(["*"]) == "admin" and role_for(["org.admin"]) == "admin"
+    assert role_for(["*"]) == "admin"
+    assert role_for(["canvas.read", "inbox.review", "workflow.build", "org.admin"]) == "admin"
+    # a role edited in Matura that skips a rung gets only the rungs below the gap
+    assert role_for(["canvas.read", "inbox.review", "org.admin"]) == "reviewer"
+    assert role_for(["org.admin"]) is None
     assert role_for(["something.else"]) is None
     manifest = json.loads((pathlib.Path(__file__).parents[3] / "matura/manifest.json").read_text())
     assert {p["name"] for p in manifest["permissions"]} == set(PERMISSIONS.values())

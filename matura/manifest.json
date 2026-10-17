@@ -26,5 +26,13 @@
     "modes": ["shared"],
     "managers": ["app"],
     "default": {"mode": "shared", "manager": "app"}
+  },
+  "conformance": {
+    "webhook_path": "/v1/matura/events",
+    "resources": [{
+      "name": "projects",
+      "create": {"method": "POST", "path": "/v1/projects", "body": {"name": "conformance {{marker}}"}, "permission": "workflow.build"},
+      "list": {"method": "GET", "path": "/v1/projects", "permission": "canvas.read"}
+    }]
   }
 }

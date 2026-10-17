@@ -44,13 +44,19 @@ OWNER_ROLE = "admin"  # the manifest's owner_role: Matura gives it to the organi
 
 
 def role_for(permissions: tuple[str, ...] | list[str] | set[str]) -> str | None:
-    """The AgentCanvas role the strongest permission gives; None when none of them is AgentCanvas's."""
+    """The strongest AgentCanvas role whose permissions the token carries in full; None when not even viewer's.
+
+    The roles are a ladder (each includes the ones below), so a role counts only with every permission up to it: a
+    role edited in Matura to hold `org.admin` without `workflow.build` must not build workflows here.
+    """
     if "*" in permissions:
         return "admin"
-    for role in reversed(PERMISSIONS):
-        if PERMISSIONS[role] in permissions:
-            return role
-    return None
+    best = None
+    for role, perm in PERMISSIONS.items():
+        if perm not in permissions:
+            break
+        best = role
+    return best
 
 
 def subject(user_id: str) -> str:
