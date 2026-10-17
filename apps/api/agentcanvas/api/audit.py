@@ -18,6 +18,7 @@ from starlette.responses import Response
 from agentcanvas.db.models import AuditLog
 from agentcanvas.db.repositories import AuditRepo, ScopeRepo
 from agentcanvas.log import get_logger
+from agentcanvas.services.audit_sink import SECURITY_ACTIONS, AuditEvent
 
 log = get_logger(__name__)
 READS = {"GET", "HEAD", "OPTIONS"}
@@ -89,3 +90,5 @@ async def record(request: Request, response: Response) -> None:
             await AuditRepo(s).add(row)
     except Exception:
         log.exception("audit.write_failed", action=name, target=target)
+    if name in SECURITY_ACTIONS and (sink := getattr(request.app.state, "audit_sink", None)) is not None:
+        await sink.emit(AuditEvent(org_id, row.actor_id, name, target, detail, row.ip))

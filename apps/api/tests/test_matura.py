@@ -111,7 +111,7 @@ def test_roles_follow_the_strongest_permission_and_match_the_manifest():
 async def test_auth_config_names_matura_the_portal_and_the_tenant_parameter(client):
     cfg = (await client.get("/v1/auth/config")).json()
     assert cfg["mode"] == "matura" and cfg["client_id"] == "agentcanvas" and cfg["issuer"] == ISSUER.issuer
-    assert cfg["portal_url"] == "https://portal.matura.test" and cfg["tenant_param"] == "matura_tenant"
+    assert cfg["portal_url"] == "https://portal.matura.test/" and cfg["tenant_param"] == "matura_tenant"
 
 
 async def test_token_gives_organisation_and_role_and_data_stays_in_its_organisation(client):

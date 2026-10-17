@@ -1,6 +1,7 @@
 /** Server data hooks (TanStack Query). Catalog data is static per server build. */
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { maturaMode } from "./auth";
 import { apiFetch } from "./client";
 import { can } from "./session";
 import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
@@ -8,22 +9,62 @@ import type { McpConnector } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
+export let PROJECT_NAME = "Default project";
+
+/** A Matura workspace of the organisation (TS26): projects can be grouped by them in Matura mode. */
+export interface Workspace { id: string; name: string; is_default: boolean }
+/** The organisation's workspaces (empty outside Matura mode) and the one picked, null = all of them. */
+export let WORKSPACES: Workspace[] = [];
+export let WORKSPACE_ID: string | null = null;
 
 const PROJECT_KEY = "agentcanvas.project";
+const WORKSPACE_KEY = "agentcanvas.workspace";
+
+function stored(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; /* storage blocked */ }
+}
+
+function store(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value);
+  } catch { /* storage blocked */ }
+}
 
 /** Pick the project for this session: the last one used if it is still visible, else the organisation's first
- * (creating one when the organisation has none). Runs once, after sign-in and before any page loads. */
+ * (creating one when the organisation has none). In Matura mode only projects of the picked workspace count, and a
+ * workspace without one gets one. Runs once, after sign-in and before any page loads, and again on a new workspace. */
 export async function chooseProject(): Promise<string> {
-  let projects = await apiFetch<{ id: string; name: string }[]>("/projects");
+  WORKSPACES = maturaMode() ? await apiFetch<Workspace[]>("/workspaces") : [];
+  const saved = stored(WORKSPACE_KEY);
+  const ws = WORKSPACES.find((w) => w.id === saved) ?? null;
+  WORKSPACE_ID = ws?.id ?? null;
+  let projects = await apiFetch<{ id: string; name: string }[]>(
+    ws ? `/projects?workspace_id=${encodeURIComponent(ws.id)}` : "/projects");
   if (projects.length === 0) {
-    if (!can("builder")) throw new Error("your organisation has no projects yet; ask a builder or admin to create one");
-    projects = [await apiFetch<{ id: string; name: string }>("/projects", { method: "POST", json: { name: "Default project" } })];
+    const where = ws ? `the workspace '${ws.name}'` : "your organisation";
+    if (!can("builder")) throw new Error(`${where} has no projects yet; ask a builder or admin to create one`);
+    const body = ws ? { name: `${ws.name} project`, workspace_id: ws.id } : { name: "Default project" };
+    projects = [await apiFetch<{ id: string; name: string }>("/projects", { method: "POST", json: body })];
   }
-  let saved: string | null = null;
-  try { saved = localStorage.getItem(PROJECT_KEY); } catch { /* storage blocked */ }
-  PROJECT_ID = projects.find((p) => p.id === saved)?.id ?? projects[0].id;
-  try { localStorage.setItem(PROJECT_KEY, PROJECT_ID); } catch { /* storage blocked */ }
+  const chosen = projects.find((p) => p.id === stored(PROJECT_KEY)) ?? projects[0];
+  PROJECT_ID = chosen.id;
+  PROJECT_NAME = chosen.name;
+  store(PROJECT_KEY, PROJECT_ID);
   return PROJECT_ID;
+}
+
+/** Matura mode: work in another workspace (null = all), moving to one of its projects. Restores the previous
+ * workspace when the new one cannot be used (no project in it and no right to make one). */
+export async function chooseWorkspace(id: string | null): Promise<string> {
+  const before = stored(WORKSPACE_KEY);
+  store(WORKSPACE_KEY, id);
+  try {
+    return await chooseProject();
+  } catch (e) {
+    store(WORKSPACE_KEY, before);
+    await chooseProject();
+    throw e;
+  }
 }
 
 export function useNodeTypes() {

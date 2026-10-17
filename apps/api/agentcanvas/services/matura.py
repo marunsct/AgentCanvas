@@ -32,7 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from agentcanvas.db.models import AppUser, Membership, Organization
-from agentcanvas.errors import Forbidden
+from agentcanvas.errors import Forbidden, InvalidInput, Unavailable
 from agentcanvas.log import get_logger
 from agentcanvas.vendor.matura import Contract, MaturaAPI, Principal, Sync
 
@@ -225,6 +225,55 @@ async def _on_tenant_app(conn: AsyncConnection, event: dict[str, Any]) -> None:
             await recompute(conn, t, u)
 
 
+# --- workspaces and the portal (TS26) --------------------------------------------------------------------------------
+
+
+async def workspaces(session: AsyncSession, tenant_id: str) -> list[tuple[str, str, bool]]:
+    """The organisation's active Matura workspaces as (id, name, is_default), default first, then by name."""
+    conn = await session.connection()
+    try:
+        tid = _id(conn, tenant_id)
+    except ValueError:  # not a Matura id (an organisation from before Matura): no workspaces
+        return []
+    rows = await conn.execute(
+        text("""SELECT id, name, is_default FROM matura_workspace WHERE tenant_id = :t AND status = 'active'
+            ORDER BY is_default DESC, name, id"""),
+        {"t": tid},
+    )
+    return [(str(i), n, bool(d)) for i, n, d in rows.all()]
+
+
+async def check_workspace(session: AsyncSession, tenant_id: str, workspace_id: str) -> None:
+    """422 unless `workspace_id` is an active workspace of the organisation (as Matura last sent it)."""
+    if workspace_id not in {w for w, _, _ in await workspaces(session, tenant_id)}:
+        raise InvalidInput(f"'{workspace_id}' is not an active workspace of this organisation in Matura")
+
+
+def portal_base(settings: Any) -> str | None:
+    """Matura's customer portal: `AGENTCANVAS_MATURA_PORTAL_URL`, else `<AGENTCANVAS_MATURA_PUBLIC_URL>/portal/`."""
+    if settings.matura_portal_url:
+        return settings.matura_portal_url.rstrip("/") + "/"
+    if settings.matura_public_url:
+        return settings.matura_public_url.rstrip("/") + "/portal/"
+    return None
+
+
+async def portal_link(session: AsyncSession, settings: Any, tenant_id: str) -> str | None:
+    """The portal page of one organisation (`<portal>/<tenant slug>/`), where its admins manage members, roles, SSO
+    and security settings. The slug is Matura's, from the contract tables; the id when it is not known yet."""
+    base = portal_base(settings)
+    if base is None:
+        return None
+    conn = await session.connection()
+    try:
+        tid = _id(conn, tenant_id)
+    except ValueError:  # not a Matura id (an organisation from before Matura)
+        tid = None
+    q = text("SELECT slug FROM matura_tenant WHERE id = :t")
+    slug = (await conn.execute(q, {"t": tid})).scalar() if tid is not None else None
+    return f"{base}{slug or tenant_id}/"
+
+
 # --- requests --------------------------------------------------------------------------------------------------------
 
 # who was provisioned with what: most requests then write nothing (contract §5)
@@ -244,6 +293,11 @@ async def sign_in(
     tid = p.tenant_id
     if not tid:
         raise Forbidden("choose or create an organisation" + portal_hint(portal) + ", then sign in again")
+    if p.placement_mode not in (None, "shared"):  # the manifest declares tenancy.modes = ["shared"]
+        raise Unavailable(
+            f"Matura placed this organisation's data in '{p.placement_mode}' mode; AgentCanvas keeps every "
+            "organisation in one shared database (row-level security) and supports only 'shared'"
+        )
     if org and org != tid:
         raise Forbidden(f"this sign-in is for organisation '{tid}'; sign in again choosing '{org}' to act there")
     if p.perms_ref:

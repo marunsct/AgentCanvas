@@ -2,6 +2,37 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.28.0 — AgentCanvas on Matura: workspaces, database isolation, portal, audit sink (not tagged yet)
+
+The rest of Matura's sprint TS26 (full adoption) that fits AgentCanvas today.
+
+### Added
+- **Matura workspaces group projects.** `project.workspace_id` (nullable, migration `a3c7e9b1d5f2`); `GET /v1/workspaces`
+  lists the organisation's active workspaces from the contract tables; `GET /v1/projects?workspace_id=…` filters;
+  `POST /v1/projects` takes `workspace_id`; `PUT /v1/projects/{id}/workspace` moves a project in or out. Matura mode
+  only (422 otherwise, and for an archived workspace or another organisation's). The home page has a workspace picker
+  that opens a project of the picked workspace (creating one for builders) and shows the project's name.
+- **Row-level security on Postgres.** Forced policies (`agentcanvas_tenant`) on the 35 organisation-owned tables: an
+  `org_id` is compared with `matura.tenant_id`, other tables follow their parent up to the project. In Matura mode
+  every transaction of a signed-in request sets `matura.tenant_id` to the token's organisation, so a query missing its
+  organisation filter returns nothing of another. API connections start with `agentcanvas.all_tenants=on`, so
+  background work and the `dev`/`oidc` modes see every row as before; a connection that sets neither sees none.
+  SQLite is unchanged. `db/rls.py` lists every table as covered or exempt (with the reason), and a test fails when a
+  new table is neither.
+- **Links to Matura's customer portal**: `AGENTCANVAS_MATURA_PUBLIC_URL` gives `<public URL>/portal/` (or
+  `AGENTCANVAS_MATURA_PORTAL_URL`); `GET /v1/me` returns `portal_url`, the organisation's page there (by slug), which
+  Members (`…/members`) and Policies (organisation settings) link to.
+- **Audit sink.** Security-relevant audit entries (publish, unpublish, key rotation, secrets, approvals, members,
+  organisation settings and policies, release gates, trace export, project workspaces) also go to an `AuditSink`. The
+  default does nothing; `AGENTCANVAS_MATURA_AUDIT_URL` sends each as a signed CloudEvent, a placeholder until Matura has
+  an audit ingest API.
+
+### Changed
+- **Shared data mode only**, as `matura/manifest.json` declares: a token whose `pmode` is `schema` or `database` is
+  refused with 503. Schema- or database-per-tenant placement is not supported (one engine and background jobs that
+  work across organisations).
+- `GET /v1/auth/config`'s `portal_url` ends with `/`.
+
 ## v0.27.0 — Sign-in through Matura (not tagged yet)
 
 ### Added

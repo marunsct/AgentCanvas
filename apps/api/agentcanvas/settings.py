@@ -47,7 +47,11 @@ class Settings(BaseSettings):
     matura_app: str = "agentcanvas"
     matura_client_secret: str | None = None
     matura_webhook_secret: str | None = None
-    matura_portal_url: str | None = None
+    matura_portal_url: str | None = None  # overrides the portal's address; default <matura_public_url>/portal/
+    matura_public_url: str | None = None  # where people reach Matura (its MATURA_PUBLIC_URL), for portal links
+    # TS26: where security-relevant audit entries are POSTed, signed with the webhook secret (placeholder until
+    # Matura has an audit ingest API); unset = kept in AgentCanvas's own audit log only
+    matura_audit_url: str | None = None
     matura_sync_interval_s: int = 3600  # how often the change feed is read (webhooks bring changes in between)
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
     bootstrap_admin_emails: list[str] = []

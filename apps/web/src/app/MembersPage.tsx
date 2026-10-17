@@ -3,9 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { maturaMode, portalUrl } from "../api/auth";
+import { maturaMode } from "../api/auth";
 import { apiFetch } from "../api/client";
-import { can, ME, type Role } from "../api/session";
+import { can, ME, orgPortalUrl, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
@@ -33,7 +33,7 @@ export function MembersPage() {
     onSuccess: done,
   });
   const admin = can("admin") && !maturaMode();
-  const portal = portalUrl();
+  const portal = orgPortalUrl("members");
   const error = (set.error ?? remove.error) as Error | null;
   return (
     <div className="page">
@@ -41,7 +41,7 @@ export function MembersPage() {
       <ul className="small muted">{ROLES.map((r) => <li key={r.role}><b>{r.role}</b> {r.what}</li>)}</ul>
       {maturaMode() && (
         <p className="muted" data-testid="managed-in-matura">
-          Members and roles are managed in Matura{portal ? <>: <a href={portal} target="_blank" rel="noreferrer">open the portal</a></> : "."}
+          Members and roles are managed in Matura{portal ? <>: <a href={portal} target="_blank" rel="noreferrer" data-testid="portal-link">open the portal</a></> : "."}
         </p>
       )}
       {admin && (

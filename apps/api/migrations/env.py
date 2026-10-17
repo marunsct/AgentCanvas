@@ -9,6 +9,7 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from agentcanvas.db.models import Base
+from agentcanvas.db.rls import connect_options
 from agentcanvas.db.session import async_url
 
 config = context.config
@@ -33,7 +34,8 @@ def _run(connection) -> None:
 
 
 async def run_async() -> None:
-    engine = create_async_engine(_url())
+    url = _url()
+    engine = create_async_engine(url, connect_args=connect_options(url))  # data migrations see every organisation
     async with engine.connect() as conn:
         await conn.run_sync(_run)
     await engine.dispose()

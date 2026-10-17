@@ -8,6 +8,8 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
+from agentcanvas.db.rls import connect_options
+
 MIGRATIONS = Path(__file__).parents[2] / "migrations"
 
 
@@ -31,7 +33,10 @@ class Database:
         pool: dict[str, int] = {}
         if self.url.startswith("postgresql") and pool_size is not None:  # connections per API process
             pool = {"pool_size": pool_size, "max_overflow": max_overflow or 0}
-        self.engine: AsyncEngine = create_async_engine(self.url, pool_pre_ping=True, **pool)
+        # every connection starts in all-tenants mode; a Matura request narrows its session (db/rls.py)
+        self.engine: AsyncEngine = create_async_engine(
+            self.url, pool_pre_ping=True, connect_args=connect_options(self.url), **pool
+        )
         self.sessionmaker = async_sessionmaker(self.engine, expire_on_commit=False)
 
     @property

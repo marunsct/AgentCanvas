@@ -85,10 +85,12 @@ class Membership(Base):
 
 class Project(Base):
     __tablename__ = "project"
-    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    __table_args__ = (UniqueConstraint("org_id", "name"), Index("project_workspace_idx", "org_id", "workspace_id"))
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)
+    # the Matura workspace the project belongs to (TS26, Matura mode only); NULL = none, the whole organisation's
+    workspace_id: Mapped[str | None] = mapped_column(String)
     # first-run setup: {"default_model": {"model", "base_url"?, "api_key"?}, "setup_done": bool}
     settings: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     # grows with every secret change: each instance reloads its decrypted copy when it is behind (S22)

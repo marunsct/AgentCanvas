@@ -66,6 +66,76 @@ Migrations run as a Helm hook Job before the API starts.
 The API checks every token against the provider's keys. `AGENTCANVAS_AUTH_MODE=dev` (no sign-in) is refused in
 `staging` and `prod`.
 
+### Sign-in through Matura
+
+[Matura](https://github.com/marunsct/Platform) manages sign-in, organisations, members and roles for several apps.
+With it, an organisation in AgentCanvas is a Matura tenant, and people's roles come from the roles Matura assigns them.
+
+1. Register AgentCanvas in Matura with [`matura/manifest.json`](https://github.com/marunsct/AgentCanvas/blob/main/matura/manifest.json)
+   (its four permissions and starter roles `viewer`, `reviewer`, `builder`, `admin`; tenant owners and admins get
+   `admin`). Matura creates the public client `agentcanvas`; add `https://<your app>/*` to its redirect URIs.
+2. In Matura, create an app secret and a webhook to `https://<your app>/api/v1/matura/events`.
+3. Set:
+
+| Setting | Value |
+|---|---|
+| `AGENTCANVAS_AUTH_MODE` | `matura` |
+| `AGENTCANVAS_OIDC_ISSUER` | Matura's realm, e.g. `https://login.example.com/realms/matura` |
+| `AGENTCANVAS_OIDC_AUDIENCE`, `AGENTCANVAS_OIDC_CLIENT_ID` | `agentcanvas` |
+| `AGENTCANVAS_MATURA_URL`, `AGENTCANVAS_MATURA_CLIENT_SECRET` | Matura's API and the app secret: the change feed is read at start-up and every hour (`AGENTCANVAS_MATURA_SYNC_INTERVAL_S`) |
+| `AGENTCANVAS_MATURA_WEBHOOK_SECRET` | the webhook's signing secret |
+| `AGENTCANVAS_MATURA_PUBLIC_URL` | where people reach Matura (its `MATURA_PUBLIC_URL`); AgentCanvas links to its customer portal at `<this>/portal/<organisation>/` |
+| `AGENTCANVAS_MATURA_PORTAL_URL` | optional: the portal's address when it is not `<public URL>/portal/` |
+| `AGENTCANVAS_MATURA_AUDIT_URL` | optional, for later: where security-relevant audit entries are sent (see below) |
+
+What changes for people:
+
+- Each sign-in is for one organisation. People in several switch with the organisation picker on the home page,
+  which signs in again for the one they pick.
+- What someone may do follows the strongest permission their Matura roles give: `canvas.read` (viewer),
+  `inbox.review` (reviewer), `workflow.build` (builder), `org.admin` (admin). Someone whose roles give none of these
+  cannot open AgentCanvas in that organisation.
+- **Members** shows who has access, read-only, with a link to the portal. Inviting, changing roles and removing
+  people happen in Matura; the API answers 409 to the old member and invitation endpoints.
+- Changes made in Matura reach AgentCanvas by webhook within seconds; a person's next token carries them anyway.
+- **Workspaces.** Matura's workspaces group projects: the home page has a workspace picker when the organisation has
+  any, and opens a project of the workspace picked (making one, for builders, when it has none). The API lists them
+  at `GET /v1/workspaces`, filters projects with `GET /v1/projects?workspace_id=…`, takes `workspace_id` when a
+  project is created and moves a project with `PUT /v1/projects/{id}/workspace`. Workspaces only group; who may do
+  what is still decided for the whole organisation.
+- **Members** and **Policies** link to the organisation's page in Matura's portal, where its admins manage members,
+  roles, single sign-on and security settings.
+
+#### Database isolation
+
+On Postgres, every table that holds an organisation's data has a row-level security policy (forced, so it also
+applies to the tables' owner). In Matura mode each signed-in request tells the database which organisation it acts
+for (`matura.tenant_id`, per transaction), so a query that forgot to filter by organisation still returns nothing
+of another. Background work (runs handed over, schedules, retention, the public run API by deployment key) connects
+in all-tenants mode, as do the `dev` and `oidc` modes, which therefore work as before. A connection that sets
+neither sees no rows.
+
+- Connect the API as an ordinary role: Postgres superusers and roles with `BYPASSRLS` skip the policies. The role
+  may own the tables (the policies are forced, so they apply to the owner too); if it does not, run migrations as
+  the owner (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API.
+- The API sets `agentcanvas.all_tenants=on` as a connection startup option. Behind PgBouncer in transaction pooling
+  mode, startup options are not passed on: use session pooling, or add the setting to the database role
+  (`ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`).
+- SQLite has no row-level security; there the API's own organisation filters are the only isolation.
+- AgentCanvas supports Matura's **shared** data mode only (one database for every organisation), as its manifest
+  declares. A token whose placement mode (`pmode`) is `schema` or `database` is refused with 503.
+- LangGraph's own tables (checkpoints, long-term memory) are not covered by the policies; their rows are reached only
+  through the conversations and namespaces of the organisation's own rows.
+
+#### Audit forwarding
+
+AgentCanvas keeps every change in its own audit log (**Audit log**). Security-relevant ones (publishing and
+unpublishing, deployment keys, secrets, approvals, members, organisation settings and policies, release gates, trace
+export, project workspaces) also go to an audit sink. Matura has no audit ingest API yet, so by default the sink does
+nothing. With `AGENTCANVAS_MATURA_AUDIT_URL` set, each entry is POSTed there as a CloudEvent
+(`agentcanvas.audit.<action>`) signed like Matura's webhooks (`Matura-Signature`, with the webhook secret), once and
+best effort.
+
 ## Observability
 
 - **Health:** `/healthz` (process up) and `/readyz` (database and run store reachable).
