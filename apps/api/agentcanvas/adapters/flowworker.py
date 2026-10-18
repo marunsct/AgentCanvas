@@ -178,8 +178,16 @@ async def main(runtime: Any, model: Callable[..., Any], version: str) -> None:
     reader = asyncio.StreamReader(limit=MAX_LINE)
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
     worker.send({"ready": True, "version": version})
-    while line := await reader.readline():
-        msg = json.loads(line)
+    while True:
+        try:
+            line = await reader.readline()
+            if not line:
+                break
+            msg = json.loads(line)
+        except ValueError:  # a bad or over-long line must not end every run this worker serves
+            continue
+        if not isinstance(msg, dict):
+            continue
         if "reply" in msg:
             worker.reply(msg)
         elif msg.get("op") == "run":

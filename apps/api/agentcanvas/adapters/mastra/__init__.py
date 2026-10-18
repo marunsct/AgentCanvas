@@ -19,7 +19,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from agentcanvas.adapters.crewai import API_ROOT, CrewWorker
+from agentcanvas.adapters.crewai import API_ROOT, CrewWorker, worker_env
 from agentcanvas.adapters.flowadapter import FlowAdapter
 from agentcanvas.adapters.mastra import codegen
 from agentcanvas.ir.models import Workflow
@@ -72,7 +72,7 @@ class MastraWorker(CrewWorker):
             shutil.copyfile(API_ROOT / rel, here / Path(rel).name)
         (here / "package.json").write_text('{"type": "module"}\n')
         (here / "node_modules").symlink_to(Path(self.python) / "node_modules", target_is_directory=True)
-        env = {**os.environ, "NODE_NO_WARNINGS": "1", "MASTRA_TELEMETRY_DISABLED": "true"}
+        env = worker_env(NODE_NO_WARNINGS="1", MASTRA_TELEMETRY_DISABLED="true")
         return [node() or "node", str(here / "worker.ts")], env
 
 

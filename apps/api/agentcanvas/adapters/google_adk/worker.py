@@ -180,8 +180,16 @@ async def main() -> None:
     from google.adk import __version__
 
     worker.send({"ready": True, "version": __version__})
-    while line := await reader.readline():
-        msg = json.loads(line)
+    while True:
+        try:
+            line = await reader.readline()
+            if not line:
+                break
+            msg = json.loads(line)
+        except ValueError:  # a bad or over-long line must not end every run this worker serves
+            continue
+        if not isinstance(msg, dict):
+            continue
         if "reply" in msg:
             worker.reply(msg)
         elif msg.get("op") == "run":

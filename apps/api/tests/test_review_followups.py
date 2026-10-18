@@ -192,3 +192,33 @@ def test_a_workflow_from_a_newer_server_gets_a_plain_message():
     with pytest.raises(ValidationError, match="newer AgentCanvas"):
         Workflow.model_validate({"id": "w", "name": "x", "ir_version": "9.0"})
     assert Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.0"}).ir_version == "1.2"
+
+
+def test_framework_workers_do_not_inherit_the_servers_secrets(monkeypatch):
+    """M5: workers got the whole server environment (database URL, encryption keys, provider keys)."""
+    from agentcanvas.adapters.crewai import worker_env
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://owner:pw@db/agentcanvas")
+    monkeypatch.setenv("LANGGRAPH_AES_KEY", "k" * 32)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    env = worker_env(EXTRA="1")
+    assert {"DATABASE_URL", "LANGGRAPH_AES_KEY", "OPENAI_API_KEY"}.isdisjoint(env)
+    assert env["HTTPS_PROXY"] == "http://proxy:3128" and env["EXTRA"] == "1"
+
+
+async def test_a_silent_worker_ends_the_run_and_is_told_to_cancel_it():
+    """M4: a run waited for its worker forever; now a worker that says nothing for the idle limit ends the run."""
+    from types import SimpleNamespace
+
+    from agentcanvas.adapters import crewai as crewai_adapter
+
+    worker = crewai_adapter.CrewWorker.__new__(crewai_adapter.CrewWorker)
+    worker._runs = {}
+    worker.idle_timeout_s = 0.05
+    worker.proc = SimpleNamespace(poll=lambda: None)  # alive
+    sent: list[dict] = []
+    worker.send = sent.append  # type: ignore[method-assign]
+    events = [ev async for ev in worker.run("r1", {}, lambda op, args: None)]
+    assert events[-1]["type"] == "RUN_ERROR" and events[-1]["code"] == "timeout"
+    assert sent[0]["op"] == "run" and sent[-1] == {"op": "cancel", "run": "r1"}
