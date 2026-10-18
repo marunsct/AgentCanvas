@@ -338,6 +338,14 @@ OPENAI_COMPATIBLE: dict[str, str | None] = {
     "llamacpp": "http://localhost:8080/v1",
     "openai_compatible": None,
 }
+# OPTIONAL_KEYS: the project secret / env variable an OpenAI-compatible server's key is read from when the model's
+# config sets no `api_key` (servers started without a key get a placeholder). Kept in step with providers.json.
+OPTIONAL_KEYS: dict[str, str] = {
+    "lmstudio": "LMSTUDIO_API_KEY",
+    "vllm": "VLLM_API_KEY",
+    "llamacpp": "LLAMACPP_API_KEY",
+    "openai_compatible": "OPENAI_COMPATIBLE_API_KEY",
+}
 OLLAMA_URL = "http://localhost:11434"
 
 
@@ -360,7 +368,9 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
         if not base_url:
             raise ValueError(f"model '{model}' needs a base URL: the server's OpenAI-compatible address, e.g. …/v1")
         params["base_url"] = base_url
-        params.setdefault("api_key", "not-needed")  # local servers ignore it; the OpenAI client insists on one
+        if "api_key" not in params:  # the server's key when one is set; else a placeholder the OpenAI client insists on
+            var = OPTIONAL_KEYS.get(provider)
+            params["api_key"] = (var and (secrets.get(var) or os.environ.get(var))) or "not-needed"
         return f"openai:{name}", params
     key = PROVIDER_KEYS.get(provider)
     if key and "api_key" not in params and key in secrets:

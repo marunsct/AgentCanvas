@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import httpx
+
 from agentcanvas.adapters.langchain.testing import DemoResources
 from agentcanvas.services.workflows import with_default_model
 
@@ -71,3 +73,46 @@ async def test_connection_errors_never_show_the_key(api_client, app):
     body = {"model": "openai_compatible:m", "base_url": "https://llm.example.com/v1", "api_key": "sk-very-secret-1"}
     r = (await api_client.post(f"{URL}/test", json=body)).json()
     assert not r["ok"] and "401 Unauthorized" in r["error"] and "sk-very-secret-1" not in r["error"]
+
+
+async def test_local_server_with_a_key(api_client, app):
+    r = await api_client.put(URL, json={"model": "lmstudio:openai/gpt-oss-20b", "api_key": "lm-token-123"})
+    out = r.json()
+    assert r.status_code == 200 and out["key_secret"] == "LMSTUDIO_API_KEY" and out["key_set"]
+    assert out["default_model"] == {"model": "lmstudio:openai/gpt-oss-20b", "base_url": None,
+                                    "api_key": {"$secret": "LMSTUDIO_API_KEY"}}  # fmt: skip
+    assert app.state.projects.secrets["prj_default"]["LMSTUDIO_API_KEY"] == "lm-token-123"
+    # saving again without a key keeps the saved one; a server without a key stores no reference
+    r = await api_client.put(URL, json={"model": "lmstudio:qwen3-8b"})
+    assert r.json()["default_model"]["api_key"] == {"$secret": "LMSTUDIO_API_KEY"}
+    r = await api_client.put(URL, json={"model": "llamacpp:m"})
+    assert r.json()["default_model"]["api_key"] is None and r.json()["key_secret"] == "LLAMACPP_API_KEY"
+
+
+async def test_server_models_lists_what_the_server_offers(api_client, app):
+    seen: list[httpx.Request] = []
+
+    def server(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        if req.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen3:8b"}, {"name": "llama3.3:latest"}]})
+        if req.headers.get("authorization") != "Bearer lm-token-123":
+            return httpx.Response(401, json={"error": "unauthorized"})
+        return httpx.Response(200, json={"data": [{"id": "openai/gpt-oss-20b"}, {"id": "qwen/qwen3-8b"}]})
+
+    app.state.model_list_transport = httpx.MockTransport(server)
+    url = f"{URL}/server-models"
+    r = (await api_client.post(url, json={"provider": "lmstudio"})).json()
+    assert not r["ok"] and "API key" in r["error"]
+    r = (await api_client.post(url, json={"provider": "lmstudio", "api_key": "lm-token-123"})).json()
+    assert r == {"ok": True, "models": ["openai/gpt-oss-20b", "qwen/qwen3-8b"], "error": None}
+    assert str(seen[-1].url) == "http://localhost:1234/v1/models"
+    # the saved key is used when none is typed
+    await api_client.put(URL, json={"model": "lmstudio:qwen/qwen3-8b", "api_key": "lm-token-123"})
+    assert (await api_client.post(url, json={"provider": "lmstudio"})).json()["ok"]
+    r = (await api_client.post(url, json={"provider": "ollama", "base_url": "http://box:11434"})).json()
+    assert r["models"] == ["llama3.3:latest", "qwen3:8b"] and str(seen[-1].url) == "http://box:11434/api/tags"
+    r = await api_client.post(url, json={"provider": "openai"})
+    assert r.status_code == 422
+    r = (await api_client.post(url, json={"provider": "openai_compatible"})).json()
+    assert r == {"ok": False, "models": [], "error": "Any OpenAI-compatible API needs a base URL"}

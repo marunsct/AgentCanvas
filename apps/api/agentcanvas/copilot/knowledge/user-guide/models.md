@@ -31,7 +31,10 @@ on the **Model** screen.
 | [vLLM](https://docs.vllm.ai) | `vllm:<served model name>` | `http://localhost:8000/v1` |
 | [llama.cpp server](https://github.com/ggml-org/llama.cpp) | `llamacpp:<model>` | `http://localhost:8080/v1` |
 
-Local models need no key. Set **Base URL** only when the server is not on its default address (the vLLM default
+Local models need no key unless the server requires one: LM Studio with **Require authentication** on in its
+server settings (paste one of its API tokens), vLLM or llama.cpp started with `--api-key`. Such a key is the project
+secret `LMSTUDIO_API_KEY`, `VLLM_API_KEY` or `LLAMACPP_API_KEY` (or the server variable of that name), and the
+first-run screen stores it for you. Set **Base URL** only when the server is not on its default address (the vLLM default
 port 8000 is also the AgentCanvas API's in development, so run vLLM on another port and set the Base URL). Start the
 server and load or pull the model before running a workflow. Local models vary in how well they call tools and
 produce structured output: if an agent misbehaves, try a larger model.
@@ -82,8 +85,11 @@ models** add-on block (`mw.model_fallback`) still works for agents on LangGraph.
 
 Open it from **Choose a model** on Home (until setup is done) or **Model** in the top bar.
 
-1. Pick a provider and a model.
-2. Enter the API key, or the server address for a local server on a non-default port.
+1. Pick a provider and a model. For a local server or an OpenAI-compatible API, **Find models on the server** lists
+   the models it offers (LM Studio lists the models you downloaded; Ollama the ones you pulled) so you can pick one
+   instead of typing its name.
+2. Enter the API key (for a local server, only if it requires one), or the server address for a local server on a
+   non-default port.
 3. **Test connection** sends one short message with exactly these settings and shows the reply or the error.
    Nothing is saved yet.
 4. **Save** stores the key as a project secret and the model as the project's **default model**. Workflows you
