@@ -3,4 +3,4 @@ name: agentcanvas
 description: AgentCanvas, a visual agentic workflow builder (API, web app and database migrations)
 type: application
 version: 0.2.0
-appVersion: "0.28.2"
+appVersion: "0.29.0"

@@ -2,6 +2,46 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.29.0 — The rest of the deep review: run correctness across replicas and server hardening (not tagged yet)
+
+The second round of fixes from the 2026-10-18 review (v0.28.1 has the first).
+
+### Fixed
+- **Paused runs live with their conversation.** CrewAI, Google ADK, the flow-engine frameworks, Mastra and the
+  OpenAI Agents SDK kept a paused run in the memory of the API process that paused it, so a resume that reached
+  another replica, or came after a restart, failed with "nothing to resume". `thread.paused_state` (migration
+  `b8d2f6a0c4e7`) keeps it; `runtime/paused.py` is the store. Several API replicas now work for every framework.
+- **The OpenAI Agents SDK and Echo engines** had the superstep bugs `supersteps.py` fixed in v0.26.1: a join inside a
+  loop fired early on its second pass, a join after a route not taken ended the run at the recursion limit, and a
+  resumed round ran the next round's steps twice. Fixed in both, and so in OpenAI Agents SDK exports.
+- **One run per conversation across replicas.** A run claims its thread in the database; a second replica's run on
+  the same conversation gets 409.
+- **Row-level security covers every session of a Matura request**, including those the runner, the Copilot, gates,
+  the audit log and knowledge search open (`TenantSession`), not only the request's own.
+- **Workspace saves** run git and ruff in a worker thread, one save at a time per workspace, instead of stalling
+  every stream on the server.
+- **A slow user regex** no longer fails the other regex searches it shared the pool with; they start again.
+- **Framework workers**: an allowlisted environment (no database URL, keys or cloud credentials), a malformed or
+  over-long message no longer ends every run on a worker, writes no longer block the event loop, a run whose worker
+  is silent for 10 minutes ends with a timeout, and the Mastra worker restarts after 500 distinct flows (Node.js
+  cannot unload modules).
+
+### Added
+- **P007** (warning): the workflow's framework does not apply node policies (retry, timeout, cache, error route).
+  Every framework but LangGraph used to drop them without a word.
+- **E999**: a validation check that fails is reported instead of turning every edit into a 500.
+- A workflow written by a newer AgentCanvas gets a plain message; IR migrations have a registry
+  (`ir.models.MIGRATIONS`).
+- Request bodies over 20 MB get 413 from the API itself, not only behind nginx.
+
+### Security
+- With `subprocess` sandboxes, the API process is made non-dumpable on Linux, so a same-user script cannot read the
+  server's memory or environment through `/proc`.
+
+### Changed
+- `compose.prod.yml` requires `LANGGRAPH_AES_KEY` (checkpoints encrypted at rest) and no longer asks for one API
+  replica. CI sets it and `POSTGRES_APP_PASSWORD`, and checks that the API's database role is not a superuser.
+- CI: read-only token permissions, one run per branch or PR (newer pushes cancel older runs), a time limit per job.
 ## v0.28.2 — Keys for local model servers (not tagged yet)
 
 ### Fixed

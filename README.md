@@ -134,4 +134,4 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S36: Mastra flows (v0.26.0) | ✅ done: workflows run on Node.js and export as TypeScript Mastra projects, with Mastra's own agents and tool approvals; the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) is complete |
 | v0.26.1–v0.26.3: review after the roadmap (40 fixes), framework setup in Docker | ✅ done (#41–#43) |
 | v0.27.0–v0.28.0: sign-in through Matura, workspaces, row-level security, audit sink | ✅ done (#49, #50) |
-| v0.28.1: fixes from the deep review of 2026-10-18 | in review (`claude/review-hardening`) |
+| v0.28.1–v0.29.0: fixes from the deep review of 2026-10-18 | ✅ done (#51, #52) |
