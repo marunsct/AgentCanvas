@@ -38,6 +38,7 @@ from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.registry.adapters import all_manifests
+from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.types import RunSpec
 from agentcanvas.validation.blast import dry_run_tools
 
@@ -63,7 +64,7 @@ class CrewAIAdapter:
     manifest = all_manifests()["crewai"]
 
     def __init__(self) -> None:
-        self._paused: dict[str, str] = {}  # thread id -> runtime.Paused as JSON
+        # paused runs live with their conversation (runtime/paused.py), not in this process: any replica resumes them
         self._shared: ac.Resources | None = None
 
     # what the Google ADK adapter (S29), which runs the same way, changes
@@ -154,13 +155,13 @@ class CrewAIAdapter:
             request: dict[str, Any] = {"source": source, "thread": spec.thread_id}
             if spec.resume is not None:
                 # kept until the continued run ends or pauses again: a failed continuation can be tried again
-                saved = self._paused.get(spec.thread_id)
+                saved = await paused_runs.load(spec.thread_id)
                 if saved is None:
                     yield {"type": "RUN_ERROR", "code": "error", "message": "nothing to resume on this conversation"}
                     return
                 request["resume"] = {"paused": saved, "answer": spec.resume.value}
             else:
-                self._paused.pop(spec.thread_id, None)
+                await paused_runs.store().drop(spec.thread_id)
                 request["input"] = spec.input
             usage = UsageTracker(node_index(wf))
             host = ServerHost(wf, resources, await model_bridge(), usage, self)
@@ -179,9 +180,9 @@ class CrewAIAdapter:
                     yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
                 paused = ev.pop("paused", None)
                 if paused is not None:
-                    self._paused[spec.thread_id] = paused
+                    await paused_runs.save(spec.thread_id, paused)
                 elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
-                    self._paused.pop(spec.thread_id, None)
+                    await paused_runs.store().drop(spec.thread_id)
                 yield run_scoped_interrupts(ev, spec.run_id)
 
 

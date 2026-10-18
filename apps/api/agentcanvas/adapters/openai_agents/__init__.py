@@ -29,6 +29,7 @@ from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.registry.adapters import all_manifests
+from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.types import RunSpec
 from agentcanvas.validation.blast import dry_run_tools
 
@@ -40,7 +41,7 @@ class OpenAIAgentsAdapter:
     manifest = all_manifests()["openai_agents"]
 
     def __init__(self) -> None:
-        self._paused: dict[str, str] = {}  # thread id -> runtime.Paused as JSON
+        # paused runs live with their conversation (runtime/paused.py), not in this process: any replica resumes them
         self._flows: OrderedDict[str, Any] = OrderedDict()  # source hash -> the generated module's FLOW
         self._shared: ac.Resources | None = None
 
@@ -134,13 +135,13 @@ class OpenAIAgentsAdapter:
             resume = None
             if spec.resume is not None:
                 # kept until the continued run ends or pauses again: a failed continuation can be tried again
-                saved = self._paused.get(spec.thread_id)
+                saved = await paused_runs.load(spec.thread_id)
                 if saved is None:
                     yield {"type": "RUN_ERROR", "code": "error", "message": "nothing to resume on this conversation"}
                     return
                 resume = (rt.Paused.from_json(saved), spec.resume.value)
             else:
-                self._paused.pop(spec.thread_id, None)
+                await paused_runs.store().drop(spec.thread_id)
             usage = UsageTracker(node_index(wf))
             host = ServerHost(wf, resources, await model_bridge(), usage, self)
         except Exception as exc:  # noqa: BLE001 - every failure reaches the UI as RUN_ERROR
@@ -156,9 +157,9 @@ class OpenAIAgentsAdapter:
                     yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
                 paused = ev.pop("paused", None)
                 if paused is not None:
-                    self._paused[spec.thread_id] = paused.to_json()
+                    await paused_runs.save(spec.thread_id, paused.to_json())
                 elif ev.get("type") == "RUN_FINISHED" and resume is not None:
-                    self._paused.pop(spec.thread_id, None)
+                    await paused_runs.store().drop(spec.thread_id)
                 yield _jsonable(ev)
 
 

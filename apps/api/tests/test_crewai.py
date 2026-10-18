@@ -19,6 +19,7 @@ from agentcanvas.adapters.crewai import codegen
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry.adapters import all_manifests
+from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.types import ResumeSpec, RunSpec
 
 TEMPLATES = Path(__file__).parents[1] / "agentcanvas" / "registry" / "templates"
@@ -255,7 +256,8 @@ async def test_a_paused_run_is_kept_until_its_continuation_ends(adapter, monkeyp
     worker = Worker()
     monkeypatch.setattr(adapter, "python", lambda: "python")
     monkeypatch.setattr(adapter, "worker", lambda python: worker)
-    adapter._paused["t"] = '{"saved": 1}'
+    monkeypatch.setattr(paused_runs, "STORE", paused_runs.MemoryPaused())
+    await paused_runs.save("t", '{"saved": 1}')
 
     async def resume() -> dict[str, Any]:
         spec = RunSpec(workflow=_agent_wf(), thread_id="t", run_id=new_id("run"), resume=ResumeSpec(value="yes"),
@@ -264,13 +266,13 @@ async def test_a_paused_run_is_kept_until_its_continuation_ends(adapter, monkeyp
 
     worker.events = [{"type": "RUN_ERROR", "code": "error", "message": "the CrewAI worker stopped"}]
     assert (await resume())["type"] == "RUN_ERROR"
-    assert adapter._paused["t"] == '{"saved": 1}'
+    assert await paused_runs.load("t") == '{"saved": 1}'
     worker.events = [{"type": "RUN_FINISHED", "outcome": "interrupt", "paused": '{"saved": 2}'}]
     assert (await resume())["outcome"] == "interrupt"
-    assert adapter._paused["t"] == '{"saved": 2}'
+    assert await paused_runs.load("t") == '{"saved": 2}'
     worker.events = [{"type": "RUN_FINISHED", "outcome": "success"}]
     assert (await resume())["outcome"] == "success"
-    assert "t" not in adapter._paused
+    assert await paused_runs.load("t") is None
     assert worker.sent == ['{"saved": 1}', '{"saved": 1}', '{"saved": 2}']
     assert (await resume())["message"] == "nothing to resume on this conversation"
 

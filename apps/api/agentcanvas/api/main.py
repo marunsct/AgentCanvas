@@ -32,6 +32,8 @@ from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime import masking
+from agentcanvas.runtime import paused as paused_runs
+from agentcanvas.runtime.paused import DatabasePaused, MemoryPaused
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
@@ -78,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise RuntimeError(f"the database role bypasses row-level security: {hint}")
             log.warning("rls.bypassed", hint=hint)
         app.state.db = db
+        paused_runs.install(DatabasePaused(db))  # paused runs of every replica, kept across restarts
         observability.trace_engine(db.engine)
         adapter = get_adapter("langchain")  # the host framework: long-term memory, MCP browsing, model resolution
         others = {i: a for i, a in installed_adapters().items() if i != adapter.id}  # S20: other frameworks
@@ -181,6 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if isinstance(app.state.audit_sink, MaturaWebhookSink):
                     await app.state.audit_sink.aclose()
                 await db.dispose()
+                paused_runs.install(MemoryPaused())  # this database is gone
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
