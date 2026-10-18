@@ -59,7 +59,6 @@ from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.expr import eval_condition, render_template
-from agentcanvas.security.imports import is_script_path
 from agentcanvas.workspace.loader import load_attr
 
 MODEL_CACHE_SIZE = 64  # model clients kept per Resources
@@ -70,6 +69,29 @@ def safe_import(import_path: str, workspace: Path | None = None) -> Any:
     """Import `package.module:attr` from the project workspace (or installed packages in dev), refusing anything
     outside the workspace packages (never "os:system"). Workspace files are hot-reloaded when they change."""
     return load_attr(import_path, workspace)
+
+
+def sandboxed_tool(import_path: str, workspace: Path, runner: Any) -> BaseTool:
+    """A workspace `@tool` whose calls run in the project's sandbox. Its name, description and arguments are read
+    from the source (`tool_spec`), so the tool module is never imported into the API process."""
+    from agentcanvas.workspace.catalog import tool_spec
+
+    spec = tool_spec(workspace, import_path)
+
+    async def call(**args: Any) -> Any:
+        try:
+            result = await runner.exchange(import_path, {"tool_args": args})
+        except (TimeoutError, RuntimeError) as exc:  # ScriptError is a RuntimeError: the model sees the failure
+            raise ToolException(f"{spec['name']}: {exc}") from None
+        return result.get("output")
+
+    return StructuredTool.from_function(
+        coroutine=call,
+        name=spec["name"],
+        description=spec["description"],
+        args_schema=spec["schema"],
+        handle_tool_error=True,
+    )
 
 
 def ensure_async(fn: Callable) -> Callable:
@@ -489,6 +511,8 @@ class Resources:
             if self.public_only:
                 config = {**config, "allow_private_network": False}
             return http_tool(name=name, config=config, resolve=self._resolve, transport=self._http_transport)
+        if hasattr(self.script_runner, "exchange") and self.workspace is not None:  # sandbox: tool code stays out
+            return sandboxed_tool(config["import_path"], self.workspace, self.script_runner)
         return safe_import(config["import_path"], self.workspace)
 
     async def search_knowledge(
@@ -1520,9 +1544,10 @@ def schema_guard_node(
 def script_node(*, import_path: str, resources: Resources | None = None) -> Callable:
     """User code from the Workspace: 'package.module:function', signature (state) -> dict (sync or async).
 
-    With a sandbox configured (M5-T4) each call runs in an isolated process instead of in this one.
+    With a sandbox configured (M5-T4) each call runs in an isolated process instead of in this one, whatever
+    workspace folder the function lives in (a `tools.` or `nodes.` path used to run in-process).
     """
-    if resources is not None and resources.script_runner is not None and is_script_path(import_path):
+    if resources is not None and resources.script_runner is not None:
         return resources.script_runner(import_path)
     return ensure_async(safe_import(import_path, resources.workspace if resources else None))
 

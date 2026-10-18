@@ -106,6 +106,14 @@ function ghostOf(p: Proposal | null): Ghost | null {
   return { workflow: normalize(p.preview), diff: p.diff };
 }
 
+/** The Copilot answer being read; leaving the editor stops reading it (the server finishes the turn). */
+let copilotStream: AbortController | null = null;
+
+export function stopCopilotStream(): void {
+  copilotStream?.abort();
+  copilotStream = null;
+}
+
 export const useCopilot = create<CopilotState>((set, get) => ({
   workflowId: null,
   conversation: null,
@@ -148,11 +156,14 @@ export const useCopilot = create<CopilotState>((set, get) => ({
         case "error": set({ error: e.message }); break;
       }
     };
+    copilotStream?.abort();
+    const mine = (copilotStream = new AbortController());
     try {
-      await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode }, onEvent as never);
+      await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode }, onEvent as never, mine.signal);
     } catch (e) {
-      if (get().workflowId === workflowId) set({ error: (e as Error).message });
+      if (get().workflowId === workflowId && !mine.signal.aborted) set({ error: (e as Error).message });
     } finally {
+      if (copilotStream === mine) copilotStream = null;
       if (get().workflowId === workflowId) {
         set({ busy: false, live: null });
         await get().load(workflowId).catch(() => undefined);

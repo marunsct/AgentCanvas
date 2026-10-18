@@ -27,6 +27,7 @@ from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
+from agentcanvas.db.rls import bypasses_policies
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
@@ -45,6 +46,7 @@ from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
+from agentcanvas.services.run_gate import RunGate
 from agentcanvas.services.secrets import SecretCache
 from agentcanvas.services.trace_export import TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
@@ -69,6 +71,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.auth_mode in ("oidc", "matura"):
             async with db.sessionmaker() as s:
                 await retire_dev_user(s)
+        if settings.auth_mode == "matura" and await bypasses_policies(db.engine):
+            # row-level security is the tenant boundary in Matura mode; a superuser or BYPASSRLS role skips it
+            hint = "connect the API as an ordinary role (NOSUPERUSER NOBYPASSRLS); keep the owner for migrations"
+            if settings.env in ("staging", "prod"):
+                raise RuntimeError(f"the database role bypasses row-level security: {hint}")
+            log.warning("rls.bypassed", hint=hint)
         app.state.db = db
         observability.trace_engine(db.engine)
         adapter = get_adapter("langchain")  # the host framework: long-term memory, MCP browsing, model resolution
@@ -104,6 +112,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.runner = runner
             runner.prepare_hooks.append(
                 lambda wf: app.state.secrets.refresh(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT))
+            )
+            # every run, whatever started it (triggers, events, hand-over), passes the security rules first
+            runner.prepare_hooks.append(
+                RunGate(
+                    settings,
+                    lambda wf: app.state.projects.registry(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)),
+                )
             )
             app.state.events = EventService(db, runner, app.state.projects)
             runner.after_hooks.append(app.state.events.on_run_finished)
@@ -169,7 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.28.0", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.28.1", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

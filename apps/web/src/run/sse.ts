@@ -1,25 +1,48 @@
 import type { RunEvent } from "./events";
 import { API_BASE, authFetch, failed } from "../api/client";
 
-/** POST + read a Server-Sent-Events stream (EventSource only supports GET, so we use fetch). */
-export async function postStream(path: string, body: unknown, onEvent: (e: RunEvent) => void): Promise<void> {
+/** One SSE message's events: its `data:` lines, each a JSON event. A malformed line is skipped, not fatal. */
+export function parseMessage(message: string): RunEvent[] {
+  const out: RunEvent[] = [];
+  for (const line of message.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    try {
+      out.push(JSON.parse(line.slice(5).trimStart()) as RunEvent);
+    } catch {
+      /* one bad frame must not end the stream */
+    }
+  }
+  return out;
+}
+
+/**
+ * POST + read a Server-Sent-Events stream (EventSource only supports GET, so we use fetch).
+ * `signal` stops reading (leaving the editor, a newer run): the run itself goes on on the server.
+ */
+export async function postStream(
+  path: string, body: unknown, onEvent: (e: RunEvent) => void, signal?: AbortSignal,
+): Promise<void> {
   const res = await authFetch(`${API_BASE}${path}`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal,
   });
   if (!res.ok || !res.body) throw await failed(res);
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  const stop = () => void reader.cancel().catch(() => undefined);
+  signal?.addEventListener("abort", stop, { once: true });
   let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) >= 0) { // one SSE message ends with a blank line
-      const message = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      for (const line of message.split("\n")) {
-        if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as RunEvent);
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done || signal?.aborted) break;
+      buffer += value;
+      let sep: RegExpExecArray | null;
+      while ((sep = /\r?\n\r?\n/.exec(buffer))) { // one SSE message ends with a blank line
+        const message = buffer.slice(0, sep.index);
+        buffer = buffer.slice(sep.index + sep[0].length);
+        for (const e of parseMessage(message)) onEvent(e);
       }
     }
+  } finally {
+    signal?.removeEventListener("abort", stop);
   }
 }

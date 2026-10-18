@@ -27,6 +27,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.adapters.spi import supports
 from agentcanvas.db.models import Run, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, Unavailable
 from agentcanvas.ir.contract import contract
@@ -37,6 +38,7 @@ log = get_logger(__name__)
 
 BATCH = 100
 ORPHANED = "its server stopped unexpectedly; it continues automatically"
+NO_STATE = "its server stopped, and this framework keeps no saved state to continue from; start the run again"
 # (session, thread_id, version_id of the handed-over run) -> (workflow, Runner.start kwargs)
 Target = Callable[[AsyncSession, str, str | None], Awaitable[tuple[Workflow, dict[str, Any]]]]
 
@@ -111,6 +113,13 @@ class HandoverJob:
             await s.commit()
         return res.rowcount == 1  # type: ignore[attr-defined]
 
+    async def _fail(self, run_id: str, thread_id: str) -> None:
+        async with self.db.sessionmaker() as s:
+            await s.execute(update(Run).where(Run.id == run_id).values(status="error", error=NO_STATE))
+            await s.execute(update(Thread).where(Thread.id == thread_id).values(status="error"))
+            await s.commit()
+        log.warning("handover.cannot_continue", run_id=run_id, thread_id=thread_id)
+
     async def sweep(self, now: datetime | None = None) -> list[str]:
         """Hand over the runs whose instance stopped without draining; returns their ids."""
         cutoff = (now or datetime.now(UTC)) - timedelta(seconds=self.orphan_after_s)
@@ -154,6 +163,11 @@ class HandoverJob:
             try:
                 async with self.db.sessionmaker() as s:
                     wf, kw = await self.target(s, thread_id, version_id)
+                if not supports(self.runner.adapter_for(wf), "thread_state"):
+                    # no saved state to continue from: starting again would rerun the flow with no input and
+                    # repeat its side effects, so the run ends with an error the person can act on
+                    await self._fail(run_id, thread_id)
+                    continue
                 h = await self.runner.start(wf, thread_id=thread_id, input=None, origin="handover", **kw)
             except Conflict:  # someone already continued the conversation
                 continue

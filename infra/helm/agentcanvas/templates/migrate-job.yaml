@@ -30,7 +30,12 @@ spec:
         - name: migrate
           image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
           imagePullPolicy: {{ .Values.image.api.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
+          # migrations as the owner (MIGRATE_DATABASE_URL, else DATABASE_URL); with APP_DB_USER and APP_DB_PASSWORD
+          # in the secret, the API's role is then created or updated without superuser or BYPASSRLS
+          command:
+            - sh
+            - -c
+            - export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && alembic upgrade head && python -m agentcanvas.db.app_role
           env:
             {{- include "agentcanvas.apiEnv" . | nindent 12 }}
           envFrom:

@@ -1,6 +1,6 @@
 # AgentCanvas
 
-**Visual agentic workflow builder** — a ComfyUI-style canvas where you drag widgets, wire them up and add scripts, while the backend compiles the picture into a real, idiomatic **LangGraph / LangChain / Deep Agents** Python project that you can run, debug, test, export and deploy.
+**Visual agentic workflow builder** — a ComfyUI-style canvas where you drag widgets, wire them up and add scripts, while the backend compiles the picture into a real, idiomatic project for the framework you pick — **LangGraph / LangChain / Deep Agents**, the OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Microsoft Agent Framework, Strands, LlamaIndex or Mastra (TypeScript) — that you can run, debug, test, export and deploy.
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) — current release **v0.1.0 (MVP)**; **v0.2.0** (accounts & access) merged, tag pending |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — code at **v0.28.x**; no release has been tagged yet (tags are the owner's call) |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 | Handover (continue in a new session or as a new person) | [HANDOVER.md](HANDOVER.md) |
 
@@ -132,3 +132,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S33–S34: Microsoft Agent Framework flows (v0.24.0) | ✅ done: workflows run and export as Agent Framework flows, with its own agents and tool approvals |
 | S35: Strands and LlamaIndex flows (v0.25.0) | ✅ done: workflows run and export as Strands or LlamaIndex flows, with the frameworks' own agents and tool approvals |
 | S36: Mastra flows (v0.26.0) | ✅ done: workflows run on Node.js and export as TypeScript Mastra projects, with Mastra's own agents and tool approvals; the [competitive roadmap](docs/agent-canvas-spec/16-competitive-roadmap.md) is complete |
+| v0.26.1–v0.26.3: review after the roadmap (40 fixes), framework setup in Docker | ✅ done (#41–#43) |
+| v0.27.0–v0.28.0: sign-in through Matura, workspaces, row-level security, audit sink | ✅ done (#49, #50) |
+| v0.28.1: fixes from the deep review of 2026-10-18 | in review (`claude/review-hardening`) |

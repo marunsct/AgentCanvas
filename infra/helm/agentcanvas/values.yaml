@@ -7,6 +7,9 @@ imagePullSecrets: []
 
 secrets:
   # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY; optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
+  # Row-level security (Matura mode) needs the API to connect as an ordinary role: point DATABASE_URL at that role
+  # and add MIGRATE_DATABASE_URL (the owner) plus APP_DB_USER / APP_DB_PASSWORD; the migrate Job creates the role.
+  # A superuser or BYPASSRLS role is refused at startup in staging and prod when AUTH_MODE=matura.
   # Create it yourself, or with External Secrets from your cloud's secret manager.
   existingSecret: ""
 

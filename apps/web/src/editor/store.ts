@@ -82,6 +82,39 @@ let saving: Promise<void> | null = null; // the commands request in flight
 let layoutTimer: ReturnType<typeof setTimeout> | null = null;
 let layoutDirty: Layout = {};
 const historyMode: { next: "push" | "undo" | "redo" } = { next: "push" };
+const savedVersion = new Map<string, number>(); // workflow id -> version after its last saved batch
+
+/** Edits not yet on the server (queued, waiting for the debounce, or in flight). */
+export function hasUnsavedEdits(): boolean {
+  const { pending, inflight } = useEditor.getState();
+  return pending.length > 0 || inflight || Object.keys(layoutDirty).length > 0;
+}
+
+/**
+ * Send what a workflow still has queued after the editor moved on (another workflow opened): reset() used to drop
+ * it. Runs after any save in flight, with the version that save produced. Fire and forget.
+ */
+async function saveLeftBehind(workflowId: string, commands: Command[], version: number, positions: Layout) {
+  const before = saving;
+  if (before) await before.catch(() => undefined);
+  if (commands.length) {
+    const at = savedVersion.get(workflowId) ?? version;
+    await apiFetch(`/workflows/${workflowId}/commands`, { method: "POST", json: { commands }, version: at })
+      .catch((e: Error) => console.warn(`edits to ${workflowId} were not saved:`, e.message));
+  }
+  if (Object.keys(positions).length) {
+    await apiFetch(`/workflows/${workflowId}/layout`, { method: "PUT", json: { positions } }).catch(() => undefined);
+  }
+}
+
+if (typeof window !== "undefined") {
+  // closing the tab with edits still queued asks first (the debounce and the request take a moment)
+  window.addEventListener("beforeunload", (e) => {
+    if (!hasUnsavedEdits()) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+}
 
 const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
@@ -136,6 +169,7 @@ async function save(workflowId: string): Promise<void> {
     const res = await apiFetch<CommandResult>(`/workflows/${workflowId}/commands`, {
       method: "POST", json: { commands: batch }, version,
     });
+    savedVersion.set(workflowId, res.version);
     if (get().workflowId !== workflowId) return; // another workflow was opened meanwhile
     const rest = get().pending; // edits made while the request was in flight are re-applied on top
     const { undoStack, redoStack } = get();
@@ -150,9 +184,29 @@ async function save(workflowId: string): Promise<void> {
   } catch (e) {
     if (get().workflowId !== workflowId) return;
     const conflict = e instanceof ApiError && e.status === 409;
-    const text = conflict ? "Updated elsewhere — reloaded the latest version." : `Edit rejected: ${(e as Error).message}`;
-    set({ pending: [], notice: { kind: conflict ? "info" : "error", text } });
-    await get().load(workflowId).catch(() => undefined);
+    const mine = conflict ? [...batch, ...get().pending] : []; // the edits not on the server
+    set({ pending: [] });
+    const reloaded = await get().load(workflowId).then(() => true, () => false);
+    if (get().workflowId !== workflowId) return;
+    if (!conflict) {
+      set({ notice: { kind: "error", text: `Edit rejected: ${(e as Error).message}` } });
+    } else if (!mine.length) {
+      set({ notice: { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
+    } else {
+      // a 409 used to drop the person's edits: put them back on top of the latest version and save them again
+      const latest = get().wf;
+      try {
+        if (!latest || !reloaded) throw new CommandError("the workflow did not reload");
+        set({
+          wf: applyAll(latest, mine), pending: mine,
+          notice: { kind: "info", text: "Updated elsewhere — your edits were applied to the latest version." },
+        });
+        if (flushTimer) clearTimeout(flushTimer);
+        flushTimer = setTimeout(() => void get().flush(), 0);
+      } catch {
+        set({ notice: { kind: "error", text: "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again." } });
+      }
+    }
   } finally {
     if (get().workflowId === workflowId) set({ inflight: false });
   }
@@ -162,9 +216,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   ...initial,
 
   reset: () => {
+    const { workflowId, pending, version } = get();
     if (flushTimer) clearTimeout(flushTimer);
     if (layoutTimer) clearTimeout(layoutTimer);
     flushTimer = layoutTimer = null;
+    if (workflowId && (pending.length || Object.keys(layoutDirty).length)) {
+      void saveLeftBehind(workflowId, pending, version, layoutDirty); // queued edits are saved, not dropped
+    }
     layoutDirty = {};
     set({ ...initial });
   },
@@ -243,7 +301,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
       const body = layoutDirty;
       layoutDirty = {};
-      if (workflowId) void apiFetch(`/workflows/${workflowId}/layout`, { method: "PUT", json: { positions: body } });
+      if (workflowId) {
+        void apiFetch(`/workflows/${workflowId}/layout`, { method: "PUT", json: { positions: body } }).catch((e: Error) => {
+          if (get().workflowId === workflowId) set({ notice: { kind: "error", text: `Positions not saved: ${e.message}` } });
+        });
+      }
     };
     layoutTimer = setTimeout(save, 400);
   },

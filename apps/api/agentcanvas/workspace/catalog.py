@@ -50,6 +50,67 @@ def _functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]
     return [n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
 
 
+_JSON_TYPES = {
+    "str": "string",
+    "int": "integer",
+    "float": "number",
+    "bool": "boolean",
+    "list": "array",
+    "dict": "object",
+}
+
+
+def _arg_schema(ann: ast.expr | None) -> dict[str, Any]:
+    """A JSON Schema for one annotated argument, read from the source: builtins, `list[X]`, `X | None`."""
+    if isinstance(ann, ast.Name) and ann.id in _JSON_TYPES:
+        return {"type": _JSON_TYPES[ann.id]}
+    if isinstance(ann, ast.Subscript) and isinstance(ann.value, ast.Name) and ann.value.id in ("list", "dict"):
+        if ann.value.id == "list":
+            return {"type": "array", "items": _arg_schema(ann.slice)}
+        return {"type": "object"}
+    if isinstance(ann, ast.BinOp) and isinstance(ann.op, ast.BitOr):  # `X | None`
+        sides = [s for s in (ann.left, ann.right) if not (isinstance(s, ast.Constant) and s.value is None)]
+        return _arg_schema(sides[0]) if len(sides) == 1 else {}
+    return {}  # anything else: accepted as given
+
+
+def tool_spec(root: Path, import_path: str) -> dict[str, Any]:
+    """Name, description and argument schema of a workspace `@tool`, read from its source and never imported.
+
+    With a sandbox, the host builds a stand-in tool from this and runs every call in the sandbox (C1 of the
+    2026-10-18 review), so a tool module's code never runs in the API process."""
+    from agentcanvas.security.imports import is_allowed_import_path
+
+    if not is_allowed_import_path(import_path):
+        raise ValueError(f"'{import_path}' is not a workspace tool")
+    module, _, attr = import_path.partition(":")
+    path = root.joinpath(*module.split(".")).with_suffix(".py")
+    if not path.is_file():
+        raise LookupError(f"workspace module '{module}' not found")
+    tree = ast.parse(path.read_text(), filename=path.name)
+    fn = next((f for f in _functions(tree) if f.name == attr), None)
+    if fn is None:
+        raise LookupError(f"'{attr}' is not a function in {module}")
+    call = dict(_decorators(fn)).get("tool")
+    named = call.args[0].value if call and call.args and isinstance(call.args[0], ast.Constant) else None
+    args = fn.args
+    positional = [*args.posonlyargs, *args.args]
+    defaults: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults)) + list(args.defaults)
+    props: dict[str, Any] = {}
+    required: list[str] = []
+    for arg, default in [*zip(positional, defaults, strict=True), *zip(args.kwonlyargs, args.kw_defaults, strict=True)]:
+        if arg.arg in ("self", "cls", "runtime", "config"):
+            continue
+        props[arg.arg] = _arg_schema(arg.annotation)
+        if default is None:
+            required.append(arg.arg)
+    return {
+        "name": named if isinstance(named, str) else fn.name,
+        "description": (ast.get_docstring(fn) or "").strip() or fn.name,
+        "schema": {"type": "object", "properties": props, "required": required},
+    }
+
+
 def _config_schema(root: Path, module: str, fn_name: str, raw: Any, import_code: bool) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw

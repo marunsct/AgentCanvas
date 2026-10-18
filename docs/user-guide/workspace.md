@@ -100,6 +100,11 @@ Workspace code runs where the server is configured to run it (`AGENTCANVAS_SCRIP
 (experimental). **Sandbox policy** edits `sandbox.json`: time and memory limits, an outbound network allow-list,
 and headers injected into outgoing requests (so code can call an API without seeing its key).
 
+Outside the API process, every piece of workspace code runs there: Script steps, custom widgets, event handlers and
+Python tools (each tool call is one sandbox run; the tool's name and arguments are read from its source). A child
+process gets time, memory and file limits and no network by default, but runs as the server's user and is not an
+isolation boundary; use Docker for code you do not trust.
+
 ## Events
 
 Events start or resume workflows when something happens elsewhere ("a lead was created", "a payment failed").

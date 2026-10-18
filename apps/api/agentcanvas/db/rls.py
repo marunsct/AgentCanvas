@@ -117,3 +117,13 @@ async def scope(session: AsyncSession, org_id: str) -> None:
 
     if session.in_transaction():
         await session.execute(sql, {"org": org_id})
+
+
+async def bypasses_policies(engine: Any) -> bool:
+    """True when the API's database role skips row-level security (a superuser or a role with BYPASSRLS), as the
+    official Postgres image's POSTGRES_USER does. Always False outside Postgres."""
+    if engine.dialect.name != "postgresql":
+        return False
+    async with engine.connect() as conn:
+        found = await conn.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"))
+        return bool(found.scalar())
