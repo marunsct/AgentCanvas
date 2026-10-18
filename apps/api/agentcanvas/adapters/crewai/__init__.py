@@ -182,7 +182,24 @@ class CrewAIAdapter:
                     self._paused[spec.thread_id] = paused
                 elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
                     self._paused.pop(spec.thread_id, None)
-                yield ev
+                yield run_scoped_interrupts(ev, spec.run_id)
+
+
+def run_scoped_interrupts(ev: dict[str, Any], run_id: str) -> dict[str, Any]:
+    """Interrupt ids made unique per run. The workers name a pause `<thread>:<block>`, so a second pause at the
+    same block of one conversation (a loop back through an approval, a re-asked question, the next chat message)
+    reused the first one's id: the inbox kept the old, decided row and the new pause could not be answered."""
+
+    def own(info: Any) -> Any:
+        if isinstance(info, dict) and info.get("canvas_node_id"):
+            return {**info, "id": f"{run_id}:{info['canvas_node_id']}"}
+        return info
+
+    if isinstance(ev.get("interrupts"), list):
+        ev = {**ev, "interrupts": [own(i) for i in ev["interrupts"]]}
+    if ev.get("type") == "CUSTOM" and ev.get("name") == "ac.interrupt":
+        ev = {**ev, "value": own(ev.get("value"))}
+    return ev
 
 
 class ServerHost:

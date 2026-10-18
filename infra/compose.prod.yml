@@ -9,7 +9,8 @@ name: agentcanvas
 x-api: &api
   image: ${API_IMAGE:-agentcanvas-api:latest}
   environment: &api-env
-    DATABASE_URL: postgresql://agentcanvas:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/agentcanvas
+    # the API connects as an ordinary role, so row-level security applies (the owner only runs migrations)
+    DATABASE_URL: postgresql://agentcanvas_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}@postgres:5432/agentcanvas
     AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
     AGENTCANVAS_EDITION: ${AGENTCANVAS_EDITION:-dev}
     AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:?set AGENTCANVAS_SECRET_KEY (64+ random characters)}
@@ -23,6 +24,7 @@ x-api: &api
     AGENTCANVAS_OIDC_CLIENT_ID: ${AGENTCANVAS_OIDC_CLIENT_ID:-}
     AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS: ${AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS:-[]}
     AGENTCANVAS_CORS_ORIGINS: ${AGENTCANVAS_CORS_ORIGINS:-[]}
+    # subprocess is limits only, not isolation (same user, same filesystem); docker isolates workspace code
     AGENTCANVAS_SCRIPT_EXECUTION: ${AGENTCANVAS_SCRIPT_EXECUTION:-subprocess}
     FORWARDED_ALLOW_IPS: "*"                   # only nginx (web) reaches the API on this network
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -46,7 +48,13 @@ services:
 
   migrate:
     <<: *api
-    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *api-env
+      DATABASE_URL: postgresql://agentcanvas:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/agentcanvas
+      APP_DB_USER: agentcanvas_app
+      APP_DB_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}
+    # migrations as the owner, then the API's own role: no superuser, no BYPASSRLS
+    command: ["sh", "-c", "alembic upgrade head && python -m agentcanvas.db.app_role"]
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -54,6 +62,8 @@ services:
   api:
     <<: *api
     deploy:
+      # paused runs of flows on frameworks other than LangGraph live in one replica's memory (HANDOVER §9):
+      # use API_REPLICAS=1 for those until paused state moves to the database
       replicas: ${API_REPLICAS:-2}
     depends_on:
       migrate: { condition: service_completed_successfully }

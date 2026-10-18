@@ -60,7 +60,8 @@ services:
     image: ${WEB_IMAGE:-agentcanvas-web:latest}
     environment:
       API_UPSTREAM: http://api:8000
-    ports: ["${WEB_PORT:-7777}:8080"]
+    # no sign-in here, so only this computer may reach it; WEB_BIND=0.0.0.0 opens it to your network on purpose
+    ports: ["${WEB_BIND:-127.0.0.1}:${WEB_PORT:-7777}:8080"]
     depends_on:
       api: { condition: service_healthy }
     healthcheck:

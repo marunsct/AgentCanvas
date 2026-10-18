@@ -48,6 +48,36 @@ def _load(import_path: str):
     return getattr(mod, attr)
 
 
+def _tool_shim() -> None:
+    """Workspace tools are written with LangChain's `@tool`; a bare sandbox image has no LangChain, so a stand-in
+    decorator keeps the plain function (the host already knows the tool's name and arguments)."""
+    try:
+        import langchain_core.tools  # noqa: F401
+    except ImportError:
+        import types
+
+        def tool(*args, **_kw):
+            if len(args) == 1 and callable(args[0]):
+                return args[0]
+            return lambda fn: fn
+
+        tools = types.ModuleType("langchain_core.tools")
+        tools.tool = tool  # type: ignore[attr-defined]
+        core = types.ModuleType("langchain_core")
+        core.tools = tools  # type: ignore[attr-defined]
+        sys.modules.setdefault("langchain_core", core)
+        sys.modules.setdefault("langchain_core.tools", tools)
+
+
+def _call_tool(obj, args: dict):
+    """One call of a workspace tool: a LangChain tool object (`ainvoke`/`invoke`) or a plain function."""
+    if hasattr(obj, "ainvoke"):
+        return obj.ainvoke(args)
+    if hasattr(obj, "invoke"):
+        return obj.invoke(args)
+    return obj(**args)
+
+
 class _Event:
     def __init__(self, e: dict):
         self.id, self.type, self.data, self.source = (
@@ -82,6 +112,14 @@ def main() -> int:
     out = sys.stdout
     try:
         payload = json.loads(sys.stdin.read() or "{}")
+        if "tool_args" in payload:  # one call of a workspace tool: return its output
+            _tool_shim()
+            with contextlib.redirect_stdout(sys.stderr):
+                output = _call_tool(_load(sys.argv[1]), dict(payload["tool_args"] or {}))
+                if inspect.isawaitable(output):
+                    output = asyncio.run(output)  # type: ignore[arg-type]
+            out.write(json.dumps({"ok": True, "output": output}, default=str) + "\n")
+            return 0
         if "event" in payload:  # an event handler: return the actions it recorded
             act = _Actions()
             with contextlib.redirect_stdout(sys.stderr):

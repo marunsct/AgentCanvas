@@ -29,7 +29,6 @@ from agentcanvas.ir.models import Node, Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.registry.adapters import all_manifests
 from agentcanvas.runtime.types import InterruptInfo, RunSpec
-from agentcanvas.security.imports import is_script_path
 from agentcanvas.workspace.loader import load_attr
 
 YES_WORDS = {"yes", "y", "true", "approve", "approved", "ok"}
@@ -131,7 +130,7 @@ class EchoAdapter:
 
     def script(self, resources: Any, import_path: str) -> Any:
         runner = getattr(resources, "script_runner", None)
-        if runner is not None and is_script_path(import_path):
+        if runner is not None:  # sandboxed: every workspace path, not only scripts.
             return runner(import_path)
         fn = load_attr(import_path, getattr(resources, "workspace", None))
 
