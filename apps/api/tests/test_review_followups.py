@@ -119,3 +119,76 @@ async def test_the_echo_engine_waits_for_every_branch_of_a_join_in_a_loop():
     assert events[-1]["output"]["log"] == ["a", "b", "c", "d"] * 2  # j ran once per pass, after both branches
     joins = [ev for ev in events if ev["type"] == "STEP_FINISHED" and ev["canvas_node_id"] == "n_j"]
     assert len(joins) == 2
+
+
+async def test_two_servers_cannot_run_one_conversation_at_once(app, api_client):
+    """M2: the "one run per conversation" rule lived in each server's memory only; the thread is now claimed in the
+    database, so another replica's run on it is refused."""
+    import pytest
+    from sqlalchemy import update
+    from test_frameworks import greeter
+
+    from agentcanvas.db.models import Thread
+    from agentcanvas.errors import Conflict
+
+    wf = await greeter(api_client)
+    r = await api_client.post(
+        f"/v1/workflows/{wf['id']}/runs/stream", json={"input": {"who": "Ada"}, "thread_id": "th_c"}
+    )
+    assert r.status_code == 200
+    async with app.state.db.sessionmaker() as s:  # as if another replica were running it now
+        await s.execute(update(Thread).where(Thread.id == "th_c").values(status="running"))
+        await s.commit()
+    from agentcanvas.ir.models import Workflow
+
+    with pytest.raises(Conflict):
+        await app.state.runner.start(Workflow.model_validate(wf["ir"]), thread_id="th_c", input={"who": "Bo"})
+    assert "th_c" not in app.state.runner.active_by_thread
+
+
+async def test_request_bodies_over_the_limit_are_refused(api_client):
+    from agentcanvas.api.limits import MAX_BODY_BYTES
+
+    big = b"x" * (MAX_BODY_BYTES + 1)
+    r = await api_client.post("/v1/projects", content=big, headers={"content-type": "application/json"})
+    assert r.status_code == 413
+
+
+def test_a_broken_check_is_reported_not_raised(monkeypatch):
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.validation import engine
+
+    def broken(ctx):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(engine, "RULES", [*engine.RULES, broken])
+    wf = Workflow.model_validate({"id": "wf_g", "name": "g", **GREETER})
+    found = [d for d in engine.validate(wf) if d.code == "E999"]
+    assert len(found) == 1 and "broken" in found[0].message and "boom" in found[0].message
+
+
+def test_frameworks_that_ignore_node_policies_say_so(monkeypatch):
+    """P007: retry, timeout, cache and error routes are applied by LangGraph only; elsewhere they were dropped."""
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.validation.engine import validate
+
+    monkeypatch.setenv("AGENTCANVAS_ADAPTERS", "langchain,echo")
+    node = {**GREETER["nodes"][0], "policies": {"timeout": {"run_timeout": 5}}}
+    for framework, expected in (("langchain", 0), ("echo", 1)):
+        wf = Workflow.model_validate({"id": "wf_p", "name": "p", **GREETER, "nodes": [node], "framework": framework})
+        assert len([d for d in validate(wf) if d.code == "P007"]) == expected, framework
+
+
+def test_a_workflow_from_a_newer_server_gets_a_plain_message():
+    import pytest
+    from pydantic import ValidationError
+
+    from agentcanvas.ir.models import Workflow
+
+    with pytest.raises(ValidationError, match="newer AgentCanvas"):
+        Workflow.model_validate({"id": "w", "name": "x", "ir_version": "9.0"})
+    assert Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.0"}).ir_version == "1.2"

@@ -125,7 +125,10 @@ def validate(
     ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp)
     out: list[Diagnostic] = []
     for fn in RULES:
-        out.extend(fn(ctx))
+        try:
+            out.extend(fn(ctx))
+        except Exception as exc:  # noqa: BLE001 - one broken check must not turn every edit into a 500
+            out.append(error("E999", f"the check '{fn.__name__}' failed: {type(exc).__name__}: {exc}"))
     if policies:
         out.extend(check_policies(wf, policies, ctx.registry, environment=environment))
     # de-duplicate and sort deterministically: errors first, then by code/element

@@ -16,7 +16,8 @@ Two settings decide what a connection sees:
 The API's own connections start with `agentcanvas.all_tenants=on` (a startup option, see `Database`), so jobs that
 work across organisations (runs handed over, retention, triggers, the public run API) and the `dev` and `oidc` modes
 behave as before. In `matura` mode a signed-in request narrows its database session to the token's organisation for
-every transaction (`scope`), so a query that forgets its `org_id` filter still returns nothing of another tenant.
+every transaction (`scope`), and so does every other session opened while serving it or by work it started
+(`TenantSession`), so a query that forgets its `org_id` filter still returns nothing of another tenant.
 
 Postgres superusers and roles with `BYPASSRLS` skip every policy: connect the API as an ordinary role (the
 migration forces the policies on the tables' owner too). SQLite has no row-level security; there the API's own
@@ -25,10 +26,12 @@ filters are the only isolation, as before.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 POLICY = "agentcanvas_tenant"
 ALL_TENANTS = "agentcanvas.all_tenants"
@@ -98,6 +101,23 @@ def connect_options(url: str, connect_args: dict[str, Any] | None = None) -> dic
     return args
 
 
+REQUEST_ORG: ContextVar[str | None] = ContextVar("agentcanvas_request_org", default=None)
+_NARROW = text(f"SELECT set_config('{TENANT}', :org, true), set_config('{ALL_TENANTS}', 'off', true)")
+
+
+class TenantSession(Session):
+    """The API's sessions. One opened while a Matura request is being served (or by work it started) is narrowed
+    to the request's organisation like the request's own session, not left in all-tenants mode."""
+
+
+@event.listens_for(TenantSession, "after_begin")
+def _narrow_request_sessions(session: Session, _transaction: Any, connection: Any) -> None:
+    org = REQUEST_ORG.get()
+    if org is None or "matura_org" in session.info or connection.dialect.name != "postgresql":
+        return
+    connection.execute(_NARROW, {"org": org})
+
+
 async def scope(session: AsyncSession, org_id: str) -> None:
     """Limit `session` to one organisation: now, if a transaction is open, and at the start of every later one.
 
@@ -106,6 +126,7 @@ async def scope(session: AsyncSession, org_id: str) -> None:
     """
     if session.bind is None or session.bind.dialect.name != "postgresql":
         return
+    REQUEST_ORG.set(org_id)  # other sessions this request opens are narrowed too (TenantSession)
     first = "matura_org" not in session.info
     session.info["matura_org"] = org_id
     sql = text(f"SELECT set_config('{TENANT}', :org, true), set_config('{ALL_TENANTS}', 'off', true)")

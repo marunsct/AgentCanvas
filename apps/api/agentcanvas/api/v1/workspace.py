@@ -6,6 +6,7 @@ use) next to the project's shared code at the root.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -68,6 +69,17 @@ async def workspace(project_id: str, request: Request, session: AsyncSession = D
     return request.app.state.projects.workspace(project_id)
 
 
+_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+async def _off_loop(ws: Workspace, fn: Any) -> Any:
+    """A workspace change (git add and commit) in a worker thread, one at a time per workspace: it used to run on
+    the event loop and stall every stream and request of this server while git and ruff ran."""
+    lock = _LOCKS.setdefault(str(ws.root), asyncio.Lock())
+    async with lock:
+        return await asyncio.to_thread(_guard, fn)
+
+
 def _guard(fn):
     try:
         return fn()
@@ -121,22 +133,22 @@ def _lint(ws: Workspace, path: str, request: Request, project_id: str) -> list[L
 @router.get("/files/{path:path}", response_model=FileContent)
 async def read_file(project_id: str, path: str, request: Request, ws: Workspace = Depends(workspace)) -> FileContent:
     content = _guard(lambda: ws.read(path))
-    return FileContent(path=path, content=content, diagnostics=_lint(ws, path, request, project_id))
+    diagnostics = await asyncio.to_thread(_lint, ws, path, request, project_id)  # ruff runs as a process
+    return FileContent(path=path, content=content, diagnostics=diagnostics)
 
 
 @router.put("/files/{path:path}", response_model=SavedFile)
 async def save_file(
     project_id: str, path: str, body: FileSave, request: Request, ws: Workspace = Depends(workspace)
 ) -> SavedFile:
-    info = _guard(lambda: ws.write(path, body.content))
-    return SavedFile(
-        path=info.path, size=info.size, modified=info.modified, diagnostics=_lint(ws, path, request, project_id)
-    )
+    info = await _off_loop(ws, lambda: ws.write(path, body.content))
+    diagnostics = await asyncio.to_thread(_lint, ws, path, request, project_id)
+    return SavedFile(path=info.path, size=info.size, modified=info.modified, diagnostics=diagnostics)
 
 
 @router.delete("/files/{path:path}", status_code=204)
 async def delete_file(path: str, ws: Workspace = Depends(workspace)) -> Response:
-    _guard(lambda: ws.delete(path))
+    await _off_loop(ws, lambda: ws.delete(path))
     return Response(status_code=204)
 
 
@@ -163,7 +175,7 @@ async def new_script(
     lines = ["    # read inputs with state.get(...)"] + (
         ["    return {" + ", ".join(f'"{w}": None' for w in writes) + "}"] if writes else ["    return {}"]
     )
-    _guard(lambda: ws.write(path, SCRIPT_TEMPLATE.format(name=body.name, body="\n".join(lines))))
+    await _off_loop(ws, lambda: ws.write(path, SCRIPT_TEMPLATE.format(name=body.name, body="\n".join(lines))))
     return {"path": path, "import_path": f"{module}:run"}
 
 
