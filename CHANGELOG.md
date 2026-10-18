@@ -2,6 +2,47 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.28.1 — Fixes from the deep review of 2026-10-18 (not tagged yet)
+
+The critical and high-severity findings of a whole-codebase review that could be fixed without new design. The
+review and the plan for the rest are in the "AgentCanvas — Deep Review and Improvement Plan" doc.
+
+### Security
+- **All workspace code stays in the sandbox.** With `AGENTCANVAS_SCRIPT_EXECUTION` other than `inprocess`, Python
+  tools used to be imported and run in the API process (where they could read every project's decrypted secrets
+  and the server's keys), and a Script step whose import path started with `tools.`, `nodes.` or `events.` skipped
+  the sandbox. Now every tool call is one sandbox run (the tool's name, description and arguments are read from its
+  source by `workspace.catalog.tool_spec`, so the module is never imported by the server), and Script steps from
+  any workspace folder go to the sandbox. The sandbox child supplies a stand-in `@tool` where LangChain is missing.
+- **Every run passes the security rules first** (`services/run_gate.py`, a runner prepare hook): E041, E042, E043
+  and E080. Cron and webhook triggers without a deployment, event handlers' `start_workflow` and hand-over used to
+  run the draft unvalidated, so a builder could have a local (stdio) MCP server's command run by a schedule.
+- **The API connects as an ordinary database role.** Superusers skip row-level security, and the compose stacks
+  connected as the Postgres image's superuser. `python -m agentcanvas.db.app_role` creates the API's role (no
+  superuser, no `BYPASSRLS`); `compose.prod.yml` runs it after the migrations and connects the API as
+  `agentcanvas_app` (new required `POSTGRES_APP_PASSWORD`); the Helm migrate Job does the same with
+  `MIGRATE_DATABASE_URL`, `APP_DB_USER` and `APP_DB_PASSWORD` in the secret. In Matura mode the API refuses to
+  start in staging and prod on a role that bypasses row-level security, and warns elsewhere.
+- `compose.local.yml` (no sign-in) listens on 127.0.0.1 only; `WEB_BIND=0.0.0.0` opens it on purpose.
+
+### Fixed
+- **Pauses on CrewAI, Google ADK, the flow-engine frameworks and Mastra** were named `<conversation>:<block>`, so a
+  second pause at the same block of a conversation (a loop through an approval, a re-asked question, the next chat
+  message) reused a decided inbox item and could not be answered. Pause ids are now unique per run.
+- **Hand-over** after a redeploy or a lost server restarted runs of frameworks without saved state from the
+  beginning with no input, repeating their side effects. Such runs now end with an error that says to start again.
+- **Web: queued edits are kept.** Opening another workflow saved nothing still waiting in the queue, and a 409
+  conflict threw away the edits typed while a save was in flight. Queued edits are now saved, edits refused by a
+  conflict are re-applied on the latest version (or reported when they no longer fit), and closing the tab with
+  unsaved edits asks first. A failed layout save shows a notice.
+- **Web: streams stop when nobody reads them.** Run and Copilot streams kept reading after the editor was left,
+  and a stale run's events could land in a fresh run panel (A → Home → A). One malformed frame no longer ends a stream.
+
+### Changed
+- Versions follow the API: `pyproject.toml`, `package.json` and the Helm chart's `appVersion` (it said 0.2.0).
+- `compose.prod.yml` says that the `subprocess` sandbox is limits only, and that flows on frameworks other than
+  LangGraph need `API_REPLICAS=1` until paused runs move to the database.
+
 ## v0.28.0 — AgentCanvas on Matura: workspaces, database isolation, portal, audit sink (not tagged yet)
 
 The rest of Matura's sprint TS26 (full adoption) that fits AgentCanvas today.

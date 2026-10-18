@@ -115,9 +115,13 @@ of another. Background work (runs handed over, schedules, retention, the public 
 in all-tenants mode, as do the `dev` and `oidc` modes, which therefore work as before. A connection that sets
 neither sees no rows.
 
-- Connect the API as an ordinary role: Postgres superusers and roles with `BYPASSRLS` skip the policies. The role
-  may own the tables (the policies are forced, so they apply to the owner too); if it does not, run migrations as
-  the owner (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API.
+- Connect the API as an ordinary role: Postgres superusers and roles with `BYPASSRLS` skip the policies, and the
+  official Postgres image makes its `POSTGRES_USER` a superuser. In Matura mode the API refuses to start in staging
+  and prod on such a role (and warns elsewhere). `infra/compose.prod.yml` runs migrations as the owner and then
+  `python -m agentcanvas.db.app_role`, which creates `agentcanvas_app` (no superuser, no `BYPASSRLS`, password
+  `POSTGRES_APP_PASSWORD`); the API connects as that role. The Helm migrate Job does the same when the secret has
+  `MIGRATE_DATABASE_URL` (the owner), `APP_DB_USER` and `APP_DB_PASSWORD`. Elsewhere, run migrations as the owner
+  (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API.
 - The API sets `agentcanvas.all_tenants=on` as a connection startup option. Behind PgBouncer in transaction pooling
   mode, startup options are not passed on: use session pooling, or add the setting to the database role
   (`ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`).
