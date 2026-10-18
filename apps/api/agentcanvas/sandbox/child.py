@@ -69,6 +69,38 @@ def _tool_shim() -> None:
         sys.modules.setdefault("langchain_core.tools", tools)
 
 
+def _sdk_shim() -> None:
+    """Workspace code imports `agentcanvas.sdk` (`@on`, `@canvas_node`, `Event`, `Actions`); a bare sandbox image
+    (docker, LangSmith) has no AgentCanvas, so a stand-in with the same decorators keeps the plain functions. `emit`
+    and `secret` need the host and say so."""
+    try:
+        import agentcanvas.sdk  # noqa: F401
+    except ImportError:
+        import types
+
+        def _keep(*_a, **_kw):
+            return lambda fn: fn
+
+        def _host_only(name):
+            def fail(*_a, **_kw):
+                raise RuntimeError(f"agentcanvas.sdk.{name} is not available inside the sandbox")
+
+            return fail
+
+        sdk = types.ModuleType("agentcanvas.sdk")
+        sdk.on = _keep  # type: ignore[attr-defined]
+        sdk.canvas_node = _keep  # type: ignore[attr-defined]
+        sdk.Event = _Event  # type: ignore[attr-defined]
+        sdk.Actions = _Actions  # type: ignore[attr-defined]
+        sdk.emit = _host_only("emit")  # type: ignore[attr-defined]
+        sdk.secret = _host_only("secret")  # type: ignore[attr-defined]
+        pkg = types.ModuleType("agentcanvas")
+        pkg.__path__ = []  # type: ignore[attr-defined]
+        pkg.sdk = sdk  # type: ignore[attr-defined]
+        sys.modules.setdefault("agentcanvas", pkg)
+        sys.modules.setdefault("agentcanvas.sdk", sdk)
+
+
 def _call_tool(obj, args: dict):
     """One call of a workspace tool: a LangChain tool object (`ainvoke`/`invoke`) or a plain function."""
     if hasattr(obj, "ainvoke"):
@@ -112,6 +144,7 @@ def main() -> int:
     out = sys.stdout
     try:
         payload = json.loads(sys.stdin.read() or "{}")
+        _sdk_shim()
         if "tool_args" in payload:  # one call of a workspace tool: return its output
             _tool_shim()
             with contextlib.redirect_stdout(sys.stderr):

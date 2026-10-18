@@ -81,6 +81,7 @@ export function providerHint(p: ProviderInfo): string {
   if (!p.installed) parts.push(`not installed on this server (install ${p.package})`);
   if (p.key_env) parts.push(`key: the project secret or server variable ${p.key_env}`);
   if (p.local && p.base_url) parts.push(`runs on your machine, default ${p.base_url}`);
+  if (p.optional_key_env) parts.push(`optional key: ${p.optional_key_env}`);
   if (p.base_url_required) parts.push("set the Base URL below");
   if (p.notes) parts.push(p.notes);
   return parts.join(" · ");

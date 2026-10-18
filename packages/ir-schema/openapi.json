@@ -7066,6 +7066,17 @@
             "title": "Notes",
             "type": "string"
           },
+          "optional_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optional Key Env"
+          },
           "package": {
             "title": "Package",
             "type": "string"
@@ -8200,6 +8211,77 @@
           "created_at"
         ],
         "title": "SecretOut",
+        "type": "object"
+      },
+      "ServerModelsIn": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "used for this request only; omit to use the saved key",
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "provider": {
+            "pattern": "^[a-z0-9_\\-]+$",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "ServerModelsIn",
+        "type": "object"
+      },
+      "ServerModelsOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "models": {
+            "description": "model names, without the provider prefix",
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ServerModelsOut",
         "type": "object"
       },
       "SetChannels": {
@@ -10419,7 +10501,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.28.1"
+    "version": "0.28.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -18192,6 +18274,82 @@
           }
         ],
         "summary": "Put Setup",
+        "tags": [
+          "setup"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/setup/server-models": {
+      "post": {
+        "description": "The models a local server (Ollama, LM Studio, vLLM, llama.cpp) or an OpenAI-compatible API offers, read from\nits model list (`/api/tags` for Ollama, `/models` otherwise), so the model name can be picked instead of typed.",
+        "operationId": "server_models_v1_projects__project_id__setup_server_models_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerModelsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerModelsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Server Models",
         "tags": [
           "setup"
         ]

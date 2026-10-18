@@ -2,6 +2,27 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.28.2 — Keys for local model servers (not tagged yet)
+
+### Fixed
+- **Local model servers that require a key can be set up.** The first-run screen offered an API key only for hosted
+  providers and "Any OpenAI-compatible API", so LM Studio with authentication on, or vLLM and llama.cpp started with
+  `--api-key`, could not be used. LM Studio, vLLM and llama.cpp now take an optional key, stored as the project
+  secret `LMSTUDIO_API_KEY`, `VLLM_API_KEY` or `LLAMACPP_API_KEY` (`optional_key_env` in `providers.json`), and
+  chat models of those providers use it when their config names no key (`nodes.OPTIONAL_KEYS`, the server variable
+  of the same name works too); without one they keep the placeholder key.
+- **Event handlers and custom nodes run in docker and LangSmith sandboxes.** The sandbox child runs on an image
+  without AgentCanvas, so workspace code's `from agentcanvas.sdk import on` (or `canvas_node`, `Event`, `Actions`)
+  failed with `ModuleNotFoundError` there; the tests passed only because the test machine's Python had AgentCanvas
+  installed. The child now supplies a stand-in `agentcanvas.sdk` when the real one is missing (like its stand-in
+  `@tool`); `emit` and `secret` say they need the host.
+
+### Added
+- **Find models on the server** on the first-run screen: `POST /v1/projects/{id}/setup/server-models` reads a local
+  server's or OpenAI-compatible API's model list (`/api/tags` for Ollama, `/models` otherwise; the typed or saved key
+  is sent) and the names fill the Model box's suggestions, so a model loaded in LM Studio can be picked instead of
+  typed.
+
 ## v0.28.1 — Fixes from the deep review of 2026-10-18 (not tagged yet)
 
 The critical and high-severity findings of a whole-codebase review that could be fixed without new design. The

@@ -1189,6 +1189,7 @@ export type Label15 = string;
 export type Local1 = boolean;
 export type Module = string;
 export type Notes2 = string;
+export type OptionalKeyEnv = string | null;
 export type Package = string;
 export type Environment2 = string;
 export type Message10 = string;
@@ -1671,16 +1672,28 @@ export type Value5 = string;
 export type CreatedAt25 = string;
 export type Name45 = string;
 /**
+ * used for this request only; omit to use the saved key
+ */
+export type ApiKey5 = string | null;
+export type BaseUrl4 = string | null;
+export type Provider1 = string;
+export type Error7 = string | null;
+/**
+ * model names, without the provider prefix
+ */
+export type Models = string[];
+export type Ok3 = boolean;
+/**
  * {"$secret": NAME}
  */
-export type ApiKey5 = {
+export type ApiKey6 = {
   [k: string]: string;
 } | null;
 /**
  * split mode: a cheaper model for Ask-mode questions
  */
 export type AskModel1 = string | null;
-export type BaseUrl4 = string | null;
+export type BaseUrl5 = string | null;
 export type Enabled5 = boolean;
 /**
  * provider:model when separate
@@ -1702,8 +1715,8 @@ export type TokenCap2 = number;
 /**
  * stored as a project secret; omit to keep
  */
-export type ApiKey6 = string | null;
-export type BaseUrl5 = string | null;
+export type ApiKey7 = string | null;
+export type BaseUrl6 = string | null;
 /**
  * provider:model, e.g. ollama:llama3.3
  */
@@ -1837,7 +1850,7 @@ export type NextCursor = string | null;
 /**
  * Phoenix API key, as a secret (optional)
  */
-export type ApiKey7 = {
+export type ApiKey8 = {
   [k: string]: string;
 } | null;
 export type Enabled8 = boolean;
@@ -1916,11 +1929,11 @@ export type NextCursor1 = string | null;
 export type Id57 = string;
 export type IsDefault = boolean;
 export type Name53 = string;
-export type Error7 = string | null;
-export type Ok3 = boolean;
+export type Error8 = string | null;
+export type Ok4 = boolean;
 export type Reply1 = string | null;
 export type Detail4 = string;
-export type Ok4 = boolean;
+export type Ok5 = boolean;
 
 export interface ApiSchemas {
   AddNode?: AddNode;
@@ -2104,6 +2117,8 @@ export interface ApiSchemas {
   SearchResult?: SearchResult;
   SecretIn?: SecretIn;
   SecretOut?: SecretOut;
+  ServerModelsIn?: ServerModelsIn;
+  ServerModelsOut?: ServerModelsOut;
   SetChannels?: SetChannels;
   SetContext?: SetContext;
   SettingsOut?: SettingsOut;
@@ -4374,6 +4389,7 @@ export interface ProviderInfo {
   local?: Local1;
   module: Module;
   notes?: Notes2;
+  optional_key_env?: OptionalKeyEnv;
   package: Package;
 }
 /**
@@ -4603,12 +4619,30 @@ export interface SecretOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ServerModelsIn".
+ */
+export interface ServerModelsIn {
+  api_key?: ApiKey5;
+  base_url?: BaseUrl4;
+  provider: Provider1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ServerModelsOut".
+ */
+export interface ServerModelsOut {
+  error?: Error7;
+  models?: Models;
+  ok: Ok3;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "SettingsOut".
  */
 export interface SettingsOut {
-  api_key?: ApiKey5;
+  api_key?: ApiKey6;
   ask_model?: AskModel1;
-  base_url?: BaseUrl4;
+  base_url?: BaseUrl5;
   enabled?: Enabled5;
   model?: Model8;
   notes?: Notes3;
@@ -4622,8 +4656,8 @@ export interface SettingsOut {
  * via the `definition` "SetupIn".
  */
 export interface SetupIn {
-  api_key?: ApiKey6;
-  base_url?: BaseUrl5;
+  api_key?: ApiKey7;
+  base_url?: BaseUrl6;
   model: Model9;
 }
 /**
@@ -4872,7 +4906,7 @@ export interface ThreadPage {
  * via the `definition` "TraceExport".
  */
 export interface TraceExport {
-  api_key?: ApiKey7;
+  api_key?: ApiKey8;
   enabled?: Enabled8;
   endpoint?: Endpoint2;
   headers?: Headers;
@@ -5065,8 +5099,8 @@ export interface WorkspaceOut {
  * via the `definition` "agentcanvas__api__v1__setup__TestOut".
  */
 export interface TestOut {
-  error?: Error7;
-  ok: Ok3;
+  error?: Error8;
+  ok: Ok4;
   reply?: Reply1;
 }
 /**
@@ -5075,5 +5109,5 @@ export interface TestOut {
  */
 export interface TestOut1 {
   detail: Detail4;
-  ok: Ok4;
+  ok: Ok5;
 }

@@ -96,6 +96,9 @@ class ProviderInfo(BaseModel):
     package: str  # the integration distribution, e.g. langchain-openai
     module: str  # its import name, used to tell whether it is installed
     key_env: str | None = None  # server env variable / project secret holding the API key; None = no key needed
+    # a key the server may or may not need (an LM Studio token, vLLM/llama.cpp --api-key, a compatible API's key):
+    # the project secret / server variable it is read from when set
+    optional_key_env: str | None = None
     local: bool = False  # runs on your own machine (Ollama, LM Studio, vLLM, llama.cpp)
     base_url: str | None = None  # default server address
     base_url_required: bool = False

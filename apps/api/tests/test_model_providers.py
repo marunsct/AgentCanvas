@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from agentcanvas.adapters.langchain.nodes import OPENAI_COMPATIBLE, PROVIDER_KEYS, Resources, chat_model_args
+from agentcanvas.adapters.langchain.nodes import (
+    OPENAI_COMPATIBLE,
+    OPTIONAL_KEYS,
+    PROVIDER_KEYS,
+    Resources,
+    chat_model_args,
+)
 from agentcanvas.registry import default_registry, installed_providers
 from agentcanvas.validation import validate
 
@@ -19,6 +25,7 @@ def test_runtime_tables_match_the_provider_registry():
     compatible = {p.id: p.base_url for p in providers.values() if p.module == "langchain_openai" and p.id not in (
         "openai", "azure_openai")}  # fmt: skip
     assert compatible == OPENAI_COMPATIBLE
+    assert OPTIONAL_KEYS == {p.id: p.optional_key_env for p in providers.values() if p.optional_key_env}
     assert all(m.provider in providers or m.provider == "fake" for m in default_registry().models())
 
 
@@ -101,3 +108,13 @@ def test_local_servers_on_another_host(monkeypatch):
     ollama = next(p for p in installed_providers() if p.id == "ollama")
     assert ollama.base_url == "http://host.docker.internal:11434"
     assert next(p for p in installed_providers() if p.id == "openai").base_url is None
+
+
+def test_local_servers_use_their_optional_key(monkeypatch):
+    monkeypatch.delenv("LMSTUDIO_API_KEY", raising=False)
+    assert chat_model_args("lmstudio:qwen3-8b", {}, {"LMSTUDIO_API_KEY": "lm-token"})[1]["api_key"] == "lm-token"
+    monkeypatch.setenv("VLLM_API_KEY", "from-env")
+    assert chat_model_args("vllm:m", {}, {})[1]["api_key"] == "from-env"
+    # an explicit key in the config wins; no key anywhere gives the placeholder
+    assert chat_model_args("lmstudio:q", {"api_key": "own"}, {"LMSTUDIO_API_KEY": "x"})[1]["api_key"] == "own"
+    assert chat_model_args("llamacpp:m", {}, {})[1]["api_key"] == "not-needed"

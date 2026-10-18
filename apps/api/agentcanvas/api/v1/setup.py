@@ -2,7 +2,9 @@
 
 The default model is stored in the project's settings; workflows created from templates afterwards use it instead
 of the template's own models. An API key typed here becomes the project secret named after the provider
-(e.g. OPENAI_API_KEY), which chat models of that provider use when their config names no key.
+(e.g. OPENAI_API_KEY), which chat models of that provider use when their config names no key. Local servers (LM Studio,
+vLLM, llama.cpp) and OpenAI-compatible APIs take an optional key (LMSTUDIO_API_KEY, …) for servers that require one, and
+`server-models` lists the models such a server offers.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import asyncio
 import os
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,12 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput
-from agentcanvas.registry import ProviderInfo, default_registry
+from agentcanvas.registry import ProviderInfo, default_registry, installed_providers
 from agentcanvas.services.secrets import SecretService, redact
 
 router = APIRouter(prefix="/projects/{project_id}/setup", tags=["setup"])
 COMPATIBLE_KEY = "OPENAI_COMPATIBLE_API_KEY"  # the secret for an OpenAI-compatible API that needs a key
 TEST_TIMEOUT_S = 60
+LIST_TIMEOUT_S = 10
+MAX_SERVER_MODELS = 500
 
 
 class DefaultModel(BaseModel):
@@ -45,6 +50,20 @@ class SetupIn(BaseModel):
     api_key: str | None = Field(None, max_length=4000, description="stored as a project secret; omit to keep")
 
 
+class ServerModelsIn(BaseModel):
+    provider: str = Field(pattern=r"^[a-z0-9_\-]+$")
+    base_url: str | None = Field(None, max_length=500)
+    api_key: str | None = Field(
+        None, max_length=4000, description="used for this request only; omit to use the saved key"
+    )
+
+
+class ServerModelsOut(BaseModel):
+    ok: bool
+    models: list[str] = Field(default_factory=list, description="model names, without the provider prefix")
+    error: str | None = None
+
+
 class TestOut(BaseModel):
     ok: bool
     reply: str | None = None
@@ -60,14 +79,17 @@ def _provider(model: str) -> ProviderInfo:
 
 
 def _key_secret(p: ProviderInfo) -> str | None:
-    return p.key_env or (COMPATIBLE_KEY if p.base_url_required else None)
+    """The project secret a provider's key is stored in: its required key, or the optional one of a local server or
+    OpenAI-compatible API (LMSTUDIO_API_KEY, OPENAI_COMPATIBLE_API_KEY, …)."""
+    return p.key_env or p.optional_key_env or (COMPATIBLE_KEY if p.base_url_required else None)
 
 
 def _default_model(body: SetupIn, p: ProviderInfo, key_given: bool) -> DefaultModel:
     if p.base_url_required and not body.base_url:
         raise InvalidInput(f"{p.label} needs a base URL")
     base_url = body.base_url if body.base_url and body.base_url != p.base_url else None
-    api_key = {"$secret": COMPATIBLE_KEY} if p.base_url_required and key_given else None
+    optional = p.optional_key_env or (COMPATIBLE_KEY if p.base_url_required else None)
+    api_key = {"$secret": optional} if optional and not p.key_env and key_given else None
     return DefaultModel(model=body.model, base_url=base_url, api_key=api_key)
 
 
@@ -102,8 +124,8 @@ async def put_setup(
     project = await ProjectRepo(session).require(project_id)
     p = _provider(body.model)
     key = (body.api_key or "").strip()
-    dm = _default_model(body, p, bool(key) or _key_set(request, project_id, COMPATIBLE_KEY))
     name = _key_secret(p)
+    dm = _default_model(body, p, bool(key) or _key_set(request, project_id, name))
     if key and name:
         await SecretService(session, request.app.state.keyring).put(project_id, name, key, user.id)
         await request.app.state.secrets.refresh(project_id)  # runs here see it right away, other instances soon
@@ -156,3 +178,39 @@ async def test_model(
         hidden = [v for v in secrets.values() if len(v) >= 6]
         return TestOut(ok=False, error=redact(f"{type(exc).__name__}: {exc}", hidden)[:300])
     return TestOut(ok=True, reply=reply[:200])
+
+
+@router.post("/server-models", response_model=ServerModelsOut)
+async def server_models(project_id: str, body: ServerModelsIn, request: Request,
+                        session: AsyncSession = Depends(get_session)) -> ServerModelsOut:  # fmt: skip
+    """The models a local server (Ollama, LM Studio, vLLM, llama.cpp) or an OpenAI-compatible API offers, read from
+    its model list (`/api/tags` for Ollama, `/models` otherwise), so the model name can be picked instead of typed."""
+    await ProjectRepo(session).require(project_id)
+    p = next((x for x in installed_providers() if x.id == body.provider), None)
+    if p is None or not (p.local or p.base_url_required):
+        raise InvalidInput(f"'{body.provider}' is not a local server or an OpenAI-compatible API")
+    base = (body.base_url or "").strip() or p.base_url  # installed_providers() maps localhost for Docker
+    if not base:
+        return ServerModelsOut(ok=False, error=f"{p.label} needs a base URL")
+    name = _key_secret(p)
+    key = (body.api_key or "").strip() or (
+        (request.app.state.projects.secrets.get(project_id, {}).get(name) or os.environ.get(name)) if name else None
+    )
+    ollama = p.id == "ollama"
+    url = base.rstrip("/") + ("/api/tags" if ollama else "/models")
+    try:
+        transport = getattr(request.app.state, "model_list_transport", None)  # tests serve a fake server here
+        async with httpx.AsyncClient(timeout=LIST_TIMEOUT_S, follow_redirects=False, transport=transport) as client:
+            r = await client.get(url, headers={"Authorization": f"Bearer {key}"} if key else {})
+        if r.status_code in (401, 403):
+            return ServerModelsOut(
+                ok=False, error=f"the server refused the request ({r.status_code}): check the API key"
+            )
+        r.raise_for_status()
+        data = r.json()
+        items = data.get("models" if ollama else "data") if isinstance(data, dict) else None
+        ids = [str(m.get("name" if ollama else "id")) for m in items or [] if isinstance(m, dict)]
+    except Exception as exc:  # noqa: BLE001 - any connection or format error is the answer
+        hidden = [key] if key and len(key) >= 6 else []
+        return ServerModelsOut(ok=False, error=redact(f"{type(exc).__name__}: {exc}", hidden)[:300])
+    return ServerModelsOut(ok=True, models=sorted({i for i in ids if i and i != "None"})[:MAX_SERVER_MODELS])

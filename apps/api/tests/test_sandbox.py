@@ -260,3 +260,34 @@ async def test_langsmith_mode_end_to_end(app, api_client, fake_langsmith):
     assert len(fake_langsmith.created) == 1  # one sandbox per project, reused by nodes and handlers
     headers = fake_langsmith.created[0]["proxy_config"]["rules"][0]["headers"]
     assert headers[0]["value"] == "Bearer tok-e2e"
+
+
+def test_the_child_supplies_the_sdk_on_a_bare_image(tmp_path):
+    """docker and LangSmith sandboxes run the child on an image without AgentCanvas: a handler's or custom node's
+    `from agentcanvas.sdk import …` still loads (a stand-in keeps the plain functions)."""
+    import subprocess
+    import sys
+
+    from agentcanvas.sandbox.runners import CHILD
+
+    (tmp_path / "events").mkdir()
+    (tmp_path / "events" / "hooks.py").write_text(
+        "from agentcanvas.sdk import Actions, Event, canvas_node, on\n\n\n@on('test.ping', filter='true')\n"
+        "def pong(event, act):\n    act.emit('test.pong', {'n': event.data['n'] + 1})\n\n\n"
+        "@canvas_node(name='x.y', writes=['n'])\ndef node(state, cfg):\n    return {'n': state['n'] * cfg['k']}\n"
+    )
+    # a Python that cannot import agentcanvas: -I ignores PYTHONPATH and the bare interpreter has no site-packages
+    bare = [sys.executable, "-I", "-S", str(CHILD)]
+
+    def run(import_path: str, payload: dict) -> dict:
+        p = subprocess.run([*bare, import_path], input=json.dumps(payload), capture_output=True, text=True, check=False,
+                           cwd=tmp_path, env={"PATH": "/usr/bin:/bin"}, timeout=30)  # fmt: skip
+        return json.loads(p.stdout.splitlines()[-1])
+
+    probe = subprocess.run([*bare[:3], "-c", "import agentcanvas"], capture_output=True, cwd=tmp_path, check=False)
+    assert probe.returncode != 0  # the stand-in is what the handler gets
+    event = {"type": "test.ping", "data": {"n": 1}}
+    assert run("events.hooks:pong", {"event": event}) == {
+        "ok": True, "actions": [{"action": "emit", "type": "test.pong", "data": {"n": 2}}],
+    }  # fmt: skip
+    assert run("events.hooks:node", {"state": {"n": 3}, "config": {"k": 2}}) == {"ok": True, "update": {"n": 6}}
