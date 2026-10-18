@@ -11,6 +11,11 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   secret `LMSTUDIO_API_KEY`, `VLLM_API_KEY` or `LLAMACPP_API_KEY` (`optional_key_env` in `providers.json`), and
   chat models of those providers use it when their config names no key (`nodes.OPTIONAL_KEYS`, the server variable
   of the same name works too); without one they keep the placeholder key.
+- **Event handlers and custom nodes run in docker and LangSmith sandboxes.** The sandbox child runs on an image
+  without AgentCanvas, so workspace code's `from agentcanvas.sdk import on` (or `canvas_node`, `Event`, `Actions`)
+  failed with `ModuleNotFoundError` there; the tests passed only because the test machine's Python had AgentCanvas
+  installed. The child now supplies a stand-in `agentcanvas.sdk` when the real one is missing (like its stand-in
+  `@tool`); `emit` and `secret` say they need the host.
 
 ### Added
 - **Find models on the server** on the first-run screen: `POST /v1/projects/{id}/setup/server-models` reads a local
