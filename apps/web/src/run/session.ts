@@ -26,17 +26,29 @@ function batcher(apply: (e: RunEvent) => void) {
   };
 }
 
+/** The one run stream the run store listens to; a newer run, or leaving the editor, stops reading it. */
+let active: AbortController | null = null;
+
+/** Stop reading the current run's events (the run goes on on the server; reopening the workflow shows it). */
+export function stopStreaming(): void {
+  active?.abort();
+  active = null;
+}
+
 async function stream(path: string, body: unknown): Promise<void> {
   const run = useRun.getState();
-  const wfId = useEditor.getState().workflowId;
-  // events still streaming after another workflow was opened belong to that old run: drop them
-  const b = batcher((e) => { if (useEditor.getState().workflowId === wfId) run.apply(e); });
+  stopStreaming();
+  const mine = new AbortController();
+  active = mine;
+  // events of a stream that was stopped (another run, another workflow, A -> Home -> A) are dropped
+  const b = batcher((e) => { if (active === mine) run.apply(e); });
   try {
-    await postStream(path, body, b.push);
+    await postStream(path, body, b.push, mine.signal);
   } catch (e) {
-    b.push({ type: "RUN_ERROR", message: e instanceof ApiError ? e.message : String(e) });
+    if (!mine.signal.aborted) b.push({ type: "RUN_ERROR", message: e instanceof ApiError ? e.message : String(e) });
   } finally {
     b.flush();
+    if (active === mine) active = null;
   }
 }
 

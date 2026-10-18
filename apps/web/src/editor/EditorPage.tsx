@@ -7,7 +7,7 @@ import { Canvas } from "../canvas/Canvas";
 import { Palette } from "../canvas/Palette";
 import { CodePanel } from "../code/CodePanel";
 import { CopilotPanel } from "../copilot/CopilotPanel";
-import { useCopilot } from "../copilot/copilot";
+import { stopCopilotStream, useCopilot } from "../copilot/copilot";
 import { Inspector } from "../inspector/Inspector";
 import { useInbox } from "../inbox/InboxPage";
 import { ProblemsPanel } from "../problems/ProblemsPanel";
@@ -16,6 +16,7 @@ import { VersionsPanel } from "../release/VersionsPanel";
 import { ExplainView } from "../run/ExplainView";
 import { RunPanel } from "../run/RunPanel";
 import { useRun } from "../run/runStore";
+import { stopStreaming } from "../run/session";
 import { Timeline } from "../run/Timeline";
 import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
 import { Tutor } from "../tutor/Tutor";
@@ -58,8 +59,12 @@ export function EditorPage() {
   const copilotRequest = useCopilot((s) => s.request);
   useEffect(() => { if (copilotRequest) setTab("copilot"); }, [copilotRequest]);
 
+  useEffect(() => () => { stopStreaming(); stopCopilotStream(); }, []); // leaving the editor: stop reading streams
+
   useEffect(() => {
     if (!id) return;
+    stopStreaming(); // the last workflow's run and Copilot streams
+    stopCopilotStream();
     useEditor.getState().reset();
     useRun.getState().setThread(null);
     useRun.setState({ runId: null, running: false });
