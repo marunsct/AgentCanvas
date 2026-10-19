@@ -14,13 +14,30 @@ import sys
 import zipfile
 from pathlib import Path
 
+from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters import get_adapter
 from agentcanvas.adapters.langchain.deploykit import TARGETS
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
+from agentcanvas.services import knowledge
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "agentcanvas/registry/templates"
+SAMPLES = Path(__file__).resolve().parents[1] / "agentcanvas/registry/knowledge"
+
+
+def with_knowledge(wf: Workflow, data: bytes) -> bytes:
+    """What the API's export does for a workflow that searches a knowledge base: ship the base next to the code. No
+    database here, so the sample handbook (one chunk per page) stands in for every base a template names."""
+    used = knowledge.used_knowledge_bases(wf.model_dump(mode="json"))
+    if not used:
+        return data
+    chunks = []
+    for page in sorted((SAMPLES / "handbook").glob("*.md")):
+        text = page.read_text(encoding="utf-8")
+        chunks.append({"id": page.stem, "doc_id": page.stem, "title": page.stem.replace("-", " "), "source": page.name,
+                       "text": text, "page": None, "heading": None})  # fmt: skip
+    return knowledge.bundle(data, {name: ks.dump_jsonl(name, {}, chunks) for name in used})
 
 
 def main(out: Path) -> None:
@@ -29,7 +46,9 @@ def main(out: Path) -> None:
         wf = Workflow.model_validate(json.loads(f.read_text()))
         for target in TARGETS:
             _, data = get_adapter(wf.framework).package(wf, default_registry(), target=target, version="1.0.0")
-            zipfile.ZipFile(io.BytesIO(data)).extractall(out / target / f.name.removesuffix(".ir.json"))
+            zipfile.ZipFile(io.BytesIO(with_knowledge(wf, data))).extractall(
+                out / target / f.name.removesuffix(".ir.json")
+            )
     counts = {}
     frameworks = (
         "openai_agents",
@@ -50,7 +69,9 @@ def main(out: Path) -> None:
                 _, data = adapter.package(wf, default_registry(), version="1.0.0")
             except WorkflowHasErrors:
                 continue  # blocks this framework cannot run
-            zipfile.ZipFile(io.BytesIO(data)).extractall(out / framework / f.name.removesuffix(".ir.json"))
+            zipfile.ZipFile(io.BytesIO(with_knowledge(wf, data))).extractall(
+                out / framework / f.name.removesuffix(".ir.json")
+            )
             counts[framework] += 1
     print(
         f"exported {len(files)} templates to {len(TARGETS)} targets, {counts['openai_agents']} to the OpenAI Agents "
