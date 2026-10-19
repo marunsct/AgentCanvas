@@ -2,6 +2,13 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.30.1 — Hardening: a production server says when workspace code is not isolated
+
+### Changed
+- In staging and production, an API running workspace code in-process or as a child process logs a
+  `sandbox.not_isolated` warning at start-up. The compose default stays `subprocess`: `docker` mode needs the host's
+  Docker socket (which is root-equivalent) and a Docker CLI the API image does not carry.
+
 ## v0.30.0 — Share links choose which sites may frame their chat page
 
 ### Added

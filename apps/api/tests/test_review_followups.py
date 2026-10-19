@@ -258,3 +258,14 @@ async def test_a_run_uses_its_own_projects_workspace_without_the_project_map(app
     thread = (await api_client.get(f"/v1/threads/{h.thread_id}")).json()
     run = (await api_client.get(f"/v1/runs/{h.run_id}")).json()
     assert thread["values"].get("out") == "other", run.get("error")
+
+
+def test_a_production_server_without_an_isolating_sandbox_says_so():
+    from agentcanvas.api.main import sandbox_hint
+    from agentcanvas.settings import Settings
+
+    assert sandbox_hint(Settings(env="prod", script_execution="subprocess"))
+    assert sandbox_hint(Settings(env="staging", script_execution="inprocess"))
+    assert sandbox_hint(Settings(env="prod", script_execution="docker")) is None
+    assert sandbox_hint(Settings(env="prod", script_execution="langsmith")) is None
+    assert sandbox_hint(Settings(env="dev", script_execution="inprocess")) is None
