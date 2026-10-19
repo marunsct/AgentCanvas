@@ -9,7 +9,6 @@ import { QueryStatus } from "../ui/QueryStatus";
 import { categoryRank, firstSentence } from "../help/glossary";
 import { paletteTypes } from "../editor/simple";
 import { useUi } from "../editor/ui";
-import { onActivate } from "./keys";
 
 interface WorkspaceItem {
   key: string;
@@ -88,7 +87,7 @@ export function Palette() {
                 e.dataTransfer.effectAllowed = "move";
               }}
               onDoubleClick={() => addElement(i.type, undefined, i.preset)}
-              onKeyDown={onActivate(() => addElement(i.type, undefined, i.preset))}
+              onKeyDown={(e) => { if (e.key === "Enter") addElement(i.type, undefined, i.preset); }}
             >
               <b>{i.label}</b>
               <small>{i.hint}</small>
@@ -109,7 +108,7 @@ export function Palette() {
                 e.dataTransfer.effectAllowed = "move";
               }}
               onDoubleClick={() => addElement("mcp.server", undefined, connectorPreset(c))}
-              onKeyDown={onActivate(() => addElement("mcp.server", undefined, connectorPreset(c)))}
+              onKeyDown={(e) => { if (e.key === "Enter") addElement("mcp.server", undefined, connectorPreset(c)); }}
             >
               <b>{c.name}</b>
               <small className="blurb">
@@ -132,7 +131,7 @@ export function Palette() {
               style={{ borderLeftColor: m.color ?? "#64748b" }}
               onDragStart={(e) => { e.dataTransfer.setData(DND_MIME, m.type); e.dataTransfer.effectAllowed = "move"; }}
               onDoubleClick={() => addElement(m.type)}
-              onKeyDown={onActivate(() => addElement(m.type))}
+              onKeyDown={(e) => { if (e.key === "Enter") addElement(m.type); }}
             >
               <b>{m.label}</b>
               <small className="blurb">{firstSentence(m.description) || m.type}{m.provenance === "workspace" ? " · workspace" : ""}</small>
