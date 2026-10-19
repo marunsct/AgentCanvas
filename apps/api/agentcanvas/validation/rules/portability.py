@@ -10,6 +10,7 @@ be one that framework can run, natively or by emulation, as its manifest (`regis
   framework.
 * P005 error — an Agent block designed for another agent framework (S21) uses something that framework cannot take.
 * P006 warning — that agent framework is not installed on this server, so the block's runs fail.
+* P007 warning — the workflow's framework does not apply node policies (retry, timeout, cache, error route).
 
 An Agent block may name an agent framework (`designs.AGENT_FRAMEWORKS`, e.g. OpenAI Agents SDK) as its engine: the
 workflow's framework then runs it as a step in that framework's own code, if it can (the `agent_designs` ability).
@@ -111,3 +112,37 @@ def _designed(ctx: ValidationContext, n, target: adapters.AdapterManifest) -> It
             hint=f"Run `make framework FW={fw.id}` on the server to give {fw.label} an environment of its own, or "
             "export the flow to run it elsewhere.",
         )
+
+
+POLICY_FRAMEWORKS = {"langchain"}  # frameworks that apply node policies (retry, timeout, cache, error route)
+
+
+def _policy_names(p: object) -> list[str]:
+    names = [("retry", "retry"), ("timeout", "timeout"), ("cache", "cache"), ("error_route", "error route")]
+    return [label for attr, label in names if getattr(p, attr, None)]
+
+
+@rule
+def framework_applies_node_policies(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """P007 warning: the workflow's framework ignores node policies (2026-10-18 review). They used to be dropped
+    without a word on CrewAI, Google ADK, the OpenAI Agents SDK, the flow-engine frameworks and Mastra."""
+    wf = ctx.wf
+    target = adapters.manifest(wf.framework)
+    if target is None or wf.framework in POLICY_FRAMEWORKS:
+        return
+    if defaults := _policy_names(wf.settings.node_defaults):
+        yield warning(
+            "P007",
+            f"{target.label} does not apply the workflow's default {', '.join(defaults)}: steps run once, with no "
+            "time limit, and an error ends the run",
+            path="settings.node_defaults",
+        )
+    for n in wf.nodes:
+        if names := _policy_names(n.policies):
+            yield warning(
+                "P007",
+                f"{target.label} does not apply this block's {', '.join(names)}: it runs once, with no time limit, "
+                "and an error ends the run",
+                node_id=n.id,
+                path="policies",
+            )

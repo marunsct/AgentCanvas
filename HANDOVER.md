@@ -5,7 +5,7 @@ Everything an agent or a developer needs to pick this project up in a new sessio
 [Sprint-end checklist](#11-sprint-end-checklist)). If this file and another document disagree, the more recently
 updated one wins; fix the other in the same PR.
 
-- **Last updated:** 2026-10-18, v0.28.1 (fixes from a deep review of the whole codebase; branch `claude/review-hardening`, PR open, not merged). Previous update: 2026-10-17, v0.28.0 (AgentCanvas on Matura: workspaces, row-level security, portal links, audit sink; the rest of Matura sprint TS26 that fits today), merged in #50. Before that: 2026-10-17, v0.27.0 (sign-in through Matura, the owner's identity and tenancy platform, marunsct/Platform sprint TS9a), after the owner asked Matura to start with AgentCanvas. Previous update: 2026-10-14, v0.26.3 (Docker app builds every framework by default).
+- **Last updated:** 2026-10-18, v0.29.0 (the rest of the deep review: paused runs in the database, engine fixes, server and worker hardening; #52). Before that: 2026-10-18, v0.28.1 (first round of review fixes, #51). Previous update: 2026-10-17, v0.28.0 (AgentCanvas on Matura: workspaces, row-level security, portal links, audit sink; the rest of Matura sprint TS26 that fits today), merged in #50. Before that: 2026-10-17, v0.27.0 (sign-in through Matura, the owner's identity and tenancy platform, marunsct/Platform sprint TS9a), after the owner asked Matura to start with AgentCanvas. Previous update: 2026-10-14, v0.26.3 (Docker app builds every framework by default).
 - **Repository:** https://github.com/marunsct/AgentCanvas (default branch `main`).
 
 ---
@@ -14,15 +14,16 @@ updated one wins; fix the other in the same PR.
 
 | | |
 |---|---|
-| Last work done | **Deep review and fixes → v0.28.1** (branch `claude/review-hardening`, PR open, **not merged**: the owner asks before merges). A four-part review (backend and security, runtime and adapters, web, CI/infra/docs) of `main` at `2f571a2`, written up with a phased plan in the Claude doc "AgentCanvas — Deep Review and Improvement Plan". Fixed here: workspace code (Python tools, Script steps from any folder) always runs in the sandbox when one is set; a run gate (`services/run_gate.py`) applies E041/E042/E043/E080 to every run, triggers and events included; the API's own database role (`db/app_role.py`, compose and Helm) so row-level security applies, refused at startup in Matura mode on staging/prod otherwise; run-scoped pause ids on worker frameworks; hand-over ends runs it cannot continue; web keeps queued and conflicting edits and stops unread streams. Tests in `tests/test_review_hardening.py`, `store.keep.test.ts`, `sse.test.ts` were **not run** (the session could not install dependencies) |
+| Last work done | **Deep review, round 2 → v0.29.0** (#52, branch `claude/review-followups`, rebased on v0.28.2 (#53: keys for local model servers, Find models on the server, the sandbox child's stand-in `agentcanvas.sdk`) and merged on 2026-10-19 at the owner's request to review and merge all pending branches): paused runs of non-LangGraph frameworks in `thread.paused_state` (migration `b8d2f6a0c4e7`, `runtime/paused.py`); the OpenAI Agents SDK and Echo engines get the supersteps join/resume fixes; a run claims its thread in the database; `TenantSession` narrows every session of a Matura request; workspace saves off the event loop; regex pool retries innocent searches; 413 over 20 MB; E999 and P007; IR migration registry; worker env allowlist, robust reads, async writes, 10-minute idle limit, Mastra restart after 500 flows; non-dumpable API with subprocess sandboxes; CI permissions, concurrency, timeouts and a database-role check. Tested on 2026-10-19 after the rebase, against Postgres: API suite 1131 passed, 286 skipped, 1 xfail; the only failures (96) are the conformance kit on frameworks whose environments were not installed in that session (`make crewai`, `make framework FW=…`, `make mastra`); `test_review_followups.py` 45 passed; ruff clean; the migration upgrades, downgrades and upgrades again |
+| v0.28.1 | **Deep review, round 1** (#51, merged `43b4f3d`): workspace code always in the sandbox, a run gate for E041/E042/E043/E080, the API's own database role (`db/app_role.py`), run-scoped pause ids, safe hand-over, web edits and streams. Review and plan: Claude doc "AgentCanvas — Deep Review and Improvement Plan" |
 | v0.28.0 | **AgentCanvas on Matura → v0.28.0** (#50, merged `2f571a2`): projects can belong to a Matura workspace (`project.workspace_id`, `GET /v1/workspaces`, `?workspace_id=` filter, `PUT /v1/projects/{id}/workspace`, picker on the home page); forced Postgres row-level security on the 35 organisation-owned tables (`db/rls.py`, migration `a3c7e9b1d5f2`); `/v1/me` `portal_url`; `AuditSink`; tokens with `pmode` other than `shared` get 503 |
 | Before that | **Sign-in through Matura → v0.27.0** (#49, merged `1b2e186`): `AGENTCANVAS_AUTH_MODE=matura`, permissions to roles, contract tables, webhooks and change feed, organisation picker |
 | Earlier | **Every framework in the Docker app by default → v0.26.3**; Review after the competitive roadmap → v0.26.1 ([#41](https://github.com/marunsct/AgentCanvas/pull/41), merged `f5786d1`, 40 fixes); S36 Mastra → v0.26.0 ([#40](https://github.com/marunsct/AgentCanvas/pull/40), merged `0334885`); S35 Strands and LlamaIndex Workflows flows → v0.25.0 ([#39](https://github.com/marunsct/AgentCanvas/pull/39), merged `f813972`); S33–S34 Microsoft Agent Framework flows → v0.24.0 (#38, `8e307ad`); S32 Pydantic AI and Agno flows → v0.23.0 (#37, `63be5ca`) |
-| Version in code | API `0.28.1` on the review branch (`apps/api/agentcanvas/api/main.py`; `pyproject.toml`, `package.json` and Helm `appVersion` now follow it), CHANGELOG top entry v0.28.1; `main` is at 0.28.0 |
-| Git tags | **none pushed.** v0.1.0 … v0.28.1 are all left to the owner (see §2) |
-| Next sprint | **Proposed (owner to decide): the review's improvement plan** — Phase 0 restore CI and status docs, Phase 1 security hardening, Phase 2 run correctness across replicas, Phase 3 consolidation, then users before the GA backlog. The remaining findings are in §9 "Open from the 2026-10-18 review" |
-| Work status | #49 (v0.27.0) and #50 (v0.28.0) merged. v0.28.1 (review fixes) is on `claude/review-hardening`, PR open; ask the owner before merging. Run the full suites locally first (see §5): they were not run for v0.28.1 |
-| Open PRs | v0.28.1 review fixes (`claude/review-hardening`) |
+| Version in code | API `0.29.0` (`apps/api/agentcanvas/api/main.py`; `pyproject.toml`, `uv.lock`, `package.json`, `openapi.json` and Helm `appVersion` follow it), CHANGELOG top entry v0.29.0 |
+| Git tags | **none pushed.** v0.1.0 … v0.29.0 are all left to the owner (see §2) |
+| Next sprint | **Proposed (owner to decide):** restore CI runners and run every suite on v0.29.0 first (nothing since v0.27.0 has run in CI). Then the review plan's Phase 3 (consolidation: engine and packager duplication, `ResourceResolver`, split `nodes.py`) and the web items in §9, then real users before the GA backlog |
+| Work status | #51 (v0.28.1), #53 (v0.28.2) and #52 (v0.29.0) merged; the API suite passes (see above). Not run yet: pyright, the web unit tests, the e2e suite and the framework conformance kit (no npm or framework environments in the cloud session). **Run `make check`, `make e2e` and the kit with every framework before building on them**, and try `infra/compose.prod.yml` with a fresh and an existing volume (the new API database role) |
+| Open PRs | #36 (the identity and tenancy plan, doc 18 and ADR 0019, already built as Matura: a draft, docs only, for the owner to merge); Dependabot #48 (Node 26: not mergeable as is, Node 25+ has no corepack, which `Dockerfile.web` uses) and #45 (Python 3.14 in the API image: needs an image build with every framework first). #44, #46, #47 merged on 2026-10-19 |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
 **Test totals after v0.26.2** (all green locally):
@@ -216,22 +217,19 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   are not covered; portal links follow Matura's portal routes (`<public URL>/portal/t/<tenant id>/members`, from
   Platform `web/portal/src/app/router.tsx`). Members are not migrated from `oidc` mode; agent identity, backup, privacy and the
   AI readiness pack of TS26 are not started.
-- **Open from the 2026-10-18 review** (details and file references in the review doc; fixed items are in CHANGELOG
-  v0.28.1): paused runs of CrewAI, ADK, the flow-engine frameworks, Mastra and the OpenAI Agents SDK live in one API
-  process's memory (unbounded; use one replica); a fresh run on a thread is guarded in-process only (two replicas can
-  start runs on one thread); the OpenAI Agents SDK runtime and Echo still carry the old superstep engine with the join
-  and resume bugs `supersteps.py` fixed (also in OpenAI exports); node policies are ignored without a warning outside
-  LangGraph (proposed P007); flow engines run parallel branches one after another; worker writes block the event
-  loop, workers have no run timeout and inherit the server's whole environment; row-level security narrows only the
-  request's own session (other sessions a Matura request opens stay all-tenants); workspace saves run git and ruff
-  synchronously; one slow regex fails every regex search in flight; public bodies have no size limit in the API; the
-  `subprocess` sandbox is not an isolation boundary (prod compose still defaults to it); `compose.prod.yml` defaults
-  to `SEED_DEV_DATA=true`, `EDITION=dev` and `:latest` images; the share page allows any framing site; web session
-  and project live in module variables, response types are hand-written, the canvas re-renders on every streamed
-  token, canvas keyboard access is partial, and there is no ESLint; CI has no concurrency, timeouts or permissions,
-  no framework-environment cache and no Mastra `tsc`; framework pins live in four places; the Mastra npm set has no
-  lockfile.
-- **Release tags** v0.1.0 to v0.28.1 not created (owner).
+- **Open from the 2026-10-18 review** (details in the review doc; fixed items are in CHANGELOG v0.28.1 and v0.29.0):
+  the `subprocess` sandbox is limits only (same user, same files; v0.29.0 hides the API's memory and environ), so
+  untrusted code needs `docker` (prod compose still defaults to `subprocess`); the share page allows any framing site
+  while it shows approval buttons (needs per-link allowed origins); flow engines run parallel branches one after
+  another; Echo keeps paused runs in memory (demo engine); RLS policies on child tables nest 3–4 EXISTS levels (EXPLAIN
+  the hot list queries with a tenant set); the RLS migration locks 35 tables at once; `PROJECT_OF` is a process-global
+  map with a default-project fallback; duplicated engine, worker and packager code (about 1,000–1,300 lines,
+  Phase 3); `Resources` is still LangChain's object for every adapter; web: session and project in module variables
+  (`ME` defaults to admin until `/me` answers), hand-written response types, the canvas re-renders on every streamed
+  token, partial keyboard access, no ESLint, the dead `@rjsf/validator-ajv8` dependency (needs a lockfile update);
+  CI has no framework-environment cache and no Mastra `tsc`; framework pins live in four places; the Mastra npm set
+  has no lockfile.
+- **Release tags** v0.1.0 to v0.29.0 not created (owner).
 - **Left from the review after the roadmap (v0.26.1):** Home opens an imported file straight away when nothing needs checking, so its "Everything carried over." note never shows; node policies (retry, timeout, error route) are ignored without
   a warning on the flow-engine frameworks, CrewAI and ADK; personal-data patterns stop after 1,000 matches; Mastra
   templates still differ from Jinja on negative indexes, slices and Python string methods; tools wrapped for dry runs
@@ -429,7 +427,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 | Every framework in the Docker app by default | #43 | `f511959` | v0.26.3 |
 | Sign-in through Matura (Matura sprint TS9a) | #49 | `1b2e186` | v0.27.0 |
 | AgentCanvas on Matura (Matura sprint TS26) | #50 | `2f571a2` | v0.28.0 |
-| Deep review fixes | open (`claude/review-hardening`) | — | v0.28.1 |
+| Deep review fixes, round 1 | #51 | `43b4f3d` | v0.28.1 |
+| Deep review fixes, round 2 | #52 | (after merge) | v0.29.0 |
 
 ## 11. Sprint-end checklist
 

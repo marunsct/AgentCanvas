@@ -8,7 +8,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from agentcanvas.db.rls import connect_options
+from agentcanvas.db.rls import TenantSession, connect_options
 
 MIGRATIONS = Path(__file__).parents[2] / "migrations"
 
@@ -37,7 +37,7 @@ class Database:
         self.engine: AsyncEngine = create_async_engine(
             self.url, pool_pre_ping=True, connect_args=connect_options(self.url), **pool
         )
-        self.sessionmaker = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.sessionmaker = async_sessionmaker(self.engine, expire_on_commit=False, sync_session_class=TenantSession)
 
     @property
     def is_postgres(self) -> bool:

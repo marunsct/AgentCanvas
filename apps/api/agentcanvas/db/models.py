@@ -209,6 +209,8 @@ class Thread(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
+    # a paused run of a framework without its own checkpoints (runtime/paused.py), as that framework's JSON
+    paused_state: Mapped[str | None] = mapped_column(Text)
 
 
 class Run(Base):

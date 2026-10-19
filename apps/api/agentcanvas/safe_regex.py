@@ -2,7 +2,7 @@
 
 Python's `re` holds the GIL for the whole match, so a catastrophic pattern such as `(a+)+$` would freeze the event
 loop (and its heartbeats) for minutes; a thread does not help. Searches run in a small pool of worker processes
-instead, and a search that runs out of time terminates the pool.
+instead, and a search that runs out of time terminates the pool (the others it was running start again).
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import atexit
 import multiprocessing
 import re
 import threading
+import time
 from collections.abc import Callable
 from multiprocessing.pool import Pool
 from typing import Any
@@ -20,6 +21,7 @@ TIMEOUT_S = 2.0
 MAX_TEXT = 100_000  # characters searched by `search` (longer text is cut), and per window by `spans`
 OVERLAP = 10_000  # characters each `spans` window shares with the next: matches up to this long are found whole
 MAX_MATCHES = 1_000  # spans returned by `spans`
+POLL_S = 0.25  # how often a waiting search checks that its pool is still there
 
 _state: dict[str, Pool] = {}
 _lock = threading.Lock()
@@ -64,14 +66,24 @@ def _discard(pool: Pool) -> None:
 
 
 async def _run(fn: Callable[..., Any], args: tuple[Any, ...], timeout: float | None) -> Any:
+    """Run one search in the pool. A search that runs out of time terminates the pool; the other searches it was
+    running are not at fault, so each of them starts again once on a fresh pool instead of failing too."""
     timeout = TIMEOUT_S if timeout is None else timeout
-    pool = _get_pool()
-    pending = pool.apply_async(fn, args)
-    try:
-        return await asyncio.to_thread(pending.get, timeout)
-    except multiprocessing.TimeoutError:
-        _discard(pool)
-        raise TimeoutError(f"the pattern took longer than {timeout:g} s") from None
+    for _attempt in range(2):
+        pool = _get_pool()
+        pending = pool.apply_async(fn, args)
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            await asyncio.to_thread(pending.wait, min(POLL_S, max(remaining, 0.0)))
+            if pending.ready():
+                return pending.get()
+            if _state.get("pool") is not pool:  # another search's timeout ended the pool: try again
+                break
+            if remaining <= 0:
+                _discard(pool)
+                raise TimeoutError(f"the pattern took longer than {timeout:g} s")
+    raise TimeoutError(f"the pattern could not run: other searches kept timing out (limit {timeout:g} s)")
 
 
 async def search(pattern: str, text: str, timeout: float | None = None) -> bool:

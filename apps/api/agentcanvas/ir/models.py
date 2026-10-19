@@ -17,11 +17,16 @@ IR versions
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 IR_VERSION = "1.2"
+SUPPORTED_IR_VERSIONS = ("1.0", "1.1", "1.2")
+# version -> steps that bring a raw document of that version up to IR_VERSION (in order); add one when a change is
+# not a strict superset of the previous version
+MIGRATIONS: dict[str, list[Callable[[dict[str, Any]], dict[str, Any]]]] = {}
 IDENT = re.compile(r"^[a-z][a-z0-9_]{0,62}$")  # names become Python identifiers
 SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")  # an environment variable in exports
 TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")  # e.g. core.llm, model.chat, acme.upsert
@@ -264,6 +269,23 @@ class Workflow(_Base):
     edges: list[Edge] = Field(default_factory=list)
     settings: WorkflowSettings = Field(default_factory=WorkflowSettings)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _known_version(cls, data: Any) -> Any:
+        """A document from a newer AgentCanvas gets a plain message instead of a schema error; older ones run through
+        MIGRATIONS (none needed yet: 1.0 and 1.1 are strict subsets of 1.2)."""
+        if not isinstance(data, dict) or "ir_version" not in data:
+            return data
+        version = str(data["ir_version"])
+        if version not in SUPPORTED_IR_VERSIONS:
+            raise ValueError(
+                f"this workflow was written by a newer AgentCanvas (IR {version}); this server reads IR up to "
+                f"{IR_VERSION}: upgrade the server to open it"
+            )
+        for step in MIGRATIONS.get(version, []):
+            data = step(data)
+        return data
 
     @model_validator(mode="after")
     def _upgrade(self) -> Workflow:

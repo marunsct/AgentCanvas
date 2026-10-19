@@ -4,9 +4,17 @@ on:
     branches: [main, "claude/**"]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:  # a newer push to the same branch or PR replaces the run in progress
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   api:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -37,6 +45,7 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -44,6 +53,7 @@ jobs:
 
   connectors:  # S15: every gallery connector's package exists at its pinned version; keyless local ones start
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults: { run: { working-directory: apps/api } }
     steps:
       - uses: actions/checkout@v7
@@ -56,6 +66,7 @@ jobs:
 
   frameworks:  # S16/S21: real agents from each framework, wrapped and drawn on the canvas, against fake models
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +94,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults: { run: { working-directory: apps/web } }
     steps:
       - uses: actions/checkout@v7
@@ -99,6 +111,7 @@ jobs:
   audit:
     # M8-T6: known vulnerabilities in the locked production dependencies (dev tools never ship)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -118,10 +131,13 @@ jobs:
   images:
     # M8-T1/T2: build both images, start the production compose stack and check it answers; render the Helm chart
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       API_IMAGE: agentcanvas-api:ci
       WEB_IMAGE: agentcanvas-web:ci
       POSTGRES_PASSWORD: ci-only
+      POSTGRES_APP_PASSWORD: ci-only-app
+      LANGGRAPH_AES_KEY: ci-only-aes-key-0123456789abcdef
       AGENTCANVAS_SECRET_KEY: ci-only-secret-key-not-for-real-use-0123456789abcdef0123456789abcdef
       AGENTCANVAS_OIDC_ISSUER: https://login.example.com/realms/ci
       AGENTCANVAS_OIDC_AUDIENCE: agentcanvas-api
@@ -177,6 +193,9 @@ jobs:
           curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
           docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001
+          # the API's database role is an ordinary one, so row-level security applies to it
+          docker compose -f infra/compose.prod.yml exec -T postgres psql -U agentcanvas -tAc \
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'agentcanvas_app'" | grep -qx f
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/metrics)" = 404
           docker compose -f infra/compose.prod.yml exec -T api python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/metrics').read().decode())" | grep -q agentcanvas_runs_active
       - name: Logs
@@ -207,6 +226,7 @@ jobs:
     # own pinned packages; one is deployed for real with Docker Compose and one on Kubernetes (kind), then checked
     # with make doctor and make smoke as the guides say. Cloud targets get a syntax check: CI holds no cloud accounts.
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [api]
     env: { EXPORTS: "${{ github.workspace }}/exports" }
     steps:
@@ -268,6 +288,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [api, web]
     steps:
       - uses: actions/checkout@v7

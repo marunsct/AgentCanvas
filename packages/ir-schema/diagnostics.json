@@ -26,7 +26,7 @@
     },
     "E006": {
       "what": "An arrow connects two things that cannot be connected that way.",
-      "fix": "Steps connect with grey arrows (right dot → left dot). Add-ons such as AI models plug into a step's coloured inputs. Delete the arrow and redraw it."
+      "fix": "Steps connect with grey arrows (right dot \u2192 left dot). Add-ons such as AI models plug into a step's coloured inputs. Delete the arrow and redraw it."
     },
     "E007": {
       "what": "A resource has a name Python reserves (like class, import or builder), so the exported code could not use it.",
@@ -41,7 +41,7 @@
       "fix": "Connect an earlier step (or Start) to it, or delete it if you don't need it."
     },
     "E012": {
-      "what": "A path of this “Choose a path” block goes nowhere (or goes to two places).",
+      "what": "A path of this \u201cChoose a path\u201d block goes nowhere (or goes to two places).",
       "fix": "Connect each path (the dots on its right) to exactly one step, or to Finish."
     },
     "E013": {
@@ -57,8 +57,8 @@
       "fix": "Click its right-hand dot and choose the next step, or Finish."
     },
     "E016": {
-      "what": "“Wait for all” is waiting for a branch that may never arrive, so the run would hang.",
-      "fix": "Only connect branches into it that always run (not ones after a “Choose a path”)."
+      "what": "\u201cWait for all\u201d is waiting for a branch that may never arrive, so the run would hang.",
+      "fix": "Only connect branches into it that always run (not ones after a \u201cChoose a path\u201d)."
     },
     "E017": {
       "what": "This AI model needs the server address of its provider.",
@@ -74,19 +74,19 @@
     },
     "E020": {
       "what": "Two steps run at the same time and both overwrite the same data field, so one answer would be lost.",
-      "fix": "Make them write different fields, or set the field to “append” (keep a list) in the data fields list."
+      "fix": "Make them write different fields, or set the field to \u201cappend\u201d (keep a list) in the data fields list."
     },
     "E021": {
       "what": "A step uses a data field that does not exist yet.",
-      "fix": "Click empty canvas, then add the field (“+ Channel”) with the exact name from the message, or pick an existing field in the step's settings."
+      "fix": "Click empty canvas, then add the field (\u201c+ Channel\u201d) with the exact name from the message, or pick an existing field in the step's settings."
     },
     "E022": {
-      "what": "“Repeat for each item” runs copies at the same time, and they overwrite the same field.",
-      "fix": "Set that field to “append” (keep a list) so every copy's result is kept."
+      "what": "\u201cRepeat for each item\u201d runs copies at the same time, and they overwrite the same field.",
+      "fix": "Set that field to \u201cappend\u201d (keep a list) so every copy's result is kept."
     },
     "E023": {
       "what": "A step reads a data field that does not exist.",
-      "fix": "Add the field (click empty canvas, “+ Channel”) or correct its name in the step."
+      "fix": "Add the field (click empty canvas, \u201c+ Channel\u201d) or correct its name in the step."
     },
     "E030": {
       "what": "The chosen AI model cannot do what this step asks (use tools or give structured answers).",
@@ -98,11 +98,11 @@
     },
     "E032": {
       "what": "A helper agent is set up incompletely (it needs a description) or is plugged in twice.",
-      "fix": "Select the helper agent and fill in “When to use it”, or delete the duplicate arrow."
+      "fix": "Select the helper agent and fill in \u201cWhen to use it\u201d, or delete the duplicate arrow."
     },
     "E033": {
       "what": "The approval list names a tool that is not plugged into this agent.",
-      "fix": "Plug the tool in, or remove it from “Tools that need approval”."
+      "fix": "Plug the tool in, or remove it from \u201cTools that need approval\u201d."
     },
     "E034": {
       "what": "A file permission path is not allowed.",
@@ -130,7 +130,7 @@
     },
     "E050": {
       "what": "A password or API key is typed straight into a setting, where others could see it.",
-      "fix": "Store it as a project secret (Workspace → Secrets) and pick it from the list instead."
+      "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."
     },
     "E051": {
       "what": "A secret is referenced by a name that is not a plain variable name, so exports could not pass it as a setting.",
@@ -142,7 +142,7 @@
     },
     "E071": {
       "what": "This memory is kept per user, but the workflow does not know who the user is.",
-      "fix": "In the workflow settings (click empty canvas), add a context field such as user_id with source “user”, or share the memory per workflow instead."
+      "fix": "In the workflow settings (click empty canvas), add a context field such as user_id with source \u201cuser\u201d, or share the memory per workflow instead."
     },
     "E080": {
       "what": "The Python function is not in your Workspace.",
@@ -156,13 +156,17 @@
       "what": "An organisation rule could not be checked.",
       "fix": "Ask an admin to look at the rule; the message says which one."
     },
+    "E999": {
+      "what": "One of the checks failed while checking this workflow (a problem in AgentCanvas, not in your workflow). The other checks still ran.",
+      "fix": "Report it with the message shown. You can keep editing; publishing stays blocked until the check runs."
+    },
     "I010": {
       "what": "This block uses a feature that may still change upstream.",
       "fix": "Nothing to do; just be aware it may change in a future version."
     },
     "P001": {
       "what": "The workflow's framework cannot run this block (or the framework is not installed on this server).",
-      "fix": "Pick another framework in the workflow settings (click empty canvas → Framework), or replace the block with one the framework can run. The badges at the top show what each framework is missing."
+      "fix": "Pick another framework in the workflow settings (click empty canvas \u2192 Framework), or replace the block with one the framework can run. The badges at the top show what each framework is missing."
     },
     "P002": {
       "what": "This framework can run the block only by imitating it, so it may behave a little differently.",
@@ -174,23 +178,27 @@
     },
     "P004": {
       "what": "This block is designed for a different framework than the rest of the workflow.",
-      "fix": "Nothing to do for now: it runs on the workflow's framework. Choose “Same as the workflow” in the block's settings to clear it."
+      "fix": "Nothing to do for now: it runs on the workflow's framework. Choose \u201cSame as the workflow\u201d in the block's settings to clear it."
     },
     "P005": {
       "what": "This Agent block is designed for another framework, and that framework cannot take part of it (add-ons, a kind of tool, or the structured output).",
-      "fix": "Remove what the message names, or choose “Same as the workflow” under Designed for so LangGraph runs the agent."
+      "fix": "Remove what the message names, or choose \u201cSame as the workflow\u201d under Designed for so LangGraph runs the agent."
     },
     "P006": {
       "what": "This Agent block is designed for a framework that is not installed on this server, so its runs stop with an error.",
       "fix": "Ask an admin to install the package the message names on the server, or export the agent and run it where the framework is installed."
     },
+    "P007": {
+      "what": "This framework does not apply a block's retry, timeout, cache or error route (its node policies): the block runs once, with no time limit, and an error ends the run.",
+      "fix": "Remove the policy from the block (or the workflow's defaults), handle the failure inside the flow (a path after the step), or switch the workflow to LangGraph, which applies node policies."
+    },
     "W001": {
       "what": "These steps form a loop with no way out, so it would only stop at the safety limit.",
-      "fix": "Add a “Choose a path” step in the loop with a path that leaves it."
+      "fix": "Add a \u201cChoose a path\u201d step in the loop with a path that leaves it."
     },
     "W002": {
       "what": "An agent can use a tool that changes or deletes things, without asking a person first.",
-      "fix": "Select the agent and add the tool to “Tools that need approval”."
+      "fix": "Select the agent and add the tool to \u201cTools that need approval\u201d."
     },
     "W003": {
       "what": "A private data field is filled but never used.",
@@ -205,11 +213,11 @@
       "fix": "Ask whoever runs the server to install the package named in the message, or pick another provider."
     },
     "W012": {
-      "what": "An arrow leaves a path that the “Choose a path” block does not have any more.",
+      "what": "An arrow leaves a path that the \u201cChoose a path\u201d block does not have any more.",
       "fix": "Delete that arrow, or add a rule with that path name."
     },
     "W013": {
-      "what": "“Wait for all” has fewer than two branches coming in, so it has nothing to wait for.",
+      "what": "\u201cWait for all\u201d has fewer than two branches coming in, so it has nothing to wait for.",
       "fix": "Connect at least two branches into it, or delete it."
     },
     "W015": {
@@ -226,7 +234,7 @@
     },
     "W019": {
       "what": "A safety check is set to only flag problems, but its verdict is not saved anywhere, so no later step can act on it.",
-      "fix": "Select the safety block and pick a field in “Save yes/no in”, then branch on it with a “Choose a path” step (e.g. state.flagged == true). Or set “When it fails” to stop."
+      "fix": "Select the safety block and pick a field in \u201cSave yes/no in\u201d, then branch on it with a \u201cChoose a path\u201d step (e.g. state.flagged == true). Or set \u201cWhen it fails\u201d to stop."
     },
     "W095": {
       "what": "This goes against a recommended organisation rule.",
@@ -237,7 +245,7 @@
     {
       "pattern": "safety check .* stopped the run|GuardrailError",
       "what": "A safety block found a problem (personal data, prompt injection, harmful content or a wrong output format) and was set to stop the run.",
-      "fix": "The message says which block and why. If the text is fine, adjust the block's settings (e.g. the sensitivity threshold); to carry on instead, set “When it fails” to flag and branch on the saved verdict with “Choose a path”."
+      "fix": "The message says which block and why. If the text is fine, adjust the block's settings (e.g. the sensitivity threshold); to carry on instead, set \u201cWhen it fails\u201d to flag and branch on the saved verdict with \u201cChoose a path\u201d."
     },
     {
       "pattern": "api[_ ]?key|authentication|unauthori[sz]ed|\\b401\\b|invalid x-api-key|credentials",
@@ -252,7 +260,7 @@
     {
       "pattern": "connection refused|ECONNREFUSED|failed to establish|connect(ion)? error|name or service not known|getaddrinfo",
       "what": "Could not reach the AI model's server.",
-      "fix": "If you use a local model (Ollama, LM Studio…), make sure it is running and the Base URL is right. Otherwise check your internet connection."
+      "fix": "If you use a local model (Ollama, LM Studio\u2026), make sure it is running and the Base URL is right. Otherwise check your internet connection."
     },
     {
       "pattern": "model.*not.?found|not_found_error|does not exist|unknown model|\\b404\\b",
@@ -267,12 +275,12 @@
     {
       "pattern": "recursion limit|GraphRecursionError",
       "what": "The workflow went round a loop too many times.",
-      "fix": "Add a “Choose a path” step with a way out of the loop, or a limit add-on on the agent."
+      "fix": "Add a \u201cChoose a path\u201d step with a way out of the loop, or a limit add-on on the agent."
     },
     {
       "pattern": "undefined|UndefinedError|KeyError|has no attribute",
       "what": "A step used a data field that had no value yet.",
-      "fix": "Check the {{ state.<field> }} names in your prompts match your data fields, and that the run input fills them, e.g. {\"question\": \"…\"}."
+      "fix": "Check the {{ state.<field> }} names in your prompts match your data fields, and that the run input fills them, e.g. {\"question\": \"\u2026\"}."
     },
     {
       "pattern": "expecting value|invalid json|not valid json|JSONDecodeError",

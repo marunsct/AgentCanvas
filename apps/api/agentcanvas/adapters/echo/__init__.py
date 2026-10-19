@@ -52,6 +52,8 @@ class Paused:
     interrupt_id: str
     steps: int
     scripted: dict[str, list[Any]] = field(default_factory=dict)
+    next_round: list[str] = field(default_factory=list)  # steps the round's finished steps lead to
+    arrived: dict[str, set[str]] = field(default_factory=dict)  # "wait for all" step -> branches in since it ran
 
 
 def _reduce(reducer: str, old: Any, new: Any) -> Any:
@@ -64,6 +66,37 @@ def _reduce(reducer: str, old: Any, new: Any) -> Any:
     if reducer == "merge":
         return {**(old or {}), **(new or {})}
     return new
+
+
+@dataclass
+class _Rounds:
+    """Which steps run next, as in `adapters/supersteps.py`: a "wait for all" step runs once every branch into it
+    has arrived since it last ran; a resumed round goes on as it was and the round after it is kept apart."""
+
+    following: list[str]
+    arrived: dict[str, set[str]]
+    resumed: bool = False
+
+    def lead(self, echo: EchoAdapter, wf: Workflow, node_id: str, values: dict[str, Any]) -> list[str]:
+        nxt = echo._next(wf, node_id, values)
+        for target in nxt:
+            node = wf.node(target)
+            if node is not None and node.type == "core.join":
+                self.arrived.setdefault(target, set()).add(node_id)
+        return nxt
+
+    def ready(self, echo: EchoAdapter, wf: Workflow, frontier: list[str]) -> list[str]:
+        if self.resumed:
+            self.resumed = False
+            return frontier
+        out = []
+        for node_id in frontier:
+            if wf.require_node(node_id).type != "core.join":
+                out.append(node_id)
+            elif echo._before(wf, node_id) <= self.arrived.get(node_id, set()):
+                self.arrived[node_id] = set()
+                out.append(node_id)
+        return out
 
 
 class EchoAdapter:
@@ -151,14 +184,16 @@ class EchoAdapter:
                 values, frontier, done, steps = paused.values, paused.frontier, paused.done, paused.steps
                 scripted = paused.scripted
                 answers = {paused.node_id: spec.resume.value}
+                rounds = _Rounds(list(paused.next_round), {k: set(v) for k, v in paused.arrived.items()}, True)
             else:
                 self._paused.pop(spec.thread_id, None)
                 values = {c.name: c.default for c in wf.state.channels}
                 values.update(spec.input or {})
-                frontier, done, steps = self._next(wf, "START", values), set(), 0
+                rounds = _Rounds([], {})
+                frontier, done, steps = rounds.lead(self, wf, "START", values), set(), 0
                 scripted = {k: list(v) for k, v in spec.mocks.items()}
                 answers = {}
-            async for ev in self._loop(wf, spec, resources, values, frontier, done, steps, scripted, answers):
+            async for ev in self._loop(wf, spec, resources, values, frontier, done, steps, scripted, answers, rounds):
                 yield ev
         except Exception as exc:  # noqa: BLE001 - every failure reaches the UI as RUN_ERROR
             yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
@@ -174,9 +209,10 @@ class EchoAdapter:
         steps: int,
         scripted: dict[str, list[Any]],
         answers: dict[str, Any],
+        rounds: _Rounds,
     ) -> AsyncIterator[dict[str, Any]]:
         reducers = {c.name: c.reducer for c in wf.state.channels}
-        while frontier:
+        while frontier := rounds.ready(self, wf, [n for n in frontier if n != "END"]):
             steps += 1
             if steps > wf.settings.recursion_limit:
                 yield {
@@ -185,20 +221,18 @@ class EchoAdapter:
                     "message": f"stopped after {wf.settings.recursion_limit} steps without reaching END",
                 }
                 return
-            following: list[str] = []
+            following, rounds.following = rounds.following, []
             for i, node_id in enumerate(frontier):
                 node = wf.require_node(node_id)
-                if node.type == "core.join" and not self._joined(wf, node_id, done | set(frontier[:i])):
-                    following.append(node_id)  # wait for the other branches
-                    continue
                 yield {"type": "STEP_STARTED", "stepName": node.name, "canvas_node_id": node_id, "task_id": node_id}
                 try:
                     update = {} if node.disabled else await self._run(wf, node, values, resources, scripted, answers)
                 except Interrupted as intr:
                     iid = f"{spec.run_id}:{node_id}"
                     self._paused[spec.thread_id] = Paused(
-                        values=values, node_id=node_id, frontier=[node_id, *frontier[i + 1 :], *following],
+                        values=values, node_id=node_id, frontier=[node_id, *frontier[i + 1 :]],
                         done=done, payload=intr.payload, interrupt_id=iid, steps=steps - 1, scripted=scripted,
+                        next_round=following, arrived={k: set(v) for k, v in rounds.arrived.items() if v},
                     )  # fmt: skip
                     yield {
                         "type": "STEP_FINISHED", "stepName": node.name, "canvas_node_id": node_id,
@@ -224,7 +258,7 @@ class EchoAdapter:
                 }  # fmt: skip
                 if update:
                     yield {"type": "STATE_DELTA", "canvas_node_id": node_id, "delta": update}
-                for nxt in self._next(wf, node_id, values):
+                for nxt in rounds.lead(self, wf, node_id, values):
                     if nxt not in following:
                         following.append(nxt)
             frontier = [n for n in following if n != "END"]
@@ -310,9 +344,8 @@ class EchoAdapter:
             edges = [e for e in edges if e.source.route == route]
         return [e.target.node for e in edges]
 
-    def _joined(self, wf: Workflow, node_id: str, done: set[str]) -> bool:
-        before = {e.source.node for e in wf.flow_edges() if e.target.node == node_id}
-        return before <= done
+    def _before(self, wf: Workflow, node_id: str) -> set[str]:
+        return {e.source.node for e in wf.flow_edges() if e.target.node == node_id}
 
     def _outputs(self, wf: Workflow, values: dict[str, Any]) -> dict[str, Any]:
         wanted = wf.settings.output_channels

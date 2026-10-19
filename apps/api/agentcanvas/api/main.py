@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,7 @@ from agentcanvas.adapters import get_adapter, installed_adapters, model_service
 from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
+from agentcanvas.api.limits import BodyLimit
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
@@ -32,6 +34,8 @@ from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.runtime import masking
+from agentcanvas.runtime import paused as paused_runs
+from agentcanvas.runtime.paused import DatabasePaused, MemoryPaused
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
@@ -60,6 +64,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(json=settings.log_json)
     check_auth_settings(settings)
 
+    def _not_dumpable() -> None:
+        """Linux: /proc/<this pid>/environ, mem and maps become readable by root only, and ptrace is refused, so a
+        workspace script in a `subprocess` sandbox (same user) cannot read the database URL or keys from them."""
+        if sys.platform != "linux":
+            return
+        try:
+            import ctypes
+
+            pr_set_dumpable = 4
+            ctypes.CDLL(None, use_errno=True).prctl(pr_set_dumpable, 0, 0, 0, 0)
+        except (OSError, AttributeError):
+            log.warning("sandbox.dumpable_not_cleared")
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db = Database(settings.database_url, settings.db_pool_size, settings.db_max_overflow)
@@ -78,6 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise RuntimeError(f"the database role bypasses row-level security: {hint}")
             log.warning("rls.bypassed", hint=hint)
         app.state.db = db
+        paused_runs.install(DatabasePaused(db))  # paused runs of every replica, kept across restarts
+        if settings.script_execution == "subprocess":
+            _not_dumpable()  # sandbox children run as this user: keep them from reading this process's memory
         observability.trace_engine(db.engine)
         adapter = get_adapter("langchain")  # the host framework: long-term memory, MCP browsing, model resolution
         others = {i: a for i, a in installed_adapters().items() if i != adapter.id}  # S20: other frameworks
@@ -181,13 +201,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if isinstance(app.state.audit_sink, MaturaWebhookSink):
                     await app.state.audit_sink.aclose()
                 await db.dispose()
+                paused_runs.install(MemoryPaused())  # this database is gone
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.28.2", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.29.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)
+    app.add_middleware(BodyLimit)  # 413 for bodies over 20 MB, whoever reaches the API
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

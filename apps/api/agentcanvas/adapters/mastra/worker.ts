@@ -15,7 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, writeSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -114,13 +114,21 @@ class Worker {
     else waiting.resolve(msg.value ?? null);
   }
 
+  idleAndFull(limit: number): boolean {
+    return this.flows.size >= limit && this.runs.size === 0 && this.calls.size === 0;
+  }
+
   async flow(source: string): Promise<Flow> {
     const key = createHash("sha256").update(source).digest("hex").slice(0, 16);
     let found = this.flows.get(key);
     if (found === undefined) {
       const file = join(HERE, `workflow-${key}.ts`); // next to runtime.ts, which it imports
       writeFileSync(file, source);
-      found = (await import(pathToFileURL(file).href)).FLOW as Flow;
+      try {
+        found = (await import(pathToFileURL(file).href)).FLOW as Flow;
+      } finally {
+        rmSync(file, { force: true }); // loaded: the file is not needed again
+      }
       this.flows.set(key, found);
     }
     return found;
@@ -197,11 +205,20 @@ const worker = new Worker();
 const version = JSON.parse(readFileSync(join(HERE, "node_modules/@mastra/core/package.json"), "utf8")).version;
 send({ ready: true, version });
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+// Node.js cannot unload an imported module, so each distinct flow stays in memory: after this many the worker
+// exits once it is idle, and the server starts a fresh one on the next run
+const MAX_FLOWS = 500;
 for await (const line of lines) {
   if (!line.trim()) continue;
-  const msg = JSON.parse(line);
+  let msg: Record<string, any>;
+  try {
+    msg = JSON.parse(line);
+  } catch {
+    continue; // one bad line must not end every run this worker serves
+  }
   if ("reply" in msg) worker.reply(msg);
   else if (msg.op === "run") worker.run(msg).catch((exc) => console.error(`run ${msg.run} failed:`, exc));
   else if (msg.op === "cancel") worker.cancel(msg.run);
+  if (worker.idleAndFull(MAX_FLOWS)) process.exit(0);
 }
 process.exit(0); // the server went away

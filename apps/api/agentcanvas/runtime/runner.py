@@ -370,7 +370,12 @@ class Runner:
                         f"thread '{thread_id}' belongs to {'a deployment' if thread.deployment_id else 'the draft'}"
                     )
                 else:
-                    thread.status = "running"
+                    # claimed in the database, not only in this process: two replicas cannot run one conversation at
+                    # once (an orphaned run's thread is released by the hand-over sweep)
+                    free = (Thread.id == thread_id, Thread.status != "running")
+                    claimed = await s.execute(update(Thread).where(*free).values(status="running"))
+                    if claimed.rowcount == 0:  # type: ignore[attr-defined]
+                        raise Conflict(f"thread '{thread_id}' already has an active run")
                 if context is None:
                     context = await self._last_context(s, context_from or thread_id)
                 org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database

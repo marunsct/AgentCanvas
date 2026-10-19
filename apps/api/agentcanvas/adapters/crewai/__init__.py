@@ -38,6 +38,7 @@ from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.registry.adapters import all_manifests
+from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.types import RunSpec
 from agentcanvas.validation.blast import dry_run_tools
 
@@ -63,7 +64,7 @@ class CrewAIAdapter:
     manifest = all_manifests()["crewai"]
 
     def __init__(self) -> None:
-        self._paused: dict[str, str] = {}  # thread id -> runtime.Paused as JSON
+        # paused runs live with their conversation (runtime/paused.py), not in this process: any replica resumes them
         self._shared: ac.Resources | None = None
 
     # what the Google ADK adapter (S29), which runs the same way, changes
@@ -154,13 +155,13 @@ class CrewAIAdapter:
             request: dict[str, Any] = {"source": source, "thread": spec.thread_id}
             if spec.resume is not None:
                 # kept until the continued run ends or pauses again: a failed continuation can be tried again
-                saved = self._paused.get(spec.thread_id)
+                saved = await paused_runs.load(spec.thread_id)
                 if saved is None:
                     yield {"type": "RUN_ERROR", "code": "error", "message": "nothing to resume on this conversation"}
                     return
                 request["resume"] = {"paused": saved, "answer": spec.resume.value}
             else:
-                self._paused.pop(spec.thread_id, None)
+                await paused_runs.store().drop(spec.thread_id)
                 request["input"] = spec.input
             usage = UsageTracker(node_index(wf))
             host = ServerHost(wf, resources, await model_bridge(), usage, self)
@@ -179,9 +180,9 @@ class CrewAIAdapter:
                     yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
                 paused = ev.pop("paused", None)
                 if paused is not None:
-                    self._paused[spec.thread_id] = paused
+                    await paused_runs.save(spec.thread_id, paused)
                 elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
-                    self._paused.pop(spec.thread_id, None)
+                    await paused_runs.store().drop(spec.thread_id)
                 yield run_scoped_interrupts(ev, spec.run_id)
 
 
@@ -270,6 +271,23 @@ class ServerHost:
 
 
 # ------------------------------------------------------------------ the worker ----
+# what a framework worker may see of the server's environment: models come through the model bridge with a key per
+# run, so the database URL, encryption keys, provider keys and cloud credentials stay with the server
+WORKER_ENV = {
+    "PATH", "HOME", "USER", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "UV_CACHE_DIR", "XDG_CACHE_HOME",
+}  # fmt: skip
+MAX_WORKER_LINE = 64 * 1024 * 1024  # longest message line read from a worker
+IDLE_TIMEOUT_S = 600.0  # a run whose worker says nothing for this long is ended (a hung framework call)
+
+
+def worker_env(**extra: str) -> dict[str, str]:
+    """A framework worker's environment: an allowlist of the server's (2026-10-18 review), plus `extra`."""
+    env = {k: v for k, v in os.environ.items() if k in WORKER_ENV or k.startswith("LC_")}
+    return {**env, **extra}
+
+
 class CrewWorker:
     """The worker process and its runs. Reading happens on a thread, so one worker serves every event loop.
 
@@ -279,6 +297,7 @@ class CrewWorker:
     package = "crewai"  # agentcanvas/adapters/<package>/worker.py
     files = WORKER_FILES
     extra_env: ClassVar[dict[str, str]] = {"CREWAI_DISABLE_TELEMETRY": "true", "CREWAI_TRACING_ENABLED": "false"}
+    idle_timeout_s: float = IDLE_TIMEOUT_S
 
     def __init__(self, python: str):
         self.python = python
@@ -302,10 +321,7 @@ class CrewWorker:
             shutil.copyfile(API_ROOT / rel, dest)
         for pkg in ("agentcanvas", "agentcanvas/adapters", f"agentcanvas/adapters/{self.package}"):
             (Path(self._dir) / pkg / "__init__.py").touch()
-        env = {**os.environ, "PYTHONPATH": self._dir, "PYTHONUNBUFFERED": "1", "OTEL_SDK_DISABLED": "true",
-               **self.extra_env}  # fmt: skip
-        for leaked in ("VIRTUAL_ENV", "PYTHONHOME"):
-            env.pop(leaked, None)
+        env = worker_env(PYTHONPATH=self._dir, PYTHONUNBUFFERED="1", OTEL_SDK_DISABLED="true", **self.extra_env)
         return [self.python, "-m", f"agentcanvas.adapters.{self.package}.worker"], env
 
     @property
@@ -326,10 +342,23 @@ class CrewWorker:
 
     def _read(self) -> None:
         assert self.proc.stdout is not None
-        for raw in self.proc.stdout:
+        while True:
+            try:
+                raw = self.proc.stdout.readline(MAX_WORKER_LINE)
+            except (OSError, ValueError):
+                break
+            if not raw:
+                break
+            if not raw.endswith(b"\n"):  # longer than the limit: drop the rest of that line
+                while (rest := self.proc.stdout.readline(MAX_WORKER_LINE)) and not rest.endswith(b"\n"):
+                    pass
+                log.warning("%s worker: a message over %d bytes was dropped", self.package, MAX_WORKER_LINE)
+                continue
             try:
                 msg = json.loads(raw)
             except ValueError:
+                continue
+            if not isinstance(msg, dict):
                 continue
             if msg.get("ready"):
                 self.version = msg.get("crewai") or msg.get("version")
@@ -354,6 +383,10 @@ class CrewWorker:
             self.proc.stdin.write(data)
             self.proc.stdin.flush()
 
+    async def asend(self, msg: dict[str, Any]) -> None:
+        """`send` from async code: a large message to a busy worker fills the pipe and would block the event loop."""
+        await asyncio.to_thread(self.send, msg)
+
     async def run(
         self, run_id: str, request: dict[str, Any], handle: Callable[[str, dict[str, Any]], Any]
     ) -> AsyncIterator[dict[str, Any]]:
@@ -364,13 +397,18 @@ class CrewWorker:
         ended = False
         try:
             try:
-                self.send({"op": "run", "run": run_id, **request})
+                await self.asend({"op": "run", "run": run_id, **request})
             except OSError as exc:  # the worker died before it got the run (a broken pipe)
                 ended = True
                 yield {"type": "RUN_ERROR", "code": "error", "message": f"the {self.label} worker stopped: {exc}"}
                 return
             while True:
-                msg = await queue.get()
+                try:
+                    msg = await asyncio.wait_for(queue.get(), self.idle_timeout_s)
+                except TimeoutError:
+                    quiet = f"the {self.label} worker said nothing for {self.idle_timeout_s:g} s"
+                    yield {"type": "RUN_ERROR", "code": "timeout", "message": quiet}
+                    return
                 if "event" in msg:
                     yield msg["event"]
                 elif "call" in msg:
@@ -399,7 +437,7 @@ class CrewWorker:
         except Exception as exc:  # noqa: BLE001 - the step that asked fails with it
             reply = {"reply": msg["call"], "error": f"{type(exc).__name__}: {exc}"}
         with contextlib.suppress(Exception):
-            self.send(json.loads(json.dumps(reply, default=str)))
+            await self.asend(json.loads(json.dumps(reply, default=str)))
 
 
 _workers: dict[tuple[str, str], CrewWorker] = {}
