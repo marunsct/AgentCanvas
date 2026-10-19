@@ -2,6 +2,14 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.29.1 — Hardening: Echo pauses survive restarts, runs always use their own project's workspace
+
+### Fixed
+- **Echo keeps paused runs with their conversation** (`runtime/paused.py`), like every other framework, so a resume
+  on another replica or after a restart works.
+- **A run uses its own project's workspace even when the process-wide `PROJECT_OF` map has no entry** (a replica that
+  never loaded the workflow, or a restart): `start()` reads the workflow's project from the database.
+
 ## v0.29.0 — The rest of the deep review: run correctness across replicas and server hardening (not tagged yet)
 
 The second round of fixes from the 2026-10-18 review (v0.28.1 has the first).

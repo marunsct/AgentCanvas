@@ -28,6 +28,7 @@ from agentcanvas.expr import eval_condition, render_template
 from agentcanvas.ir.models import Node, Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.registry.adapters import all_manifests
+from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.types import InterruptInfo, RunSpec
 from agentcanvas.workspace.loader import load_attr
 
@@ -54,6 +55,23 @@ class Paused:
     scripted: dict[str, list[Any]] = field(default_factory=dict)
     next_round: list[str] = field(default_factory=list)  # steps the round's finished steps lead to
     arrived: dict[str, set[str]] = field(default_factory=dict)  # "wait for all" step -> branches in since it ran
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON for the paused-run store (runtime/paused.py): any replica, or a restarted server, continues it."""
+        out = asdict(self)
+        out["done"] = sorted(self.done)
+        out["arrived"] = {k: sorted(v) for k, v in self.arrived.items()}
+        return out
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Paused:
+        return cls(
+            **{
+                **d,
+                "done": set(d.get("done") or []),
+                "arrived": {k: set(v) for k, v in (d.get("arrived") or {}).items()},
+            }
+        )
 
 
 def _reduce(reducer: str, old: Any, new: Any) -> Any:
@@ -103,8 +121,7 @@ class EchoAdapter:
     id = "echo"
     manifest = all_manifests()["echo"]
 
-    def __init__(self) -> None:
-        self._paused: dict[str, Paused] = {}
+    # paused runs live with their conversation (runtime/paused.py), like the other frameworks' runs
 
     # ------------------------------------------------------------ compile ----
     def _check(self, wf: Workflow, registry: Any = None) -> None:
@@ -153,7 +170,7 @@ class EchoAdapter:
     # ------------------------------------------------------------ runtime ----
     @asynccontextmanager
     async def persistence(self, database_url: str | None) -> AsyncIterator[None]:
-        yield  # paused runs live in memory
+        yield  # paused runs are kept by runtime/paused.py (the database on a server)
 
     def default_resources(self) -> Any:
         return SimpleNamespace(workspace=None, script_runner=None)
@@ -177,7 +194,9 @@ class EchoAdapter:
         wf = spec.workflow
         try:
             if spec.resume is not None:
-                paused = self._paused.pop(spec.thread_id, None)
+                saved = await paused_runs.load(spec.thread_id)
+                await paused_runs.store().drop(spec.thread_id)
+                paused = Paused.from_dict(saved) if saved is not None else None
                 if paused is None:
                     yield {"type": "RUN_ERROR", "code": "error", "message": "nothing to resume on this conversation"}
                     return
@@ -186,7 +205,7 @@ class EchoAdapter:
                 answers = {paused.node_id: spec.resume.value}
                 rounds = _Rounds(list(paused.next_round), {k: set(v) for k, v in paused.arrived.items()}, True)
             else:
-                self._paused.pop(spec.thread_id, None)
+                await paused_runs.store().drop(spec.thread_id)
                 values = {c.name: c.default for c in wf.state.channels}
                 values.update(spec.input or {})
                 rounds = _Rounds([], {})
@@ -229,11 +248,12 @@ class EchoAdapter:
                     update = {} if node.disabled else await self._run(wf, node, values, resources, scripted, answers)
                 except Interrupted as intr:
                     iid = f"{spec.run_id}:{node_id}"
-                    self._paused[spec.thread_id] = Paused(
+                    paused = Paused(
                         values=values, node_id=node_id, frontier=[node_id, *frontier[i + 1 :]],
                         done=done, payload=intr.payload, interrupt_id=iid, steps=steps - 1, scripted=scripted,
                         next_round=following, arrived={k: set(v) for k, v in rounds.arrived.items() if v},
                     )  # fmt: skip
+                    await paused_runs.save(spec.thread_id, json.loads(json.dumps(paused.to_dict(), default=str)))
                     yield {
                         "type": "STEP_FINISHED", "stepName": node.name, "canvas_node_id": node_id,
                         "status": "interrupted", "task_id": node_id,
