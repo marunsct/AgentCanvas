@@ -13,10 +13,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import secrets
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,12 +47,47 @@ class InputShape(BaseModel):
     chat: bool = Field(default=False, description="true: the field is a message list; each message is appended to it")
 
 
+MAX_FRAME_ORIGINS = 20
+_ORIGIN = re.compile(r"^https?://(\*\.)?[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\d{1,5})?$")
+
+
+def clean_origin(value: str) -> str:
+    """One site allowed to frame the chat page: `https://example.com`, `https://*.example.com` or
+    `http://localhost:3000` (no path; `*` only as the whole first label). Lower-cased, trailing slash dropped."""
+    origin = value.strip().rstrip("/").lower()
+    if not _ORIGIN.match(origin) or len(origin) > 200:
+        raise ValueError(f"'{value}' is not a site origin like https://example.com or https://*.example.com")
+    return origin
+
+
+def frame_ancestors(share: DeploymentShare | None) -> str:
+    """The CSP `frame-ancestors` value for a link's chat page: its allowed sites, `*` when none are set (the
+    default), and only the app itself for a link that is unknown or off."""
+    if share is None or not share.enabled:
+        return "'self'"
+    origins = [o for o in (share.frame_origins or []) if isinstance(o, str)]
+    return " ".join(["'self'", *origins]) if origins else "*"
+
+
 class ShareSettingsIn(BaseModel):
     enabled: bool | None = None
     title: str | None = Field(None, max_length=120)
     greeting: str | None = Field(None, max_length=2000)
     suggestions: list[str] | None = Field(None, max_length=MAX_SUGGESTIONS)
     input_field: str | None = Field(None, max_length=63, description="'' picks one from the workflow's inputs")
+    frame_origins: list[str] | None = Field(
+        None, description="sites allowed to show the chat page in a frame (the chat widget); empty: any site"
+    )  # fmt: skip
+
+    @field_validator("frame_origins")
+    @classmethod
+    def _origins(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        origins = list(dict.fromkeys(clean_origin(o) for o in v if o.strip()))
+        if len(origins) > MAX_FRAME_ORIGINS:
+            raise ValueError(f"at most {MAX_FRAME_ORIGINS} sites")
+        return origins
 
 
 def _messages_field(wf: Workflow) -> str | None:
@@ -183,6 +219,8 @@ class ShareService:
             share.suggestions = [s.strip()[:200] for s in body.suggestions if s.strip()][:MAX_SUGGESTIONS]
         if body.input_field is not None:
             share.input_field = body.input_field or None
+        if body.frame_origins is not None:
+            share.frame_origins = body.frame_origins
         share.updated_by = user_id
         await self.s.commit()
         await self.s.refresh(share)

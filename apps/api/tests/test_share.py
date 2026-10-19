@@ -293,3 +293,44 @@ def test_input_shape_and_answer():
     assert shape == InputShape(field="ticket")  # a question-like text input wins over the message list
     reply = {"messages": [{"type": "ai", "content": "Sorry about that."}], "summary": "ESCALATED", "ticket": "x"}
     assert answer_text(reply, shape) == "Sorry about that."
+
+
+async def test_a_link_says_which_sites_may_frame_its_chat_page(api_client):
+    """Review follow-up: the chat page was framable by any site. A builder can list the sites; none listed keeps the
+    old behaviour; a link that is unknown or off allows only the app itself."""
+    _, dep, _ = await publish(api_client)
+    off = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    token = off["token"]
+    assert off["frame_origins"] == []
+
+    async def ancestors(tok: str) -> str:
+        r = await api_client.get(f"/v1/share/{tok}/frame")
+        assert r.status_code == 204
+        return r.headers["x-frame-ancestors"]
+
+    assert await ancestors(token) == "'self'"  # off
+    assert await ancestors("sh_unknown") == "'self'"
+
+    await share_on(api_client, dep)
+    assert await ancestors(token) == "*"  # nothing listed: any site, as before
+
+    share = await share_on(
+        api_client, dep, frame_origins=["https://Example.com/", "https://*.shop.example", "https://example.com"]
+    )
+    assert share["frame_origins"] == ["https://example.com", "https://*.shop.example"]
+    assert await ancestors(token) == "'self' https://example.com https://*.shop.example"
+
+    for bad in [
+        "example.com",
+        "https://example.com/path",
+        "https://a b.com",
+        "*",
+        "javascript:alert(1)",
+        "https://x;y",
+    ]:
+        r = await api_client.put(f"/v1/deployments/{dep}/share", json={"frame_origins": [bad]})
+        assert r.status_code == 422, bad
+    assert (await api_client.put(f"/v1/deployments/{dep}/share", json={"frame_origins": []})).json()[
+        "frame_origins"
+    ] == []
+    assert await ancestors(token) == "*"

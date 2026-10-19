@@ -3,11 +3,12 @@
 # connect-src: this origin plus the identity provider's (sign-in fetches its discovery document, keys and token
 # endpoint). CSP_CONNECT_SRC lists extra origins, space-separated; by default it is the origin of OIDC_ISSUER.
 # frame-ancestors 'self': only the app frames itself (the silent sign-in renewal's hidden iframe). Share-link chat
-# pages (/s/…, S23) use CONTENT_SECURITY_POLICY_EMBED instead: the same policy, but any site may frame them (the
-# chat widget).
+# pages (/s/…, S23) use CONTENT_SECURITY_POLICY_EMBED instead: the same policy, but the sites
+# allowed to frame them (the chat widget) come per link from the API (nginx's $frame_ancestors; `*` unless the builder
+# listed sites).
 # script-src 'self' only: forms validate with an interpreting JSON Schema validator, no eval (S12).
 if [ -z "${CSP_CONNECT_SRC:-}" ] && [ -n "${OIDC_ISSUER:-}" ]; then
   CSP_CONNECT_SRC=$(printf '%s' "$OIDC_ISSUER" | sed -E 's#^(https?://[^/]+).*#\1#')
 fi
 export CONTENT_SECURITY_POLICY="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${CSP_CONNECT_SRC:-}; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
-export CONTENT_SECURITY_POLICY_EMBED=$(printf '%s' "$CONTENT_SECURITY_POLICY" | sed "s/frame-ancestors 'self'/frame-ancestors */")
+export CONTENT_SECURITY_POLICY_EMBED=$(printf '%s' "$CONTENT_SECURITY_POLICY" | sed 's/frame-ancestors .self./frame-ancestors $frame_ancestors/')

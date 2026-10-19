@@ -19,7 +19,7 @@ updated one wins; fix the other in the same PR.
 | v0.28.0 | **AgentCanvas on Matura → v0.28.0** (#50, merged `2f571a2`): projects can belong to a Matura workspace (`project.workspace_id`, `GET /v1/workspaces`, `?workspace_id=` filter, `PUT /v1/projects/{id}/workspace`, picker on the home page); forced Postgres row-level security on the 35 organisation-owned tables (`db/rls.py`, migration `a3c7e9b1d5f2`); `/v1/me` `portal_url`; `AuditSink`; tokens with `pmode` other than `shared` get 503 |
 | Before that | **Sign-in through Matura → v0.27.0** (#49, merged `1b2e186`): `AGENTCANVAS_AUTH_MODE=matura`, permissions to roles, contract tables, webhooks and change feed, organisation picker |
 | Earlier | **Every framework in the Docker app by default → v0.26.3**; Review after the competitive roadmap → v0.26.1 ([#41](https://github.com/marunsct/AgentCanvas/pull/41), merged `f5786d1`, 40 fixes); S36 Mastra → v0.26.0 ([#40](https://github.com/marunsct/AgentCanvas/pull/40), merged `0334885`); S35 Strands and LlamaIndex Workflows flows → v0.25.0 ([#39](https://github.com/marunsct/AgentCanvas/pull/39), merged `f813972`); S33–S34 Microsoft Agent Framework flows → v0.24.0 (#38, `8e307ad`); S32 Pydantic AI and Agno flows → v0.23.0 (#37, `63be5ca`) |
-| Version in code | API `0.29.0` (`apps/api/agentcanvas/api/main.py`; `pyproject.toml`, `uv.lock`, `package.json`, `openapi.json` and Helm `appVersion` follow it), CHANGELOG top entry v0.29.0 |
+| Version in code | API `0.30.0` (`apps/api/agentcanvas/api/main.py`; `pyproject.toml`, `uv.lock`, `package.json`, `openapi.json` and Helm `appVersion` follow it), CHANGELOG top entry v0.30.0 |
 | Git tags | **none pushed.** v0.1.0 … v0.29.0 are all left to the owner (see §2) |
 | Next sprint | **Proposed (owner to decide):** restore CI runners and run every suite on v0.29.0 first (nothing since v0.27.0 has run in CI). Then the review plan's Phase 3 (consolidation: engine and packager duplication, `ResourceResolver`, split `nodes.py`) and the web items in §9, then real users before the GA backlog |
 | Work status | #51 (v0.28.1), #53 (v0.28.2) and #52 (v0.29.0) merged; the API suite passes (see above). Not run yet: pyright, the web unit tests, the e2e suite and the framework conformance kit (no npm or framework environments in the cloud session). **Run `make check`, `make e2e` and the kit with every framework before building on them**, and try `infra/compose.prod.yml` with a fresh and an existing volume (the new API database role) |
@@ -219,8 +219,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   AI readiness pack of TS26 are not started.
 - **Open from the 2026-10-18 review** (details in the review doc; fixed items are in CHANGELOG v0.28.1 and v0.29.0):
   the `subprocess` sandbox is limits only (same user, same files; v0.29.0 hides the API's memory and environ), so
-  untrusted code needs `docker` (prod compose still defaults to `subprocess`); the share page allows any framing site
-  while it shows approval buttons (needs per-link allowed origins); flow engines run parallel branches one after
+  untrusted code needs `docker` (prod compose still defaults to `subprocess`); flow engines run parallel branches one after
   another; RLS policies on child tables nest 3–4 EXISTS levels (EXPLAIN
   the hot list queries with a tenant set); the RLS migration locks 35 tables at once; duplicated engine, worker and packager code (about 1,000–1,300 lines,
   Phase 3); `Resources` is still LangChain's object for every adapter; web: session and project in module variables
@@ -322,8 +321,9 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   block names its knowledge base as free text (no picker; a missing one fails the run with a clear message). The
   embedding provider's API key must be a `{"$secret": …}` reference or the provider's usual project secret.
 - **S23 limits:** a share link is the credential (stored in plain text so builders can copy it again; regenerate
-  it if logs leak, since it appears in URL paths); `/s/` pages can be framed by any site (no allowed-origins list,
-  the page is static); abuse protection is the deployment's and project's rate limits plus nginx's per-IP limit, so
+  it if logs leak, since it appears in URL paths); `/s/` pages can be framed by any site until the builder lists sites
+  (`deployment_share.frame_origins`; nginx asks `GET /v1/share/{token}/frame` through `auth_request` and sets
+  frame-ancestors per link; unlisted = `*` so existing widgets keep working); abuse protection is the deployment's and project's rate limits plus nginx's per-IP limit, so
   a busy public link can use up the limit API-key callers share; visitors see streamed text from every AI step
   while a run is going, then the extracted answer; no history after a reload; the page sends one text field, so
   workflows with other required inputs fail with a generic error; the widget panel has a fixed size and no

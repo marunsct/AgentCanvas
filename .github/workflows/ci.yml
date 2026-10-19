@@ -185,8 +185,9 @@ jobs:
           curl -fsSI "http://localhost:8080$asset" | grep -qi "immutable"
           curl -fsSI http://localhost:8080/ | grep -i "content-security-policy" | grep -q "connect-src 'self' https://login.example.com;"
           curl -fsSI http://localhost:8080/ | grep -qi "frame-ancestors 'self'"
-          # S23: share-link chat pages may be framed by any site (the chat widget); the widget loader is JavaScript
-          curl -fsSI http://localhost:8080/s/sh_ci | grep -qi "frame-ancestors \*"
+          # S23: a share link's chat page is framed only by the sites its builder allows (the chat widget; any site
+          # until some are listed): the API answers per link, and a link that does not exist allows only the app
+          curl -fsSI http://localhost:8080/s/sh_ci | grep -i "content-security-policy" | grep -qi "frame-ancestors 'self';"
           test -z "$(curl -fsSI http://localhost:8080/s/sh_ci | grep -i x-frame-options)"
           curl -fsS http://localhost:8080/s/sh_ci | grep -qi "<!doctype html>"
           curl -fsSI http://localhost:8080/widget.js | grep -qi "content-type: application/javascript"

@@ -75,6 +75,7 @@ CREATE TABLE deployment_share (                 -- S23: public share link and ch
   greeting      text NOT NULL DEFAULT '',
   suggestions   jsonb NOT NULL DEFAULT '[]',
   input_field   text,                             -- NULL: picked from the workflow's inputs
+  frame_origins jsonb NOT NULL DEFAULT '[]',      -- sites allowed to frame the chat page; empty: any site
   updated_by    text,
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()

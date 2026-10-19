@@ -1741,6 +1741,10 @@ export type Suggestions = string[];
 export type Title1 = string;
 export type DeploymentId2 = string;
 export type Enabled6 = boolean;
+/**
+ * sites allowed to show the chat page in a frame; empty: any site
+ */
+export type FrameOrigins = string[];
 export type Greeting1 = string;
 export type InputField = string | null;
 /**
@@ -1774,6 +1778,10 @@ export type ThreadId11 = string | null;
  */
 export type Visitor2 = string;
 export type Enabled7 = boolean | null;
+/**
+ * sites allowed to show the chat page in a frame (the chat widget); empty: any site
+ */
+export type FrameOrigins1 = string[] | null;
 export type Greeting2 = string | null;
 /**
  * '' picks one from the workflow's inputs
@@ -4696,6 +4704,7 @@ export interface ShareInfo {
 export interface ShareOut {
   deployment_id: DeploymentId2;
   enabled: Enabled6;
+  frame_origins: FrameOrigins;
   greeting: Greeting1;
   input: InputShape;
   input_field: InputField;
@@ -4730,6 +4739,7 @@ export interface ShareRunIn {
  */
 export interface ShareSettingsIn {
   enabled?: Enabled7;
+  frame_origins?: FrameOrigins1;
   greeting?: Greeting2;
   input_field?: InputField1;
   suggestions?: Suggestions2;
