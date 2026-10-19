@@ -2,6 +2,62 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## Unreleased — Hardening pass: chat, exports, migrations, keyboard, local CI
+
+### Fixed
+- **A chat stopped after its first message.** The run's input was kept as the caller's own dict, the engine turned its
+  message dicts into message objects in place, and saving the run's recording then failed, so the thread stayed
+  "running" and every next message answered "already has an active run". The input is now a plain copy, and a run
+  whose full save fails still records its status and frees its thread (`_finish_bare`).
+- A client that sends its next message the moment it reads `RUN_FINISHED` could get "already has an active run": the
+  run published its last event before it saved itself and released the thread. The last events now come after.
+- **Concurrent migrations.** Replicas that start together each ran Alembic; three of four crashed on a duplicate-type
+  error. Migrations now take a Postgres advisory lock (the others wait, then find nothing to do) and give up on a
+  table lock after 60 s instead of queuing every other query behind an `ALTER TABLE`.
+- The Agent Spec export, the bridges list and the export plan answered 500 for a router, Set step or HTTP tool whose
+  free-form settings had the wrong type (a hand-edited or imported document). They read them defensively now.
+- The exported **Ask your documents** template failed its own tests because the export script did not ship the
+  knowledge base the template searches; the script now includes the sample handbook, as the API's export does.
+- The web app waited for ever on a server that never answered (no timeout on plain requests): they now end after two
+  minutes with a message. A streamed run's last event is delivered even when the connection closes without a blank line.
+
+### Added
+- API-wide robustness tests: every operation of the OpenAPI document is called with hostile bodies, ids and headers
+  (`test_api_robustness.py`), and every template is damaged at random places and read through every endpoint that reads
+  a workflow, then run (`test_workflow_fuzz.py`; `ROBUSTNESS_ROUNDS` and `ROBUSTNESS_SEED` lengthen the soak).
+- Keyboard: the port menu takes the focus when a port is opened with Enter or Space, Tab stays inside it, and Escape
+  returns the focus to the port (e2e `keyboard.spec.ts`).
+- A warning (`sandbox.egress_not_enforced`) when a project's `sandbox.json` lists network access that the sandbox mode in
+  use cannot give (only the LangSmith mode can).
+- Local CI: `make ci-full` now runs the API suite on a throwaway Postgres container (it ran on SQLite only), and has the
+  `frameworks` and `export` stages the GitHub workflow had; Helm runs from its official image when it is not installed.
+  Each export's environment is deleted after its tests so a laptop's disk survives.
+- `E2E_API_PORT` moves the end-to-end API off port 8000 when another program holds it.
+
+### Changed
+- Home, Members, Copilot and Editor pages read the session through `useMe`/`useCan`, so they redraw on a role change.
+- `make ci` runs the gates locally (check, strict docs build, dependency audit, Helm lint); `make ci-full` adds the
+  framework environments, the whole API suite, the Docker images and e2e. `make hooks` runs lint, types and web tests
+  before every `git push`. The GitHub workflow now runs only when started by hand.
+- `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
+
+## v0.32.3 — Session state in the web app, and a guard on framework versions
+
+### Changed
+- The signed-in user, organisation and role are now state (`useMe`, `useCan` in `api/session.ts`); components that use
+  them redraw when they change. `ME` and `can` still work for code outside React.
+
+### Added
+- A test that the framework versions written in the export lists, `interop.py`, the CrewAI code generator and the CI
+  matrix agree, so a version bump in one place fails until the others follow.
+
+## v0.32.2 — The canvas can be used from the keyboard
+
+### Added
+- Palette items add on Enter or Space. Every port on a block is a focusable button: Tab to it, press Enter or Space and
+  the "what can connect here?" menu opens next to it, so blocks can be wired without a mouse.
+- Blocks announce their name and type to screen readers; a port's hover card also shows when the port has focus.
+
 ## v0.32.1 — The canvas no longer redraws on every streamed token
 
 ### Fixed

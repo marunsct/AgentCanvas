@@ -7,7 +7,9 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from structlog.contextvars import get_contextvars
 
 from agentcanvas.errors import DomainError
 
@@ -38,6 +40,29 @@ def install_problem_handlers(app: FastAPI) -> None:
             errors=errors,
         )
 
+    @app.exception_handler(DataError)
+    async def _data(_: Request, exc: DataError) -> JSONResponse:
+        # the database refused a value as such: a NUL character in a name or id (Postgres text cannot hold one), a
+        # number out of range, text longer than a column. The client's input is at fault; the SQL stays in the log.
+        return problem(
+            422,
+            "Invalid input",
+            "a value contains something the database cannot store (a NUL character, a number out of range)",
+            "https://agentcanvas.dev/errors/invalid",
+        )
+
+    @app.exception_handler(Exception)
+    async def _unexpected(_: Request, exc: Exception) -> JSONResponse:
+        # a bug: the client gets the same problem document as every other error (not a text page) and the request id
+        # to quote; the traceback is logged by the server as before (Starlette re-raises after answering)
+        return problem(
+            500,
+            "Internal error",
+            "something went wrong on the server; quote the request id when you report it",
+            "https://agentcanvas.dev/errors/internal",
+            request_id=get_contextvars().get("request_id"),
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail = exc.detail if isinstance(exc.detail, str) else "request failed"
@@ -53,4 +78,5 @@ _TITLES = {
     405: "Method not allowed",
     409: "Conflict",
     422: "Invalid input",
+    500: "Internal error",
 }

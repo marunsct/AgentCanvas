@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -16,9 +16,9 @@ framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent F
 	  $$(uv run python -c "from agentcanvas.designs import AGENT_FRAMEWORKS as A; print(' '.join(A['$(FW)'].packages))") \
 	  cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0
 
-mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm in apps/api/.frameworks/mastra (needs Node.js 22.18+)
-	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json .frameworks/mastra/ \
-	  && npm install --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
+mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm, as pinned by package-lock.json, in apps/api/.frameworks/mastra (needs Node.js 22.18+)
+	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json .frameworks/mastra/ \
+	  && npm ci --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
 
 infra:      ## start local Postgres + Redis (Docker)
 	docker compose -f infra/docker-compose.yml up -d postgres redis
@@ -75,6 +75,16 @@ check:      ## every CI gate except e2e and the docs build (lint, formats, types
 	git diff --exit-code -- packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts
 	$(MAKE) test
 	cd apps/web && pnpm build
+
+ci:         ## local CI, the default gates: check, strict docs build, dependency audit, Helm lint (see scripts/ci-local.sh)
+	scripts/ci-local.sh default
+
+ci-full:    ## local CI, everything: framework environments, the full API suite, images and compose, e2e (slow)
+	scripts/ci-local.sh full
+
+hooks:      ## run lint, types and web tests before every git push (skip once with --no-verify)
+	git config core.hooksPath .githooks
+	@echo "pre-push hook installed"
 
 docs:       ## documentation site on http://localhost:8001 (MkDocs Material)
 	uvx --with mkdocs-material mkdocs serve -a localhost:8001

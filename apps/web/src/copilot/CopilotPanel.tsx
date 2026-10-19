@@ -1,7 +1,7 @@
 /** The Copilot panel (S14): chat about the open workflow; its changes appear on the canvas to accept or reject. */
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { can, ME } from "../api/session";
+import { can, useCan, useMe } from "../api/session";
 import { useEditor } from "../editor/store";
 import { type Brief, type Mode, toolLabel, useCopilot } from "./copilot";
 
@@ -33,6 +33,8 @@ export function CopilotPanel() {
   const workflowId = useEditor((s) => s.workflowId);
   const { conversation, busy, live, error } = useCopilot();
   const [text, setText] = useState("");
+  const canBuild = useCan("builder");
+  const email = useMe((s) => s.me.email);
   const [mode, setMode] = useState<Mode>(can("builder") ? "build" : "ask");
   const end = useRef<HTMLDivElement>(null);
 
@@ -95,7 +97,7 @@ export function CopilotPanel() {
         )}
         {conversation.messages.map((m, i) => (
           <div key={i} className={`copilot-turn ${m.role}`}>
-            <span className="copilot-avatar" aria-hidden="true">{m.role === "user" ? (ME.email?.[0] ?? "Y").toUpperCase() : "✦"}</span>
+            <span className="copilot-avatar" aria-hidden="true">{m.role === "user" ? (email?.[0] ?? "Y").toUpperCase() : "✦"}</span>
             <div className={`copilot-msg ${m.role}`}>{m.content || (m.proposal_id ? "Proposed changes." : "")}</div>
           </div>
         ))}
@@ -137,7 +139,7 @@ export function CopilotPanel() {
           )}
           {Boolean(pending.notes?.length) && <p className="small">Adds to project notes: {pending.notes!.join("; ")}</p>}
           <div className="row gap">
-            <button type="button" className="primary" disabled={busy || pending.stale || !can("builder")}
+            <button type="button" className="primary" disabled={busy || pending.stale || !canBuild}
               onClick={() => void useCopilot.getState().accept()}>Accept</button>
             <button type="button" disabled={busy} onClick={() => void useCopilot.getState().reject()}>Reject</button>
           </div>
@@ -155,7 +157,7 @@ export function CopilotPanel() {
           <div className="segmented" role="radiogroup" aria-label="Copilot mode">
             {(["build", "ask"] as Mode[]).map((m) => (
               <button type="button" key={m} role="radio" aria-checked={mode === m} className={mode === m ? "active" : ""}
-                disabled={m === "build" && !can("builder")} onClick={() => setMode(m)}
+                disabled={m === "build" && !canBuild} onClick={() => setMode(m)}
                 title={m === "build" ? "The Copilot may propose changes" : "Questions only; nothing changes"}>
                 {m === "build" ? "Build" : "Ask"}
               </button>

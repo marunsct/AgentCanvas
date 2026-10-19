@@ -13,8 +13,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from agentcanvas.log import get_logger
 from agentcanvas.sandbox.policy import PolicyError, load_policy
 from agentcanvas.settings import Settings
+
+log = get_logger(__name__)
+_WARNED: set[tuple[str, str]] = set()  # (workspace, mode) pairs already told that sandbox.json network rules are idle
 
 CHILD = Path(__file__).with_name("child.py")
 TIMEOUT_S = 30.0
@@ -225,6 +229,17 @@ class SandboxRunner:
         except PolicyError as exc:
             raise ScriptError(str(exc)) from None
         mode = self.settings.script_execution
+        if (
+            mode != "langsmith"
+            and (policy.egress or policy.inject)
+            and (key := (str(self.workspace), mode)) not in _WARNED
+        ):
+            _WARNED.add(key)  # once per workspace: sandbox.json allows a network that this mode does not have
+            log.warning(
+                "sandbox.egress_not_enforced", mode=mode, workspace=str(self.workspace),
+                hint="egress and inject rules in sandbox.json only work with AGENTCANVAS_SCRIPT_EXECUTION=langsmith; "
+                "in this mode workspace code has no network at all",
+            )  # fmt: skip
         if mode == "remote":
             return await _remote_exchange(
                 self.settings, self.workspace, import_path, payload, policy.timeout_s, policy.memory_mb

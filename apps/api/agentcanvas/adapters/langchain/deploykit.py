@@ -297,7 +297,8 @@ def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | No
                 hosts.setdefault(host[0], {"host": host[0], "port": host[1], "kind": "tool",
                                            "why": f"the app connector (MCP) '{r.name}'"})  # fmt: skip
         elif r.type == "tool.http":
-            for d in [cfg.get("url"), *(cfg.get("allowed_domains") or [])]:
+            allowed = cfg.get("allowed_domains")
+            for d in [cfg.get("url"), *(allowed if isinstance(allowed, list) else [])]:
                 if isinstance(d, str) and (host := _host(d.removeprefix("*."))):
                     hosts.setdefault(host[0], {"host": host[0], "port": host[1], "kind": "tool",
                                                "why": f"the web API tool '{r.name}'"})  # fmt: skip

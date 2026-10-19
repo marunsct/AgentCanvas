@@ -1,4 +1,5 @@
 /** Who is signed in and their role in the current organisation (M7-T3), loaded once at startup. */
+import { create } from "zustand";
 import { portalUrl } from "./auth";
 import { apiFetch } from "./client";
 
@@ -16,11 +17,24 @@ export interface Me {
 }
 
 // dev-mode default until `loadMe` answers (and in unit tests)
-export let ME: Me = { id: "usr_dev", email: "", org_id: "org_default", role: "admin", memberships: {} };
+const DEFAULT_ME: Me = { id: "usr_dev", email: "", org_id: "org_default", role: "admin", memberships: {} };
+
+/** The session as state: components that must redraw when the user, organisation or role changes use `useMe`. */
+export const useMe = create<{ me: Me; loaded: boolean }>(() => ({ me: DEFAULT_ME, loaded: false }));
+
+/** The current session for code outside React (a live binding to the store's value; read-only). */
+export let ME: Me = DEFAULT_ME;
+useMe.subscribe((s) => { ME = s.me; });
 
 export async function loadMe(): Promise<Me> {
-  ME = await apiFetch<Me>("/me");
-  return ME;
+  const me = await apiFetch<Me>("/me");
+  useMe.setState({ me, loaded: true });
+  return me;
+}
+
+/** `can`, for components: redraws when the role changes. */
+export function useCan(role: Role): boolean {
+  return RANK[useMe((s) => s.me.role)] >= RANK[role];
 }
 
 /** Whether the signed-in user's role is at least `role` (the API enforces the same rule). */

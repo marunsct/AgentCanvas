@@ -111,7 +111,8 @@ def gaps(wf: Workflow, target: str) -> list[Gap]:
     if target == "wayflow":  # WayFlow checks types: text written into a list field stops the flow (S23)
         lists = {c.name for c in wf.state.channels if c.type.get("type") == "array"}
         for n in wf.nodes:
-            if n.type == "core.set" and (bad := sorted(lists & set(n.config.get("values") or {}))):
+            values = n.config.get("values")
+            if n.type == "core.set" and isinstance(values, dict) and (bad := sorted(lists & set(values))):
                 out.append(Gap(True, f"'{n.name}' writes text into the list field '{bad[0]}'; {t.label} expects a "
                                      "list there."))  # fmt: skip
     out += [Gap(False, r) for r in report]

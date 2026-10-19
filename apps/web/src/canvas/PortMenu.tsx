@@ -6,7 +6,20 @@ import { useManifests } from "../api/queries";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import { addElement } from "./Canvas";
+import { openedByKeyboard, restoreOpener } from "./focus";
 import { connectExisting, linkEdge, type NewChoice, suggest } from "./suggest";
+
+/** Tab and Shift+Tab stay inside the open menu instead of walking off into the canvas behind it. */
+function trapTab(e: React.KeyboardEvent, box: HTMLElement | null) {
+  if (e.key !== "Tab" || !box) return;
+  const items = [...box.querySelectorAll<HTMLElement>("button, input")].filter((el) => !el.hasAttribute("disabled"));
+  if (!items.length) return;
+  const first = items[0]!;
+  const last = items[items.length - 1]!;
+  const at = document.activeElement;
+  if (e.shiftKey && (at === first || !box.contains(at))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (at === last || !box.contains(at))) { e.preventDefault(); first.focus(); }
+}
 
 export function PortMenu() {
   const menu = useUi((s) => s.portMenu);
@@ -19,6 +32,16 @@ export function PortMenu() {
   const close = () => useUi.getState().openPortMenu(null);
 
   useEffect(() => setQ(""), [menu]);
+  const open = menu !== null;
+  useEffect(() => { // keyboard: the menu takes focus when it opens (from a key), and gives it back to the port on close
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      if (openedByKeyboard() && box.current && !box.current.contains(document.activeElement)) {
+        box.current.querySelector<HTMLElement>("input, button.choice")?.focus();
+      }
+    });
+    return () => { cancelAnimationFrame(frame); restoreOpener(); };
+  }, [open]);
   useEffect(() => {
     if (!menu) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
@@ -52,7 +75,7 @@ export function PortMenu() {
 
   return (
     <div className="port-menu" ref={box} style={{ left: Math.max(8, x), top: Math.max(52, y) }} role="dialog"
-      aria-label="what can connect here" data-testid="port-menu">
+      aria-label="what can connect here" data-testid="port-menu" onKeyDown={(e) => trapTab(e, box.current)}>
       <div className="row gap">
         <h4>{s.title}</h4>
         <span className="spacer" />

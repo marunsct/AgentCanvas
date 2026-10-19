@@ -177,12 +177,14 @@ class _Exporter:
                 outputs=[self.text(out_name)], message=_STATE_VAR.sub(r"{{\1}}", message),
             )  # fmt: skip
         if n.type == "core.router":
-            cases = cfg.get("cases") or []
+            cases = (
+                [c for c in cfg.get("cases") or [] if isinstance(c, dict)] if isinstance(cfg.get("cases"), list) else []
+            )
             matches = [_EQUALS.match(str(c.get("when", ""))) for c in cases]
             keys = {m.group(1) for m in matches if m}
             if all(matches) and len(keys) <= 1:
                 key = next(iter(keys), None)
-                mapping = {m.group(2): c["route"] for m, c in zip(matches, cases, strict=True) if m}
+                mapping = {m.group(2): str(c.get("route", "")) for m, c in zip(matches, cases, strict=True) if m}
                 branches = sorted({"default", *mapping.values()})
                 return self.comp(
                     "BranchingNode", n.id, n.name, metadata={**meta, "branching_key": key},
@@ -192,7 +194,7 @@ class _Exporter:
             self.report.append(f"Router '{n.name}': only rules like state.x == \"value\" on one field map to Agent "
                                "Spec branches; here the branch is picked by its path name and the rules are kept in "
                                "metadata.")  # fmt: skip
-            routes = sorted({c.get("route", "") for c in cases} - {"", "default"})
+            routes = sorted({str(c.get("route", "")) for c in cases} - {"", "default"})
             return self.comp("BranchingNode", n.id, n.name, metadata=meta, outputs=[], mapping={r: r for r in routes},
                              branches=sorted({"default", *routes}),
                              inputs=[{"title": "branching_mapping_key", "type": "string"}])  # fmt: skip
@@ -331,7 +333,8 @@ def _reads(n: Any) -> list[str]:
 def _writes(n: Any) -> list[str]:
     cfg = n.config
     if n.type == "core.set":
-        return list((cfg.get("values") or {}).keys())
+        values = cfg.get("values")
+        return list(values) if isinstance(values, dict) else []
     out = cfg.get("output")
     return [out] if isinstance(out, str) and out else []
 

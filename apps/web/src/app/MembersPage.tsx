@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { maturaMode } from "../api/auth";
 import { apiFetch } from "../api/client";
-import { can, ME, orgPortalUrl, type Role } from "../api/session";
+import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
@@ -32,7 +32,8 @@ export function MembersPage() {
     mutationFn: (id: string) => apiFetch(`/org/members/${id}`, { method: "DELETE" }),
     onSuccess: done,
   });
-  const admin = can("admin") && !maturaMode();
+  const me = useMe((s) => s.me);
+  const admin = useCan("admin") && !maturaMode();
   const portal = orgPortalUrl("members");
   const error = (set.error ?? remove.error) as Error | null;
   return (
@@ -62,13 +63,13 @@ export function MembersPage() {
               <td>{m.display_name ?? m.email}{m.display_name && <span className="muted small"> {m.email}</span>}</td>
               <td>{m.invited || !m.accepted ? <span className="muted small">{m.invited ? "invited" : "awaiting acceptance"}</span> : null}</td>
               <td>
-                {admin && m.user_id !== ME.id
+                {admin && m.user_id !== me.id
                   ? <select value={m.role} aria-label={`role of ${m.email}`} onChange={(e) => set.mutate({ email: m.email, role: e.target.value as Role })}>
                       {ROLES.map((r) => <option key={r.role} value={r.role}>{r.role}</option>)}
                     </select>
                   : m.role}
               </td>
-              <td>{admin && m.user_id !== ME.id && (
+              <td>{admin && m.user_id !== me.id && (
                 <button type="button" className="link small" onClick={() => { if (window.confirm(`Remove ${m.email}?`)) remove.mutate(m.user_id); }}>Remove</button>
               )}</td>
             </tr>

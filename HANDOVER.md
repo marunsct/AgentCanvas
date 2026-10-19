@@ -160,6 +160,15 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 
 ## 6. CI
 
+**CI runs locally.** `make ci` (check, strict docs, audit, Helm), `make ci-full` (also framework environments, the whole API
+suite **on a throwaway Postgres container** when Docker is there (SQLite otherwise, with a warning), the `frameworks`
+and `export` stages, images, e2e), `make hooks` (pre-push lint + web tests); all in `scripts/ci-local.sh`, which mirrors the
+workflow. The GitHub workflow is `workflow_dispatch` only (Actions has had no runners since 2026-10-08). The `api` stage
+includes the old `connectors` job (MCP gallery smoke, part environments). Only the Trivy scan and the prod-compose probes
+of `images` exist just in the workflow. Helm runs from `alpine/helm` when it is not installed. Playwright: if its
+browser build is not installed set `PW_CHROMIUM_PATH` to another Chromium; if port 8000 is taken (a running Docker app)
+set `E2E_API_PORT`; if the dev server runs out of file watchers set `E2E_PROD=1` (the production build, as in CI).
+
 `.github/workflows/ci.yml` jobs: `api` (lint, pyright, import contract, schema drift, pytest on Postgres+pgvector),
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via
 `vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (pip-audit, pnpm audit),
@@ -207,6 +216,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
+The hardening checklist (done and open, with versions) is `HARDENING.md`; update it in every hardening PR.
+
 - **Matura TS26 left out (v0.28.0):** schema- or database-per-tenant placement (AgentCanvas has one engine and
   background jobs that work across organisations; shared mode only, `pmode` other than `shared` → 503); workspaces
   only group projects (no per-workspace roles: grants in non-default workspaces still do not count, and the token's
@@ -222,7 +233,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   (none: the production compose file and Helm chart now default to the sandbox service, `script_execution=remote`, v0.31.0; `subprocess` still warns at start-up; the service needs an internal network, so egress allow-lists stay LangSmith-only; run `make` prod compose and `helm template` to check it, I could not here); RLS policies on child tables nest 3–4 EXISTS levels (EXPLAIN
   the hot list queries with a tenant set); the RLS migration locks 35 tables at once; duplicated engine, worker and packager code (about 1,000–1,300 lines,
   Phase 3); `Resources` is still LangChain's object for every adapter; web: session and project in module variables
-  (`ME` defaults to admin until `/me` answers), hand-written response types, partial keyboard access, no ESLint (`@rjsf/validator-ajv8` looks unused but `@rjsf/core` imports it: keep it);
+  (`ME` defaults to admin until `/me` answers), hand-written response types, keyboard access is done for the palette and ports but not yet for creating edges by drag or the inspector forms, no ESLint (`@rjsf/validator-ajv8` looks unused but `@rjsf/core` imports it: keep it);
   CI has no framework-environment cache and no Mastra `tsc`; framework pins live in four places; the Mastra npm set
   has no lockfile.
 - **Release tags** v0.1.0 to v0.29.0 not created (owner).
