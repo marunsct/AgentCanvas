@@ -4,7 +4,7 @@
 # nginx (unprivileged, port 8080) serves the SPA and proxies /api/ to $API_UPSTREAM (default http://api:8000).
 # Base images are pinned by digest (Dependabot proposes updates weekly). To pull one from a mirror, replace the
 # exact reference: --build-context 'node:22-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/node@sha256:<digest>'
-FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS build
+FROM node:26-slim@sha256:0d1e33586362bb9e608c4e751e7a9e7edb55c9ac11461ed5666af696cc461dd4 AS build
 ARG PNPM_VERSION=10
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /repo/apps/web
