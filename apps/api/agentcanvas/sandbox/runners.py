@@ -136,6 +136,51 @@ async def run_in_sandbox(
     return result.get("update") or {}
 
 
+# tests point the remote mode at an in-process service
+REMOTE_TRANSPORT: Any = None
+
+
+async def _remote_exchange(
+    settings: Settings, workspace: Path, import_path: str, payload: dict[str, Any], timeout: float, memory_mb: int
+) -> dict:
+    """Run one call in the sandbox service (`script_execution = "remote"`): its own container, with no database
+    credentials, keys or other projects' files. The workspace travels with each call."""
+    import base64
+
+    import httpx
+
+    from agentcanvas.sandbox.service import WorkspaceTooLarge, pack_workspace
+
+    if not settings.sandbox_url or not settings.sandbox_token:
+        raise ScriptError("script execution 'remote' needs AGENTCANVAS_SANDBOX_URL and AGENTCANVAS_SANDBOX_TOKEN")
+    try:
+        packed = await asyncio.to_thread(pack_workspace, workspace)
+    except WorkspaceTooLarge as exc:
+        raise ScriptError(f"{import_path} failed: {exc}") from None
+    body = {
+        "import_path": import_path, "payload": payload, "workspace": base64.b64encode(packed).decode(),
+        "timeout_s": timeout, "memory_mb": memory_mb,
+    }  # fmt: skip
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.sandbox_url, transport=REMOTE_TRANSPORT, timeout=timeout + 10,
+            headers={"Authorization": f"Bearer {settings.sandbox_token}"},
+        ) as client:  # fmt: skip
+            r = await client.post("/run", json=body)
+    except httpx.HTTPError as exc:
+        raise ScriptError(
+            f"{import_path} failed: the sandbox service is not reachable ({type(exc).__name__})"
+        ) from None
+    if r.status_code != 200:
+        raise ScriptError(f"{import_path} failed: the sandbox service answered {r.status_code}")
+    result = r.json()
+    if result.get("timeout"):
+        raise TimeoutError(f"{import_path} ran longer than {timeout:g} s")
+    if not result.get("ok"):
+        raise ScriptError(str(result.get("error") or f"{import_path} failed"))
+    return result
+
+
 class SandboxRunner:
     """Sandboxed execution of one project's workspace code in the configured mode.
 
@@ -180,6 +225,10 @@ class SandboxRunner:
         except PolicyError as exc:
             raise ScriptError(str(exc)) from None
         mode = self.settings.script_execution
+        if mode == "remote":
+            return await _remote_exchange(
+                self.settings, self.workspace, import_path, payload, policy.timeout_s, policy.memory_mb
+            )
         if mode != "langsmith":
             image = self.settings.sandbox_image
             return await _exchange(

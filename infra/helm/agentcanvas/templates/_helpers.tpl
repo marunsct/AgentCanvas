@@ -48,6 +48,10 @@ app.kubernetes.io/component: {{ .component }}
   value: {{ .Values.config.corsOrigins | toJson | quote }}
 - name: AGENTCANVAS_SCRIPT_EXECUTION
   value: {{ .Values.config.scriptExecution | quote }}
+{{- if eq .Values.config.scriptExecution "remote" }}
+- name: AGENTCANVAS_SANDBOX_URL
+  value: {{ printf "http://%s-sandbox:8090" (include "agentcanvas.fullname" .) | quote }}
+{{- end }}
 - name: FORWARDED_ALLOW_IPS
   value: {{ .Values.config.forwardedAllowIps | quote }}
 - name: AGENTCANVAS_METRICS_ENABLED

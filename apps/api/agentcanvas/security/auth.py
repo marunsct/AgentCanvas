@@ -57,10 +57,14 @@ def check_auth_settings(settings: Settings) -> None:
             "AGENTCANVAS_SECRET_KEY is the development default or shorter than 32 characters; set 64+ random "
             "characters for staging, prod or the hosted edition"
         )
-    if settings.edition == "hosted" and settings.script_execution not in ("docker", "langsmith"):
+    if settings.edition == "hosted" and settings.script_execution not in ("docker", "langsmith", "remote"):
         raise RuntimeError(
-            "the hosted edition runs workspace scripts in a sandbox: set AGENTCANVAS_SCRIPT_EXECUTION=docker "
-            "(or langsmith)"
+            "the hosted edition runs workspace scripts in a sandbox: set AGENTCANVAS_SCRIPT_EXECUTION=remote "
+            "(the sandbox service), docker or langsmith"
+        )
+    if settings.script_execution == "remote" and not (settings.sandbox_url and settings.sandbox_token):
+        raise RuntimeError(
+            "AGENTCANVAS_SCRIPT_EXECUTION=remote needs AGENTCANVAS_SANDBOX_URL and AGENTCANVAS_SANDBOX_TOKEN"
         )
 
 

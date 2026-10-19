@@ -49,7 +49,8 @@ Migrations run as a Helm hook Job before the API starts.
 | `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>` |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `AZURE_OPENAI_API_KEY` | Model provider keys for the whole server; a project secret of the same name takes precedence ([Models and API keys](models.md)) |
 | `AGENTCANVAS_LOCAL_MODELS_HOST` | Host that local model servers (Ollama, LM Studio, vLLM, llama.cpp) are reached on when their address isn't set, e.g. `host.docker.internal` or a GPU machine's name |
-| `AGENTCANVAS_SCRIPT_EXECUTION` | Where workspace code runs: `subprocess` (default in production; not isolation, so the server logs a warning), `docker`, `langsmith`, `inprocess` |
+| `AGENTCANVAS_SCRIPT_EXECUTION` | Where workspace code runs: `remote` (default in the production compose file and Helm chart: the sandbox service, below), `subprocess` (limits only, not isolation, so the server logs a warning), `docker`, `langsmith`, `inprocess` |
+| `AGENTCANVAS_SANDBOX_URL`, `AGENTCANVAS_SANDBOX_TOKEN` | With `remote`: where the sandbox service is, and the secret (32+ random characters) the API presents to it. The compose file and chart set the URL; you provide the token |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them) |
 | `AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT` / `_PER_WEBHOOK` / `_PER_PROJECT` / `_PER_SHARE_CLIENT` | Public API requests per minute (120 / 120 / 600 / 30 per share-link visitor address) |

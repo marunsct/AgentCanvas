@@ -1,0 +1,93 @@
+{{- if .Values.sandbox.enabled }}
+{{- $name := include "agentcanvas.fullname" . }}
+# Runs workspace code for the API (config.scriptExecution: remote). Same image; it gets only the sandbox token, none of
+# the API's secrets; its NetworkPolicy lets only the API pods in and nothing out.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-sandbox
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  replicas: {{ .Values.sandbox.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" . "component" "sandbox") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentcanvas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: sandbox
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      containers:
+        - name: sandbox
+          image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
+          ports:
+            - { name: http, containerPort: 8090 }
+          env:
+            - name: AGENTCANVAS_SANDBOX_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentcanvas.secret" . }}
+                  key: AGENTCANVAS_SANDBOX_TOKEN
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.sandbox.resources | nindent 12 }}
+          securityContext:
+            {{- include "agentcanvas.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-sandbox
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  selector:
+    {{- include "agentcanvas.selector" (dict "root" . "component" "sandbox") | nindent 4 }}
+  ports:
+    - { name: http, port: 8090, targetPort: http }
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-sandbox
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" . "component" "sandbox") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "agentcanvas.selector" (dict "root" . "component" "api") | nindent 14 }}
+      ports:
+        - { port: 8090 }
+  egress: []   # workspace code has no network at all
+{{- end }}
+{{- end }}

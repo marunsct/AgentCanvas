@@ -139,6 +139,7 @@ jobs:
       POSTGRES_APP_PASSWORD: ci-only-app
       LANGGRAPH_AES_KEY: ci-only-aes-key-0123456789abcdef
       AGENTCANVAS_SECRET_KEY: ci-only-secret-key-not-for-real-use-0123456789abcdef0123456789abcdef
+      AGENTCANVAS_SANDBOX_TOKEN: ci-only-sandbox-token-0123456789abcdef0123
       AGENTCANVAS_OIDC_ISSUER: https://login.example.com/realms/ci
       AGENTCANVAS_OIDC_AUDIENCE: agentcanvas-api
       AGENTCANVAS_OIDC_CLIENT_ID: agentcanvas-web
@@ -194,6 +195,11 @@ jobs:
           curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
           docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001
+          # workspace code runs in the sandbox service: it answers, runs as the app user, holds none of the API's
+          # secrets, and has no route out
+          docker compose -f infra/compose.prod.yml exec -T sandbox id -u | grep -qx 10001
+          test -z "$(docker compose -f infra/compose.prod.yml exec -T sandbox env | grep -E 'DATABASE_URL|SECRET_KEY|AES_KEY|API_KEY')"
+          ! docker compose -f infra/compose.prod.yml exec -T sandbox python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"
           # the API's database role is an ordinary one, so row-level security applies to it
           docker compose -f infra/compose.prod.yml exec -T postgres psql -U agentcanvas -tAc \
             "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'agentcanvas_app'" | grep -qx f
