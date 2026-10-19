@@ -2,6 +2,13 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.31.1 — The local Docker app uses the sandbox service too
+
+### Changed
+- `infra/compose.local.yml` (`make docker-up`) runs workspace code in the `sandbox` service instead of a child of the
+  API: same image, none of the API's keys or database access, read-only root, no route out. Nothing to configure
+  (`AGENTCANVAS_SANDBOX_TOKEN` has a local default). Run `make docker-up` again to pick it up.
+
 ## v0.31.0 — A real sandbox: workspace code runs in a service of its own
 
 ### Added

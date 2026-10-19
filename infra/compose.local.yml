@@ -34,7 +34,9 @@ services:
       AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:-local-only-change-me-local-only-change-me-local-only-change-me}
       AGENTCANVAS_AUTO_MIGRATE: "true"
       AGENTCANVAS_SEED_DEV_DATA: "true"
-      AGENTCANVAS_SCRIPT_EXECUTION: subprocess
+      AGENTCANVAS_SCRIPT_EXECUTION: remote       # workspace code runs in the `sandbox` service below
+      AGENTCANVAS_SANDBOX_URL: http://sandbox:8090
+      AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:-local-sandbox-token-0123456789abcdef}
       AGENTCANVAS_CORS_ORIGINS: '["http://localhost:${WEB_PORT:-7777}"]'
       # models on your computer (Ollama, LM Studio, vLLM, llama.cpp) are reached from inside the container here
       AGENTCANVAS_LOCAL_MODELS_HOST: ${AGENTCANVAS_LOCAL_MODELS_HOST:-host.docker.internal}
@@ -51,8 +53,30 @@ services:
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
     extra_hosts: ["host.docker.internal:host-gateway"]   # Linux; Docker Desktop provides it already
     volumes: ["workspaces:/data/workspaces"]
+    networks: [default, sandbox]
     depends_on:
       postgres: { condition: service_healthy }
+      sandbox: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Runs workspace code (scripts, tools, widgets, event handlers) away from the API: same image, none of its keys or
+  # database access, read-only root, and a network with no route out. Starts from the image `api` builds.
+  sandbox:
+    image: ${API_IMAGE:-agentcanvas-api:latest}
+    command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
+    environment:
+      AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:-local-sandbox-token-0123456789abcdef}
+    networks: [sandbox]
+    read_only: true
+    tmpfs: ["/tmp:size=512m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=2)"]
+      interval: 3s
+      retries: 30
     restart: unless-stopped
 
   web:
@@ -71,6 +95,10 @@ services:
       start_period: 30s
       retries: 10
     restart: unless-stopped
+
+networks:
+  sandbox:
+    internal: true                             # no route out
 
 volumes:
   pgdata:
