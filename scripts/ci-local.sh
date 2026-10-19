@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local CI: the same gates as .github/workflows/ci.yml, on this machine. `make ci` (default stages) or
-# `scripts/ci-local.sh <stage>...`. Stages: fast api-envs api docs audit helm frameworks export images e2e.
+# `scripts/ci-local.sh <stage>...`. Stages: fast api-envs api mastra-types docs audit helm frameworks export images e2e.
 # Group names: default, full. The `api` stage runs the suite on Postgres (a throwaway container) when Docker is there,
 # as the GitHub workflow did; without Docker it falls back to SQLite and says so.
 set -uo pipefail
@@ -112,6 +112,19 @@ s_export() {   # every template exports to every target; the deploy files lint; 
     done
   fi
 }
+s_mastra_types() {   # the Mastra runtime is TypeScript that Node runs with its types stripped: check them with tsc, strictly
+  local d tsc="$ROOT/apps/web/node_modules/.bin/tsc" src="$ROOT/apps/api/agentcanvas/adapters/mastra"
+  [ -x "$tsc" ] || { echo "mastra-types: run pnpm install in apps/web first (tsc lives there)"; return 1; }
+  mkdir -p "$ROOT/.ci-tmp"; d=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$d"' RETURN
+  cp "$src"/package.json "$src"/package-lock.json "$src"/runtime.ts "$src"/flow.ts "$src"/worker.ts "$d"/
+  cat > "$d/tsconfig.json" <<'JSON'
+{ "compilerOptions": { "target": "ES2023", "module": "NodeNext", "moduleResolution": "NodeNext", "strict": true,
+    "noEmit": true, "skipLibCheck": true, "allowImportingTsExtensions": true, "types": ["node"] },
+  "files": ["runtime.ts", "flow.ts", "worker.ts"] }
+JSON
+  ( cd "$d" && npm ci --no-audit --no-fund --loglevel=error && npm i --no-save --no-audit --no-fund --loglevel=error @types/node@22 @types/nunjucks \
+      && "$tsc" -p . )
+}
 s_docs() { uvx --with mkdocs-material mkdocs build --strict -d "$(mktemp -d)"; }
 s_audit() {
   ( cd apps/api && uv export --frozen --no-dev --no-emit-project --no-hashes -o "${TMPDIR:-/tmp}/ac-req.txt" \
@@ -135,6 +148,7 @@ run() {
     fast) stage fast s_fast ;;
     api-envs) stage api-envs s_api_envs ;;
     api) stage api s_api ;;
+    mastra-types) need node && stage mastra-types s_mastra_types || skip mastra-types "node missing" ;;
     docs) need uvx && stage docs s_docs || skip docs "uvx missing" ;;
     audit) need uvx && stage audit s_audit || skip audit "uvx missing" ;;
     helm) have_helm && stage helm s_helm || skip helm "helm and docker missing" ;;
@@ -143,7 +157,7 @@ run() {
     images) need docker && stage images s_images || skip images "docker missing" ;;
     e2e) stage e2e s_e2e ;;
     default) for s in fast docs audit helm; do run "$s"; done ;;
-    full) for s in api-envs api fast docs audit helm frameworks export images e2e; do run "$s"; done ;;
+    full) for s in api-envs api mastra-types fast docs audit helm frameworks export images e2e; do run "$s"; done ;;
     *) echo "unknown stage: $1" >&2; exit 2 ;;
   esac
 }
