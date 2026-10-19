@@ -106,3 +106,71 @@ def test_a_name_cannot_end_the_mastra_header_comment() -> None:
     src = mastra_codegen.generate(_wf("mastra", "Evil */ process.stdout.write('PWNED'); /*"))
     header = src.split("*/", 1)[0]  # the first `*/` closes the header comment
     assert "PWNED" in header
+
+
+async def test_steps_side_by_side_run_at_the_same_time_on_the_same_values() -> None:
+    """Review follow-up: a round's steps ran one after another, and a later one saw an earlier one's update."""
+    import asyncio
+    import time
+
+    seen: dict[str, Any] = {}
+
+    def waiter(name: str) -> rt.StepFn:
+        async def step(state: dict[str, Any], run: Any) -> dict[str, Any]:
+            seen[name] = state["n"]
+            await asyncio.sleep(0.3)
+            return {"log": [name], "n": 1}
+
+        return step
+
+    steps = {k: rt.Step(k, "core.set", waiter(k)) for k in "ABC"}
+    flow = rt.Flow("p", steps, ["A", "B", "C"], {}, {"log": ("append", []), "n": ("sum", 0)}, ["log", "n"])
+    started = time.perf_counter()
+    end = await _finish(flow, input={})
+    took = time.perf_counter() - started
+    assert end["outcome"] == "success"
+    assert took < 0.8  # three 0.3 s steps in parallel, not 0.9 s
+    assert seen == {"A": 0, "B": 0, "C": 0}  # none saw a sibling's update
+    assert end["output"] == {"log": ["A", "B", "C"], "n": 3}  # merged in canvas order
+
+
+async def test_a_step_that_asks_keeps_its_siblings_finished_work() -> None:
+    ran: list[str] = []
+
+    async def asks(state: dict[str, Any], run: rt.Run) -> dict[str, Any]:
+        return {"log": ["H"], **run.approval(state, show="log", output="ok")}
+
+    async def works(state: dict[str, Any], run: Any) -> dict[str, Any]:
+        ran.append("W")
+        return {"log": ["W"]}
+
+    async def also_asks(state: dict[str, Any], run: rt.Run) -> dict[str, Any]:
+        return {"log": ["H2"], **run.approval(state, show="log", output="ok2")}
+
+    steps = {"H": rt.Step("H", "core.approval", asks), "W": rt.Step("W", "core.set", works),
+             "G": rt.Step("G", "core.approval", also_asks)}  # fmt: skip
+    channels = {"log": ("append", []), "ok": ("replace", None), "ok2": ("replace", None)}
+    flow = rt.Flow("q", steps, ["H", "W", "G"], {}, channels, ["log"])
+    first = await _finish(flow, input={})
+    assert first["outcome"] == "interrupt" and first["next"] == ["H"]
+    paused = rt.Paused.from_json(first["paused"].to_json())
+    assert paused.frontier == ["H", "G"]  # the other step that asked runs again; the finished one does not
+    assert paused.values["log"] == ["W"]
+    second = await _finish(flow, resume=(paused, {"approved": True}))
+    assert second["outcome"] == "interrupt" and second["next"] == ["G"]
+    third = await _finish(flow, resume=(rt.Paused.from_json(second["paused"].to_json()), {"approved": True}))
+    assert third["outcome"] == "success" and ran == ["W"]  # W ran once
+    assert sorted(third["output"]["log"]) == ["H", "H2", "W"]
+
+
+async def test_the_first_failing_step_ends_the_run_after_the_earlier_ones_merge() -> None:
+    async def boom(state: dict[str, Any], run: Any) -> dict[str, Any]:
+        raise ValueError("bad")
+
+    steps = {"A": rt.Step("A", "core.set", _setter("A")), "B": rt.Step("B", "core.set", boom),
+             "C": rt.Step("C", "core.set", _setter("C"))}  # fmt: skip
+    flow = rt.Flow("e", steps, ["A", "B", "C"], {}, {"log": ("append", []), "n": ("sum", 0)}, ["log"])
+    events = [ev async for ev in rt.run(flow, None, rt.Run, input={})]  # type: ignore[arg-type]
+    assert events[-1]["type"] == "RUN_ERROR" and "bad" in events[-1]["message"]
+    finished = [(e["canvas_node_id"], e["status"]) for e in events if e["type"] == "STEP_FINISHED"]
+    assert finished == [("A", "ok"), ("B", "error")]

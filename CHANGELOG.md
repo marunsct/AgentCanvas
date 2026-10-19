@@ -2,6 +2,17 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.32.0 — Parallel branches run in parallel on the frameworks that use the shared flow engine
+
+### Changed
+- **Steps side by side now run at the same time** on Pydantic AI, Agno, the Microsoft Agent Framework, Strands,
+  LlamaIndex, CrewAI and Google ADK flows, the OpenAI Agents SDK and Echo (the shared `supersteps` engine). They ran
+  one after another, so a slow branch delayed the others and a later branch could see an earlier branch's update.
+  Each step in a round now gets the values the round started with (as in LangGraph), and the round's updates merge
+  afterwards in the order the canvas lists the steps, through each field's reducer.
+- A step that asks a person no longer loses its siblings' work: those that finished are kept, another step that also
+  asks runs again once the first is answered.
+
 ## v0.31.1 — The local Docker app uses the sandbox service too
 
 ### Changed
