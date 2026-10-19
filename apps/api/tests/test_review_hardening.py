@@ -3,6 +3,7 @@ triggers or events, interrupt ids are unique per run, and hand-over never restar
 
 from __future__ import annotations
 
+import asyncio
 import builtins
 from pathlib import Path
 
@@ -159,3 +160,104 @@ def test_the_api_role_never_bypasses_row_level_security():
     assert "NOSUPERUSER NOBYPASSRLS" in sql[0] and all("{role}" in q for q in sql)
     with pytest.raises(ValueError):
         statements('x"; DROP TABLE project; --')
+
+
+async def test_the_next_message_is_accepted_the_moment_a_run_shows_its_last_event(app, api_client, monkeypatch):
+    """A chat client sends its next message as soon as it reads RUN_FINISHED. The thread must already be free then:
+    the run used to publish that event first and release the thread (a database write) after it, so a quick client got
+    'already has an active run'. Here the write is made slow, so the old order fails every time."""
+    from test_frameworks import greeter
+
+    from agentcanvas.ir.models import Workflow
+
+    runner = app.state.runner
+    wf = Workflow.model_validate((await greeter(api_client))["ir"])
+    real_finish = runner._finish
+
+    async def slow_finish(*args, **kwargs):
+        await asyncio.sleep(0.3)
+        await real_finish(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "_finish", slow_finish)
+    first = await runner.start(wf, thread_id="th_quick", input={"who": "Ada"})
+    for _ in range(200):  # what a streaming client does: read until the terminal event
+        if any(e["type"] in ("RUN_FINISHED", "RUN_ERROR") for e in first.events):
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("the run never published a terminal event")
+    second = await runner.start(wf, thread_id="th_quick", input={"who": "Bo"})  # raised Conflict before the fix
+    for h in (first, second):
+        await asyncio.wait_for(h.done.wait(), 10)
+    assert [r["status"] for r in (await api_client.get("/v1/threads/th_quick/runs")).json()] == ["success", "success"]
+
+
+async def test_a_chat_can_go_on_after_its_first_message(app, api_client):
+    """The chat template with message input: the engine turns the input's message dicts into message objects in place,
+    which the run's recording then could not store, so finishing the run failed and its thread stayed 'running':
+    every later message got 'already has an active run'. Two turns on one thread must both finish."""
+    from agentcanvas.adapters.langchain.testing import DemoResources
+
+    app.state.resources_factory = lambda _thread, _wf: DemoResources()
+    wf = (
+        await api_client.post("/v1/projects/prj_default/workflows", json={"name": "Chat", "template": "chat_assistant"})
+    ).json()
+    for text in ("Hello there", "And again"):
+        r = await api_client.post(
+            f"/v1/workflows/{wf['id']}/runs/stream",
+            json={"input": {"messages": [{"role": "user", "content": text}]}, "thread_id": "th_chat"},
+        )
+        assert r.status_code == 200, r.text
+        assert '"RUN_FINISHED"' in r.text
+    thread = (await api_client.get("/v1/threads/th_chat")).json()
+    assert thread["status"] == "idle"
+    runs = (await api_client.get("/v1/threads/th_chat/runs")).json()
+    assert [x["status"] for x in runs] == ["success", "success"]
+
+
+async def test_a_run_whose_recording_cannot_be_saved_still_frees_its_thread(app, api_client, monkeypatch):
+    """Whatever optional detail fails to save, the run ends with its status and the thread is free for the next one."""
+    from test_frameworks import greeter
+
+    from agentcanvas.runtime import runner as runner_module
+
+    def broken(*_args, **_kwargs):
+        return {"input": object()}  # not storable as JSON
+
+    monkeypatch.setattr(runner_module, "_recording", broken)
+    wf = await greeter(api_client)
+    r = await api_client.post(
+        f"/v1/workflows/{wf['id']}/runs/stream", json={"input": {"who": "Ada"}, "thread_id": "th_bare"}
+    )
+    assert '"RUN_FINISHED"' in r.text
+    assert (await api_client.get("/v1/threads/th_bare")).json()["status"] == "idle"
+    assert [x["status"] for x in (await api_client.get("/v1/threads/th_bare/runs")).json()] == ["success"]
+    monkeypatch.undo()
+    again = await api_client.post(
+        f"/v1/workflows/{wf['id']}/runs/stream", json={"input": {"who": "Bo"}, "thread_id": "th_bare"}
+    )
+    assert again.status_code == 200
+
+
+async def test_unexpected_errors_and_values_the_database_refuses_answer_as_problems(app):
+    """A bug is a problem document with the request id (not a text page); a value Postgres cannot store (a NUL
+    character in an id or name, a number out of range) is the client's 422, not a 500."""
+    import httpx
+    from sqlalchemy.exc import DataError
+
+    async def boom():
+        raise RuntimeError("secret internals")
+
+    async def refused():
+        raise DataError("INSERT INTO t VALUES (:x)", {"x": "\x00"}, Exception("NUL"))
+
+    app.add_api_route("/v1/_test/boom", boom)
+    app.add_api_route("/v1/_test/refused", refused)
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/v1/_test/boom", headers={"x-request-id": "req_quote_me"})
+        assert r.status_code == 500 and r.headers["content-type"] == "application/problem+json"
+        assert r.json()["title"] == "Internal error" and r.json()["request_id"] == "req_quote_me"
+        assert "secret internals" not in r.text
+        r = await client.get("/v1/_test/refused")
+        assert r.status_code == 422 and "INSERT" not in r.text and r.json()["title"] == "Invalid input"

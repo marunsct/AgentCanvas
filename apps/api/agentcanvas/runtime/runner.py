@@ -9,6 +9,7 @@ the Inbox (`interrupt_task` rows).
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -64,8 +65,14 @@ class RunHandle:
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
     trace_redact: list[str] = field(default_factory=list)  # the workflow's fields that never reach a trace
+    held: list[dict[str, Any]] = field(default_factory=list)  # last events, published once the run is saved (see _pump)
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
+
+
+def _plain(value: Any) -> Any:
+    """`value` as plain JSON data, a copy nobody else holds: what a database column can store."""
+    return json.loads(json.dumps(value, default=str))
 
 
 def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
@@ -78,7 +85,7 @@ def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
     mocks: dict[str, list[Any]] = {}
     route: list[str] = []
     output: dict[str, Any] = {}
-    for ev in h.events:
+    for ev in [*h.events, *h.held]:  # the last events may still be held back until the run is saved
         if ev["type"] == "CUSTOM" and ev.get("name") == "ac.model_reply":
             mocks.setdefault(ev["value"]["resource"], []).append(ev["value"]["reply"])
         elif ev["type"] == "CUSTOM" and ev.get("name") == "ac.tool_io":  # tool resources replay these (S13)
@@ -102,7 +109,7 @@ def rubric_scores(h: Any) -> list[RunScore]:
     keeps them after the live events are gone: 1 when the grader was satisfied, 0 when it asked for a revision or
     gave up, none when grading itself failed."""
     out = []
-    for ev in h.events:
+    for ev in [*h.events, *getattr(h, "held", [])]:  # the last events may still be held back until the run is saved
         if ev.get("type") != "CUSTOM" or ev.get("name") != "ac.rubric" or ev["value"].get("phase") != "end":
             continue
         v = ev["value"]
@@ -437,7 +444,7 @@ class Runner:
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
-            handle.input = input
+            handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
         for hook in self.start_hooks:
             try:
@@ -486,6 +493,17 @@ class Runner:
             },
         )
         status, error, interrupts = "error", None, []
+        # The run's last events are published only after the run is finalised (saved, thread released): a client
+        # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has
+        # an active run'. Everything from the first terminal event on waits here, in order.
+        held = h.held
+
+        async def emit(event: dict[str, Any]) -> None:
+            if held or event["type"] in ("RUN_FINISHED", "RUN_ERROR"):
+                held.append(event)
+            else:
+                await self._emit(h, event)
+
         budget = spec.workflow.settings.budget
         events: Any = None  # the adapter's async generator (closed in `finally`)
         carry = self.spend.start(h.workflow_id, h.run_id)
@@ -499,7 +517,7 @@ class Runner:
                 async for raw in events:
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
                         priced = self._priced(h, raw)
-                        await self._emit(h, priced)
+                        await emit(priced)
                         self.spend.add(h.workflow_id, h.run_id, priced["value"]["cost_usd"] or 0.0)
                         others = self.spend.others(h.workflow_id, h.run_id, h.usage["cost_usd"])
                         now = replace(
@@ -528,13 +546,12 @@ class Runner:
                     elif ev["type"] == "RUN_ERROR":
                         status, error = "error", ev.get("message")
                         ev = {**raw, "runId": h.run_id, "threadId": h.thread_id}
-                    await self._emit(h, ev)
+                    await emit(ev)
         except (BudgetExceeded, TimeoutError) as exc:
             status = "error"
             seconds = budget.max_seconds if budget else None
             error = str(exc) if isinstance(exc, BudgetExceeded) else f"budget exceeded: ran longer than {seconds} s"
-            await self._emit(
-                h,
+            await emit(
                 {
                     "type": "RUN_ERROR",
                     "code": "budget_exceeded",
@@ -552,8 +569,7 @@ class Runner:
                 code = "redeploy"
             else:
                 status, error, code = "cancelled", "cancelled by user", "cancelled"
-            await self._emit(
-                h,
+            await emit(
                 {
                     "type": "RUN_ERROR",
                     "code": code,
@@ -565,18 +581,21 @@ class Runner:
         except Exception as exc:
             status, error = "error", f"{type(exc).__name__}: {exc}"
             log.exception("run.crashed", run_id=h.run_id)
-            await self._emit(
-                h,
+            await emit(
                 {"type": "RUN_ERROR", "code": "internal", "message": error, "runId": h.run_id, "threadId": h.thread_id},
             )
         finally:
-            if events is not None:
-                await events.aclose()  # stops the graph if we left early (budget, cancel)
-            h.status = status
-            await self._finish(h, status, error, interrupts)
-            self.spend.finish(h.workflow_id, h.run_id)  # after its cost is saved: later runs read it there
-            if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
-                del self.active_by_thread[h.thread_id]
+            try:
+                if events is not None:
+                    await events.aclose()  # stops the graph if we left early (budget, cancel)
+                h.status = status
+                await self._finish(h, status, error, interrupts)
+                self.spend.finish(h.workflow_id, h.run_id)  # after its cost is saved: later runs read it there
+            finally:  # even if finalising was cut short: the thread is released and the last events are published
+                if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
+                    del self.active_by_thread[h.thread_id]
+                for event in held:
+                    await self._emit(h, event)
             await self._hooks(self.finish_hooks, h, status, error, interrupts)
             h.finished_at = time.monotonic()
             h.done.set()
@@ -634,6 +653,23 @@ class Runner:
                 await s.commit()
         except Exception:
             log.exception("run.finish_failed", run_id=h.run_id)
+            await self._finish_bare(h, status, error, thread_status)
+
+    async def _finish_bare(self, h: RunHandle, status: str, error: str | None, thread_status: str) -> None:
+        """The least a finished run must leave in the database when saving everything failed (a recording or a usage
+        figure the column cannot store): its status and a free thread. Without it the thread would stay 'running' and
+        refuse every later message."""
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(
+                    update(Run)
+                    .where(Run.id == h.run_id, Run.status == "running")
+                    .values(status=status, error=error, ended_at=datetime.now(UTC), handover=h.drained)
+                )
+                await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
+                await s.commit()
+        except Exception:
+            log.exception("run.finish_bare_failed", run_id=h.run_id)
 
     def _priced(self, h: RunHandle, raw: dict[str, Any]) -> dict[str, Any]:
         """Add the cost to a usage event and to the run's totals."""

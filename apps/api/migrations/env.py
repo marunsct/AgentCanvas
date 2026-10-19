@@ -22,6 +22,22 @@ def _url() -> str:
     )
 
 
+MIGRATION_LOCK = 0x6163_6D69_6772  # Postgres advisory lock id: one process migrates at a time
+DDL_LOCK_TIMEOUT = (
+    "60s"  # an ALTER TABLE queued behind a long transaction blocks every query behind it: give up instead
+)
+
+
+def _serialize(connection) -> None:
+    """Postgres: replicas that start together take turns (the second finds nothing left to do), and no statement
+    waits for a table lock for ever. Both settings end with the migration's transaction."""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.exec_driver_sql("SET LOCAL lock_timeout = 0")  # waiting for the other migrator is not a failure
+    connection.exec_driver_sql(f"SELECT pg_advisory_xact_lock({MIGRATION_LOCK})")
+    connection.exec_driver_sql(f"SET LOCAL lock_timeout = '{DDL_LOCK_TIMEOUT}'")
+
+
 def _run(connection) -> None:
     context.configure(
         connection=connection,
@@ -30,6 +46,7 @@ def _run(connection) -> None:
         compare_type=True,
     )
     with context.begin_transaction():
+        _serialize(connection)
         context.run_migrations()
 
 
