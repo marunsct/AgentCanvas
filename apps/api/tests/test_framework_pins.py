@@ -1,4 +1,4 @@
-"""Framework versions are written in several places; they must not drift apart (HARDENING.md: "pins live in four places").
+"""Framework versions are written in several places; they must not drift apart (see HARDENING.md).
 
 `designs.AGENT_FRAMEWORKS` is the source for what an export installs; the others are checked against it.
 """
