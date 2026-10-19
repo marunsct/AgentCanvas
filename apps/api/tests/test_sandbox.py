@@ -291,3 +291,21 @@ def test_the_child_supplies_the_sdk_on_a_bare_image(tmp_path):
         "ok": True, "actions": [{"action": "emit", "type": "test.pong", "data": {"n": 2}}],
     }  # fmt: skip
     assert run("events.hooks:node", {"state": {"n": 3}, "config": {"k": 2}}) == {"ok": True, "update": {"n": 6}}
+
+
+async def test_network_rules_in_a_mode_without_a_network_are_reported_once(tmp_path):
+    """sandbox.json egress/inject only work in LangSmith mode; elsewhere the code is offline, and the log says so."""
+    from structlog.testing import capture_logs
+
+    from agentcanvas.sandbox import runners
+
+    ws = Workspace(tmp_path / "ws")
+    ws.write("sandbox.json", json.dumps(POLICY))
+    ws.write("h.py", "def f(state):\n    return {'x': 1}\n")
+    runner = SandboxRunner(Settings(env="test", script_execution="subprocess"), ws.root, {})
+    runners._WARNED.clear()
+    with capture_logs() as logs:
+        await runner("h:f")({})
+        await runner("h:f")({})
+    warned = [e for e in logs if e["event"] == "sandbox.egress_not_enforced"]
+    assert len(warned) == 1 and warned[0]["mode"] == "subprocess"

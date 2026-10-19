@@ -50,3 +50,17 @@ def test_crewai_version_is_one_number():
     assert CREWAI_VERSION == pins(AGENT_FRAMEWORKS["crewai"].packages[0])["crewai"]
     manifest = json.loads((ROOT / "apps/api/agentcanvas/registry/adapters/crewai.json").read_text())
     assert manifest["framework"] == f"crewai {CREWAI_VERSION}"
+
+
+def test_the_mastra_lockfile_matches_its_package_json():
+    """`npm ci` (make mastra, the Docker image) installs what the lockfile says; a version changed in package.json
+    without `npm install --package-lock-only` would otherwise be ignored by it, or fail only in the image build."""
+    import json
+    from pathlib import Path
+
+    folder = Path(__file__).parents[1] / "agentcanvas" / "adapters" / "mastra"
+    manifest = json.loads((folder / "package.json").read_text())
+    root = json.loads((folder / "package-lock.json").read_text())["packages"][""]
+    assert root["dependencies"] == manifest["dependencies"]
+    for name, version in manifest["dependencies"].items():
+        assert version[0].isdigit(), f"{name} must be pinned exactly, not '{version}'"

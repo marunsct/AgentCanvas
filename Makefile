@@ -16,9 +16,9 @@ framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent F
 	  $$(uv run python -c "from agentcanvas.designs import AGENT_FRAMEWORKS as A; print(' '.join(A['$(FW)'].packages))") \
 	  cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0
 
-mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm in apps/api/.frameworks/mastra (needs Node.js 22.18+)
-	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json .frameworks/mastra/ \
-	  && npm install --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
+mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm, as pinned by package-lock.json, in apps/api/.frameworks/mastra (needs Node.js 22.18+)
+	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json .frameworks/mastra/ \
+	  && npm ci --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
 
 infra:      ## start local Postgres + Redis (Docker)
 	docker compose -f infra/docker-compose.yml up -d postgres redis

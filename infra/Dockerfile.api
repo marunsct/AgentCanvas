@@ -69,8 +69,8 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ]
 #   --build-arg WITH_MASTRA=true (the Docker app sets it unless FRAMEWORKS leaves Mastra out). Otherwise the folder stays empty.
 FROM node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e AS mastra-true
 WORKDIR /opt/mastra
-COPY agentcanvas/adapters/mastra/package.json ./
-RUN npm install --no-audit --no-fund --loglevel=error && mkdir bin && cp /usr/local/bin/node bin/node
+COPY agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json ./
+RUN npm ci --no-audit --no-fund --loglevel=error && mkdir bin && cp /usr/local/bin/node bin/node
 FROM python AS mastra-false
 RUN mkdir -p /opt/mastra
 FROM mastra-${WITH_MASTRA} AS mastra
