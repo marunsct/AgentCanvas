@@ -1,11 +1,10 @@
 /** Manifest-driven node renderers (M2-T5). One generic widget draws every node type from its manifest. */
 import { Handle, type Node, type NodeProps, Position, useUpdateNodeInternals } from "@xyflow/react";
-import { memo, type MouseEvent, type KeyboardEvent, useEffect, useRef } from "react";
+import { memo, type MouseEvent, useEffect, useRef } from "react";
 import type { NodeManifest } from "../api/types";
 import { useUi } from "../editor/ui";
 import { type PortHelp, portHelp, typeName } from "../help/glossary";
 import { type CanvasData, PORT_COLORS } from "./irToFlow";
-import { onActivate } from "./keys";
 
 const ICONS: Record<string, string> = {
   sparkles: "✨", bot: "🤖", split: "🔀", "user-check": "🙋", pencil: "✏️", code: "⌨️", cpu: "🔌", wrench: "🔧", box: "▪",
@@ -55,19 +54,12 @@ function PortTip({ help, side }: { help: PortHelp; side: string }) {
   );
 }
 
-/** Clicking a port (or pressing Enter/Space on it) opens "what can connect here?" (replaces React Flow's click-to-connect). */
+/** Clicking a port opens "what can connect here?" (replaces React Flow's click-to-connect on that handle). */
 function openMenu(node: string, handle: string, side: "in" | "out") {
-  const open = (x: number, y: number) => useUi.getState().openPortMenu({ node, handle, side, x, y });
-  return {
-    onClick: (e: MouseEvent) => { e.stopPropagation(); open(e.clientX, e.clientY); },
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
-      const el = e.currentTarget;
-      onActivate(() => { const r = el.getBoundingClientRect(); open(r.right, r.top + r.height / 2); })(e);
-    },
-    tabIndex: 0,
-    role: "button",
-    "aria-label": `${side === "in" ? "input" : "output"} ${handle}: show what can connect`,
-  } as const;
+  return (e: MouseEvent) => {
+    e.stopPropagation();
+    useUi.getState().openPortMenu({ node, handle, side, x: e.clientX, y: e.clientY });
+  };
 }
 
 /** Hover text for a block's title: what it does, in plain words. */
@@ -101,7 +93,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
     <div
       className={`widget status-${data.status}${selected ? " selected" : ""}${data.disabled ? " disabled" : ""}${data.highlight ? " highlight" : ""}${data.diff ? ` diff-${data.diff}` : ""}${data.blast?.ungated ? " blast-ungated" : ""}`}
       style={{ borderTopColor: m?.color ?? "#64748b", minHeight: HEAD + rows * ROW + 8 + (data.preview ? 34 : 0) }}
-      data-testid={`node-${data.name}`} role="group" aria-label={`${data.label} (${data.type})${data.errors ? `, ${data.errors} errors` : ""}`}
+      data-testid={`node-${data.name}`}
     >
       <Handle type="target" id="in" position={Position.Left} className="h-flow" style={{ top: 20 }} />
       <PortTip help={portHelp(m, undefined, "in")} side="in flow-in" />
@@ -120,7 +112,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
         <div key={p.name} className="port-row in" style={{ top: HEAD + i * ROW }}>
           <Handle
             type="target" id={p.name} position={Position.Left} className="h-port"
-            style={{ top: 9, background: PORT_COLORS[p.type] ?? "#94a3b8" }} {...openMenu(id, p.name, "in")}
+            style={{ top: 9, background: PORT_COLORS[p.type] ?? "#94a3b8" }} onClick={openMenu(id, p.name, "in")}
           />
           <span>{p.name}{p.required ? "*" : ""}</span>
           <em>{typeName(p.type)}{p.multi ? "s" : ""}</em>
@@ -132,7 +124,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
         <div key={h} className="port-row out" style={{ top: HEAD + i * ROW }}>
           <span>{h === "next" ? "next" : h.startsWith("route:") ? h.slice(6) : h}</span>
           <Handle type="source" id={h} position={Position.Right} className="h-flow" style={{ top: 9 }}
-            {...openMenu(id, h, "out")} />
+            onClick={openMenu(id, h, "out")} />
           <PortTip help={portHelp(m, m?.outputs?.find((p) => p.name === h), "out", h)} side="out" />
         </div>
       ))}
@@ -146,8 +138,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data, selected }: N
   useHandleSync(id, [out?.name ?? "", ...inputs.map((p) => p.name)].join("|"));
   return (
     <div className={`resource${selected ? " selected" : ""}${inputs.length ? " with-inputs" : ""}${data.diff ? ` diff-${data.diff}` : ""}`}
-      style={{ borderColor: PORT_COLORS[out?.type ?? ""] ?? "#94a3b8" }} data-testid={`node-${data.name}`}
-      role="group" aria-label={`${data.name} (${data.type})`}>
+      style={{ borderColor: PORT_COLORS[out?.type ?? ""] ?? "#94a3b8" }} data-testid={`node-${data.name}`}>
       <div className="resource-head">
         <span className="icon">{ICONS[data.manifest?.icon ?? "box"] ?? "▪"}</span>
         <span className="title" title={blockTitle(data.manifest, data.type)}>{data.name}</span>
@@ -157,7 +148,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data, selected }: N
       {inputs.map((p) => (
         <div key={p.name} className="resource-port">
           <Handle type="target" id={p.name} position={Position.Left} className="h-port"
-            style={{ background: PORT_COLORS[p.type] ?? "#94a3b8" }} {...openMenu(id, p.name, "in")} />
+            style={{ background: PORT_COLORS[p.type] ?? "#94a3b8" }} onClick={openMenu(id, p.name, "in")} />
           <span>{p.name}{p.required ? "*" : ""}</span> <em>{typeName(p.type)}{p.multi ? "s" : ""}</em>
           <PortTip help={portHelp(data.manifest, p, "in")} side="in" />
         </div>
@@ -165,7 +156,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data, selected }: N
       {out && (
         <>
           <Handle type="source" id={out.name} position={Position.Right} className="h-port"
-            style={{ background: PORT_COLORS[out.type] ?? "#94a3b8", top: 17 }} {...openMenu(id, out.name, "out")} />
+            style={{ background: PORT_COLORS[out.type] ?? "#94a3b8", top: 17 }} onClick={openMenu(id, out.name, "out")} />
           <PortTip help={portHelp(data.manifest, out, "out")} side="out resource-out" />
         </>
       )}
@@ -180,7 +171,7 @@ export const TerminalNode = memo(function TerminalNode({ data }: NodeProps<Node<
       title={start ? "Every run begins here. Connect it to your first step." : "The run finishes when it reaches here. Connect your last step to it."}>
       {start ? "▶ Start" : "■ Finish"}
       {start
-        ? <Handle type="source" id="next" position={Position.Right} className="h-flow" {...openMenu("START", "next", "out")} />
+        ? <Handle type="source" id="next" position={Position.Right} className="h-flow" onClick={openMenu("START", "next", "out")} />
         : <Handle type="target" id="in" position={Position.Left} className="h-flow" />}
     </div>
   );
