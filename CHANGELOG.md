@@ -42,6 +42,7 @@ The second round of fixes from the 2026-10-18 review (v0.28.1 has the first).
 - `compose.prod.yml` requires `LANGGRAPH_AES_KEY` (checkpoints encrypted at rest) and no longer asks for one API
   replica. CI sets it and `POSTGRES_APP_PASSWORD`, and checks that the API's database role is not a superuser.
 - CI: read-only token permissions, one run per branch or PR (newer pushes cancel older runs), a time limit per job.
+
 ## v0.28.2 — Keys for local model servers (not tagged yet)
 
 ### Fixed
