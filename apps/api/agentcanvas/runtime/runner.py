@@ -20,7 +20,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
-from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, Thread
+from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, Thread, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -379,6 +379,14 @@ class Runner:
                 if context is None:
                     context = await self._last_context(s, context_from or thread_id)
                 org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
+                # the run resolves secrets and workspace code from the workflow's own project: read it here, at every
+                # start, instead of trusting a map filled only when some service happened to load the workflow (after
+                # a restart, a hand-over or on another replica it was missing and the default project was used)
+                project_id = await s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == wf.id))
+                if project_id is not None:
+                    from agentcanvas.services.projects import PROJECT_OF
+
+                    PROJECT_OF[wf.id] = project_id
                 await s.flush()
                 s.add(
                     Run(

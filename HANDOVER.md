@@ -221,9 +221,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   the `subprocess` sandbox is limits only (same user, same files; v0.29.0 hides the API's memory and environ), so
   untrusted code needs `docker` (prod compose still defaults to `subprocess`); the share page allows any framing site
   while it shows approval buttons (needs per-link allowed origins); flow engines run parallel branches one after
-  another; Echo keeps paused runs in memory (demo engine); RLS policies on child tables nest 3–4 EXISTS levels (EXPLAIN
-  the hot list queries with a tenant set); the RLS migration locks 35 tables at once; `PROJECT_OF` is a process-global
-  map with a default-project fallback; duplicated engine, worker and packager code (about 1,000–1,300 lines,
+  another; RLS policies on child tables nest 3–4 EXISTS levels (EXPLAIN
+  the hot list queries with a tenant set); the RLS migration locks 35 tables at once; duplicated engine, worker and packager code (about 1,000–1,300 lines,
   Phase 3); `Resources` is still LangChain's object for every adapter; web: session and project in module variables
   (`ME` defaults to admin until `/me` answers), hand-written response types, the canvas re-renders on every streamed
   token, partial keyboard access, no ESLint, the dead `@rjsf/validator-ajv8` dependency (needs a lockfile update);
@@ -356,7 +355,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 - **S20 limits:** model and tool resolution (`Resources`) is still the LangChain adapter's object handed to every
   adapter, and long-term memory, MCP browsing and judges stay on the host adapter; a block's `engine` is recorded
   and checked; S21 made an Agent block designed for an agent framework run as that framework; the conformance kit has no
-  tool-calling agent, subgraph or cross-process resume cases yet; Echo is a demo (in-memory pauses, no deploy kit).
+  tool-calling agent, subgraph or cross-process resume cases yet; Echo is a demo (no deploy kit).
 - **S17 limits:** event handlers and secrets stay per project; custom block types written in a workflow's folder are
   registered for the whole project; editing a helper module does not reload the files that import it until they
   change too; a workflow's folder is named after its id (`flows/wf_…/`), and code a workflow imports from another

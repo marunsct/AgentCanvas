@@ -222,3 +222,39 @@ async def test_a_silent_worker_ends_the_run_and_is_told_to_cancel_it():
     events = [ev async for ev in worker.run("r1", {}, lambda op, args: None)]
     assert events[-1]["type"] == "RUN_ERROR" and events[-1]["code"] == "timeout"
     assert sent[0]["op"] == "run" and sent[-1] == {"op": "cancel", "run": "r1"}
+
+
+async def test_a_run_uses_its_own_projects_workspace_without_the_project_map(app, api_client):
+    """A run reads its workflow's project at start: with no entry in PROJECT_OF (a fresh replica, a hand-over, a
+    resume after a restart) it used to fall back to the default project's workspace and secrets."""
+    import asyncio
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.projects import PROJECT_OF
+
+    other = (await api_client.post("/v1/projects", json={"name": "Other team"})).json()["id"]
+    for project, who in (("prj_default", "default"), (other, "other")):
+        script = f"def run(state):\n    return {{'out': '{who}'}}\n"
+        r = await api_client.put(f"/v1/projects/{project}/files/scripts/who.py", json={"content": script})
+        assert r.status_code == 200, r.text
+    ir = {
+        "name": "Who", "state": {"channels": [{"name": "out"}]},
+        "nodes": [{"id": "n_w", "type": "core.script", "name": "who", "config": {"import_path": "scripts.who:run"}}],
+        "edges": [
+            {"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_w"}},
+            {"id": "e2", "kind": "flow", "source": {"node": "n_w"}, "target": {"node": "END"}},
+        ],
+    }  # fmt: skip
+    wf = (await api_client.post(f"/v1/projects/{other}/workflows", json={"name": "Who"})).json()
+    r = await api_client.put(
+        f"/v1/workflows/{wf['id']}", json={"ir": {**ir, "id": wf["id"]}}, headers={"If-Match": "1"}
+    )
+    assert r.status_code == 200, r.text
+
+    PROJECT_OF.pop(wf["id"], None)  # nothing in this process has loaded the workflow
+    h = await app.state.runner.start(Workflow.model_validate({**ir, "id": wf["id"]}), input={"out": ""})
+    await asyncio.wait_for(h.done.wait(), 20)
+    assert PROJECT_OF[wf["id"]] == other
+    thread = (await api_client.get(f"/v1/threads/{h.thread_id}")).json()
+    run = (await api_client.get(f"/v1/runs/{h.run_id}")).json()
+    assert thread["values"].get("out") == "other", run.get("error")
