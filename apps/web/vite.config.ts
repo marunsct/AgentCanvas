@@ -2,8 +2,9 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
-// During development (and `vite preview`), /api/* is forwarded to the Python API on :8000
-const api = { "/api": { target: "http://localhost:8000", rewrite: (p: string) => p.replace(/^\/api/, "") } };
+// During development (and `vite preview`), /api/* is forwarded to the Python API on :8000 (E2E_API_PORT moves it,
+// for a machine where another program already holds 8000)
+const api = { "/api": { target: `http://localhost:${process.env.E2E_API_PORT ?? 8000}`, rewrite: (p: string) => p.replace(/^\/api/, "") } };
 
 // The production Content-Security-Policy (infra/web/20-csp.envsh) without the identity provider's origin: the
 // end-to-end suite runs against `vite preview` with it in CI, so a page that needs eval or inline script fails there.

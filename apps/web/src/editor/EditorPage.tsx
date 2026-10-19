@@ -28,7 +28,7 @@ import { MoreMenu } from "./MoreMenu";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
 import { recallView } from "./viewMemory";
-import { can, ME } from "../api/session";
+import { useCan, useMe } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 import { SIMPLE_DOCK, SIMPLE_TABS } from "./simple";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
@@ -36,6 +36,8 @@ import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
 
 export function EditorPage() {
+  const canBuild = useCan("builder");
+  const role = useMe((s) => s.me.role);
   const { id } = useParams();
   const [params] = useSearchParams();
   const wf = useEditor((s) => s.wf);
@@ -116,9 +118,9 @@ export function EditorPage() {
       <header className="topbar">
         <Link to="/" className="brand">AgentCanvas</Link>
         <span className="crumb">/ {wf.name}</span>
-        {can("builder")
+        {canBuild
           ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
-          : <span className="save-state" data-testid="view-only" title={`your role is ${ME.role}`}>View only</span>}
+          : <span className="save-state" data-testid="view-only" title={`your role is ${role}`}>View only</span>}
         <FrameworkBadges />
         <span className="spacer" />
         <div className="toolbar-group" role="group" aria-label="Editor mode">

@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
 import { chooseWorkspace, PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows, WORKSPACE_ID, WORKSPACES } from "../api/queries";
-import { can, ME } from "../api/session";
+import { useCan, useMe } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -13,6 +13,9 @@ import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { TemplateGallery } from "./TemplateGallery";
 
 export function HomePage() {
+  const me = useMe((s) => s.me);
+  const canBuild = useCan("builder");
+  const isAdmin = useCan("admin");
   const workflows = useWorkflows();
   const templates = useTemplates();
   const navigate = useNavigate();
@@ -61,32 +64,32 @@ export function HomePage() {
           </select>
         )}
         <span className="spacer" />
-        {can("builder") && <Link to="/setup" data-testid="setup-link">Model</Link>}
-        {can("builder") && <Link to="/playground" data-testid="playground-link">Playground</Link>}
+        {canBuild && <Link to="/setup" data-testid="setup-link">Model</Link>}
+        {canBuild && <Link to="/playground" data-testid="playground-link">Playground</Link>}
         <Link to="/inbox">Inbox</Link>
         <Link to="/knowledge" data-testid="knowledge-link">Knowledge</Link>
         <Link to="/memory" data-testid="memory-link">Memory</Link>
         <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
         <Link to="/events" data-testid="events-link">Events</Link>
-        {can("admin") && <Link to="/members" data-testid="members-link">Members</Link>}
-        {can("admin") && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
+        {isAdmin && <Link to="/members" data-testid="members-link">Members</Link>}
+        {isAdmin && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
         <Link to="/policies" data-testid="policies-link">Policies</Link>
-        {maturaMode() && Object.keys(ME.memberships).length > 1 && (
-          <select aria-label="organisation" data-testid="org-switcher" value={ME.org_id}
+        {maturaMode() && Object.keys(me.memberships).length > 1 && (
+          <select aria-label="organisation" data-testid="org-switcher" value={me.org_id}
             onChange={(e) => void switchOrganisation(e.target.value)}>
-            {Object.keys(ME.memberships).map((id) => <option key={id} value={id}>{ME.org_names?.[id] ?? id}</option>)}
+            {Object.keys(me.memberships).map((id) => <option key={id} value={id}>{me.org_names?.[id] ?? id}</option>)}
           </select>
         )}
-        <span className="me-chip" data-testid="me" title={ME.email}>{ME.email || "you"} · {ME.role}</span>
+        <span className="me-chip" data-testid="me" title={me.email}>{me.email || "you"} · {me.role}</span>
         {signInEnabled() && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
         <ThemeSwitcher />
       </header>
       <Invitations />
       {pickWorkspace.error && <p className="error-text" role="alert">{(pickWorkspace.error as Error).message}</p>}
-      {!can("builder") && (
-        <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({ME.role}) cannot create or edit them.</p>
+      {!canBuild && (
+        <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({me.role}) cannot create or edit them.</p>
       )}
-      {can("builder") && <>
+      {canBuild && <>
       <SetupBanner />
       <section className="guided">
         <h2>New here?</h2>

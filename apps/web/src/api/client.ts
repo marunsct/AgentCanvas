@@ -39,19 +39,35 @@ export async function authFetch(url: string, init: RequestInit = {}): Promise<Re
   return fetch(url, { ...init, headers: withAuth(init.headers) });
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit & { version?: number; json?: unknown } = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-  if (init.json !== undefined) headers.set("content-type", "application/json");
-  if (init.version !== undefined) headers.set("If-Match", `"${init.version}"`);
-  const res = await authFetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
-  });
-  if (!res.ok) throw await failed(res);
-  if (res.status === 204) return undefined as T;
-  const type = res.headers.get("content-type") ?? "";
-  return (type.includes("json") ? await res.json() : await res.text()) as T;
+/** How long a plain (non-streaming) call may take before the page stops waiting: a server that never answers must
+ * end in an error the person can see, not a spinner for ever. Exports and uploads can be slow, hence generous. */
+export const REQUEST_TIMEOUT_MS = 120_000;
+
+export async function apiFetch<T>(
+  path: string, init: RequestInit & { version?: number; json?: unknown; timeoutMs?: number } = {},
+): Promise<T> {
+  const { timeoutMs = REQUEST_TIMEOUT_MS, json, version, ...rest } = init;
+  const headers = new Headers(rest.headers);
+  if (json !== undefined) headers.set("content-type", "application/json");
+  if (version !== undefined) headers.set("If-Match", `"${version}"`);
+  const timeout = AbortSignal.timeout(timeoutMs);
+  try {
+    const res = await authFetch(`${API_BASE}${path}`, {
+      ...rest,
+      headers,
+      body: json !== undefined ? JSON.stringify(json) : rest.body,
+      signal: rest.signal ? AbortSignal.any([rest.signal, timeout]) : timeout,
+    });
+    if (!res.ok) throw await failed(res);
+    if (res.status === 204) return undefined as T;
+    const type = res.headers.get("content-type") ?? "";
+    return (type.includes("json") ? await res.json() : await res.text()) as T;
+  } catch (e) {
+    if (timeout.aborted && !rest.signal?.aborted && !(e instanceof ApiError)) {
+      throw new ApiError(0, { title: "No answer", detail: `The server did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again.` });
+    }
+    throw e;
+  }
 }
 
 /** Download a file the API serves (a plain link would not carry the bearer token). */

@@ -33,7 +33,11 @@ export async function postStream(
   try {
     for (;;) {
       const { value, done } = await reader.read();
-      if (done || signal?.aborted) break;
+      if (signal?.aborted) break;
+      if (done) { // a connection that closed right after the last line: its events still count
+        for (const e of parseMessage(buffer)) onEvent(e);
+        break;
+      }
       buffer += value;
       let sep: RegExpExecArray | null;
       while ((sep = /\r?\n\r?\n/.exec(buffer))) { // one SSE message ends with a blank line

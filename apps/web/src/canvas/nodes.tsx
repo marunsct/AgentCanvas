@@ -4,6 +4,7 @@ import { memo, type MouseEvent, type KeyboardEvent, useEffect, useRef } from "re
 import type { NodeManifest } from "../api/types";
 import { useUi } from "../editor/ui";
 import { type PortHelp, portHelp, typeName } from "../help/glossary";
+import { rememberOpener } from "./focus";
 import { type CanvasData, PORT_COLORS } from "./irToFlow";
 import { onActivate } from "./keys";
 
@@ -59,10 +60,10 @@ function PortTip({ help, side }: { help: PortHelp; side: string }) {
 function openMenu(node: string, handle: string, side: "in" | "out") {
   const open = (x: number, y: number) => useUi.getState().openPortMenu({ node, handle, side, x, y });
   return {
-    onClick: (e: MouseEvent) => { e.stopPropagation(); open(e.clientX, e.clientY); },
+    onClick: (e: MouseEvent) => { e.stopPropagation(); rememberOpener(null); open(e.clientX, e.clientY); },
     onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
       const el = e.currentTarget;
-      onActivate(() => { const r = el.getBoundingClientRect(); open(r.right, r.top + r.height / 2); })(e);
+      onActivate(() => { rememberOpener(el); const r = el.getBoundingClientRect(); open(r.right, r.top + r.height / 2); })(e);
     },
     tabIndex: 0,
     role: "button",
