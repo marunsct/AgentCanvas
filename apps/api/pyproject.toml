@@ -1,6 +1,6 @@
 [project]
 name = "agentcanvas"
-version = "0.30.0"
+version = "0.31.0"
 description = "AgentCanvas control plane and runner: visual agentic workflows compiled to LangGraph/LangChain/Deep Agents"
 requires-python = ">=3.12"
 # Stack "stack-2026.09" (ADR 0017), verified together on 2026-09-29 (spec doc 14)

@@ -2,6 +2,31 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.31.0 — A real sandbox: workspace code runs in a service of its own
+
+### Added
+- **The sandbox service** (`script_execution=remote`, `agentcanvas.sandbox.service`). For each call the API sends the
+  project's files (a tar.gz without git history), the function and its input; the service unpacks them into a fresh
+  temporary directory, runs the sandbox child with the usual limits and no network, returns the result and deletes the
+  directory. It has no database credentials, keys or other projects' files, refuses archives with absolute paths, `..`,
+  links or too many bytes, and checks a bearer token (`AGENTCANVAS_SANDBOX_TOKEN`).
+- **Production defaults to it.** `infra/compose.prod.yml` runs a `sandbox` service (read-only root, all capabilities
+  dropped, process and memory limits, an `internal` network only the API shares) and the Helm chart a `sandbox`
+  Deployment, Service and NetworkPolicy (ingress from the API only, no egress). Set `AGENTCANVAS_SANDBOX_TOKEN`
+  (compose `.env.prod`, Helm secret key of the same name). The hosted edition accepts `remote`. CI checks the
+  service runs as the app user, holds none of the API's secrets and has no route out.
+
+### Changed
+- `docker`, `subprocess`, `inprocess` and `langsmith` work as before; egress allow-lists in `sandbox.json` still need
+  `langsmith` (the service has no network).
+
+## v0.30.1 — Hardening: a production server says when workspace code is not isolated
+
+### Changed
+- In staging and production, an API running workspace code in-process or as a child process logs a
+  `sandbox.not_isolated` warning at start-up. The compose default stays `subprocess`: `docker` mode needs the host's
+  Docker socket (which is root-equivalent) and a Docker CLI the API image does not carry.
+
 ## v0.30.0 — Share links choose which sites may frame their chat page
 
 ### Added

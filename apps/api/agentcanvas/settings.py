@@ -59,7 +59,11 @@ class Settings(BaseSettings):
     workspaces_dir: str = "./workspaces"  # one git repository per project (M5-T1)
     # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith
     # Sandbox (spike SP-2; credentials from LANGSMITH_API_KEY)
-    script_execution: Literal["inprocess", "subprocess", "docker", "langsmith"] = "inprocess"
+    script_execution: Literal["inprocess", "subprocess", "docker", "langsmith", "remote"] = "inprocess"
+    sandbox_url: str | None = (
+        None  # "remote": the sandbox service (`agentcanvas.sandbox.service`), e.g. http://sandbox:8090
+    )
+    sandbox_token: str | None = None  # the bearer token the service expects
     sandbox_image: str = "python:3.12-slim"
     langsmith_snapshot: str | None = None  # snapshot name/id to boot from; None = LangSmith's default snapshot
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)

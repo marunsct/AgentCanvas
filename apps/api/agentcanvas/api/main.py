@@ -59,6 +59,16 @@ from agentcanvas.settings import Settings, get_settings
 log = get_logger(__name__)
 
 
+def sandbox_hint(settings: Settings) -> str | None:
+    """A warning for a staging or production server whose workspace code is not isolated from the API."""
+    if settings.env in ("staging", "prod") and settings.script_execution in ("inprocess", "subprocess"):
+        return (
+            "workspace code runs as the API's user and can read its files; set AGENTCANVAS_SCRIPT_EXECUTION=docker "
+            "or langsmith when people you do not trust can edit workspaces"
+        )
+    return None
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
@@ -96,6 +106,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("rls.bypassed", hint=hint)
         app.state.db = db
         paused_runs.install(DatabasePaused(db))  # paused runs of every replica, kept across restarts
+        if hint := sandbox_hint(settings):
+            log.warning("sandbox.not_isolated", mode=settings.script_execution, hint=hint)
         if settings.script_execution == "subprocess":
             _not_dumpable()  # sandbox children run as this user: keep them from reading this process's memory
         observability.trace_engine(db.engine)
@@ -205,7 +217,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.30.0", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version="0.31.0", lifespan=lifespan, **docs)
     app.state.settings = settings
     install_problem_handlers(app)
     observability.setup_tracing(app)

@@ -6,7 +6,7 @@ image:
 imagePullSecrets: []
 
 secrets:
-  # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY; optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
+  # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY, AGENTCANVAS_SANDBOX_TOKEN (32+ random characters; with the sandbox service); optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
   # Row-level security (Matura mode) needs the API to connect as an ordinary role: point DATABASE_URL at that role
   # and add MIGRATE_DATABASE_URL (the owner) plus APP_DB_USER / APP_DB_PASSWORD; the migrate Job creates the role.
   # A superuser or BYPASSRLS role is refused at startup in staging and prod when AUTH_MODE=matura.
@@ -22,7 +22,8 @@ config:
     scopes: "openid profile email offline_access"   # offline_access: silent token refresh
   bootstrapAdminEmails: []        # become admins of the default organisation on first sign-in
   corsOrigins: []
-  scriptExecution: subprocess     # inprocess | subprocess | docker | langsmith
+  # remote = the sandbox service below (its own pods, no secrets, no network); subprocess is limits only, not isolation
+  scriptExecution: remote         # remote | subprocess | inprocess | docker | langsmith
   # proxies whose X-Forwarded-For / -Proto the API trusts (uvicorn); the web pods' network, or "*" when only
   # the web service can reach the API
   forwardedAllowIps: "*"
@@ -50,6 +51,15 @@ api:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+# Runs workspace code for the API (config.scriptExecution: remote): pods of their own with none of the API's secrets
+# and, with networkPolicy.enabled, no route in except from the API and none out.
+sandbox:
+  enabled: true
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 2Gi }
 
 web:
   replicas: 2

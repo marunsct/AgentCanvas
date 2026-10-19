@@ -24,8 +24,11 @@ x-api: &api
     AGENTCANVAS_OIDC_CLIENT_ID: ${AGENTCANVAS_OIDC_CLIENT_ID:-}
     AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS: ${AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS:-[]}
     AGENTCANVAS_CORS_ORIGINS: ${AGENTCANVAS_CORS_ORIGINS:-[]}
-    # subprocess is limits only, not isolation (same user, same filesystem); docker isolates workspace code
-    AGENTCANVAS_SCRIPT_EXECUTION: ${AGENTCANVAS_SCRIPT_EXECUTION:-subprocess}
+    # workspace code runs in the `sandbox` service below: a container with no database credentials, no keys, no
+    # route out and only the files of the call. (`subprocess` is limits only, not isolation: same user and files.)
+    AGENTCANVAS_SCRIPT_EXECUTION: ${AGENTCANVAS_SCRIPT_EXECUTION:-remote}
+    AGENTCANVAS_SANDBOX_URL: ${AGENTCANVAS_SANDBOX_URL:-http://sandbox:8090}
+    AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:?set AGENTCANVAS_SANDBOX_TOKEN (32+ random characters)}
     FORWARDED_ALLOW_IPS: "*"                   # only nginx (web) reaches the API on this network
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -33,6 +36,27 @@ x-api: &api
     - workspaces:/data/workspaces              # project workspaces (git), shared by the replicas on this host
 
 services:
+  # Runs workspace code for the API (script_execution=remote). Same image, none of the API's secrets, read-only root,
+  # no capabilities, and a network (`sandbox`, internal) that only the API shares and that has no route out.
+  sandbox:
+    image: ${API_IMAGE:-agentcanvas-api:latest}
+    command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
+    environment:
+      AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:?set AGENTCANVAS_SANDBOX_TOKEN (32+ random characters)}
+    networks: [sandbox]
+    read_only: true
+    tmpfs: ["/tmp:size=512m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=2)"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
   postgres:
     image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
     environment:
@@ -63,8 +87,10 @@ services:
     <<: *api
     deploy:
       replicas: ${API_REPLICAS:-2}
+    networks: [default, sandbox]
     depends_on:
       migrate: { condition: service_completed_successfully }
+      sandbox: { condition: service_healthy }
     stop_grace_period: 60s                     # streams get 30 s to finish, then runs 20 s before hand-over
     restart: unless-stopped
 
@@ -84,6 +110,10 @@ services:
       start_period: 30s
       retries: 10
     restart: unless-stopped
+
+networks:
+  sandbox:
+    internal: true                             # no route out: the code it runs cannot reach the internet or the database
 
 volumes:
   pgdata:
