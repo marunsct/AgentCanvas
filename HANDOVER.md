@@ -213,6 +213,8 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
 
 ## 9. Known gaps and deferred items
 
+The hardening checklist (done and open, with versions) is `HARDENING.md`; update it in every hardening PR.
+
 - **Matura TS26 left out (v0.28.0):** schema- or database-per-tenant placement (AgentCanvas has one engine and
   background jobs that work across organisations; shared mode only, `pmode` other than `shared` → 503); workspaces
   only group projects (no per-workspace roles: grants in non-default workspaces still do not count, and the token's
