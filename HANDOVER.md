@@ -23,7 +23,7 @@ updated one wins; fix the other in the same PR.
 | Git tags | **none pushed.** v0.1.0 … v0.29.0 are all left to the owner (see §2) |
 | Next sprint | **Proposed (owner to decide):** restore CI runners and run every suite on v0.29.0 first (nothing since v0.27.0 has run in CI). Then the review plan's Phase 3 (consolidation: engine and packager duplication, `ResourceResolver`, split `nodes.py`) and the web items in §9, then real users before the GA backlog |
 | Work status | #51 (v0.28.1), #53 (v0.28.2) and #52 (v0.29.0) merged; the API suite passes (see above). Not run yet: pyright, the web unit tests, the e2e suite and the framework conformance kit (no npm or framework environments in the cloud session). **Run `make check`, `make e2e` and the kit with every framework before building on them**, and try `infra/compose.prod.yml` with a fresh and an existing volume (the new API database role) |
-| Open PRs | #36 (the identity and tenancy plan, doc 18 and ADR 0019, already built as Matura: a draft, docs only, for the owner to merge); Dependabot #48 (Node 26: not mergeable as is, Node 25+ has no corepack, which `Dockerfile.web` uses) and #45 (Python 3.14 in the API image: needs an image build with every framework first). #44, #46, #47 merged on 2026-10-19 |
+| Open PRs | None. 2026-10-20: #64 (the hardening pass, with #62 and #63), #45 (the API image on Python 3.14: verified before merging with an image of every framework and Mastra, all ten reported ready, the API suite green on 3.14) and #36 (the identity and tenancy plan, doc 18 and ADR 0019, docs only) are merged; #48 (Node 26: Node 25+ has no corepack, which `Dockerfile.web` uses) is closed. #44, #46, #47 merged on 2026-10-19 |
 | CI | **GitHub Actions assigned no runners from 2026-10-08 05:51Z** (every job fails in about 2 seconds with no logs, `main` included), most likely the account's Actions minutes or spending limit. The owner must fix it in GitHub billing settings. #20 was merged on local checks at the owner's choice. Until Actions runs again, run the suites below locally before merging |
 
 **Test totals after v0.26.2** (all green locally):
@@ -84,7 +84,7 @@ is kept only as a record.
 ## 4. Repository map
 
 ```
-apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12, uv)
+apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12+, uv; the image runs 3.14)
   api/v1/                  REST routes; protocols.py = MCP + A2A per deployment, traces.py = trace export settings
   adapters/langchain/      the only place LangChain/LangGraph may be imported (import-linter contract, ADR 0011)
   runtime/                 framework-neutral runner, run handles, finish hooks, masking
