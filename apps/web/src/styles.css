@@ -715,7 +715,8 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .port-tip.out { right: -6px; }
 .port-tip.flow-in { top: 30px; left: -10px; }
 .port-tip.resource-out { top: 30px; right: -10px; }
-.port-row:hover .port-tip, .react-flow__handle:hover + .port-tip { display: flex; }
+.port-row:hover .port-tip, .port-row:focus-within .port-tip, .react-flow__handle:hover + .port-tip, .react-flow__handle:focus-visible + .port-tip { display: flex; }
+.react-flow__handle:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
 .react-flow__node:has(.port-row:hover), .react-flow__node:has(.react-flow__handle:hover) { z-index: 1000 !important; }
 .react-flow__handle { cursor: pointer; }
 .port-menu {

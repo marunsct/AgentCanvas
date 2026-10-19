@@ -10,6 +10,13 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   before every `git push`. The GitHub workflow now runs only when started by hand.
 - `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
 
+## v0.32.2 — The canvas can be used from the keyboard
+
+### Added
+- Palette items add on Enter or Space. Every port on a block is a focusable button: Tab to it, press Enter or Space and
+  the "what can connect here?" menu opens next to it, so blocks can be wired without a mouse.
+- Blocks announce their name and type to screen readers; a port's hover card also shows when the port has focus.
+
 ## v0.32.1 — The canvas no longer redraws on every streamed token
 
 ### Fixed
