@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from typing import LiteralString, cast
 
 NAME = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 
@@ -46,7 +47,10 @@ def ensure(url: str, role: str, password: str) -> None:
             query = template
             if exists and query.startswith("CREATE ROLE"):
                 query = query.replace("CREATE ROLE {role} LOGIN", "ALTER ROLE {role} WITH LOGIN")
-            conn.execute(sql.SQL(query).format(role=sql.Identifier(role), pw=sql.Literal(password)))
+            # the statements are this module's own constants; psycopg fills in only the identifier and the literal
+            conn.execute(
+                sql.SQL(cast(LiteralString, query)).format(role=sql.Identifier(role), pw=sql.Literal(password))
+            )
 
 
 def main() -> int:

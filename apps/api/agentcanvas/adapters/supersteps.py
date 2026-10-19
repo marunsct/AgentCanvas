@@ -16,6 +16,7 @@ Only the standard library, `jsonschema` and `agentcanvas.expr` (vendored into ex
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -207,60 +208,101 @@ async def _loop(
             }
             return
         following, rounds.following = rounds.following, []
-        for i, node_id in enumerate(frontier):
+        # steps side by side run at the same time, each on the values the round started with (a step never sees a
+        # sibling's update); their updates merge afterwards in the order the canvas lists them
+        for node_id in frontier:
             step = flow.steps[node_id]
             yield {"type": "STEP_STARTED", "stepName": step.name, "canvas_node_id": node_id, "task_id": node_id}
-            started = time.perf_counter()
-            ctx = run_class(flow, host, node_id, step.name, answers.get(node_id, MISSING), native.get(node_id))
-            try:
-                update = {} if step.disabled or step.run is None else await step.run(values, ctx)
-            except Interrupted as intr:
-                info = {
-                    "id": f"{run_id}:{node_id}",
-                    "kind": interrupt_kind(intr.payload),
-                    "canvas_node_id": node_id,
-                    "payload": intr.payload,
-                }
-                paused = Paused(
-                    values=copy(values), node_id=node_id, frontier=[node_id, *frontier[i + 1 :]], done=sorted(done),
-                    payload=intr.payload, interrupt_id=info["id"], steps=steps - 1, native=intr.native,
-                    next_round=following, arrived={k: sorted(v) for k, v in rounds.arrived.items() if v},
-                )  # fmt: skip
-                yield {
-                    "type": "STEP_FINISHED", "stepName": step.name, "canvas_node_id": node_id, "status": "interrupted",
-                    "task_id": node_id, "duration_ms": _ms(started),
-                }  # fmt: skip
-                yield {"type": "CUSTOM", "name": "ac.interrupt", "value": info}
-                yield {
-                    "type": "RUN_FINISHED", "outcome": "interrupt", "breakpoint": False, "interrupts": [info],
-                    "next": [node_id], "checkpoint_id": None, "output": outputs(flow, values), "paused": paused,
-                }  # fmt: skip
-                return
-            except Exception:
+        outcomes = await _round(flow, host, run_class, values, frontier, answers, native)
+        asking: tuple[str, Interrupted] | None = None  # the first step that asks a person
+        again: list[str] = []  # steps after it that did not finish: they run again once it is answered
+        for node_id, (update, error, took) in zip(frontier, outcomes, strict=True):
+            step = flow.steps[node_id]
+            if error is not None and asking is None and not isinstance(error, Interrupted):
                 yield {
                     "type": "STEP_FINISHED", "stepName": step.name, "canvas_node_id": node_id, "status": "error",
-                    "task_id": node_id, "duration_ms": _ms(started),
+                    "task_id": node_id, "duration_ms": took,
                 }  # fmt: skip
-                raise
+                raise error
+            if error is not None:
+                if isinstance(error, Interrupted) and asking is None:
+                    asking = (node_id, error)
+                    yield {
+                        "type": "STEP_FINISHED", "stepName": step.name, "canvas_node_id": node_id,
+                        "status": "interrupted", "task_id": node_id, "duration_ms": took,
+                    }  # fmt: skip
+                else:
+                    again.append(node_id)  # asked as well, or failed after another step asked
+                continue
             answers.pop(node_id, None)
             native.pop(node_id, None)
-            for k, v in update.items():
+            for k, v in (update or {}).items():
                 values[k] = reduce(flow.channels.get(k, ("replace", None))[0], values.get(k), v)
             done.add(node_id)
             yield {
                 "type": "STEP_FINISHED", "stepName": step.name, "canvas_node_id": node_id, "status": "ok",
-                "task_id": node_id, "duration_ms": _ms(started),
+                "task_id": node_id, "duration_ms": took,
             }  # fmt: skip
             if update:
                 yield {"type": "STATE_DELTA", "canvas_node_id": node_id, "delta": copy(update)}
             for nxt in rounds.lead(flow, node_id, values):
                 if nxt not in following:
                     following.append(nxt)
+        if asking is not None:
+            node_id, intr = asking
+            info = {
+                "id": f"{run_id}:{node_id}",
+                "kind": interrupt_kind(intr.payload),
+                "canvas_node_id": node_id,
+                "payload": intr.payload,
+            }
+            paused = Paused(
+                values=copy(values), node_id=node_id, frontier=[node_id, *again],
+                done=sorted(done), payload=intr.payload, interrupt_id=info["id"], steps=steps - 1,
+                native=intr.native, next_round=following,
+                arrived={k: sorted(v) for k, v in rounds.arrived.items() if v},
+            )  # fmt: skip
+            yield {"type": "CUSTOM", "name": "ac.interrupt", "value": info}
+            yield {
+                "type": "RUN_FINISHED", "outcome": "interrupt", "breakpoint": False, "interrupts": [info],
+                "next": [node_id], "checkpoint_id": None, "output": outputs(flow, values), "paused": paused,
+            }  # fmt: skip
+            return
         frontier = [n for n in following if n != "END"]
     yield {
         "type": "RUN_FINISHED", "outcome": "success", "breakpoint": False, "interrupts": [], "next": [],
         "checkpoint_id": None, "output": outputs(flow, values),
     }  # fmt: skip
+
+
+async def _round(
+    flow: Flow,
+    host: Host,
+    run_class: type[Run],
+    values: dict[str, Any],
+    frontier: list[str],
+    answers: dict[str, Any],
+    native: dict[str, str],
+) -> list[tuple[dict[str, Any] | None, BaseException | None, int]]:
+    """Run one round's steps at the same time, each on its own copy of `values`. Per step, in frontier order: its
+    update, the error that ended it (an `Interrupted` is a person being asked) and how long it took in ms."""
+
+    async def one(node_id: str) -> tuple[dict[str, Any] | None, BaseException | None, int]:
+        step = flow.steps[node_id]
+        started = time.perf_counter()
+        ctx = run_class(flow, host, node_id, step.name, answers.get(node_id, MISSING), native.get(node_id))
+        try:
+            update = {} if step.disabled or step.run is None else await step.run(copy(values), ctx)
+        except Exception as exc:  # noqa: BLE001 - reported by the caller in frontier order
+            return None, exc, _ms(started)
+        return update, None, _ms(started)
+
+    tasks = [asyncio.ensure_future(one(n)) for n in frontier]
+    try:
+        return list(await asyncio.gather(*tasks))
+    finally:
+        for task in tasks:
+            task.cancel()  # a cancelled run (client gone) stops its steps
 
 
 @dataclass

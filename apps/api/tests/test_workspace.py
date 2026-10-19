@@ -176,7 +176,12 @@ async def test_docker_sandbox_has_no_network(sandbox_ws):
     for p in [sandbox_ws, *sandbox_ws.parents][:3]:  # pytest's tmp dirs are private; the sandbox user is nobody
         p.chmod(0o755)
     run = lambda path, t=120: run_in_sandbox("docker", sandbox_ws, path, {"n": 1}, image="python:3.12-slim", timeout=t)  # noqa: E731
-    assert await run("scripts.ok:run") == {"n": 2}
+    try:
+        assert await run("scripts.ok:run") == {"n": 2}
+    except ScriptError as exc:
+        if "mounts denied" in str(exc):  # Docker Desktop shares only some folders with containers
+            pytest.skip("this Docker may not mount pytest's temporary folder: share it, or run with --basetemp")
+        raise
     with pytest.raises(ScriptError):
         await run("scripts.net:run")
     with pytest.raises(TimeoutError):  # S2: the container itself is stopped, not only the docker client

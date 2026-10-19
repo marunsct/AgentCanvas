@@ -269,3 +269,18 @@ def test_a_production_server_without_an_isolating_sandbox_says_so():
     assert sandbox_hint(Settings(env="prod", script_execution="docker")) is None
     assert sandbox_hint(Settings(env="prod", script_execution="langsmith")) is None
     assert sandbox_hint(Settings(env="dev", script_execution="inprocess")) is None
+
+
+def test_a_worker_subclass_may_repeat_the_default_environment_settings(tmp_path):
+    """The Strands worker names OTEL_SDK_DISABLED itself; passing it twice to `worker_env` raised a TypeError."""
+    from typing import ClassVar
+
+    from agentcanvas.adapters.crewai import CrewWorker
+
+    class Repeats(CrewWorker):
+        extra_env: ClassVar[dict[str, str]] = {"OTEL_SDK_DISABLED": "true", "MY_FLAG": "1"}
+
+    worker = object.__new__(Repeats)
+    worker._dir = str(tmp_path)
+    env = worker.environment()
+    assert env["OTEL_SDK_DISABLED"] == "true" and env["MY_FLAG"] == "1" and env["PYTHONPATH"] == str(tmp_path)
