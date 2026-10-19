@@ -21,12 +21,14 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
   const [title, setTitle] = useState("");
   const [greeting, setGreeting] = useState("");
   const [suggestions, setSuggestions] = useState("");
+  const [sites, setSites] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const seeded = useRef<string | null>(null); // the deployment the form was filled from
   const seed = (d: ShareOut) => {
     setTitle(d.title);
     setGreeting(d.greeting);
     setSuggestions(d.suggestions.join("\n"));
+    setSites(d.frame_origins.join("\n"));
   };
   // fill the form once per deployment and after a save of its fields, not on every refetch: the switch and a
   // new link update the query too, and that must not wipe what is being typed
@@ -78,6 +80,15 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
                     onChange={(e) => setGreeting(e.target.value)} />
           <label htmlFor={`${id}-suggestions`}>Suggested questions (one per line, up to 6)</label>
           <textarea id={`${id}-suggestions`} value={suggestions} onChange={(e) => setSuggestions(e.target.value)} />
+          <label htmlFor={`${id}-sites`}>Sites that may show the chat widget (one per line)</label>
+          <textarea id={`${id}-sites`} value={sites} placeholder="https://www.example.com" data-testid="share-sites"
+                    onChange={(e) => setSites(e.target.value)} />
+          <p className="muted">
+            {data.frame_origins.length === 0
+              ? "No sites listed: any website can put your chat page in a frame. List yours to stop others from doing it."
+              : "Only these sites (and this app) can show the chat page in a frame. The link itself still works for anyone."}
+            {" "}Use https://example.com, or https://*.example.com for all its subdomains.
+          </p>
           <p className="muted">
             {data.input.field
               ? <>Messages go to the input <code className="inline">{data.input.field}</code>{data.input.chat ? " (as a chat message)" : ""}.</>
@@ -86,6 +97,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
           <div className="row gap">
             <button type="button" className="small" disabled={save.isPending} onClick={() => save.mutate({
               title, greeting, suggestions: suggestions.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 6),
+              frame_origins: sites.split("\n").map((s) => s.trim()).filter(Boolean),
             })}>Save</button>
           </div>
           {data.enabled && (

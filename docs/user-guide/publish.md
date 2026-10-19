@@ -113,7 +113,10 @@ field such as `answer`, `reply` or `response`, else the only text output.
   Switching sharing off, or unpublishing the deployment, closes the page too.
 - Visitors only ever see their own conversations. Each browser gets its own random visitor id; you see their runs
   in **Runs**, with the end user `share:<deployment>:<visitor>` (useful for per-user memory).
-- Any website can show the chat panel, so the widget does not limit which sites embed it.
+- **Sites that may show the chat widget.** Until you list any, every website can put the chat page in a frame (the
+  widget works anywhere). List your sites (`https://www.example.com`, or `https://*.example.com` for all its
+  subdomains) and only those sites, plus this app, can frame it; others see a blocked frame. The link itself still
+  opens for anyone who has it.
 - Messages a visitor sends are not kept in their browser: reloading the page starts a new conversation.
 
 ## Triggers

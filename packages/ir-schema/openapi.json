@@ -8591,6 +8591,14 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "frame_origins": {
+            "description": "sites allowed to show the chat page in a frame; empty: any site",
+            "items": {
+              "type": "string"
+            },
+            "title": "Frame Origins",
+            "type": "array"
+          },
           "greeting": {
             "title": "Greeting",
             "type": "string"
@@ -8651,7 +8659,8 @@
           "greeting",
           "suggestions",
           "input_field",
-          "input"
+          "input",
+          "frame_origins"
         ],
         "title": "ShareOut",
         "type": "object"
@@ -8757,6 +8766,21 @@
               }
             ],
             "title": "Enabled"
+          },
+          "frame_origins": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "sites allowed to show the chat page in a frame (the chat widget); empty: any site",
+            "title": "Frame Origins"
           },
           "greeting": {
             "anyOf": [
@@ -10501,7 +10525,7 @@
   },
   "info": {
     "title": "AgentCanvas API",
-    "version": "0.29.1"
+    "version": "0.30.0"
   },
   "openapi": "3.1.0",
   "paths": {

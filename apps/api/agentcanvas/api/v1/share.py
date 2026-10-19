@@ -41,6 +41,7 @@ from agentcanvas.services.share import (
     ShareService,
     ShareSettingsIn,
     answer_text,
+    frame_ancestors,
     input_shape,
     question_of,
     run_input,
@@ -70,6 +71,7 @@ class ShareOut(BaseModel):
     suggestions: list[str]
     input_field: str | None
     input: InputShape
+    frame_origins: list[str] = Field(description="sites allowed to show the chat page in a frame; empty: any site")
     updated_at: datetime | None = None
 
 
@@ -78,7 +80,8 @@ async def _share_out(session: AsyncSession, share: DeploymentShare, dep: Deploym
     return ShareOut(
         deployment_id=dep.id, enabled=share.enabled, token=share.token, path=f"/s/{share.token}",
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
-        input_field=share.input_field, input=input_shape(wf, share.input_field), updated_at=share.updated_at,
+        input_field=share.input_field, input=input_shape(wf, share.input_field),
+        frame_origins=list(share.frame_origins or []), updated_at=share.updated_at,
     )  # fmt: skip
 
 
@@ -169,6 +172,14 @@ async def share_info(token: str, request: Request, session: AsyncSession = Depen
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input=input_shape(wf, share.input_field),
     )  # fmt: skip
+
+
+@public_router.get("/share/{token}/frame", status_code=204, include_in_schema=False)
+async def share_frame(token: str, session: AsyncSession = Depends(get_session)) -> Response:
+    """For the web server: which sites may frame this link's chat page, as an `X-Frame-Ancestors` header (nginx asks
+    before it serves the page and puts the answer in the page's Content-Security-Policy)."""
+    share = await session.scalar(select(DeploymentShare).where(DeploymentShare.token == token)) if token else None
+    return Response(status_code=204, headers={"X-Frame-Ancestors": frame_ancestors(share)})
 
 
 async def _visitor_context(session: AsyncSession, dep: Deployment, wf: Workflow, visitor: str) -> dict[str, Any]:

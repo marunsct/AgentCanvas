@@ -2,6 +2,16 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.30.0 — Share links choose which sites may frame their chat page
+
+### Added
+- **Allowed sites for the chat widget.** A share link's chat page could be framed by any website. Builders can now
+  list the sites (`https://example.com`, `https://*.example.com`) under **Share as an app or a chat widget**; nginx
+  asks the API per link (`GET /v1/share/{token}/frame`, `auth_request`) and sets `frame-ancestors` to those sites.
+  Nothing listed keeps today's behaviour (any site), so embedded widgets keep working until their owner narrows
+  it; an unknown or switched-off link allows only the app itself. Migration `c9e1a7d3f5b2` adds
+  `deployment_share.frame_origins`.
+
 ## v0.29.1 — Hardening: Echo pauses survive restarts, runs always use their own project's workspace
 
 ### Fixed
