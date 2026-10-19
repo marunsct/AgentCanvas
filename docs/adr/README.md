@@ -19,5 +19,6 @@
 | [0015](./0015-async-node-callables.md) | Node-library callables are always async | accepted |
 | [0016](./0016-delta-channel-storage-mode.md) | DeltaChannel is a channel storage mode | accepted |
 | [0017](./0017-stack-2026-09.md) | Stack stack-2026.09 | accepted |
+| [0019](./0019-identity-and-tenancy-platform.md) | Identity and tenancy are a reusable platform; AgentCanvas is the first consumer | proposed |
 
 Template and rules: [build-guide/02 §6](../agent-canvas-spec/build-guide/02-repository-and-conventions.md#6-architecture-decision-records).
