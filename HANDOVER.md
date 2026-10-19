@@ -222,7 +222,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   (none: the production compose file and Helm chart now default to the sandbox service, `script_execution=remote`, v0.31.0; `subprocess` still warns at start-up; the service needs an internal network, so egress allow-lists stay LangSmith-only; run `make` prod compose and `helm template` to check it, I could not here); RLS policies on child tables nest 3–4 EXISTS levels (EXPLAIN
   the hot list queries with a tenant set); the RLS migration locks 35 tables at once; duplicated engine, worker and packager code (about 1,000–1,300 lines,
   Phase 3); `Resources` is still LangChain's object for every adapter; web: session and project in module variables
-  (`ME` defaults to admin until `/me` answers), hand-written response types, partial keyboard access, no ESLint (`@rjsf/validator-ajv8` looks unused but `@rjsf/core` imports it: keep it);
+  (`ME` defaults to admin until `/me` answers), hand-written response types, keyboard access is done for the palette and ports but not yet for creating edges by drag or the inspector forms, no ESLint (`@rjsf/validator-ajv8` looks unused but `@rjsf/core` imports it: keep it);
   CI has no framework-environment cache and no Mastra `tsc`; framework pins live in four places; the Mastra npm set
   has no lockfile.
 - **Release tags** v0.1.0 to v0.29.0 not created (owner).
