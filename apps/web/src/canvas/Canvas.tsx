@@ -16,6 +16,7 @@ import { allNames, defaultsFromSchema, innerWorkflow, uniqueName } from "../ir/m
 import { useEditor } from "../editor/store";
 import { useCopilot } from "../copilot/copilot";
 import { useRun } from "../run/runStore";
+import { useThrottled } from "../ui/useThrottled";
 import { recallView, rememberView } from "../editor/viewMemory";
 import { useUi } from "../editor/ui";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -39,7 +40,7 @@ export function Canvas() {
   const { dispatch, select, setPositions, setConnectHint, setFocusNode } = useEditor.getState();
   const status = useRun((s) => s.status);
   const highlight = useRun((s) => s.highlight);
-  const output = useRun((s) => s.output);
+  const output = useThrottled(useRun((s) => s.output), 120); // streamed text: a few redraws a second, not one per token
   const metrics = useRun((s) => s.metrics);
   const breakpoints = useEditor((s) => s.breakpoints);
   const pins = useEditor((s) => s.pins);

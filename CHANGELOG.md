@@ -2,6 +2,12 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## v0.32.1 — The canvas no longer redraws on every streamed token
+
+### Fixed
+- While an agent streams its answer the canvas rebuilt every node for each token. The streamed text now reaches the
+  canvas at most about eight times a second (and always ends on the full text); the Run panel still shows every token.
+
 ## v0.32.0 — Parallel branches run in parallel on the frameworks that use the shared flow engine
 
 ### Fixed
