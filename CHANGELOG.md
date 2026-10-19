@@ -10,6 +10,16 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   before every `git push`. The GitHub workflow now runs only when started by hand.
 - `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
 
+## v0.32.3 — Session state in the web app, and a guard on framework versions
+
+### Changed
+- The signed-in user, organisation and role are now state (`useMe`, `useCan` in `api/session.ts`); components that use
+  them redraw when they change. `ME` and `can` still work for code outside React.
+
+### Added
+- A test that the framework versions written in the export lists, `interop.py`, the CrewAI code generator and the CI
+  matrix agree, so a version bump in one place fails until the others follow.
+
 ## v0.32.2 — The canvas can be used from the keyboard
 
 ### Added
