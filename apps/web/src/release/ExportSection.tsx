@@ -13,6 +13,7 @@ type Item = { name?: string; host?: string; port?: number; why?: string; where?:
 type Prerequisites = {
   label: string; summary: string; tools: Item[]; keys: Item[]; deploy_settings: Item[]; hosts: Item[]; sizing: string;
   database: { needed: boolean; why: string; where: string; shared: boolean };
+  knowledge?: { name: string; found: boolean }[]; // the knowledge bases the workflow searches
 };
 
 export function ExportSection({ wfId, versions }: { wfId: string; versions: VersionOut[] }) {
@@ -131,6 +132,21 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
               Database: {p.database.needed ? <b>needed</b> : "optional"} ({p.database.why}). {p.database.where}.
             </li>
           </ul>
+          {(p.knowledge ?? []).length > 0 && (
+            <>
+              <h4>Knowledge bases it searches</h4>
+              <ul data-testid="export-knowledge">
+                {(p.knowledge ?? []).map((k) => (
+                  <li key={k.name}>
+                    <code>{k.name}</code>:{" "}
+                    {k.found
+                      ? "included in the export"
+                      : <b className="error-text">not in this project, so it is left out and the exported search will fail until you add knowledge/{k.name}.jsonl</b>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {p.hosts.length > 0 && (
             <>
               <h4>It connects to</h4>

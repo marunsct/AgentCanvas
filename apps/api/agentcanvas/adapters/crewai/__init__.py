@@ -17,9 +17,11 @@ from __future__ import annotations
 import asyncio
 import atexit
 import contextlib
+import functools
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -288,6 +290,38 @@ def worker_env(**extra: str) -> dict[str, str]:
     return {**env, **extra}
 
 
+_DIR = re.compile(r"^agentcanvas-[a-z_]+-(\d+)-")
+
+
+def sweep_stale_worker_dirs() -> int:
+    """Remove worker folders left in the temp folder by servers that were killed (they clean up only on a clean
+    exit): the name carries the server's process id, and a folder whose server is gone has no worker using it."""
+    removed = 0
+    root = Path(tempfile.gettempdir())
+    for entry in root.glob("agentcanvas-*-*-*"):
+        found = _DIR.match(entry.name)
+        if not found or not entry.is_dir():
+            continue
+        pid = int(found.group(1))
+        if pid == os.getpid():
+            continue
+        try:
+            os.kill(pid, 0)  # raises when no such process
+            continue
+        except ProcessLookupError:
+            pass
+        except OSError:  # exists but is not ours (PermissionError): leave it
+            continue
+        shutil.rmtree(entry, ignore_errors=True)
+        removed += 1
+    return removed
+
+
+@functools.cache
+def _sweep_once() -> int:
+    return sweep_stale_worker_dirs()
+
+
 class CrewWorker:
     """The worker process and its runs. Reading happens on a thread, so one worker serves every event loop.
 
@@ -301,7 +335,9 @@ class CrewWorker:
 
     def __init__(self, python: str):
         self.python = python
-        self._dir = tempfile.mkdtemp(prefix=f"agentcanvas-{self.package}-")
+        with contextlib.suppress(Exception):
+            _sweep_once()
+        self._dir = tempfile.mkdtemp(prefix=f"agentcanvas-{self.package}-{os.getpid()}-")
         command, env = self.prepare()
         self.proc = subprocess.Popen(
             command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self._dir, env=env
