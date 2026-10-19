@@ -321,8 +321,12 @@ class CrewWorker:
             shutil.copyfile(API_ROOT / rel, dest)
         for pkg in ("agentcanvas", "agentcanvas/adapters", f"agentcanvas/adapters/{self.package}"):
             (Path(self._dir) / pkg / "__init__.py").touch()
-        env = worker_env(PYTHONPATH=self._dir, PYTHONUNBUFFERED="1", OTEL_SDK_DISABLED="true", **self.extra_env)
-        return [self.python, "-m", f"agentcanvas.adapters.{self.package}.worker"], env
+        return [self.python, "-m", f"agentcanvas.adapters.{self.package}.worker"], self.environment()
+
+    def environment(self) -> dict[str, str]:
+        """The worker's environment; a subclass's `extra_env` may repeat or override the defaults."""
+        base = {"PYTHONPATH": self._dir, "PYTHONUNBUFFERED": "1", "OTEL_SDK_DISABLED": "true"}
+        return worker_env(**{**base, **self.extra_env})
 
     @property
     def alive(self) -> bool:
