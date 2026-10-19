@@ -161,10 +161,13 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 ## 6. CI
 
 **CI runs locally.** `make ci` (check, strict docs, audit, Helm), `make ci-full` (also framework environments, the whole API
-suite, images, e2e), `make hooks` (pre-push lint + web tests); all in `scripts/ci-local.sh`, which mirrors the workflow.
-The GitHub workflow is `workflow_dispatch` only (Actions has had no runners since 2026-10-08). The stages `export`,
-`frameworks`, `connectors` and the Trivy/prod-compose probes of `images` exist only in the workflow so far; run them
-from the commands in `ci.yml` until they are ported.
+suite **on a throwaway Postgres container** when Docker is there (SQLite otherwise, with a warning), the `frameworks`
+and `export` stages, images, e2e), `make hooks` (pre-push lint + web tests); all in `scripts/ci-local.sh`, which mirrors the
+workflow. The GitHub workflow is `workflow_dispatch` only (Actions has had no runners since 2026-10-08). The `api` stage
+includes the old `connectors` job (MCP gallery smoke, part environments). Only the Trivy scan and the prod-compose probes
+of `images` exist just in the workflow. Helm runs from `alpine/helm` when it is not installed. Playwright: if its
+browser build is not installed set `PW_CHROMIUM_PATH` to another Chromium; if port 8000 is taken (a running Docker app)
+set `E2E_API_PORT`; if the dev server runs out of file watchers set `E2E_PROD=1` (the production build, as in CI).
 
 `.github/workflows/ci.yml` jobs: `api` (lint, pyright, import contract, schema drift, pytest on Postgres+pgvector),
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via

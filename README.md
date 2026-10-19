@@ -57,7 +57,7 @@ make test         # backend + frontend tests
 make lint         # ruff, pyright, tsc
 make e2e          # Playwright end-to-end (starts both servers)
 make check        # lint, types, schema drift, tests, build
-make ci           # local CI: check + strict docs + audit + Helm (make ci-full: everything; make hooks: run lint before push)
+make ci           # local CI: check + strict docs + audit + Helm (make ci-full: everything incl. Postgres, exports, e2e; make hooks: run lint before push)
 make docs         # documentation site on http://localhost:8001
 ```
 
