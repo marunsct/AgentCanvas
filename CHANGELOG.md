@@ -2,6 +2,13 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## Unreleased — CI runs on your machine
+
+### Changed
+- `make ci` runs the gates locally (check, strict docs build, dependency audit, Helm lint); `make ci-full` adds the
+  framework environments, the whole API suite, the Docker images and e2e. `make hooks` runs lint, types and web tests
+  before every `git push`. The GitHub workflow now runs only when started by hand.
+
 ## v0.32.1 — The canvas no longer redraws on every streamed token
 
 ### Fixed

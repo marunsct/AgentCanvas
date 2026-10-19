@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs test test-api test-web e2e lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -75,6 +75,16 @@ check:      ## every CI gate except e2e and the docs build (lint, formats, types
 	git diff --exit-code -- packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts
 	$(MAKE) test
 	cd apps/web && pnpm build
+
+ci:         ## local CI, the default gates: check, strict docs build, dependency audit, Helm lint (see scripts/ci-local.sh)
+	scripts/ci-local.sh default
+
+ci-full:    ## local CI, everything: framework environments, the full API suite, images and compose, e2e (slow)
+	scripts/ci-local.sh full
+
+hooks:      ## run lint, types and web tests before every git push (skip once with --no-verify)
+	git config core.hooksPath .githooks
+	@echo "pre-push hook installed"
 
 docs:       ## documentation site on http://localhost:8001 (MkDocs Material)
 	uvx --with mkdocs-material mkdocs serve -a localhost:8001

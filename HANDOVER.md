@@ -160,6 +160,12 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 
 ## 6. CI
 
+**CI runs locally.** `make ci` (check, strict docs, audit, Helm), `make ci-full` (also framework environments, the whole API
+suite, images, e2e), `make hooks` (pre-push lint + web tests); all in `scripts/ci-local.sh`, which mirrors the workflow.
+The GitHub workflow is `workflow_dispatch` only (Actions has had no runners since 2026-10-08). The stages `export`,
+`frameworks`, `connectors` and the Trivy/prod-compose probes of `images` exist only in the workflow so far; run them
+from the commands in `ci.yml` until they are ported.
+
 `.github/workflows/ci.yml` jobs: `api` (lint, pyright, import contract, schema drift, pytest on Postgres+pgvector),
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via
 `vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (pip-audit, pnpm audit),
