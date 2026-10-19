@@ -2,8 +2,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
+import type { AgentSpecExport as ExportOut } from "../api/generated";
 
-interface ExportOut { spec: Record<string, unknown>; report: string[] }
 
 function save(doc: unknown, name: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));

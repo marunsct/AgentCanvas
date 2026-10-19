@@ -5,18 +5,9 @@ import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import type { NamespaceOut as Namespace, MemoryItem } from "../api/generated";
 
-interface Namespace {
-  namespace: string;
-  parts: string[];
-}
 
-interface MemoryItem {
-  namespace: string[];
-  key: string;
-  value: Record<string, unknown>;
-  updated_at?: string | null;
-}
 
 const qs = (params: Record<string, string>) => new URLSearchParams(params).toString();
 

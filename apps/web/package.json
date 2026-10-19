@@ -13,7 +13,8 @@
     "gen:ir": "json2ts -i ../../packages/ir-schema/ir.schema.json -o src/ir/generated.ts --bannerComment \"/* Generated from packages/ir-schema/ir.schema.json (pnpm gen:ir). Do not edit. */\" --additionalProperties false",
     "gen:api": "node scripts/gen-api-types.mjs",
     "gen:help": "node -e \"require('fs').copyFileSync('../../packages/ir-schema/diagnostics.json', 'src/help/diagnostics.generated.json')\"",
-    "gen": "pnpm gen:ir && pnpm gen:api && pnpm gen:help"
+    "gen": "pnpm gen:ir && pnpm gen:api && pnpm gen:help",
+    "lint": "oxlint src e2e --deny-warnings"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
@@ -45,6 +46,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "jsdom": "^30.1.2",
     "json-schema-to-typescript": "^16.0.0",
+    "oxlint": "^1.88.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"

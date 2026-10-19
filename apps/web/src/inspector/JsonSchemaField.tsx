@@ -65,11 +65,13 @@ export function JsonSchemaField(props: FieldProps) {
   const emit = (v: Json | undefined) => onChange(v, fieldPathId.path);
   const off = disabled || readonly;
   const valueKey = JSON.stringify(value ?? null);
+  /* oxlint-disable react-hooks/exhaustive-deps -- valueKey stands for `value` (a new object on every render) */
   useEffect(() => {
     // changed elsewhere (undo, JSON mode, another tab): rebuild the rows unless they already produce this value
     setRowsState((cur) =>
       cur !== null && JSON.stringify(schemaFromRows(cur, title) ?? null) === valueKey ? cur : rowsFromSchema(value));
   }, [valueKey]); // valueKey stands for `value` (a new object on every render)
+  /* oxlint-enable react-hooks/exhaustive-deps */
   const setRows = (next: FieldRow[]) => {
     setRowsState(next);
     const v = schemaFromRows(next, title);

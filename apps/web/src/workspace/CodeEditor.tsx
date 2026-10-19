@@ -51,6 +51,7 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave, api }: 
   const dark = resolved(useTheme((s) => s.theme)) !== "light";
   handlers.current = { onChange, onSave };
 
+  /* oxlint-disable react-hooks/exhaustive-deps -- the editor is built once per file; value, theme and handle follow in their own effects */
   useEffect(() => {
     if (!host.current) return;
     const lang = path.endsWith(".py") ? [python()] : path.endsWith(".json") ? [json()] : [];
@@ -80,6 +81,7 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave, api }: 
     return () => { view.current?.destroy(); if (api) api.current = null; };
     // a new editor per file; `value` is only the initial text
   }, [path]);
+  /* oxlint-enable react-hooks/exhaustive-deps */
 
   useEffect(() => {
     view.current?.dispatch({ effects: theme.current.reconfigure(look(dark)) });

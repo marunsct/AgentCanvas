@@ -13,18 +13,9 @@ import { KIND_LABEL, starter } from "./starters";
 import { SecretsPanel } from "./SecretsPanel";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import type { FileOut, FileContent, FilesOut } from "../api/generated";
 
-interface FileOut {
-  path: string;
-  size: number;
-  modified: number;
-}
 
-interface FileContent {
-  path: string;
-  content: string;
-  diagnostics: LintItem[];
-}
 
 // read per request: the project is chosen after sign-in, and may change
 const base = () => `/projects/${PROJECT_ID}`;
@@ -33,10 +24,6 @@ const POLICY = "sandbox.json";
 const POLICY_TEMPLATE = `${JSON.stringify({ egress: [], inject: [], timeout_s: 30, memory_mb: 512 }, null, 2)}\n`;
 const enc = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
-interface FilesOut {
-  files: FileOut[];
-  folder: string | null;
-}
 
 export function WorkspacePage() {
   const qc = useQueryClient();

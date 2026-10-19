@@ -8,8 +8,8 @@ import { apiFetch } from "../api/client";
 import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import type { MemberOut as Member } from "../api/generated";
 
-interface Member { user_id: string; email: string; display_name: string | null; role: Role; invited: boolean; accepted: boolean }
 
 const ROLES: { role: Role; what: string }[] = [
   { role: "viewer", what: "sees workflows and runs" },

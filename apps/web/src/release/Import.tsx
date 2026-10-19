@@ -1,8 +1,8 @@
 /** Import (S31): a Langflow, Flowise, n8n or Open Agent Spec file becomes a new workflow. */
 import { useMutation } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
+import type { Imported as ImportOut } from "../api/generated";
 
-export interface ImportOut { id: string; name: string; report: string[]; format?: string }
 
 export const FORMAT_LABELS: Record<string, string> = {
   langflow: "Langflow", flowise: "Flowise", n8n: "n8n", agentspec: "Open Agent Spec",
@@ -41,3 +41,5 @@ export function FileImport({ projectId, onDone }: { projectId: string; onDone: (
     </div>
   );
 }
+
+export type { ImportOut };
