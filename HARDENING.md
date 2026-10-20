@@ -26,6 +26,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 | Local CI: the API suite on a throwaway Postgres container, `frameworks` and `export` stages, Helm from its image, exports' environments deleted after their tests | unreleased | |
 | Keyboard access: the port menu takes focus, traps Tab, returns focus on Escape; the web client gives up on a server that never answers; `useMe`/`useCan` in the Home, Members, Copilot and Editor pages | unreleased | |
 | Mastra npm set locked (`package-lock.json`, `npm ci` in `make mastra` and the image; a test checks it matches `package.json`) | unreleased | |
+| API image on Python 3.14 (#45), verified with every framework and Mastra built in and the API suite on 3.14 | unreleased | #45 |
 | Export plan lists knowledge bases and whether the project has them; worker temp folders of dead servers are swept; nine hand-written web response types replaced by generated ones; oxlint in `make lint`; Mastra runtime type-checked (`mastra-types`); inspector controls checked for names and tab order | unreleased | |
 | Sandbox: a warning when `sandbox.json` lists egress/inject that the mode in use cannot give | unreleased | |
 
@@ -57,5 +58,4 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 - **Sandbox:** egress allow-lists in `sandbox.json` still work with LangSmith only (now warned about, not enforced).
 - **Unverified here (owner runs):** nginx `auth_request` config, the conformance kit's remaining frameworks beyond those
   installed in `apps/api/.frameworks`, `lint-imports` beyond `make lint`, Trivy, Kubernetes (kind) and compose deploys of exports.
-- **Owner:** release tags v0.1.0–v0.32.x not pushed; old-branch cleanup; close #48, decide #45, mark/merge #36; revoke the token
-  pasted earlier. Commit or discard `.sitepkgs.tgz` (80 MB, untracked in the repository root).
+- **Owner:** release tags v0.1.0–v0.32.x not pushed; delete the merged branches still on GitHub (`claude/project-thread-*` ×5, `claude/sprint-11…13-*`, `claude/trusting-curie-n0i720`, `claude/sandbox-warning`); revoke the token pasted earlier. #48 is closed, #45 and #36 are merged. Commit or discard `.sitepkgs.tgz` (80 MB, untracked in the repository root).
