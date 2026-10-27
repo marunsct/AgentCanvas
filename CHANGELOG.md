@@ -41,6 +41,30 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   before every `git push`. The GitHub workflow now runs only when started by hand.
 - `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
 
+## Unreleased — Hardening, third pass
+
+### Fixed
+- **Share-link frame allow-lists never worked behind nginx** (the production web image): `auth_request` does not expand
+  variables, so the API was never asked which sites may frame a link's chat page and every page got an empty
+  `frame-ancestors`. The token now travels in the request URI.
+- **Two steps starting at once could get a model bridge that was not listening yet** (client base URL `http://127.0.0.1:0`): the
+  OpenAI Agents SDK (and every framework that talks to the bridge) failed with "'tuple' object has no attribute 'choices'"
+  on some runs of an experiment. Callers now wait for the bridge's port.
+- Fixable high and critical vulnerabilities in the API image (certifi, filelock, pypdf upgraded; pip, whose vendored
+  libraries were the rest, removed from the runtime image).
+
+### Added
+- `scripts/ci-images.sh` (the `images` stage of `make ci-full`): builds both images, scans them with Trivy, starts the
+  production and the local compose stacks in projects and ports of their own and probes them through nginx (CSP, sign-in,
+  sandbox isolation, database role, metrics, share-link framing).
+- Tests that run over every route of the OpenAPI document: a stranger gets nothing from any route; a viewer or reviewer
+  can do only what `ROLE_EXCEPTIONS` allows. Concurrency tests: 25 simultaneous runs, racing starts on one thread,
+  racing decisions on one approval.
+
+### Changed
+- Finished runs' events are also evicted by size (256 MB), not only by count.
+- `decisions.md` records the judgment calls made while hardening without asking.
+
 ## Unreleased — Hardening, second pass
 
 ### Added
