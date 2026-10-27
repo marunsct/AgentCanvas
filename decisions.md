@@ -12,6 +12,23 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Python is capped at 3.14 for the server and every project we write
+Found while testing Dependabot #69: with Python 3.15 on the machine, `uv` picked it for an export and the install failed
+(`google-re2`, via `cel-python`, has no 3.15 wheel and needs a C++ toolchain). `requires-python = ">=3.12"` had no
+ceiling, so any customer with a newer Python hit the same. Every pyproject we write (and the server's own) now says
+`<3.15`, the newest tested version, with a test that fails on an unbounded one. *Cost:* raising the ceiling is a
+deliberate step (test, then edit the seven places the test lists). *Reverse:* remove `<3.15` and the test.
+
+### A global banner for failures nobody handled
+101 fire-and-forget promises (`void save()`) failed silently. `GlobalErrors` shows the existing error toast for an
+unhandled rejection or error, ignoring aborts, a 401 (sign-in takes over) and the browser's harmless ResizeObserver
+notice. Shown on the share page too. *Why:* a screen that does not change and says nothing is the worst failure.
+
+### Local CI deploys two exports for real
+`scripts/ci-local.sh export` now also deploys the support-triage and the mixed-framework exports with Docker Compose on
+free ports (project names fixed by the exports themselves, distinct from yours) and runs their `make smoke`, as the
+GitHub workflow did. The whole stage (about 150 projects) passes. Run it before releases, not on every push.
+
 ### Dependabot PRs #68, #69, #71: verified, not merged (merging is yours)
 - **#71 (11 web dependency updates): safe to merge.** `pnpm install --frozen-lockfile`, types, oxlint, 125 unit tests, the
   build and all 73 Playwright journeys pass on the bumped lockfile.

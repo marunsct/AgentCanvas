@@ -44,6 +44,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Hardening, third pass
 
 ### Fixed
+- **Exports and the server could be installed on a Python too new for them**: `requires-python` had no ceiling, so with
+  Python 3.15 installed `uv` picked it and the install failed (a dependency has no 3.15 wheel). It now stops at 3.14.
 - **Share-link frame allow-lists never worked behind nginx** (the production web image): `auth_request` does not expand
   variables, so the API was never asked which sites may frame a link's chat page and every page got an empty
   `frame-ancestors`. The token now travels in the request URI.
@@ -54,6 +56,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   libraries were the rest, removed from the runtime image).
 
 ### Added
+- A banner for failures nobody handled (a rejected promise from a fire-and-forget call used to vanish silently).
+- `make ci-full`'s `export` stage deploys two exports with Docker Compose and smoke-tests them.
 - `scripts/ci-images.sh` (the `images` stage of `make ci-full`): builds both images, scans them with Trivy, starts the
   production and the local compose stacks in projects and ports of their own and probes them through nginx (CSP, sign-in,
   sandbox isolation, database role, metrics, share-link framing).
