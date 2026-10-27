@@ -64,3 +64,17 @@ def test_the_mastra_lockfile_matches_its_package_json():
     assert root["dependencies"] == manifest["dependencies"]
     for name, version in manifest["dependencies"].items():
         assert version[0].isdigit(), f"{name} must be pinned exactly, not '{version}'"
+
+
+def test_every_project_we_write_and_the_server_itself_name_an_upper_python_version():
+    """`requires-python = ">=3.12"` alone lets `uv` pick the newest Python on a machine. When 3.15 arrived, an export
+    would have been built on it and failed (a dependency has no 3.15 wheel and needs a C++ toolchain). Every pyproject
+    we write names the newest tested Python as its ceiling, so the install picks one we know works."""
+    api = Path(__file__).parents[1]
+    sources = [api / "pyproject.toml", *(api / "agentcanvas").rglob("*.py")]
+    bad = []
+    for path in sources:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "requires-python" in line and "=" in line and '">=' in line and "<" not in line:
+                bad.append(f"{path.relative_to(api)}: {line.strip()}")
+    assert not bad, "\n".join(bad)
