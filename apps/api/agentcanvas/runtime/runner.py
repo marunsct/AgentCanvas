@@ -66,6 +66,7 @@ class RunHandle:
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
     trace_redact: list[str] = field(default_factory=list)  # the workflow's fields that never reach a trace
     held: list[dict[str, Any]] = field(default_factory=list)  # last events, published once the run is saved (see _pump)
+    size: int = 0  # about how many bytes its events take in memory (finished runs are evicted by this too)
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
 
@@ -266,6 +267,7 @@ class Runner:
         adapter: FrameworkAdapter,
         resources_factory: ResourcesFactory | None = None,
         keep_finished: int = 500,
+        keep_bytes: int = 256 * 1024 * 1024,
         adapters: dict[str, FrameworkAdapter] | None = None,
         models: ModelService | None = None,
     ):
@@ -277,6 +279,7 @@ class Runner:
         self.handles: OrderedDict[str, RunHandle] = OrderedDict()
         self.active_by_thread: dict[str, str] = {}
         self._keep = keep_finished
+        self._keep_bytes = keep_bytes  # finished runs' events kept in memory: 500 runs of big outputs must not fill it
         # called after every run, before it counts as done (metrics, online evaluators, trace export)
         self.finish_hooks: list[Callable[[RunHandle, str, str | None, list[dict[str, Any]]], Any]] = []
         # called once it is done and its thread free (event delivery: run.completed / run.failed / interrupt.raised,
@@ -475,6 +478,7 @@ class Runner:
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
         event = {**event, "seq": len(h.events) + 1}
         h.events.append(event)
+        h.size += len(json.dumps(event, default=str))
         h.event_times.append(time.time_ns())
         async with h.changed:
             h.changed.notify_all()
@@ -599,6 +603,7 @@ class Runner:
             await self._hooks(self.finish_hooks, h, status, error, interrupts)
             h.finished_at = time.monotonic()
             h.done.set()
+            self._evict()  # a quiet server must not hold finished runs' events beyond its limits
             async with h.changed:
                 h.changed.notify_all()
             # event handlers may take long and start or resume runs (on this thread too): nobody waiting for the
@@ -737,9 +742,15 @@ class Runner:
                 await self._emit(h, {"type": "CUSTOM", "name": "ac.cost_alert", "value": value})
 
     def _evict(self) -> None:
+        """Forget the oldest finished runs beyond `keep_finished` and `keep_bytes` of events (running ones stay)."""
         finished = [rid for rid, h in self.handles.items() if h.done.is_set()]
         for rid in finished[: max(0, len(self.handles) - self._keep)]:
             self.handles.pop(rid, None)
+        total = sum(h.size for h in self.handles.values() if h.done.is_set())
+        for rid in [rid for rid, h in self.handles.items() if h.done.is_set()]:
+            if total <= self._keep_bytes:
+                break
+            total -= self.handles.pop(rid).size
 
     # ------------------------------------------------------------ consumers ----
     async def subscribe(self, run_id: str, after: int = 0) -> AsyncIterator[dict[str, Any]]:
