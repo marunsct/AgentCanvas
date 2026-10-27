@@ -74,6 +74,14 @@ s_frameworks() {   # real agents from each framework, wrapped and drawn on the c
       || { echo "frameworks: $check failed"; return 1; }
   done
 }
+deploy_export() {   # deploy one export with Docker Compose on a free port, call it once (make smoke), take it down again
+  local d=$1 port rc=0
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  ( cd "$d" && make -s setup >/dev/null && sed -i "s/^DEMO_MODE=false/DEMO_MODE=true/; s/^PORT=.*/PORT=$port/" .env \
+      && PORT=$port make -s doctor >/dev/null && PORT=$port make -s deploy >/dev/null && make -s smoke URL="http://localhost:$port" ) || rc=$?
+  ( cd "$d" && PORT=$port docker compose --env-file .env -f deploy/local/docker-compose.yml down -v >/dev/null 2>&1 ) || true
+  return $rc
+}
 s_export() {   # every template exports to every target; the deploy files lint; each export passes its own tests (ci.yml `export`)
   local ex d c t rc
   mkdir -p "$ROOT/.ci-tmp"; ex=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$ex"' RETURN   # inside the repo: Docker shares it
@@ -100,6 +108,11 @@ s_export() {   # every template exports to every target; the deploy files lint; 
     ( cd "$d" && make -s test ); rc=$?; rm -rf "$d/.venv" "$d"/*/.venv
     [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
   done
+  if need docker; then   # two exports deployed for real, as the workflow does (a plain service, and a mixed-framework flow)
+    for d in "$ex"/local/ticket_triage/support-triage "$ex"/local/mixed_team/mixed-framework-team; do
+      deploy_export "$d" || { echo "export deploy failed in $d"; return 1; }
+    done
+  fi
   for d in "$ex"/openai_agents/*/* "$ex"/crewai/*/* "$ex"/google_adk/*/* "$ex"/pydantic_ai/*/* "$ex"/agno/*/* \
            "$ex"/microsoft_agent_framework/*/* "$ex"/strands/*/* "$ex"/llamaindex/*/*; do
     ( cd "$d" && uv sync -q && uv run pytest -q ); rc=$?; rm -rf "$d/.venv"
