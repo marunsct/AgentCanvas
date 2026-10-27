@@ -135,11 +135,8 @@ s_helm() {
   helm_run lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict
   helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml >/dev/null
 }
-s_images() {   # build both images and start the production compose stack; see ci.yml job `images` for the full probes
-  docker compose -f infra/compose.local.yml build
-  docker compose -f infra/compose.local.yml up -d --wait --wait-timeout 180
-  trap 'docker compose -f infra/compose.local.yml down' RETURN
-  curl -fsS "http://localhost:${WEB_PORT:-7777}/healthz" >/dev/null || curl -fsS "http://localhost:${WEB_PORT:-7777}/" >/dev/null
+s_images() {   # build and scan both images, probe the production and local compose stacks (own projects and ports)
+  scripts/ci-images.sh
 }
 s_e2e() { make -C "$ROOT" e2e; }
 

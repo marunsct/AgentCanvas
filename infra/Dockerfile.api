@@ -80,7 +80,10 @@ FROM python AS runtime
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 app \
-    && mkdir -p /data/workspaces && chown app:app /data/workspaces
+    && mkdir -p /data/workspaces && chown app:app /data/workspaces \
+    && python -m pip uninstall -y pip
+# ^ the base image's pip (and the old urllib3, certifi and msgpack it vendors) is not used at run time: the app runs
+#   from /app/.venv, which uv built; leaving pip out also leaves out what scanners flag in its vendored copies
 COPY --from=build --chown=app:app /app /app
 COPY --from=mastra --chown=app:app /opt/mastra /opt/mastra
 WORKDIR /app
