@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router";
+import { GlobalErrors } from "../ui/GlobalErrors";
 import { ErrorBoundary } from "../ui/QueryStatus";
 import { AuthGate } from "./AuthGate";
 import { HomePage } from "./HomePage";
@@ -30,10 +31,16 @@ function NotFound() {
 export function App() {
   // S23: a share link's chat page (/s/<token>) is public: no sign-in, no project, none of the app around it
   if (location.pathname.startsWith("/s/")) {
-    return <Suspense fallback={<p className="share-loading" role="status">Loading…</p>}><SharePage /></Suspense>;
+    return (
+      <>
+        <GlobalErrors />
+        <Suspense fallback={<p className="share-loading" role="status">Loading…</p>}><SharePage /></Suspense>
+      </>
+    );
   }
   return (
     <AuthGate>
+    <GlobalErrors />
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ErrorBoundary label="This page">
