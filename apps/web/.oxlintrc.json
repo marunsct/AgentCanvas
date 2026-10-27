@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "react",
+    "react-hooks"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/set-state-in-effect": "off",
+    "react/immutability": "off",
+    "react/refs": "off",
+    "react/purity": "off",
+    "react/static-components": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/use-memo": "off",
+    "react/error-boundaries": "off",
+    "react/globals": "off",
+    "react/incompatible-library": "off",
+    "react/unsupported-syntax": "off"
+  },
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "test-results",
+    "src/api/generated.ts",
+    "src/ir/generated.ts",
+    "perf",
+    "scripts"
+  ]
+}

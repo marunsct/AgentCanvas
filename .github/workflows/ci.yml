@@ -105,6 +105,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm gen && git diff --exit-code src/ir/generated.ts src/api/generated.ts src/help/diagnostics.generated.json
       - run: pnpm typecheck
+      - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
 

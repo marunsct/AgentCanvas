@@ -424,3 +424,20 @@ async def test_an_experiment_scores_hybrid_against_keyword(app, api_client):
     keyword, hybrid = ({e["evaluator"]: e["mean"] for e in t["evaluators"]}["found it"] for t in exp["summary"])
     assert hybrid > keyword, (hybrid, keyword)
     assert json.dumps(exp["summary"])  # serialisable for the comparison view
+
+
+async def test_the_export_plan_names_the_knowledge_bases_the_workflow_searches_and_whether_the_project_has_them(
+    api_client,
+):
+    """An export of a workflow that searches a base the project lacks leaves it out; the plan says so beforehand."""
+    wf = (
+        await api_client.post("/v1/projects/prj_default/workflows", json={"name": "QA", "template": "knowledge_qa"})
+    ).json()
+    plan = (await api_client.get(f"/v1/workflows/{wf['id']}/export/plan")).json()["prerequisites"]
+    assert plan["knowledge"] == [{"name": "handbook", "found": False}]
+    made = await api_client.post("/v1/projects/prj_default/knowledge", json={"name": "handbook", "sample": "handbook"})
+    assert made.status_code in (200, 201), made.text
+    plan = (await api_client.get(f"/v1/workflows/{wf['id']}/export/plan")).json()["prerequisites"]
+    assert plan["knowledge"] == [{"name": "handbook", "found": True}]
+    other = (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "Plain"})).json()
+    assert "knowledge" not in (await api_client.get(f"/v1/workflows/{other['id']}/export/plan")).json()["prerequisites"]

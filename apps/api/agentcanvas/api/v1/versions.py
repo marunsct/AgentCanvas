@@ -152,7 +152,7 @@ async def export_plan(
     """What deploying the export to `target` will need, before downloading it (S16)."""
     from agentcanvas.adapters.langchain import deploykit
 
-    _, wf, semver = await _export_source(session, svc, wf_id, version)
+    view, wf, semver = await _export_source(session, svc, wf_id, version)
     if framework and framework != wf.framework:
         wf = wf.model_copy(update={"framework": framework})
     if wf.framework != "langchain":  # the deploy kit builds LangGraph services (S20: other frameworks export as is)
@@ -161,9 +161,17 @@ async def export_plan(
             "downloads as a plain export"
         )
     facts = deploykit.facts(wf, "workflow", semver)
+    prerequisites = deploykit.prerequisites(facts, deploykit.TARGETS[target])
+    if used := knowledge.used_knowledge_bases(wf.model_dump(mode="json")):
+        ks = knowledge.KnowledgeService(
+            session
+        )  # the export ships each base this project has; one it lacks is left out
+        prerequisites["knowledge"] = [
+            {"name": name, "found": await ks.find(view.row.project_id, name) is not None} for name in sorted(used)
+        ]
     return ExportPlanOut(
         targets=[ExportTargetOut(id=t.id, label=t.label, summary=t.summary) for t in deploykit.TARGETS.values()],
-        prerequisites=deploykit.prerequisites(facts, deploykit.TARGETS[target]),
+        prerequisites=prerequisites,
     )
 
 

@@ -50,11 +50,13 @@ export function EditorPage() {
   const setDock = useUi((s) => s.setDock);
   const blast = useUi((s) => s.blast);
   const simple = useUi((s) => s.simple);
+/* oxlint-disable react-hooks/exhaustive-deps -- only switching to simple mode moves the open tab and dock */
   useEffect(() => {  // Simple mode hides some panels: leave them for one it shows
     if (!simple) return;
     if (!SIMPLE_TABS.has(tab)) setTab("inspect");
     if (!SIMPLE_DOCK.has(dock)) setDock("problems");
   }, [simple]);
+/* oxlint-enable react-hooks/exhaustive-deps */
   const inbox = useInbox();
   const pendingDecisions = inbox.data?.length ?? 0;
   useFirstVisitHelp();
@@ -63,6 +65,7 @@ export function EditorPage() {
 
   useEffect(() => () => { stopStreaming(); stopCopilotStream(); }, []); // leaving the editor: stop reading streams
 
+/* oxlint-disable react-hooks/exhaustive-deps -- runs when the workflow id changes, not on every search-param change */
   useEffect(() => {
     if (!id) return;
     stopStreaming(); // the last workflow's run and Copilot streams
@@ -84,6 +87,7 @@ export function EditorPage() {
       useUi.getState().setDock("timeline");
     }
   }, [id]);
+/* oxlint-enable react-hooks/exhaustive-deps */
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

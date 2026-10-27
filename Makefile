@@ -55,9 +55,9 @@ test-web:
 e2e:        ## Playwright end-to-end (starts servers itself)
 	cd apps/web && pnpm e2e
 
-lint:       ## ruff, pyright, tsc
+lint:       ## ruff, pyright, import contracts, tsc, oxlint
 	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run lint-imports
-	cd apps/web && pnpm typecheck
+	cd apps/web && pnpm typecheck && pnpm lint
 
 fmt:        ## format Python
 	cd apps/api && uv run ruff format . && uv run ruff check --fix .

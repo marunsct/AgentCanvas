@@ -6,6 +6,7 @@ import { apiFetch } from "../api/client";
 import { PROJECT_ID, useWorkspaceCatalog } from "../api/queries";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import type { EventLogOut as LoggedEvent } from "../api/generated";
 
 interface HandlerResult {
   handler: string;
@@ -23,15 +24,6 @@ interface EventResult {
   handlers: HandlerResult[];
 }
 
-interface LoggedEvent {
-  id: string;
-  type: string;
-  source: string;
-  status: string;
-  data: Record<string, unknown>;
-  results: HandlerResult[];
-  created_at: string;
-}
 
 // read per request: the project is chosen after sign-in, and may change
 const base = () => `/projects/${PROJECT_ID}/events`;

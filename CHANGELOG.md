@@ -41,6 +41,24 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   before every `git push`. The GitHub workflow now runs only when started by hand.
 - `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
 
+## Unreleased — Hardening, second pass
+
+### Added
+- The export plan lists the knowledge bases a workflow searches and whether the project has them; the export dialog says
+  when one is left out (the exported search would fail).
+- `make lint` (and the pre-push hook and the GitHub workflow) run **oxlint** on the web app: hooks called conditionally
+  are errors, effects with missing dependencies are warnings that must carry a reason to stay. (typescript-eslint does not
+  support TypeScript 7 yet, so ESLint could not be used.)
+- Local CI stage `mastra-types`: the Mastra runtime (TypeScript that Node runs with its types stripped) is checked with
+  `tsc --strict`.
+- An e2e check that every control in the inspector has an accessible name and stays in the tab order.
+
+### Changed
+- Servers clean up the temp folders of framework workers that a killed server left behind (the folder name now carries the
+  server's process id; only folders of dead processes are removed).
+- Nine hand-written response types in the web app are now the generated API types, so a change to the API fails the
+  type check instead of going unnoticed.
+
 ## v0.32.3 — Session state in the web app, and a guard on framework versions
 
 ### Changed

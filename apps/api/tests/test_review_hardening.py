@@ -261,3 +261,29 @@ async def test_unexpected_errors_and_values_the_database_refuses_answer_as_probl
         assert "secret internals" not in r.text
         r = await client.get("/v1/_test/refused")
         assert r.status_code == 422 and "INSERT" not in r.text and r.json()["title"] == "Invalid input"
+
+
+def test_worker_folders_of_dead_servers_are_swept_and_live_ones_kept(tmp_path, monkeypatch):
+    """A killed server leaves its framework workers' temp folders behind; the next one removes the ones whose server
+    process is gone, never a live server's (or this one's)."""
+    import os
+    import subprocess
+    import sys
+    import tempfile
+
+    from agentcanvas.adapters.crewai import sweep_stale_worker_dirs
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    dead = tmp_path / f"agentcanvas-strands-{gone.pid}-abc123"
+    mine = tmp_path / f"agentcanvas-strands-{os.getpid()}-abc123"
+    live = tmp_path / f"agentcanvas-google_adk-{os.getppid()}-abc123"
+    old_format = tmp_path / "agentcanvas-crewai-abc123"  # written before the process id was in the name
+    unrelated = tmp_path / "agentcanvas-notes-and-other"
+    for d in (dead, mine, live, old_format, unrelated):
+        d.mkdir()
+        (d / "x").write_text("x")
+    assert sweep_stale_worker_dirs() == 1
+    assert not dead.exists()
+    assert all(d.exists() for d in (mine, live, old_format, unrelated))

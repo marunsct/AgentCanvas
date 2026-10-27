@@ -5,17 +5,8 @@ import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import type { AuditOut as Entry } from "../api/generated";
 
-interface Entry {
-  id: number;
-  created_at: string;
-  actor_id: string | null;
-  actor_email: string | null;
-  action: string;
-  target: string;
-  detail: Record<string, unknown>;
-  ip: string | null;
-}
 
 const PAGE = 100;
 

@@ -11,6 +11,7 @@ import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { TemplateGallery } from "./TemplateGallery";
+import type { InvitationOut as Invitation } from "../api/generated";
 
 export function HomePage() {
   const me = useMe((s) => s.me);
@@ -161,7 +162,6 @@ function SetupBanner() {
   );
 }
 
-interface Invitation { org_id: string; org_name: string; role: string }
 
 /** Organisations that invited you while you belong to another one: joining is your choice (S11). */
 function Invitations() {
