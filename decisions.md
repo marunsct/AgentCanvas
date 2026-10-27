@@ -10,6 +10,18 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-10-28
+
+### Dependabot PRs #68, #69, #71: verified, not merged (merging is yours)
+- **#71 (11 web dependency updates): safe to merge.** `pnpm install --frozen-lockfile`, types, oxlint, 125 unit tests, the
+  build and all 73 Playwright journeys pass on the bumped lockfile.
+- **#68 (uv image digest): safe to merge.** The API image builds with it and imports the app.
+- **#69 (Python 3.15 for the API image): do not merge yet.** `uv sync --frozen` on 3.15 fails: `google-re2` (a dependency
+  of `cel-python`, which the product needs for expressions) has no 3.15 wheel and does not compile in the slim image.
+  Revisit when `google-re2` ships 3.15 wheels; I would close the PR until then (Dependabot reopens it).
+  *How I checked:* the same way I checked 3.14 for #45 (image build, framework imports, suite), stopping at the first
+  failure.
+
 ## 2026-10-27
 
 ### A flaky test was a real race in the model bridge, not flakiness
