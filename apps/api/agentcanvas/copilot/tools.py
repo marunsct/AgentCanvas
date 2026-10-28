@@ -55,6 +55,7 @@ class ToolContext:
     secret_names: list[str] = field(default_factory=list)  # names only, never values
     events: list[dict[str, Any]] = field(default_factory=list)  # brief/proposal updates for the stream
     allow_real_runs: bool = False  # the person allowed test runs that call real models in this conversation
+    sources: list[dict[str, str]] = field(default_factory=list)  # guide sections this turn read: the answer cites them
 
 
 @dataclass(frozen=True)
@@ -358,6 +359,10 @@ async def propose_tests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
 
 async def search_guide(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     found = docs.search(str(args.get("query") or ""))
+    for hit in found[:2]:  # the best matches, cited under the answer (the guide page and section)
+        source = {"page": hit["page"].removesuffix(".md"), "section": hit["section"]}
+        if source not in ctx.sources and len(ctx.sources) < 4:
+            ctx.sources.append(source)
     return {"ok": True, "results": found} if found else {"ok": True, "results": [], "note": "nothing found"}
 
 

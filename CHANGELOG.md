@@ -41,6 +41,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **The user guide inside the app** (`/guide`, from the person menu): the pages the Copilot searches, with tables,
+  section anchors and links between pages; `GET /guide` and `GET /guide/{page}` serve them to anyone signed in.
+- **Copilot answers cite the guide**: an answer that searched it ends with "From: Guide › Models › Local models"
+  links to the sections it read (`sources` on the message).
 - **What each Copilot answer cost**: its tokens (and dollars, where the model has a price) under it, kept with the
   conversation, and the conversation's total after a reload (`cost_usd` on the conversation and each answer).
 - **Versions credit the Copilot** (FR-COP-07): a saved version lists the Copilot proposals accepted since the one

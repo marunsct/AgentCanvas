@@ -42,6 +42,7 @@ export interface Proposal {
 export interface ChatMessage {
   role: "user" | "assistant"; content: string; proposal_id?: string; mode?: Mode; stopped?: boolean;
   usage?: { input_tokens?: number; output_tokens?: number }; cost_usd?: number | null; model?: string; // an answer's own
+  sources?: { page: string; section: string }[]; // the guide sections the answer read
 }
 
 export interface Activity { name: string; ok: boolean; error?: string | null; summary?: string | null }

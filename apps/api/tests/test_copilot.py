@@ -434,3 +434,18 @@ async def test_each_answer_keeps_what_it_cost_and_the_conversation_sums_them(app
     assert convo["cost_usd"] == pytest.approx(answers[0]["cost_usd"] + answers[1]["cost_usd"])
     assert done["cost_usd"] == pytest.approx(convo["cost_usd"])  # the live figure matches what a reload shows
     assert convo["usage"]["input_tokens"] == 2000
+
+
+async def test_an_answer_from_the_guide_cites_the_sections_it_read(app, api_client):
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]  # it has a model the Copilot can use
+    script(app, call("search_guide", query="run a model locally with Ollama"), "Use Ollama on your machine.")
+    await ask(api_client, wf, "how do I use a local model?", mode="ask")
+    answer = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["messages"][-1]
+    assert answer["role"] == "assistant" and 1 <= len(answer["sources"]) <= 2
+    assert all(set(s) == {"page", "section"} and not s["page"].endswith(".md") for s in answer["sources"])
+    pages = {p["page"] for p in (await api_client.get("/v1/guide")).json()}
+    assert {s["page"] for s in answer["sources"]} <= pages  # each one opens in the app's guide
+
+    script(app, "Hello.")  # an answer that read nothing cites nothing
+    await ask(api_client, wf, "hi", mode="ask")
+    assert "sources" not in (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["messages"][-1]

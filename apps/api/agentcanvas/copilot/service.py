@@ -181,11 +181,17 @@ class CopilotTurn:
         proposal = await self._proposal()
         if proposal is not None:
             yield {"type": "proposal", "proposal": proposal}
+        self.history.append(self._answer(said, proposal))
+        yield {"type": "done", "usage": dict(self.usage), "cap": self.token_cap}
+
+    def _answer(self, said: list[str], proposal: dict[str, Any] | None) -> dict[str, Any]:
+        """The turn's answer as the conversation keeps it: with its proposal, and the guide sections it read."""
         entry: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(said), "at": _now()}
         if proposal is not None:
             entry["proposal_id"] = proposal["id"]
-        self.history.append(entry)
-        yield {"type": "done", "usage": dict(self.usage), "cap": self.token_cap}
+        if self.ctx.sources:
+            entry["sources"] = list(self.ctx.sources)
+        return entry
 
     def stopped(self, said: list[str]) -> None:
         """The turn ended before its answer: the conversation keeps the part that was said, marked as stopped."""

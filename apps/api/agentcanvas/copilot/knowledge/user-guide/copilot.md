@@ -91,6 +91,8 @@ every block with its ports and settings (including your workspace's own blocks),
 commands and the meaning of every problem code. Providers that support prompt caching (Anthropic) cache it, so it is
 cheap after the first message. Its tools look up a block's full settings, read a template, read your workflow with
 its problems, read past runs, search this user guide, and list the models and which secrets are set (names only).
+An answer that used this guide ends with **From: Guide › page › section** links, which open the section in the
+app's own copy of the guide. Each answer also shows the tokens it used, and its cost when the model has a price.
 
 Text inside your workflow (prompts, descriptions) is treated as data: it cannot change what the Copilot is asked to
 do. The Copilot refuses to put API keys or passwords into settings and uses secret references instead.

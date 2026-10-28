@@ -6,9 +6,9 @@ import { useEditor } from "../editor/store";
 import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { apiFetch } from "../api/client";
-import type { CopilotThreadOut } from "../api/generated";
+import type { CopilotThreadOut, GuidePageRef } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
-import { Markdown } from "../ui/Markdown";
+import { Markdown, slug } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
 import { type Brief, type ChatMessage, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
 import { describe, preview } from "./review";
@@ -227,6 +227,7 @@ export function CopilotPanel() {
                 ? <Markdown text={m.content || (m.proposal_id ? "Proposed changes." : "")} />
                 : m.content}
               {m.stopped && <span className="badge small" title="You stopped this answer">stopped</span>}
+              {m.role === "assistant" && m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
               {m.role === "assistant" && m.usage && <AnswerCost m={m} />}
             </div>
           </div>
@@ -306,6 +307,26 @@ function AnswerCost({ m }: { m: ChatMessage }) {
     <div className="copilot-cost small muted" data-testid="answer-cost"
       title={`${(m.usage?.input_tokens ?? 0).toLocaleString()} in, ${(m.usage?.output_tokens ?? 0).toLocaleString()} out${m.model ? ` on ${m.model}` : ""}`}>
       {tokens.toLocaleString()} tokens{usd != null && usd > 0 ? ` · $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}` : ""}
+    </div>
+  );
+}
+
+/** "From: Guide › Models › Local models": the guide sections an answer read, each opening in the app's guide. */
+function Sources({ sources }: { sources: { page: string; section: string }[] }) {
+  const pages = useQuery({ queryKey: ["guide"], queryFn: () => apiFetch<GuidePageRef[]>("/guide"), staleTime: Infinity });
+  const title = (page: string) => (Array.isArray(pages.data) ? pages.data : []).find((p) => p.page === page)?.title
+    ?? page.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return (
+    <div className="copilot-sources small" data-testid="answer-sources">
+      From:{" "}
+      {sources.map((s, i) => {
+        const top = s.section === title(s.page) || s.section === s.page;
+        return (
+          <span key={i}>{i > 0 && " · "}
+            <Link to={`/guide/${s.page}${top ? "" : `#${slug(s.section)}`}`}>Guide › {title(s.page)}{top ? "" : ` › ${s.section}`}</Link>
+          </span>
+        );
+      })}
     </div>
   );
 }
