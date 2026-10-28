@@ -79,3 +79,22 @@ async def test_only_admins_rename_or_delete(app, api_client):
         app.dependency_overrides.pop(current_user, None)
     assert (await api_client.get("/v1/projects")).status_code == 200
     assert pid in [p["id"] for p in (await api_client.get("/v1/projects")).json()]
+
+
+async def test_preferences_follow_the_person(app, api_client):
+    """Theme and Simple mode are kept with the person (any role), merged field by field."""
+    from test_roles import act_as
+
+    from agentcanvas.api.deps import current_user
+
+    assert (await api_client.get("/v1/me")).json()["preferences"] == {"theme": None, "simple_mode": None}
+    assert (await api_client.put("/v1/me/preferences", json={"theme": "dark"})).json()["theme"] == "dark"
+    out = (await api_client.put("/v1/me/preferences", json={"simple_mode": False})).json()
+    assert out == {"theme": "dark", "simple_mode": False}
+    assert (await api_client.get("/v1/me")).json()["preferences"] == {"theme": "dark", "simple_mode": False}
+    assert (await api_client.put("/v1/me/preferences", json={"theme": "neon"})).status_code == 422
+    act_as(app, "viewer")
+    try:
+        assert (await api_client.put("/v1/me/preferences", json={"theme": "light"})).status_code == 200
+    finally:
+        app.dependency_overrides.pop(current_user, None)

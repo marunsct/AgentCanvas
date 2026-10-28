@@ -158,6 +158,7 @@ ROLE_EXCEPTIONS = {
     ("POST", "/annotation-items/{item_id}/annotations"): "reviewer",
     ("POST", "/me/invitations/{org_id}/accept"): "viewer",  # anyone answers their own invitations
     ("DELETE", "/me/invitations/{org_id}"): "viewer",
+    ("PUT", "/me/preferences"): "viewer",  # anyone keeps their own preferences
     ("POST", "/workflows/{wf_id}/copilot/messages"): "viewer",  # Ask mode for everyone; Build checks for builder
     ("DELETE", "/workflows/{wf_id}/copilot"): "viewer",  # anyone starts their own chat over
     ("POST", "/workflows/{wf_id}/copilot/threads/{conv_id}/open"): "viewer",  # their own conversations

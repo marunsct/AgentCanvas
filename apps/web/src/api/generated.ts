@@ -1017,6 +1017,11 @@ export type Email = string;
 export type Id41 = string;
 export type OrgId1 = string;
 export type PortalUrl1 = string | null;
+/**
+ * the editor opens in Simple mode
+ */
+export type SimpleMode = boolean | null;
+export type Theme = ("system" | "light" | "medium" | "dark") | null;
 export type Role2 = string;
 export type Email1 = string;
 export type Role3 = "admin" | "builder" | "reviewer" | "viewer";
@@ -2383,6 +2388,7 @@ export interface ApiSchemas {
   PolicyOut?: PolicyOut;
   PortSpec?: PortSpec;
   PortabilityOut?: PortabilityOut;
+  Preferences?: Preferences;
   Progress?: Progress;
   ProjectIn?: ProjectIn;
   ProjectOut?: ProjectOut;
@@ -4447,6 +4453,7 @@ export interface MeOut {
   org_id: OrgId1;
   org_names?: OrgNames;
   portal_url?: PortalUrl1;
+  preferences?: Preferences;
   role: Role2;
 }
 export interface Memberships {
@@ -4454,6 +4461,16 @@ export interface Memberships {
 }
 export interface OrgNames {
   [k: string]: string;
+}
+/**
+ * What follows a person from browser to browser. Fields left out of a PUT keep their value.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Preferences".
+ */
+export interface Preferences {
+  simple_mode?: SimpleMode;
+  theme?: Theme;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

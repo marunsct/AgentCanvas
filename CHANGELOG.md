@@ -109,6 +109,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - The editor's dock has a **History** tab: this workflow's past runs; one click opens a run in the Timeline.
 - Workspace files can be renamed and moved (`POST /projects/{id}/files-move`; never over another file, never out
   of the workspace), from a button next to Save.
+- The colour theme follows the person between browsers (`PUT /me/preferences`, `/me` returns it; migration
+  `b2d6f0a4c8e3`). Simple mode stays per browser.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

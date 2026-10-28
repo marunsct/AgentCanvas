@@ -71,6 +71,7 @@ class AppUser(Base):
     oidc_subject: Mapped[str] = mapped_column(Text, unique=True)
     email: Mapped[str] = mapped_column(Text)
     display_name: Mapped[str | None] = mapped_column(Text)
+    preferences: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)  # theme, Simple mode...
     created_at: Mapped[datetime] = _now()
 
 

@@ -12,6 +12,12 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Preferences: the theme follows the person, Simple mode stays with the browser
+The plan had both follow the person. Simple mode decides which blocks and panels the editor shows; syncing it made
+every browser of the person flip when one did, and the browser tests (one shared dev user) depend on each other's
+choice. The theme is cosmetic and safe to sync. The API keeps `simple_mode` for a client that wants it. *Reverse:*
+apply `preferences.simple_mode` in `api/preferences.ts`.
+
 ### The IR's `settings.experimental` flag stays, unread
 Nothing reads it. Removing it from the IR would make documents that contain it invalid (the IR refuses unknown
 fields), for no gain; I010 already says when a block uses an upstream feature that may change, and the palette now

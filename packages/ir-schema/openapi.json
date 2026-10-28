@@ -5728,6 +5728,9 @@
             ],
             "title": "Portal Url"
           },
+          "preferences": {
+            "$ref": "#/components/schemas/Preferences"
+          },
           "role": {
             "title": "Role",
             "type": "string"
@@ -7241,6 +7244,42 @@
           "emulated"
         ],
         "title": "PortabilityOut",
+        "type": "object"
+      },
+      "Preferences": {
+        "description": "What follows a person from browser to browser. Fields left out of a PUT keep their value.",
+        "properties": {
+          "simple_mode": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the editor opens in Simple mode",
+            "title": "Simple Mode"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "enum": [
+                  "system",
+                  "light",
+                  "medium",
+                  "dark"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme"
+          }
+        },
+        "title": "Preferences",
         "type": "object"
       },
       "Progress": {
@@ -16180,6 +16219,73 @@
           }
         ],
         "summary": "Accept Invitation",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/me/preferences": {
+      "put": {
+        "description": "Save the signed-in person's preferences (merged: a field left out keeps its value).",
+        "operationId": "put_preferences_v1_me_preferences_put",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Preferences"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Preferences",
         "tags": [
           "auth"
         ]
