@@ -293,3 +293,23 @@ def test_overlapping_turns_leave_one_open_proposal_and_models_follow_their_confi
     b = r.model("copilot", {"model": "openai:gpt-4o-mini", "api_key": "k", "base_url": "http://b.example/v1"})
     assert a is not b  # a changed address (or model, or key) is a new client, not the first one cached
     assert r.model("copilot", {"model": "openai:gpt-4o-mini", "api_key": "k", "base_url": "http://b.example/v1"}) is b
+
+
+async def test_saving_some_copilot_settings_keeps_the_others(api_client):
+    """A form that does not know a field (an older page, a script) must not erase it: PUT merges, null clears."""
+    full = {"source": "separate", "model": "openai:gpt-5-mini", "base_url": "https://llm.internal/v1",
+            "api_key": {"$secret": "LLM_KEY"}, "notes": "Use approvals.", "token_cap": 50_000}  # fmt: skip
+    assert (await api_client.put(SETTINGS, json=full)).status_code == 200
+    r = await api_client.put(SETTINGS, json={"enabled": True, "notes": "Use approvals everywhere."})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["base_url"] == "https://llm.internal/v1" and out["api_key"] == {"$secret": "LLM_KEY"}
+    assert (
+        out["model"] == "openai:gpt-5-mini"
+        and out["token_cap"] == 50_000
+        and out["notes"] == "Use approvals everywhere."
+    )
+    cleared = (await api_client.put(SETTINGS, json={"base_url": None})).json()
+    assert cleared["base_url"] is None and cleared["model"] == "openai:gpt-5-mini"
+    switched = (await api_client.put(SETTINGS, json={"source": "workflow"})).json()
+    assert switched["source"] == "workflow"

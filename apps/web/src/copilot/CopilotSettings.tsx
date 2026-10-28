@@ -3,14 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type * as G from "../api/generated";
-import { PROJECT_ID, useModels } from "../api/queries";
+import { PROJECT_ID, useModels, useSecretNames } from "../api/queries";
 import { can } from "../api/session";
+import { toast } from "../ui/dialog";
+import { QueryStatus } from "../ui/QueryStatus";
 
 type Settings = G.CopilotSettings & { resolved?: { model?: string | null; origin?: string | null } | null };
 
 export function CopilotSettings() {
   const qc = useQueryClient();
   const models = useModels();
+  const secrets = useSecretNames();
   const q = useQuery({
     queryKey: ["copilot-settings", PROJECT_ID],
     queryFn: () => apiFetch<Settings>(`/projects/${PROJECT_ID}/copilot-settings`),
@@ -18,6 +21,8 @@ export function CopilotSettings() {
   const [enabled, setEnabled] = useState(true);
   const [source, setSource] = useState<"workflow" | "separate">("workflow");
   const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [keySecret, setKeySecret] = useState("");
   const [cap, setCap] = useState(400_000);
   const [askModel, setAskModel] = useState("");
   const [localOnly, setLocalOnly] = useState(false);
@@ -27,6 +32,8 @@ export function CopilotSettings() {
     setEnabled(q.data.enabled ?? true);
     setSource((q.data.source as "workflow" | "separate") ?? "workflow");
     setModel(q.data.model ?? "");
+    setBaseUrl(q.data.base_url ?? "");
+    setKeySecret((q.data.api_key as { $secret?: string } | null | undefined)?.$secret ?? "");
     setCap(q.data.token_cap ?? 400_000);
     setAskModel(q.data.ask_model ?? "");
     setLocalOnly(q.data.privacy === "local_only");
@@ -37,12 +44,14 @@ export function CopilotSettings() {
       method: "PUT",
       json: {
         enabled, source, model: source === "separate" ? model.trim() || null : null, token_cap: cap,
+        base_url: source === "separate" ? baseUrl.trim() || null : null,
+        api_key: source === "separate" && keySecret ? { $secret: keySecret } : null,
         ask_model: askModel.trim() || null, privacy: localOnly ? "local_only" : "standard", notes,
       },
     }),
-    onSuccess: (out) => qc.setQueryData(["copilot-settings", PROJECT_ID], out),
+    onSuccess: (out) => { qc.setQueryData(["copilot-settings", PROJECT_ID], out); toast("Saved the Copilot settings"); },
   });
-  if (!q.data) return null;
+  if (!q.data) return <section className="settings-card"><h2>Copilot</h2><QueryStatus q={q} what="the Copilot settings" /></section>;
 
   return (
     <section className="settings-card setup-form" aria-label="Copilot settings" data-testid="copilot-settings">
@@ -53,12 +62,22 @@ export function CopilotSettings() {
       </p>
       <label><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Turn on the Copilot</label>
       <label><input type="radio" name="copilot-source" checked={source === "workflow"} onChange={() => setSource("workflow")} />
-        {" "}Use the workflow's model{q.data.resolved?.origin === "project default" ? ` (${q.data.resolved.model})` : ""}</label>
+        {" "}Use the project's model{q.data.resolved?.origin === "project default" ? ` (${q.data.resolved.model})` : ""}
+        <span className="muted small"> — from Settings › Models; a workflow without one uses its first AI model</span></label>
       <label><input type="radio" name="copilot-source" checked={source === "separate"} onChange={() => setSource("separate")} />
         {" "}Use a separate model</label>
       {source === "separate" && (
-        <input className="mono" list="copilot-models" aria-label="Copilot model" placeholder="provider:model, e.g. anthropic:claude-sonnet-5-5"
-          value={model} onChange={(e) => setModel(e.target.value)} />
+        <>
+          <input className="mono" list="copilot-models" aria-label="Copilot model" placeholder="provider:model, e.g. anthropic:claude-sonnet-5-5"
+            value={model} onChange={(e) => setModel(e.target.value)} />
+          <label htmlFor="copilot-url">Server address (only for a self-hosted or OpenAI-compatible server)</label>
+          <input id="copilot-url" className="mono" value={baseUrl} placeholder="https://…/v1" onChange={(e) => setBaseUrl(e.target.value)} />
+          <label htmlFor="copilot-key">API key</label>
+          <select id="copilot-key" value={keySecret} onChange={(e) => setKeySecret(e.target.value)}>
+            <option value="">The provider's usual key (project secret or server variable)</option>
+            {secrets.data?.map((n) => <option key={n.name} value={n.name}>Project secret {n.name}</option>)}
+          </select>
+        </>
       )}
       <datalist id="copilot-models">{(models.data ?? []).filter((m) => m.tools !== false).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</datalist>
       <label htmlFor="copilot-ask-model">Model for questions (optional, e.g. a cheaper one)</label>
@@ -74,7 +93,6 @@ export function CopilotSettings() {
       <div className="row gap">
         <button type="button" className="primary" disabled={!can("builder") || save.isPending || (source === "separate" && !model.trim())}
           onClick={() => save.mutate()}>Save Copilot settings</button>
-        {save.isSuccess && <span className="ok-text small">Saved</span>}
       </div>
       {save.error && <p className="error-text small">{(save.error as Error).message}</p>}
     </section>

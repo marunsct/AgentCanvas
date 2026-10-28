@@ -357,8 +357,11 @@ async def put_copilot_settings(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> SettingsOut:
-    """Turn the Copilot on or off, pick its model (the workflow's own or a separate one) and its token limit."""
+    """Turn the Copilot on or off, pick its model (the project's or a separate one) and its token limit. Fields left
+    out keep their saved value (an explicit null clears one), so a client that does not know a field cannot erase it."""
     project = await ProjectRepo(session).require(project_id)
+    saved = copilot_settings.load(project.settings).model_dump()
+    body = CopilotSettings.model_validate({**saved, **body.model_dump(include=body.model_fields_set)})
     if body.source == "separate" and not body.model:
         raise InvalidInput("choose the Copilot's model, or use the workflow's model")
     chosen = [m for m in (body.model if body.source == "separate" else None, body.ask_model) if m]
