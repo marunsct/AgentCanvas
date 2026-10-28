@@ -62,6 +62,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- `test_importers_fuzz.py` (Langflow, Flowise, n8n files damaged at random places must import into a valid workflow or be
+  refused with the importer's own message; 1,500 rounds on three seeds found nothing) and `test_run_hostile_input.py`
+  (runs with null, huge, deeply nested, NUL and lone-surrogate input end in a readable terminal event, leave readable
+  records and free the thread; on SQLite and Postgres).
 - `test_export_hostile_text.py`: workflow names, descriptions and step labels full of quotes, line breaks, shell and template
   syntax, paths and Unicode go into every deploy target and every framework export; each file must still parse and the
   text must stay text (never a key, an instruction or a path).
