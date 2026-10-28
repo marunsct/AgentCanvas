@@ -45,6 +45,9 @@ required setting filled in sensibly (prompts, output fields, models from `list_m
 and fix every error with more `propose_changes` calls before you finish. Never stop with errors you could fix.
 4. Test when the person asks, or after building from a brief with success criteria: turn the criteria into \
 `propose_tests`, try the workflow with `run_test` (use `mocks` when no model key is set), and fix what fails.
+Code. A script step, a tool for an agent, a custom block or an event handler needs a workspace file: read what is \
+there (`list_workspace_files`, `read_workspace_file`), then write the whole file with `propose_file` and fix what \
+ruff reports. Script steps name their file in the block's settings.
 5. Finish with two or three plain sentences: what the proposal does, and anything the person must do themselves \
 (add a secret, fill a memory space, pick a model). The person sees your changes on the canvas and accepts or \
 rejects them; nothing is saved until they accept.
@@ -234,9 +237,11 @@ class CopilotTurn:
         except Exception as exc:  # noqa: BLE001 - a provider error ends the turn with a readable message
             yield {"type": "error", "message": f"the model call failed: {type(exc).__name__}: {exc}"[:MAX_ERROR]}
 
-    def _size(self) -> tuple[int, int, int]:
+    def _size(self) -> tuple[Any, ...]:
+        """What the proposal holds, to tell whether this turn changed it (a file proposed again with new content
+        counts as a change)."""
         p = self.ctx.proposal
-        return len(p.commands), len(p.tests), len(p.notes)
+        return len(p.commands), len(p.tests), len(p.notes), tuple((f["path"], hash(f["content"])) for f in p.files)
 
     async def _proposal(self) -> dict[str, Any] | None:
         if not self.ctx.proposal or (self.carried and self._size() == self._carried_size):
@@ -248,6 +253,7 @@ class CopilotTurn:
             "commands": self.ctx.proposal.commands,
             "tests": self.ctx.proposal.tests,
             "notes": self.ctx.proposal.notes,
+            "files": self.ctx.proposal.files,
             "base_version": self.base_version,
             "status": "pending",
             "errors": sum(1 for d in diags if d.severity == "error"),

@@ -116,6 +116,25 @@ async def test_tools_apply_to_a_working_copy_and_report_errors():
     assert "core.approval" in [b["type"] for b in found["blocks"]]
 
 
+async def test_proposed_files_are_checked_with_ruff_and_read_back_as_proposed(tmp_path):
+    from agentcanvas.workspace.store import Workspace
+
+    async def check(wf: Workflow):
+        return validate(wf, default_registry())
+
+    ws = Workspace(tmp_path / "ws").ensure()  # a new folder gets the conventional layout
+    ctx = ToolContext(Workflow(id="wf_x", name="x"), default_registry(), {}, check, workspace=ws)
+    allowed = ["propose_file", "read_workspace_file", "list_workspace_files"]
+    out = await run_tool(ctx, "propose_file", {"path": "scripts/a.py", "content": "import os\n"}, allowed)
+    assert out["ok"] and out["new"] and any("F401" in p for p in out["problems"])  # the model is told to fix it
+    back = await run_tool(ctx, "read_workspace_file", {"path": "scripts/a.py"}, allowed)
+    assert back["content"] == "import os\n" and back["note"] == "as you proposed it"
+    listed = await run_tool(ctx, "list_workspace_files", {"prefix": "scripts/"}, allowed)
+    assert "scripts/a.py" in listed["files"] and "scripts/example.py" in listed["files"]
+    for bad in ({"path": ".git/config", "content": "x"}, {"path": "img.png", "content": "x"}, {"path": "a.py"}):
+        assert not (await run_tool(ctx, "propose_file", bad, allowed))["ok"], bad
+
+
 async def test_brief_then_build_with_self_repair_and_accept(app, api_client):
     await api_client.put(SETTINGS, json={"source": "separate", "model": "anthropic:claude-haiku-4-5"})
     wf_id = (await new_workflow(api_client))["id"]
@@ -476,3 +495,48 @@ async def test_a_conversation_switches_its_model_within_policy(app, api_client):
     assert (await api_client.put(url, json={"model": None})).json()["origin"] != "chosen for this chat"
     await api_client.delete(f"/v1/workflows/{wf}/copilot")  # "New chat" starts on the project's model
     assert (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["chosen_model"] is None
+
+
+async def test_a_proposal_can_carry_workspace_code_written_only_when_accepted(app, api_client):
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    ws = app.state.projects.workspace("prj_default")
+    path = f"scripts/clean_{wf.lower()}.py"
+    sloppy = "import os\n\n\ndef run(state: dict) -> dict:\n    return {}\n"
+    tidy = 'def run(state: dict) -> dict:\n    return {"text": str(state.get("text", "")).strip()}\n'
+    script(
+        app,
+        call("list_workspace_files", prefix="scripts/"),
+        call("propose_file", path=path, content=sloppy, summary="Clean the text"),
+        call("propose_file", path=path, content=tidy),  # fixes what ruff reported: the latest version is kept
+        call("propose_file", path="../outside.py", content="x = 1\n"),
+        "I wrote a script that trims the text.",
+    )
+    events = await ask(api_client, wf, "add a step that trims the text")
+    results = [e for e in events if e["type"] == "tool"]
+    assert [r["ok"] for r in results] == [True, True, True, False]
+    proposal = of(events, "proposal")[0]["proposal"]
+    assert [f["path"] for f in proposal["files"]] == [path] and proposal["files"][0]["content"] == tidy
+    assert proposal["files"][0]["before"] is None and not (ws.root / path).exists()  # nothing written yet
+
+    url = f"/v1/workflows/{wf}/copilot/proposals/{proposal['id']}"
+    assert (await api_client.post(url, json={"status": "accepted", "files": [0]})).status_code == 204
+    assert (ws.root / path).read_text() == tidy
+    log = ws._git("log", "-1", "--format=%s").stdout
+    assert log.startswith("Copilot: Clean the text") and "accepted by" in log and path in log
+    listed = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["proposals"][-1]
+    assert listed["files"] == [path] and listed["accepted_files"] == [path]  # paths only, no contents
+
+
+async def test_unticked_or_rejected_files_are_not_written_and_ask_mode_cannot_propose_them(app, api_client):
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    ws = app.state.projects.workspace("prj_default")
+    path = f"tools/t_{wf.lower()}.py"
+    script(app, call("propose_file", path=path, content="X = 1\n"), "Done.")
+    proposal = of(await ask(api_client, wf, "write a tool"), "proposal")[0]["proposal"]
+    url = f"/v1/workflows/{wf}/copilot/proposals/{proposal['id']}"
+    assert (await api_client.post(url, json={"status": "accepted", "files": []})).status_code == 204
+    assert not (ws.root / path).exists()
+
+    script(app, call("propose_file", path=path, content="X = 1\n"), "I can't change things in Ask mode.")
+    events = await ask(api_client, wf, "write a tool", mode="ask")
+    assert not of(events, "proposal") and not (ws.root / path).exists()

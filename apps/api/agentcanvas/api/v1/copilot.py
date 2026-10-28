@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.api.v1.runs import _context as run_context
+from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.copilot import settings as copilot_settings
 from agentcanvas.copilot.pack import Pack, build_pack
 from agentcanvas.copilot.runs import RunAccess
@@ -60,6 +61,7 @@ class ProposalDecision(BaseModel):
         None, description="accepted: the indices of the changes kept (the editor applied those); null = all"
     )
     tests: list[int] | None = Field(None, description="accepted: the indices of the tests to save; null = all")
+    files: list[int] | None = Field(None, description="accepted: the indices of the files to write; null = all")
     notes: bool = Field(True, description="accepted: add the proposal's notes to the project's Copilot notes")
 
 
@@ -178,7 +180,7 @@ async def get_conversation(
         enabled=cs.enabled,
         messages=conv.messages if conv else [],
         brief=conv.brief if conv else None,
-        proposals=[{k: v for k, v in p.items() if k != "commands"} for p in (conv.proposals if conv else [])],
+        proposals=[_listed(p) for p in (conv.proposals if conv else [])],
         pending=_pending(conv, view),
         usage=conv.usage if conv else {},
         chosen_model=conv.model if conv else None,
@@ -192,6 +194,14 @@ async def get_conversation(
 def _spent(messages: list[dict[str, Any]]) -> float | None:
     costs = [m["cost_usd"] for m in messages if isinstance(m.get("cost_usd"), int | float)]
     return round(sum(costs), 6) if costs else None
+
+
+def _listed(p: dict[str, Any]) -> dict[str, Any]:
+    """A past proposal as the conversation lists it: what it was, without its commands or files' contents."""
+    out = {k: v for k, v in p.items() if k not in ("commands", "files")}
+    if p.get("files"):
+        out["files"] = [f["path"] for f in p["files"]]
+    return out
 
 
 DECIDED = ("accepted", "rejected")
@@ -289,7 +299,7 @@ async def _start_turn(
     ctx = ToolContext(
         workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
         runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
-        allow_real_runs=body.allow_real_runs,
+        allow_real_runs=body.allow_real_runs, workspace=request.app.state.projects.workspace(project_id),
     )  # fmt: skip
     carry_pending(ctx, list(conv.proposals or []))
     factory = getattr(request.app.state, "resources_factory", None)
@@ -364,10 +374,12 @@ async def decide_proposal(
     wf_id: str,
     proposal_id: str,
     body: ProposalDecision,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> Response:
-    """Record what the person did with a proposal (the editor applies accepted commands itself)."""
+    """Record what the person did with a proposal (the editor applies accepted commands itself; tests, notes and
+    workspace files are saved here)."""
     conv = await _conversation(session, wf_id, user.id, lock=True)  # two tabs cannot both accept it
     proposals = [dict(p) for p in (conv.proposals if conv else [])]
     match = next((p for p in proposals if p["id"] == proposal_id), None)
@@ -385,7 +397,20 @@ async def decide_proposal(
     kept_tests = list(match.get("tests") or [])
     if body.tests is not None:
         kept_tests = [t for i, t in enumerate(kept_tests) if i in set(body.tests)]
+    kept_files = list(match.get("files") or [])
+    if body.files is not None:
+        kept_files = [f for i, f in enumerate(kept_files) if i in set(body.files)]
+        match["accepted_files"] = sorted({f["path"] for f in kept_files})
     conv.proposals = proposals
+    if body.status == "accepted" and kept_files:  # one commit per file, credited to the person who accepted
+        row = await WorkflowRepo(session).require(wf_id)
+        ws = request.app.state.projects.workspace(row.project_id)
+        who = user.email or user.id
+        for f in kept_files:  # every file is checked before any is written
+            await _off_loop(ws, lambda f=f: ws.check(f["path"], f["content"]))
+        for f in kept_files:
+            message = f"Copilot: {match.get('summary') or 'change'} ({f['path']}, accepted by {who})"[:300]
+            await _off_loop(ws, lambda f=f, message=message: ws.write(f["path"], f["content"], message))
     if body.status == "accepted":  # the editor applied the commands; tests and notes are saved here
         tests = TestCaseService(session)
         for t in kept_tests:

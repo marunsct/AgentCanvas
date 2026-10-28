@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### The Copilot's "interrupts" are its proposals, not a checkpointer
+The plan wanted LangGraph interrupts, with a persistent checkpointer per conversation, before real test runs and
+workspace file writes. Both are approvals, and the product already has one: nothing the Copilot proposes changes
+anything until the person accepts. Real runs already ask once per conversation (the permission card); files now
+ride in the proposal and are written on accept, credited in the workspace's git history. This needs no second state
+store beside the conversation row and works the same on both engines. *Reverse:* if the Copilot ever needs to
+pause mid-turn for something that is not a proposal, add the checkpointer then.
+
 ### Only the Claude models get catalog prices; the rest are the operator's to set
 Costs, USD budgets and cost alerts all read the catalog's prices, and it had none. I filled in the Claude models
 from Anthropic's published list prices (as of 2026-10-06) and left the other providers empty rather than write down

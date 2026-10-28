@@ -24,12 +24,16 @@ export interface ProposalDiff { added: string[]; changed: string[]; removed: str
 
 export interface ProposedTest { name: string; input: Record<string, unknown>; expect?: Record<string, unknown> }
 
+/** A workspace file the Copilot wrote: written (one commit, credited to whoever accepts) only when accepted. */
+export interface ProposedFile { path: string; content: string; before: string | null }
+
 export interface Proposal {
   id: string;
   summary: string;
   commands?: Command[];
   tests?: ProposedTest[];
   notes?: string[];
+  files?: ProposedFile[];
   base_version: number;
   status: "pending" | "accepted" | "rejected" | "superseded";
   errors: number;
@@ -85,7 +89,7 @@ type Event =
 export interface Ghost { workflow: WF; diff: ReviewDiff }
 
 /** What the person keeps of the open proposal: which changes, which tests, and whether the notes. */
-export interface Selection { changes: Set<number>; tests: Set<number>; notes: boolean }
+export interface Selection { changes: Set<number>; tests: Set<number>; notes: boolean; files: Set<number> }
 
 interface CopilotState {
   workflowId: string | null;
@@ -102,6 +106,7 @@ interface CopilotState {
   selection: Selection | null;
   toggleChange: (i: number) => void;
   toggleTest: (i: number) => void;
+  toggleFile: (i: number) => void;
   toggleNotes: () => void;
   request: { text: string; mode: Mode } | null; // "Ask the Copilot" from elsewhere in the editor (S15)
   askFor: (text: string, mode: Mode) => void;
@@ -135,6 +140,9 @@ const TOOL_LABELS: Record<string, string> = {
   write_todos: "Updated its plan",
   task: "Asked a helper",
   read_file: "Read a file",
+  list_workspace_files: "Looked at the workspace",
+  read_workspace_file: "Read workspace code",
+  propose_file: "Wrote code",
 };
 export const toolLabel = (name: string) => TOOL_LABELS[name] ?? name;
 
@@ -148,7 +156,7 @@ function ghostOf(p: Proposal | null, sel?: Selection | null): Ghost | null {
 
 function allOf(p: Proposal | null): Selection | null {
   if (!p || p.status !== "pending" || p.stale) return null;
-  return { changes: new Set((p.commands ?? []).keys()), tests: new Set((p.tests ?? []).keys()), notes: true };
+  return { changes: new Set((p.commands ?? []).keys()), tests: new Set((p.tests ?? []).keys()), notes: true, files: new Set((p.files ?? []).keys()) };
 }
 
 /** The Copilot answer being read; leaving the editor stops reading it (the server finishes the turn). */
@@ -190,6 +198,13 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const tests = new Set(selection.tests);
     if (tests.has(i)) tests.delete(i); else tests.add(i);
     set({ selection: { ...selection, tests } });
+  },
+  toggleFile: (i) => {
+    const selection = get().selection;
+    if (!selection) return;
+    const files = new Set(selection.files);
+    if (files.has(i)) files.delete(i); else files.add(i);
+    set({ selection: { ...selection, files } });
   },
   toggleNotes: () => {
     const selection = get().selection;
@@ -280,10 +295,15 @@ export const useCopilot = create<CopilotState>((set, get) => ({
       if (after.notice || after.version === before) return;
     }
     set({ ghost: null, selection: null });
-    await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, {
-      method: "POST",
-      json: { status: "accepted", commands: [...keep.changes].sort((a, b) => a - b), tests: [...keep.tests].sort((a, b) => a - b), notes: keep.notes },
-    });
+    const sorted = (s: Set<number>) => [...s].sort((a, b) => a - b);
+    try {
+      await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, {
+        method: "POST",
+        json: { status: "accepted", commands: sorted(keep.changes), tests: sorted(keep.tests), notes: keep.notes, files: sorted(keep.files) },
+      });
+    } catch (e) {  // e.g. a file the workspace refuses: the proposal stays open
+      set({ error: `Could not accept: ${(e as Error).message}` });
+    }
     await get().load(workflowId);
   },
 

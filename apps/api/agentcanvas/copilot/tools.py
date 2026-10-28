@@ -8,6 +8,7 @@ and `set_brief` records what the workflow is for. Tools never raise to the model
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 from collections.abc import Awaitable, Callable
@@ -27,6 +28,7 @@ from agentcanvas.services.workflows import without_gallery
 from agentcanvas.validation import Diagnostic
 from agentcanvas.validation.help import diagnostic_help
 from agentcanvas.validation.policies import CODES as POLICY_CODES
+from agentcanvas.workspace.store import Workspace, WorkspaceError
 
 MAX_COMMANDS = 80  # per proposal: a whole workflow fits, a runaway loop does not
 MAX_RESULT = 12_000  # characters of one tool result sent back to the model
@@ -38,9 +40,12 @@ class Proposal:
     commands: list[dict[str, Any]] = field(default_factory=list)
     tests: list[dict[str, Any]] = field(default_factory=list)  # saved as test cases when accepted (S15)
     notes: list[str] = field(default_factory=list)  # added to the project's Copilot notes when accepted
+    files: list[dict[str, Any]] = field(
+        default_factory=list
+    )  # workspace files {path, content, before}, written when accepted
 
     def __bool__(self) -> bool:
-        return bool(self.commands or self.tests or self.notes)
+        return bool(self.commands or self.tests or self.notes or self.files)
 
 
 @dataclass
@@ -56,6 +61,7 @@ class ToolContext:
     events: list[dict[str, Any]] = field(default_factory=list)  # brief/proposal updates for the stream
     allow_real_runs: bool = False  # the person allowed test runs that call real models in this conversation
     sources: list[dict[str, str]] = field(default_factory=list)  # guide sections this turn read: the answer cites them
+    workspace: Workspace | None = None  # the project's code: read here, changed only through an accepted proposal
 
 
 @dataclass(frozen=True)
@@ -157,6 +163,7 @@ def carry_pending(ctx: ToolContext, proposals: list[dict[str, Any]]) -> None:
     ctx.proposal.commands.extend(commands)
     ctx.proposal.tests.extend(pending.get("tests") or [])
     ctx.proposal.notes.extend(pending.get("notes") or [])
+    ctx.proposal.files.extend(pending.get("files") or [])
     if summary := str(pending.get("summary") or "").strip():
         ctx.proposal.summary.append(summary)
 
@@ -374,6 +381,62 @@ async def list_models(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "models": models, "providers": providers, "secrets_set": ctx.secret_names}
 
 
+MAX_READ = 20_000  # characters of a workspace file given to the model
+
+
+def _proposed(ctx: ToolContext, path: str) -> dict[str, Any] | None:
+    return next((f for f in ctx.proposal.files if f["path"] == path), None)
+
+
+async def list_workspace_files(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.workspace is None:
+        return {"ok": False, "error": "this project has no workspace"}
+    prefix = str(args.get("prefix") or "").lstrip("/")
+    on_disk = [f.path for f in await asyncio.to_thread(ctx.workspace.list) if f.path.startswith(prefix)]
+    proposed = [f["path"] for f in ctx.proposal.files if f["path"].startswith(prefix) and f["path"] not in on_disk]
+    return {"ok": True, "files": sorted(on_disk + proposed)[:300], "proposed": [f["path"] for f in ctx.proposal.files]}
+
+
+async def read_workspace_file(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.workspace is None:
+        return {"ok": False, "error": "this project has no workspace"}
+    path = str(args.get("path") or "").lstrip("/")
+    if (mine := _proposed(ctx, path)) is not None:
+        return {"ok": True, "path": path, "content": mine["content"][:MAX_READ], "note": "as you proposed it"}
+    try:
+        text = await asyncio.to_thread(ctx.workspace.read, path)
+    except FileNotFoundError:
+        return {"ok": False, "error": f"no file '{path}'; list_workspace_files shows what there is"}
+    except WorkspaceError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "path": path, "content": text[:MAX_READ], "truncated": len(text) > MAX_READ}
+
+
+async def propose_file(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """A new or changed workspace file, part of the proposal: written (as one commit, credited to the person who
+    accepts) only when the person accepts it."""
+    if ctx.workspace is None:
+        return {"ok": False, "error": "this project has no workspace"}
+    path, content = str(args.get("path") or "").strip().lstrip("/"), args.get("content")
+    if not isinstance(content, str):
+        return {"ok": False, "error": "content must be the whole file, as text"}
+    try:
+        ctx.workspace.check(path, content)
+        before = await asyncio.to_thread(ctx.workspace.read, path)
+    except FileNotFoundError:
+        before = None
+    except WorkspaceError as exc:
+        return {"ok": False, "error": str(exc)}
+    problems = await asyncio.to_thread(ctx.workspace.lint, path, content)
+    ctx.proposal.files = [f for f in ctx.proposal.files if f["path"] != path]  # the latest version of a file wins
+    ctx.proposal.files.append({"path": path, "content": content, "before": before})
+    if summary := " ".join(str(args.get("summary") or "").split()):
+        ctx.proposal.summary.append(summary[:200])
+    found = [f"line {d['line']}: {d['code']} {d['message']}" for d in problems[:20]]
+    note = "fix these problems with another propose_file" if found else "written when the person accepts"
+    return {"ok": True, "path": path, "new": before is None, "problems": found, "note": note}
+
+
 async def save_note(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     note = " ".join(str(args.get("note") or "").split())
     if not note:
@@ -512,6 +575,36 @@ TOOLS: dict[str, Tool] = {
                 "required": ["tests"],
             },
             propose_tests,
+            writes=True,
+        ),
+        Tool(
+            "list_workspace_files",
+            "List the project's workspace files (scripts/, tools/, nodes/, events/, flows/<workflow>/), and those you "
+            "proposed this turn. Optional `prefix`, e.g. 'scripts/'.",
+            {"type": "object", "properties": {"prefix": {"type": "string"}}},
+            list_workspace_files,
+        ),
+        Tool(
+            "read_workspace_file",
+            "Read one workspace file (or your proposed version of it) before changing it.",
+            {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+            read_workspace_file,
+        ),
+        Tool(
+            "propose_file",
+            "Propose a new or changed workspace file (the whole content): a script step's `scripts/x.py` with "
+            "`def run(state: dict) -> dict`, a `@tool` in `tools/`, a custom block in `nodes/`, an event handler in "
+            "`events/`. It is checked with ruff; fix what it reports. Written only when the person accepts.",
+            {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "summary": {"type": "string", "description": "what the file does, in a few words"},
+                },
+                "required": ["path", "content"],
+            },
+            propose_file,
             writes=True,
         ),
         Tool(

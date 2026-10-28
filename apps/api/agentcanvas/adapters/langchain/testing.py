@@ -146,8 +146,14 @@ class DemoCopilotModel(BaseChatModel):
         system = next((str(m.content) for m in messages if m.type == "system"), "")
         if "write Python code for AgentCanvas" in system:  # code help in the Workspace editor (S17)
             reply = AIMessage(content=_demo_code_help(_last_human(messages)))
+        elif any(isinstance(m, ToolMessage) and m.tool_call_id == "demo_copilot_file" for m in messages[last + 1 :]):
+            reply = AIMessage(content="I wrote scripts/demo_trim.py, which trims the text (demo Copilot).")
         elif any(isinstance(m, ToolMessage) for m in messages[last + 1 :]):
             reply = AIMessage(content="I proposed a Greet step that writes a friendly greeting (demo Copilot).")
+        elif "propose_file" in self.tool_names and "script" in _last_human(messages).lower():
+            args = {"path": "scripts/demo_trim.py", "content": _DEMO_SCRIPT, "summary": "A script that trims the text"}
+            reply = AIMessage(content="Plan: one script file.", tool_calls=[
+                {"name": "propose_file", "args": args, "id": "demo_copilot_file"}])  # fmt: skip
         elif "propose_changes" in self.tool_names and "build" in _last_human(messages).lower():
             args = {"summary": "Add a Greet step", "commands": _DEMO_GREETER}
             reply = AIMessage(content="Plan: one Ask AI step.", tool_calls=[
@@ -155,6 +161,13 @@ class DemoCopilotModel(BaseChatModel):
         else:
             reply = AIMessage(content="This is the demo Copilot (no model key configured). Ask me to build something.")
         return ChatResult(generations=[ChatGeneration(message=_with_usage(reply, messages))])
+
+
+_DEMO_SCRIPT = (
+    '"""Trim the text (written by the demo Copilot)."""\n\n\n'
+    "def run(state: dict) -> dict:\n"
+    '    return {"text": str(state.get("text") or "").strip()}\n'
+)
 
 
 def _with_usage(reply: AIMessage, messages: list[BaseMessage]) -> AIMessage:

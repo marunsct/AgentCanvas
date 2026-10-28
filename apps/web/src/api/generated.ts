@@ -1444,6 +1444,10 @@ export type WorkspaceId2 = string | null;
  */
 export type Commands1 = number[] | null;
 /**
+ * accepted: the indices of the files to write; null = all
+ */
+export type Files3 = number[] | null;
+/**
  * accepted: add the proposal's notes to the project's Copilot notes
  */
 export type Notes2 = boolean;
@@ -4898,6 +4902,7 @@ export interface ProjectWorkspaceIn {
  */
 export interface ProposalDecision {
   commands?: Commands1;
+  files?: Files3;
   notes?: Notes2;
   status: Status11;
   tests?: Tests;

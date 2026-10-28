@@ -134,15 +134,21 @@ class Workspace:
             raise WorkspaceError(f"'{rel}' is larger than {MAX_FILE_BYTES} bytes")
         return p.read_text(errors="replace")
 
-    def write(self, rel: str, text: str) -> FileInfo:
+    def check(self, rel: str, text: str) -> Path:
+        """The file's path, when `text` may be saved there: an editable text file of an allowed size."""
         p = self.resolve(rel)
         if p.suffix not in TEXT_SUFFIXES and p.name not in TEXT_SUFFIXES:
             raise WorkspaceError(f"'{p.suffix or p.name}' files cannot be edited here")
         if len(text.encode()) > MAX_FILE_BYTES:
             raise WorkspaceError(f"files are limited to {MAX_FILE_BYTES} bytes")
+        return p
+
+    def write(self, rel: str, text: str, message: str | None = None) -> FileInfo:
+        """Save a file as one commit; `message` says who changed it and why (default "edit <path>")."""
+        p = self.check(rel, text)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
-        self._commit(f"edit {p.relative_to(self.root).as_posix()}", p)
+        self._commit(message or f"edit {p.relative_to(self.root).as_posix()}", p)
         st = p.stat()
         return FileInfo(p.relative_to(self.root).as_posix(), st.st_size, st.st_mtime)
 
@@ -180,13 +186,16 @@ class Workspace:
                         h.update(f"{p}:{st.st_mtime_ns}:{st.st_size}".encode())
         return h.hexdigest()[:16]
 
-    def lint(self, rel: str) -> list[dict[str, Any]]:
-        """ruff diagnostics for a Python file (M5-T2): [{line, column, end_line, end_column, code, message}]."""
+    def lint(self, rel: str, text: str | None = None) -> list[dict[str, Any]]:
+        """ruff diagnostics for a Python file (M5-T2): [{line, column, end_line, end_column, code, message}]. With
+        `text`, that content is checked as if saved at `rel` (a proposed file not written yet)."""
         p = self.resolve(rel)
         if p.suffix != ".py":
             return []
+        target = ["--stdin-filename", str(p), "-"] if text is not None else [str(p)]
         proc = subprocess.run(
-            ["ruff", "check", "--output-format=json", "--no-cache", "--isolated", "--select", "E,F,W,B", str(p)],
+            ["ruff", "check", "--output-format=json", "--no-cache", "--isolated", "--select", "E,F,W,B", *target],
+            input=text,
             capture_output=True,
             text=True,
             check=False,

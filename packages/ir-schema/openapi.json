@@ -7563,6 +7563,21 @@
             "description": "accepted: the indices of the changes kept (the editor applied those); null = all",
             "title": "Commands"
           },
+          "files": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "accepted: the indices of the files to write; null = all",
+            "title": "Files"
+          },
           "notes": {
             "default": true,
             "description": "accepted: add the proposal's notes to the project's Copilot notes",
@@ -24602,7 +24617,7 @@
     },
     "/v1/workflows/{wf_id}/copilot/proposals/{proposal_id}": {
       "post": {
-        "description": "Record what the person did with a proposal (the editor applies accepted commands itself).",
+        "description": "Record what the person did with a proposal (the editor applies accepted commands itself; tests, notes and\nworkspace files are saved here).",
         "operationId": "decide_proposal_v1_workflows__wf_id__copilot_proposals__proposal_id__post",
         "parameters": [
           {

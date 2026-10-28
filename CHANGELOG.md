@@ -41,6 +41,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **The Copilot writes workspace code as part of a proposal**: `list_workspace_files`, `read_workspace_file` and
+  `propose_file` (checked with ruff, which it is told to fix). The files show in the proposal with a tick box and
+  their code; accepted ones are written as one commit each, "Copilot: … (path, accepted by …)". Nothing is written
+  before that, and Ask mode cannot propose files.
 - **A conversation can switch the Copilot's model**: the model's name at the top of the panel opens a list; the
   choice holds for that chat (within the project's model policies and privacy setting) and New chat goes back to
   the project's. `PUT /workflows/{id}/copilot/model`; the conversation reports `chosen_model`.

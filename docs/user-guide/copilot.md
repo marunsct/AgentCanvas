@@ -64,6 +64,11 @@ description, explains the file or the lines you selected, and fixes the problems
 diff you accept or reject; nothing is saved until you press **Save**. It uses the same model and privacy setting as
 the chat.
 
+In the chat, the Copilot can also write the code a workflow needs (a script step's file, a tool for an agent, a
+custom block, an event handler). Each file is part of its proposal, under **Writes workspace code**, with **Show
+the code** and a tick box. Nothing is written until you accept; each accepted file is saved as one commit in the
+workspace's history, saying it came from the Copilot and who accepted it.
+
 ## Which model it uses
 
 Set this in **Settings › Copilot**:

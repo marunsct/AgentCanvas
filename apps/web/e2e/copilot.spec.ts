@@ -137,3 +137,26 @@ test("a conversation can switch its model, and New chat goes back to the project
   await expect(panel.getByTestId("copilot-model")).toContainText("Claude Haiku 4.5");
   await expect(panel.getByTestId("copilot-model")).not.toContainText("this chat");
 });
+
+test("the Copilot can write workspace code, saved only when accepted and credited to the person", async ({ page }) => {
+  await page.request.put("/api/v1/projects/prj_default/copilot-settings", {
+    data: { source: "separate", model: "anthropic:claude-haiku-4-5" },
+  });
+  await page.request.delete("/api/v1/projects/prj_default/files/scripts/demo_trim.py"); // from an earlier run
+  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Code ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByTestId("copilot-button").click();
+  const panel = page.getByTestId("copilot-panel");
+  await page.getByLabel("Message the Copilot").fill("Write a script that trims the text");
+  await page.getByRole("button", { name: "Send" }).click();
+  const files = panel.getByTestId("copilot-proposal-files");
+  await expect(files).toContainText("scripts/demo_trim.py");
+  await expect(files).toContainText("new");
+  expect((await page.request.get("/api/v1/projects/prj_default/files/scripts/demo_trim.py")).status()).toBe(404);
+  await files.getByText("Show the code").click();
+  await expect(files).toContainText("def run(state: dict)");
+  await panel.getByTestId("copilot-proposal").getByRole("button", { name: "Accept" }).click();
+  await expect(panel.getByTestId("copilot-proposal")).toHaveCount(0);
+  const saved = await (await page.request.get("/api/v1/projects/prj_default/files/scripts/demo_trim.py")).json();
+  expect(saved.content).toContain("written by the demo Copilot");
+});

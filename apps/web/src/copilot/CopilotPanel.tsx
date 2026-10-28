@@ -100,10 +100,11 @@ function ProposalCard({ pending, busy, canBuild }: { pending: Proposal; busy: bo
   const wf = useEditor((s) => s.wf);
   const cmds = pending.commands ?? [];
   const named = wf && cmds.length ? preview(wf, cmds, new Set(cmds.keys())).workflow : null;
-  const sel: Selection = selection ?? { changes: new Set(cmds.keys()), tests: new Set((pending.tests ?? []).keys()), notes: true };
-  const kept = sel.changes.size + sel.tests.size + (sel.notes && pending.notes?.length ? 1 : 0);
-  const partial = sel.changes.size < cmds.length || sel.tests.size < (pending.tests?.length ?? 0);
-  const { toggleChange, toggleTest, toggleNotes } = useCopilot.getState();
+  const files = pending.files ?? [];
+  const sel: Selection = selection ?? { changes: new Set(cmds.keys()), tests: new Set((pending.tests ?? []).keys()), notes: true, files: new Set(files.keys()) };
+  const kept = sel.changes.size + sel.tests.size + sel.files.size + (sel.notes && pending.notes?.length ? 1 : 0);
+  const partial = sel.changes.size < cmds.length || sel.tests.size < (pending.tests?.length ?? 0) || sel.files.size < files.length;
+  const { toggleChange, toggleTest, toggleNotes, toggleFile } = useCopilot.getState();
   return (
     <section className="copilot-proposal" data-testid="copilot-proposal" aria-label="Proposed changes">
       <strong>Proposed: {pending.summary}</strong>
@@ -134,6 +135,21 @@ function ProposalCard({ pending, busy, canBuild }: { pending: Proposal; busy: bo
           <ul className="plain">
             {pending.tests!.map((t, i) => (
               <li key={i}><label className="row"><input type="checkbox" checked={sel.tests.has(i)} disabled={busy} onChange={() => toggleTest(i)} /> {t.name}</label></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="small" data-testid="copilot-proposal-files">
+          Writes workspace code:
+          <ul className="plain files">
+            {files.map((f, i) => (
+              <li key={f.path}>
+                <label className="row"><input type="checkbox" checked={sel.files.has(i)} disabled={busy} onChange={() => toggleFile(i)} />
+                  <code>{f.path}</code> <span className="muted">{f.before == null ? "new" : "changed"}</span></label>
+                <details className="file-preview"><summary className="small">Show the code</summary>
+                  <pre className="json small">{f.content}</pre></details>
+              </li>
             ))}
           </ul>
         </div>

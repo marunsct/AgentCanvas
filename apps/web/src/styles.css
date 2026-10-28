@@ -1161,3 +1161,5 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .copilot-head .link { white-space: nowrap; }
 .menu-list > button[role="menuitemradio"]::before { content: ""; width: 1em; flex: none; }
 .menu-list > button[role="menuitemradio"][aria-checked="true"]::before { content: "✓"; color: var(--accent); }
+ul.plain.files { max-height: none; }
+.file-preview pre { max-height: 240px; overflow: auto; white-space: pre; margin: 4px 0; }
