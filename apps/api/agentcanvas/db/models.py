@@ -152,7 +152,7 @@ class Deployment(Base):
     __table_args__ = (UniqueConstraint("workflow_id", "environment", name="deployment_once"),)
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
-    version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id"))
+    version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id", ondelete="CASCADE"))
     environment: Mapped[str] = mapped_column(Text, server_default=text("'prod'"), default="prod")
     api_key_hash: Mapped[str] = mapped_column(Text)
     key_prefix: Mapped[str | None] = mapped_column(Text)  # shown in the UI to tell keys apart
@@ -202,7 +202,7 @@ class Thread(Base):
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
-    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id"))
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
     title: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'idle'"), default="idle")
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
@@ -223,7 +223,7 @@ class Run(Base):
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
-    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id"))
+    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id", ondelete="SET NULL"))
     ir_hash: Mapped[str] = mapped_column(Text)
     mode: Mapped[str] = mapped_column(Text, server_default=text("'normal'"), default="normal")
     status: Mapped[str] = mapped_column(Text)
@@ -620,7 +620,7 @@ class Trigger(Base):
     __table_args__ = (CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),)
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
-    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id"))
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
     kind: Mapped[str] = mapped_column(Text)
     config: Mapped[dict[str, Any]]
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
