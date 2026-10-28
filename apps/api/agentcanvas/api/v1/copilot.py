@@ -51,6 +51,7 @@ _packs: dict[str, Pack] = {}  # registry + templates fingerprint -> pack
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
     mode: Literal["build", "ask"] = "build"
+    allow_real_runs: bool = Field(False, description="the person allows test runs that call real models")
 
 
 class ProposalDecision(BaseModel):
@@ -270,6 +271,7 @@ async def _start_turn(
     ctx = ToolContext(
         workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
         runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
+        allow_real_runs=body.allow_real_runs,
     )  # fmt: skip
     carry_pending(ctx, list(conv.proposals or []))
     factory = getattr(request.app.state, "resources_factory", None)

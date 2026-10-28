@@ -297,3 +297,30 @@ async def test_get_problems_adds_best_practice_suggestions():
     llm.config["prompt"] = "Summarise."
     codes = [s["code"] for s in suggestions(bare)]
     assert "S001" in codes and "S003" in codes
+
+
+async def test_real_model_runs_need_the_persons_permission(app, api_client):
+    """run_test on a workflow with models: refused (and the panel asked) until the person allows real runs; with
+    scripted replies for every model it needs no permission."""
+    from test_copilot import new_workflow
+
+    await separate_model(api_client)
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    test = call("run_test", input={"ticket": "Invoice?"})
+    script(app, test, "Done.")
+    events = await ask(api_client, wf, "try it")
+    assert any(e["type"] == "permission" and e["kind"] == "real_runs" for e in events)
+    tool = next(e for e in events if e["type"] == "tool" and e["name"] == "run_test")
+    assert tool["ok"] is False and "not allowed test runs that call real models" in tool["error"]
+
+    script(app, test, "Done.")
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/copilot/messages", json={"text": "try it", "mode": "build", "allow_real_runs": True}
+    )
+    events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith("data:")]
+    assert not any(e["type"] == "permission" for e in events)
+
+    mocked = call("run_test", input={"ticket": "Invoice?"}, mocks={"fast_model": ["low"], "smart_model": ["Thanks"]})
+    script(app, mocked, "Done.")
+    events = await ask(api_client, wf, "try it with scripted replies")
+    assert not any(e["type"] == "permission" for e in events)

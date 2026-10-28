@@ -54,6 +54,7 @@ class ToolContext:
     runs: RunAccess | None = None  # past runs, test runs, reproductions (S15)
     secret_names: list[str] = field(default_factory=list)  # names only, never values
     events: list[dict[str, Any]] = field(default_factory=list)  # brief/proposal updates for the stream
+    allow_real_runs: bool = False  # the person allowed test runs that call real models in this conversation
 
 
 @dataclass(frozen=True)
@@ -305,7 +306,25 @@ async def run_test(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(args.get("input"), dict):
         return {"ok": False, "error": 'input must be an object of channel values, e.g. {"question": "..."}'}
     expect = args.get("expect") if isinstance(args.get("expect"), dict) else None
-    return await ctx.runs.test(ctx.workflow, args["input"], mocks=args.get("mocks") or None, expect=expect)
+    mocks = args.get("mocks") if isinstance(args.get("mocks"), dict) else {}
+    if not ctx.allow_real_runs and (real := real_models(ctx.workflow, mocks)):
+        # a run that calls real models costs money and time: the person allows it once per conversation
+        ctx.events.append({"type": "permission", "kind": "real_runs", "models": real})
+        return {
+            "ok": False,
+            "error": "the person has not allowed test runs that call real models ("
+            + ", ".join(real)
+            + "); ask them to allow it in the panel, or pass `mocks` with scripted replies "
+            "for these models to test the workflow's logic",
+        }
+    return await ctx.runs.test(ctx.workflow, args["input"], mocks=mocks or None, expect=expect)
+
+
+def real_models(wf: Workflow, mocks: dict[str, Any]) -> list[str]:
+    """The workflow's chat models a test run would call for real (those without scripted replies in `mocks`)."""
+    return sorted(
+        str(r.config.get("model") or r.name) for r in wf.resources if r.type == "model.chat" and r.name not in mocks
+    )
 
 
 async def reproduce_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:

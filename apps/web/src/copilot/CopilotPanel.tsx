@@ -153,7 +153,7 @@ function ProposalCard({ pending, busy, canBuild }: { pending: Proposal; busy: bo
 
 export function CopilotPanel() {
   const workflowId = useEditor((s) => s.workflowId);
-  const { conversation, busy, live, error, last, cost } = useCopilot();
+  const { conversation, busy, live, error, last, cost, asking } = useCopilot();
   const [text, setText] = useState("");
   const canBuild = useCan("builder");
   const email = useMe((s) => s.me.email);
@@ -254,6 +254,15 @@ export function CopilotPanel() {
       </div>
 
       {pending && <ProposalCard pending={pending} busy={busy} canBuild={canBuild} />}
+      {asking && !busy && (
+        <div className="copilot-permission" role="alert" data-testid="copilot-permission">
+          <span>The Copilot wants to test the workflow with real models ({asking.join(", ")}), which uses their keys and costs a little.</span>
+          <div className="row gap">
+            <button type="button" className="primary small" onClick={() => void useCopilot.getState().allowRealRuns()}>Allow in this conversation</button>
+            <button type="button" className="small" onClick={() => useCopilot.setState({ asking: null })}>Not now</button>
+          </div>
+        </div>
+      )}
       {error && (
         <div className="copilot-error" role="alert" data-testid="copilot-error">
           <span>{error}</span>

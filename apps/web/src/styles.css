@@ -1114,3 +1114,5 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .file-tree summary.folder { cursor: pointer; font-size: 12.5px; color: var(--text-2); padding: 3px 6px; font-family: var(--mono); }
 .file-tree button.quiet { color: var(--muted); }
 .badge.beta { margin-left: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; background: var(--tint-run); color: var(--run); border-color: transparent; vertical-align: middle; }
+kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--panel-2); }
+.copilot-permission { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--tint-warn); font-size: 12.5px; }

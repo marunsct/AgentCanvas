@@ -68,6 +68,7 @@ type Event =
   | { type: "text"; text: string }
   | { type: "text_delta"; text: string }
   | { type: "todos"; todos: Todo[] }
+  | { type: "permission"; kind: "real_runs"; models: string[] }
   | { type: "tool"; name: string; ok: boolean; error?: string | null; summary?: string | null }
   | { type: "brief"; brief: Brief }
   | { type: "usage" | "done"; usage: Conversation["usage"]; cap: number; cost_usd?: number | null }
@@ -87,6 +88,9 @@ interface CopilotState {
   live: Live | null; // the answer being streamed
   error: string | null;
   last: { text: string; mode: Mode } | null; // the last message sent, for Retry
+  realRuns: boolean; // the person allowed test runs that call real models, for this conversation
+  asking: string[] | null; // models the Copilot wanted to run for real, waiting for the person's yes
+  allowRealRuns: () => Promise<void>;
   cost: number | null; // what this conversation has cost, when the model's price is known (from this session's turns)
   ghost: Ghost | null;
   selection: Selection | null;
@@ -157,6 +161,12 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   error: null,
   last: null,
   cost: null,
+  realRuns: false,
+  asking: null,
+  allowRealRuns: async () => {
+    set({ realRuns: true, asking: null });
+    await get().retry();
+  },
   ghost: null,
   selection: null,
   request: null,
@@ -184,7 +194,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   load: async (workflowId) => {
     const open = useEditor.getState().workflowId;
     if (open && open !== workflowId) return; // a late answer about a workflow the editor has left
-    set({ workflowId, error: null, ...(get().workflowId !== workflowId ? { cost: null } : {}) });
+    set({ workflowId, error: null, ...(get().workflowId !== workflowId ? { cost: null, realRuns: false, asking: null } : {}) });
     const conversation = await apiFetch<Conversation>(`/workflows/${workflowId}/copilot`);
     if (get().workflowId !== workflowId) return;
     const selection = allOf(conversation.pending);
@@ -209,6 +219,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
         case "text_delta": set({ live: { ...live, streaming: live.streaming + e.text } }); break;
         case "text": set({ live: { ...live, text: [...live.text, e.text], streaming: "" } }); break;
         case "todos": set({ live: { ...live, todos: e.todos } }); break;
+        case "permission": set({ asking: e.models }); break;
         case "tool": set({ live: { ...live, activity: [...live.activity, e] } }); break;
         case "brief": if (c) set({ conversation: { ...c, brief: e.brief } }); break;
         case "usage": case "done": if (c) set({ conversation: { ...c, usage: e.usage }, cost: e.cost_usd ?? get().cost }); break;
@@ -219,7 +230,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     copilotStream?.abort();
     const mine = (copilotStream = new AbortController());
     try {
-      await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode }, onEvent as never, mine.signal);
+      await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode, allow_real_runs: get().realRuns }, onEvent as never, mine.signal);
     } catch (e) {
       if (get().workflowId === workflowId && !mine.signal.aborted) set({ error: (e as Error).message });
     } finally {
@@ -298,7 +309,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const { workflowId } = get();
     if (!workflowId) return;
     await apiFetch(`/workflows/${workflowId}/copilot`, { method: "DELETE" });
-    set({ ghost: null, error: null, cost: null });
+    set({ ghost: null, error: null, cost: null, realRuns: false, asking: null });
     await get().load(workflowId);
   },
 }));
