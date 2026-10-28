@@ -9,6 +9,7 @@ import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { MemberOut as Member } from "../api/generated";
+import { confirmDialog } from "../ui/dialog";
 
 
 const ROLES: { role: Role; what: string }[] = [
@@ -70,7 +71,7 @@ export function MembersPage() {
                   : m.role}
               </td>
               <td>{admin && m.user_id !== me.id && (
-                <button type="button" className="link small" onClick={() => { if (window.confirm(`Remove ${m.email}?`)) remove.mutate(m.user_id); }}>Remove</button>
+                <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Remove ${m.email}?`, body: "They lose access to this organisation at once.", confirm: "Remove", danger: true })) remove.mutate(m.user_id); }}>Remove</button>
               )}</td>
             </tr>
           ))}

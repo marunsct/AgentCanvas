@@ -27,6 +27,7 @@ import { type CanvasData, irToFlow } from "./irToFlow";
 import { Frames, frameSelection } from "./Frames";
 import { NODE_TYPES } from "./nodes";
 import { PortMenu } from "./PortMenu";
+import { promptDialog } from "../ui/dialog";
 
 export const DND_MIME = "application/agentcanvas";
 let clip: Clip | null = null; // in-memory clipboard shared by all canvases in this tab
@@ -137,7 +138,7 @@ export function Canvas() {
 
   // "Frame" (layout only): a labelled box around the selected steps and resources
   useEffect(() => {
-    useEditor.getState().setFrame(() => {
+    useEditor.getState().setFrame(async () => {
       const st = useEditor.getState();
       if (st.drill.length) return;
       const picked = rf.getNodes().filter((n) => n.selected && n.data.kind !== "terminal").map((n) => n.id);
@@ -146,7 +147,7 @@ export function Canvas() {
         st.setNotice({ kind: "info", text: "Select the steps to frame first (Ctrl/⌘-click them or drag a selection box)." });
         return;
       }
-      const label = window.prompt("Frame label", "Group")?.trim();
+      const label = (await promptDialog({ title: "Frame the selected steps", confirm: "Frame", input: { label: "Label", value: "Group", required: true } }))?.trim();
       if (label) frameSelection(chosen, label);
     });
     return () => useEditor.getState().setFrame(null);

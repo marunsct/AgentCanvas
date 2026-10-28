@@ -3,6 +3,7 @@ import { useNodes, ViewportPortal } from "@xyflow/react";
 import { ulid } from "ulid";
 import { useEditor } from "../editor/store";
 import { addGroup, frameAround, groupsOf, removeGroup, renameGroup } from "./groups";
+import { promptDialog } from "../ui/dialog";
 
 export function Frames() {
   const wf = useEditor((s) => s.wf);
@@ -24,8 +25,8 @@ export function Frames() {
           <div key={g.id} className="frame" data-testid={`frame-${g.label}`}
             style={{ transform: `translate(${f.x}px, ${f.y}px)`, width: f.width, height: f.height, borderColor: g.color, background: `${g.color}0d` }}>
             <div className="frame-label" style={{ color: g.color }}>
-              <span title="double-click to rename" onDoubleClick={() => {
-                const label = window.prompt("Frame label", g.label)?.trim();
+              <span title="double-click to rename" onDoubleClick={async () => {
+                const label = (await promptDialog({ title: "Rename the frame", confirm: "Rename", input: { label: "Label", value: g.label, required: true } }))?.trim();
                 if (label && label !== g.label) dispatch([{ op: "UpdateMeta", metadata: renameGroup(wf, g.id, label) }]);
               }}>{g.label}</span>
               <button type="button" className="link small" aria-label={`remove frame ${g.label}`}

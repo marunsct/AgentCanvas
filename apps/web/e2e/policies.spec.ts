@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 10 (FR-X-19): an admin adds an organisation policy; the editor flags workflows that break it.
 
@@ -28,8 +28,8 @@ test("add a policy, see it in the editor, switch it off and delete it", async ({
   await expect(page.locator(".problems")).not.toContainText("E095");
 
   await page.goto("/policies");
-  page.once("dialog", (d) => void d.accept());
   await row.getByRole("button", { name: "Delete" }).click();
+  await answerDialog(page);
   await expect(row).toHaveCount(0);
 });
 

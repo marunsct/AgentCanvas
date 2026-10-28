@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 12 (FR-EVAL-02..04): build a dataset and an evaluator, run an experiment on the draft and a variant,
 // read the grid, open a run's timeline, and compare two experiments.
@@ -89,8 +89,8 @@ test("a release gate refuses a regression; an admin publishes over it with a rea
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish to prod" }).click();
   await expect(page.getByTestId("publish-checklist")).toContainText("exact: mean 0.0 (needs 0.9)");
-  page.once("dialog", (d) => void d.accept("demo for the partner call"));
   await page.getByRole("button", { name: "Publish anyway…" }).click();
+  await answerDialog(page, "demo for the partner call");
   await expect(page.getByTestId("publish-checklist")).toContainText("overridden by");
   await expect(page.getByTestId("deployment-prod")).toBeVisible();
 });

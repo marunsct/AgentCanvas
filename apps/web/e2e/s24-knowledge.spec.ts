@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 24: Knowledge Studio — load the sample, search it by words and meaning, add a document of your own,
 // look at its chunks, change the chunking and reindex.
@@ -47,8 +47,8 @@ test("load the sample knowledge base, search it, add a document and reindex", as
   await mine.getByRole("button", { name: "Search" }).click();
   await expect(mine.getByTestId("kb-result").first()).toContainText("[1] Office plants");
 
-  page.once("dialog", (d) => void d.accept());
   await mine.getByRole("button", { name: "Delete" }).click();
+  await answerDialog(page);
   await expect(nav.getByRole("button", { name: new RegExp(`^${name}`) })).toHaveCount(0);
 });
 

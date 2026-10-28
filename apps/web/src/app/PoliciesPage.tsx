@@ -8,6 +8,7 @@ import { maturaMode } from "../api/auth";
 import { can, orgPortalUrl } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { confirmDialog } from "../ui/dialog";
 
 type Scope = "node" | "resource" | "workflow";
 interface PolicyIn {
@@ -111,7 +112,7 @@ export function PoliciesPage() {
                   : !p.enabled && <span className="muted small">off</span>}
               </td>
               <td>{admin && (
-                <button type="button" className="link small" onClick={() => { if (window.confirm(`Delete policy ${p.name}?`)) remove.mutate(p.id); }}>Delete</button>
+                <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Delete the policy ${p.name}?`, confirm: "Delete", danger: true })) remove.mutate(p.id); }}>Delete</button>
               )}</td>
             </tr>
           ))}

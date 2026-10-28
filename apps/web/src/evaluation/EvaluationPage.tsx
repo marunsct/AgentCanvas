@@ -15,6 +15,7 @@ import { Production } from "./Production";
 import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { confirmDialog } from "../ui/dialog";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
 
@@ -151,7 +152,7 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
         {!latest && <span className="muted small">Older versions are read-only.</span>}
         <span className="spacer" />
         {can("builder") && (
-          <button type="button" className="link small" onClick={() => { if (confirm(`Delete dataset ${d.name}?`)) drop.mutate(); }}>Delete dataset</button>
+          <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Delete the dataset ${d.name}?`, body: "Every version and its examples are deleted.", confirm: "Delete", danger: true })) drop.mutate(); }}>Delete dataset</button>
         )}
       </div>
       <p className="small" data-testid="langsmith-link">
@@ -165,7 +166,7 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
           <>
             {" "}<button type="button" className="link small" disabled={push.isPending} onClick={() => push.mutate()}>Push {version ? `v${version}` : "latest"} to LangSmith</button>
             {d.langsmith && latest && <> · <button type="button" className="link small" disabled={pull.isPending}
-              onClick={() => { if (confirm("Replace the examples with LangSmith's (as a new version)?")) pull.mutate(); }}>Pull from LangSmith</button></>}
+              onClick={async () => { if (await confirmDialog({ title: "Pull from LangSmith?", body: "The examples are replaced with LangSmith's, as a new version.", confirm: "Pull" })) pull.mutate(); }}>Pull from LangSmith</button></>}
           </>
         )}
       </p>

@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 8 (M6-T1, M6-T9): save a run as a test case, version the workflow, break it, see red + the diff.
 
@@ -20,8 +20,8 @@ test("saved test case turns red after an edit; the diff shows the edited step", 
   await page.getByLabel("run input").fill('{"who": "Ada"}');
   await page.getByRole("button", { name: "▶ Run" }).click();
   await expect(page.getByTestId("run-output")).toContainText("Hi Ada");
-  page.once("dialog", (d) => void d.accept("greets Ada"));
   await page.getByRole("button", { name: "Save as test case" }).click();
+  await answerDialog(page, "greets Ada");
   await expect(page.getByRole("status").filter({ hasText: "saved" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Tests" }).click();
@@ -131,9 +131,9 @@ test("frame steps with a labelled visual group, then remove it", async ({ page }
   const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Frames ${Date.now()}`, template: "ticket_triage" } })).json();
   await page.goto(`/workflows/${wf.id}`);
   await page.getByTestId("node-classify").click();
-  page.once("dialog", (d) => void d.accept("Intake"));
   await page.getByTestId("more-menu").click();
   await page.getByRole("menuitem", { name: "▭ Frame" }).click();
+  await answerDialog(page, "Intake");
   await expect(page.getByTestId("frame-Intake")).toBeVisible();
   await expect(page.locator(".save-state")).toHaveText("Saved");
   const saved = await (await api.get(`/api/v1/workflows/${wf.id}`)).json();

@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Approved by you: the Copilot on Deep Agents with AG-UI, and egress enforced or refused
+You said yes to both (2026-10-28). The Copilot moves to `deepagents` behind the adapter boundary, built behind a
+setting so the current loop stays the default until the new one passes the same scripted suite; then the old loop
+goes. Sandbox egress: enforced through an allow-list proxy for the Docker and remote backends; an allow-list on the
+in-process or subprocess backend is refused in staging and production and warned about in dev. Order of work stays
+as in `PLAN.md` §7: shell and design system first, then Settings, then the Copilot, with the egress work slotted in
+as a hardening item. *Reverse:* say so; each lands as its own commits.
+
 ### PLAN.md: the product plan, and two decisions I am not taking alone
 You asked for a plan to make the product feel finished (settings, the Copilot, anything else). `PLAN.md` at the root
 is it, from three code surveys and a look at the open-source options. Two choices in it change architecture, so I

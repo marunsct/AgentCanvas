@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router";
+import { DialogHost } from "../ui/dialog";
 import { GlobalErrors } from "../ui/GlobalErrors";
 import { shouldRetry } from "../api/retry";
 import { ErrorBoundary } from "../ui/QueryStatus";
@@ -42,6 +43,7 @@ export function App() {
   return (
     <AuthGate>
     <GlobalErrors />
+    <DialogHost />
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ErrorBoundary label="This page">

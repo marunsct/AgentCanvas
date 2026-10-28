@@ -19,3 +19,12 @@ export const test = base.extend<{ cspGuard: void }>({
 });
 
 export { expect };
+
+/** Answer the app's own dialog (ui/dialog.tsx): type `text` into its field when it has one, then confirm. */
+export async function answerDialog(page: import("@playwright/test").Page, text?: string): Promise<void> {
+  const dialog = page.getByTestId("dialog");
+  await expect(dialog).toBeVisible();
+  if (text !== undefined) await dialog.getByRole("textbox").fill(text);
+  await dialog.locator("button.confirm").click();
+  await expect(dialog).toHaveCount(0);
+}

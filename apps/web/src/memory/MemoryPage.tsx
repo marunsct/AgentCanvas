@@ -6,6 +6,7 @@ import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { NamespaceOut as Namespace, MemoryItem } from "../api/generated";
+import { confirmDialog } from "../ui/dialog";
 
 
 
@@ -51,7 +52,7 @@ export function MemoryPage() {
             <div className="row gap">
               <input placeholder="Search memories…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="search memories" />
               <button type="button" className="danger" disabled={erase.isPending}
-                onClick={() => { if (window.confirm(`Erase every memory under ${current}?`)) erase.mutate(current); }}>
+                onClick={async () => { if (await confirmDialog({ title: `Erase every memory under ${current}?`, body: "This cannot be undone.", confirm: "Erase all", danger: true })) erase.mutate(current); }}>
                 Erase all
               </button>
             </div>

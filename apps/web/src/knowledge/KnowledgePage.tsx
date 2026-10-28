@@ -13,6 +13,7 @@ import {
   ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, embeddingLabel, MODES, type Mode, NAME_PATTERN, STRATEGIES,
   suggestName,
 } from "./knowledge";
+import { confirmDialog } from "../ui/dialog";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -141,7 +142,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         <span className="spacer" />
         {builder && (
           <button type="button" className="danger"
-            onClick={() => { if (window.confirm(`Delete the knowledge base ${kb.name} and its documents?`)) drop.mutate(); }}>
+            onClick={async () => { if (await confirmDialog({ title: `Delete the knowledge base ${kb.name}?`, body: "Its documents and their search index are deleted too.", confirm: "Delete", danger: true })) drop.mutate(); }}>
             Delete
           </button>
         )}

@@ -13,6 +13,7 @@ import { formatMetrics, useRun } from "./runStore";
 import { useUi } from "../editor/ui";
 import { testCaseFromRun } from "../release/testcases";
 import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
+import { promptDialog } from "../ui/dialog";
 
 /** Open the run's LangSmith trace in a new tab (asks the API for the URL: a plain link carries no sign-in). */
 async function openTrace(runId: string) {
@@ -235,7 +236,7 @@ function SaveAsTest() {
   const draft = testCaseFromRun(wf, run, debugAids(), "");
   if (!draft) return null;
   const save = async () => {
-    const name = window.prompt("Test case name", `case ${new Date().toLocaleTimeString()}`);
+    const name = (await promptDialog({ title: "Save as test case", body: "This input must keep producing this status, route and output.", confirm: "Save", input: { label: "Name", value: `case ${new Date().toLocaleTimeString()}`, required: true } }))?.trim();
     if (!name) return;
     await apiFetch(`/workflows/${wf.id}/test-cases`, { method: "POST", json: { ...draft, name } });
     void qc.invalidateQueries({ queryKey: ["test-cases", wf.id] });

@@ -14,6 +14,7 @@ import { SecretsPanel } from "./SecretsPanel";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { FileOut, FileContent, FilesOut } from "../api/generated";
+import { confirmDialog } from "../ui/dialog";
 
 
 
@@ -146,7 +147,7 @@ export function WorkspacePage() {
                 <code>{selected}</code>{dirty && <span className="badge warn">unsaved</span>}
                 <span className="spacer" />
                 <button type="button" className="primary" onClick={doSave} disabled={!dirty || save.isPending}>Save</button>
-                <button type="button" className="danger" onClick={() => { if (window.confirm(`Delete ${selected}?`)) remove.mutate(selected); }}>
+                <button type="button" className="danger" onClick={async () => { if (await confirmDialog({ title: `Delete ${selected}?`, confirm: "Delete", danger: true })) remove.mutate(selected); }}>
                   Delete
                 </button>
               </div>

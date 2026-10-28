@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { DeploymentOut, ShareOut } from "../api/generated";
 import { embedSnippet } from "../share/share";
+import { confirmDialog } from "../ui/dialog";
 
 async function copy(text: string, done: (msg: string) => void) {
   try {
@@ -107,8 +108,8 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               <div className="row gap">
                 <button type="button" className="small" onClick={() => void copy(url, setNote)}>Copy link</button>
                 <a className="small" href={url} target="_blank" rel="noopener noreferrer">Open the page</a>
-                <button type="button" className="small" disabled={regenerate.isPending} onClick={() => {
-                  if (window.confirm("Make a new link? The current link and its conversations stop working.")) regenerate.mutate();
+                <button type="button" className="small" disabled={regenerate.isPending} onClick={async () => {
+                  if (await confirmDialog({ title: "Make a new link?", body: "The current link and its conversations stop working.", confirm: "Make a new link", danger: true })) regenerate.mutate();
                 }}>New link</button>
               </div>
               <p id={`${id}-embed`} className="connect-label">Chat widget: paste before &lt;/body&gt; on your site</p>

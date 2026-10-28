@@ -8,6 +8,7 @@ import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
 import { ShareSection } from "./ShareSection";
+import { confirmDialog, promptDialog } from "../ui/dialog";
 
 export function PublishSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
@@ -33,7 +34,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
     onError: (e) => { setChecks(e instanceof ApiError ? (e.problem.checklist as Check[] | undefined) ?? null : null); refresh(); },
   });
   const rotate = async (d: DeploymentOut) => {
-    if (!window.confirm("Issue a new key? The current key stops working immediately.")) return;
+    if (!(await confirmDialog({ title: "Issue a new key?", body: "The current key stops working immediately.", confirm: "Issue a new key", danger: true }))) return;
     setActionError(null);
     try {
       const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST" });
@@ -44,7 +45,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
     }
   };
   const unpublish = async (d: DeploymentOut) => {
-    if (!window.confirm(`Unpublish ${d.environment}? Calls with its key will be refused.`)) return;
+    if (!(await confirmDialog({ title: `Unpublish ${d.environment}?`, body: "Calls with its key will be refused.", confirm: "Unpublish", danger: true }))) return;
     setActionError(null);
     try {
       await apiFetch(`/deployments/${d.id}`, { method: "DELETE" });
@@ -63,8 +64,8 @@ export function PublishSection({ wfId }: { wfId: string }) {
       {publish.error && <p className="error-text small" role="alert">{(publish.error as Error).message}</p>}
       {actionError && <p className="error-text small" role="alert">{actionError}</p>}
       {publish.error && can("admin") && checks?.some((c) => c.name === "evaluation" && !c.ok) && checks.every((c) => c.ok || c.name === "evaluation") && (
-        <button type="button" className="small danger" onClick={() => {
-          const reason = window.prompt("Publish although the release gate fails? The reason goes to the audit log.");
+        <button type="button" className="small danger" onClick={async () => {
+          const reason = await promptDialog({ title: "Publish although the release gate fails?", body: "The reason goes to the audit log.", confirm: "Publish anyway", danger: true, input: { label: "Reason", required: true } });
           if (reason?.trim()) publish.mutate(reason.trim());
         }}>Publish anyway…</button>
       )}

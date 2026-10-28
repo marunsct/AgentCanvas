@@ -12,6 +12,7 @@ import { ExportSection } from "./ExportSection";
 import { PublishSection } from "./PublishSection";
 import { TriggersSection } from "./TriggersSection";
 import { QueryStatus } from "../ui/QueryStatus";
+import { confirmDialog } from "../ui/dialog";
 
 export function VersionsPanel() {
   const wf = useEditor((s) => s.wf);
@@ -43,7 +44,7 @@ export function VersionsPanel() {
   };
   const clear = () => { setDiff(null); useUi.getState().setDiff(null); };
   const restore = async (v: VersionOut) => {
-    if (!window.confirm(`Replace the draft with v${v.semver}? (Undo is not available; save a version first.)`)) return;
+    if (!(await confirmDialog({ title: `Replace the draft with v${v.semver}?`, body: "Undo is not available; save a version first.", confirm: "Replace the draft", danger: true }))) return;
     const { flush, version, load } = useEditor.getState();
     await flush();
     await apiFetch(`/workflows/${wf!.id}/versions/${v.id}/restore`, { method: "POST", version: useEditor.getState().version || version });
