@@ -1122,3 +1122,5 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .empty .empty-title { margin: 4px 0 0; color: var(--text); font-weight: 600; }
 .empty p { margin: 0; max-width: 52ch; }
 .empty > a, .empty > button { margin-top: 6px; }
+.table.compact th, .table.compact td { padding: 5px 8px; }
+.table tr.selected td { background: var(--accent-soft); }

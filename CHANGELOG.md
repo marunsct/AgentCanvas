@@ -106,6 +106,7 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **Environments**: an organisation can list where workflows are published (Settings > Organisation > General);
   with a list, publishing elsewhere is refused; without one, any name works and dev, staging and prod are offered.
   The editor's Publish picks the environment instead of always using prod (migration `a8c4e2f6b0d3`).
+- The editor's dock has a **History** tab: this workflow's past runs; one click opens a run in the Timeline.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

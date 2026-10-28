@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { PortRef } from "../canvas/suggest";
 import { loadSimple, saveSimple } from "./simple";
 
-export type DockTab = "problems" | "timeline" | "explain";
+export type DockTab = "problems" | "timeline" | "explain" | "runs";
 
 interface UiState {
   paletteOpen: boolean;

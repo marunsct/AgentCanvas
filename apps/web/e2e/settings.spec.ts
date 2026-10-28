@@ -104,3 +104,16 @@ test("Runs lists a workflow's conversations and opens one in the editor", async 
   await row.getByRole("link", { name: wf.name }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${wf.id}\\?thread=th_`));
 });
+
+test("the editor's History tab lists this workflow's runs and opens one in the Timeline", async ({ page }) => {
+  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `History ${Date.now()}` } })).json();
+  const ran = await page.request.post(`/api/v1/workflows/${wf.id}/runs/stream`, { data: { input: {} } });
+  const thread = ran.headers()["x-thread-id"];
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByRole("tab", { name: "History", exact: true }).click();
+  const row = page.getByTestId("run-history").locator("tbody tr").first();
+  await expect(row).toContainText("Editor");
+  await row.click();
+  await expect(page.getByRole("tab", { name: "Timeline", exact: true })).toHaveAttribute("aria-selected", "true");
+  expect(thread).toMatch(/^th_/);
+});

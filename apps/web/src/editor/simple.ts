@@ -13,7 +13,7 @@ export const SIMPLE_TYPES = new Set([
 
 /** Side panels and dock tabs Simple mode keeps. */
 export const SIMPLE_TABS = new Set(["inspect", "copilot", "run"]);
-export const SIMPLE_DOCK = new Set(["problems", "timeline"]);
+export const SIMPLE_DOCK = new Set(["problems", "timeline", "runs"]);
 
 const KEY = "agentcanvas.simple";
 

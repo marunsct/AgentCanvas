@@ -17,6 +17,7 @@ import { RunPanel } from "../run/RunPanel";
 import { useRun } from "../run/runStore";
 import { stopStreaming } from "../run/session";
 import { Timeline } from "../run/Timeline";
+import { RunHistory } from "../run/RunHistory";
 import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
 import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
@@ -182,15 +183,16 @@ export function EditorPage() {
       </aside>
       <footer className="dock">
         <nav className="tabs dock-tabs" role="tablist">
-          {(["problems", "timeline", "explain"] as DockTab[]).filter((t) => !simple || SIMPLE_DOCK.has(t)).map((t) => (
+          {(["problems", "timeline", "explain", "runs"] as DockTab[]).filter((t) => !simple || SIMPLE_DOCK.has(t)).map((t) => (
             <button type="button" role="tab" key={t} aria-selected={dock === t} className={dock === t ? "active" : ""}
-              onClick={() => setDock(t)}>{{ problems: "Problems", timeline: "Timeline", explain: "Explain" }[t]}</button>
+              onClick={() => setDock(t)}>{{ problems: "Problems", timeline: "Timeline", explain: "Explain", runs: "History" }[t]}</button>
           ))}
         </nav>
         <ErrorBoundary key={dock} label="This panel">
           {dock === "problems" && <ProblemsPanel />}
           {dock === "timeline" && <Timeline />}
           {dock === "explain" && <ExplainView />}
+          {dock === "runs" && <RunHistory />}
         </ErrorBoundary>
       </footer>
       <CommandPalette onRun={() => setTab("run")} onCopilot={() => setTab("copilot")} />
