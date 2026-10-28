@@ -332,7 +332,7 @@ export function Canvas() {
             onClick={() => void useCopilot.getState().reject()}>Reject</button>
         </div>
       )}
-      {wf && wf.nodes.length === 0 && (
+      {wf && wf.nodes.length === 0 && !ghost && ( // not over a Copilot preview of the first steps
         <div className="empty-hint">
           Click the dot on the right of <b>▶ Start</b> to pick your first step, or drag a block from the left.
           <br />New to this? Open <b>❓ Help</b> at the top for a two-minute guide.
