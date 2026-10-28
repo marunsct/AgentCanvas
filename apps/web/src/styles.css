@@ -1072,8 +1072,11 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .radio-list { display: flex; flex-direction: column; gap: 2px; }
 .radio-list label { margin: 4px 0; color: var(--text); font-size: 13.5px; }
 .radio-list input[type=radio] { width: auto; margin: 0; }
-.server-table td:first-child { width: 40%; }
-.server-table td:last-child { width: 1%; white-space: nowrap; }
+/* the same column widths in every section, so values and variables line up down the page */
+.server-table { table-layout: fixed; width: 100%; }
+.server-table td:first-child { width: 26%; }
+.server-table td:nth-child(2) { width: 32%; }
+.server-table td:last-child { width: 42%; overflow-wrap: anywhere; }
 
 /* Copilot: plan, streamed text, Markdown answers, error card */
 .copilot-plan { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; margin-bottom: 6px; background: var(--panel); }
