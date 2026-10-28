@@ -163,6 +163,9 @@ class DeepAgentTurn(CopilotTurn):
                 if self._over_cap():
                     yield {"type": "error", "message": "this conversation reached its token limit; start a new chat"}
                     break
+        except (asyncio.CancelledError, GeneratorExit):  # Stop, or the connection went: keep what was said
+            self.stopped([*said, streamed.strip()] if streamed.strip() else said)
+            raise
         except GraphRecursionError:
             yield {"type": "error", "message": "the Copilot stopped after too many steps; ask it to continue"}
         except Exception as exc:  # noqa: BLE001 - a provider error ends the turn with a readable message

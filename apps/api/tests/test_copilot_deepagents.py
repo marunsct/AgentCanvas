@@ -100,3 +100,42 @@ async def test_the_full_workflow_is_a_file_and_the_whole_conversation_is_sent(ap
     assert sum(1 for m in sent if m.type == "human") == 31  # every earlier question, then this one
     read = [m for m in model.received[-1] if m.type == "tool"]
     assert read and '"n_' in read[0].content  # the file holds the workflow's nodes
+
+
+@pytest.mark.parametrize("engine", ["loop", "deepagents"])
+async def test_stop_keeps_what_was_said(engine):
+    """Stop (or a dropped connection) ends the turn; the conversation keeps the part already said, marked stopped."""
+    from agentcanvas.adapters import model_service
+    from agentcanvas.adapters.langchain.copilot import DeepAgentTurn
+    from agentcanvas.adapters.langchain.testing import scripted
+    from agentcanvas.copilot.pack import build_pack
+    from agentcanvas.copilot.service import CopilotTurn
+    from agentcanvas.copilot.settings import ResolvedModel
+    from agentcanvas.copilot.tools import ToolContext
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+    from agentcanvas.services.workflows import list_templates
+    from agentcanvas.settings import Settings
+    from agentcanvas.validation import validate
+
+    registry, templates = default_registry(), list_templates(Settings())
+
+    async def check(wf):
+        return validate(wf, registry)
+
+    first = AIMessage(content="Looking at it now.", tool_calls=[{"name": "get_workflow", "args": {}, "id": "c1"}])
+    resources = DemoResources(overrides={"copilot": scripted(first, "All done.")})
+    history: list = []
+    turn = (CopilotTurn if engine == "loop" else DeepAgentTurn)(
+        model_service(), resources, ResolvedModel(model="anthropic:claude-haiku-4-5", origin="test"),
+        build_pack(registry, templates), ToolContext(Workflow(id="wf_t", name="t"), registry, templates, check),
+        history=history, proposals=[], usage={}, token_cap=1_000_000, base_version=1,
+    )  # fmt: skip
+    events = turn.run("look at it", "ask")
+    async for event in events:
+        if event["type"] == "text":
+            break  # the person presses Stop after the first words
+    await events.aclose()
+    assert history[0]["role"] == "user"
+    assert history[-1]["role"] == "assistant" and history[-1]["stopped"] is True
+    assert history[-1]["content"] == "Looking at it now."

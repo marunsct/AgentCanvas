@@ -172,6 +172,28 @@ class CopilotTurn:
         said: list[str] = []
         yield {"type": "start", "model": self.model.model, "origin": self.model.origin}
         try:
+            async for event in self._steps(messages, tools, allowed, said):
+                yield event
+        except BaseException:  # stopped (the person pressed Stop, or the connection went): keep what was said
+            self.stopped(said)
+            raise
+        proposal = await self._proposal()
+        if proposal is not None:
+            yield {"type": "proposal", "proposal": proposal}
+        entry: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(said), "at": _now()}
+        if proposal is not None:
+            entry["proposal_id"] = proposal["id"]
+        self.history.append(entry)
+        yield {"type": "done", "usage": dict(self.usage), "cap": self.token_cap}
+
+    def stopped(self, said: list[str]) -> None:
+        """The turn ended before its answer: the conversation keeps the part that was said, marked as stopped."""
+        self.history.append({"role": "assistant", "content": "\n\n".join(said), "at": _now(), "stopped": True})
+
+    async def _steps(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], allowed: list[str], said: list[str]
+    ) -> AsyncIterator[dict[str, Any]]:
+        try:
             for step in range(MAX_STEPS):
                 if self._over_cap():
                     yield {"type": "error", "message": "this conversation reached its token limit; start a new chat"}
@@ -204,14 +226,6 @@ class CopilotTurn:
                     yield {"type": "error", "message": "the Copilot stopped after too many steps; ask it to continue"}
         except Exception as exc:  # noqa: BLE001 - a provider error ends the turn with a readable message
             yield {"type": "error", "message": f"the model call failed: {type(exc).__name__}: {exc}"[:MAX_ERROR]}
-        proposal = await self._proposal()
-        if proposal is not None:
-            yield {"type": "proposal", "proposal": proposal}
-        entry: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(said), "at": _now()}
-        if proposal is not None:
-            entry["proposal_id"] = proposal["id"]
-        self.history.append(entry)
-        yield {"type": "done", "usage": dict(self.usage), "cap": self.token_cap}
 
     def _size(self) -> tuple[int, int, int]:
         p = self.ctx.proposal
