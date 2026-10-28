@@ -9981,14 +9981,71 @@
       },
       "ThreadOut": {
         "properties": {
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
+          "deployment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "set when the conversation came through a deployment's API",
+            "title": "Deployment Id"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "last_ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ended At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At"
+          },
+          "runs": {
+            "default": 0,
+            "title": "Runs",
+            "type": "integer"
           },
           "status": {
             "title": "Status",
@@ -10005,6 +10062,11 @@
             ],
             "title": "Title"
           },
+          "tokens": {
+            "default": 0,
+            "title": "Tokens",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -10013,6 +10075,17 @@
           "workflow_id": {
             "title": "Workflow Id",
             "type": "string"
+          },
+          "workflow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Name"
           }
         },
         "required": [
@@ -21013,6 +21086,7 @@
     },
     "/v1/threads": {
       "get": {
+        "description": "Conversations (threads) newest first, each with its workflow's name and a summary of its runs.",
         "operationId": "list_threads_v1_threads_get",
         "parameters": [
           {
@@ -21029,6 +21103,24 @@
                 }
               ],
               "title": "Workflow Id"
+            }
+          },
+          {
+            "description": "only this project's conversations",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only this project's conversations",
+              "title": "Project Id"
             }
           },
           {

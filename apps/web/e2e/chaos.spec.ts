@@ -18,7 +18,7 @@ const MODES: Record<string, (route: import("@playwright/test").Route) => Promise
 
 const PAGES = (wf: string) => [
   "/", `/workflows/${wf}`, `/workflows/${wf}/evaluation`, `/workflows/${wf}/workspace`, "/playground", "/inbox",
-  "/memory", "/knowledge", "/workspace", "/events", ...SETTINGS,
+  "/memory", "/knowledge", "/workspace", "/events", "/runs", ...SETTINGS,
 ];
 
 const BOUNDARY_IS_FINE = new Set(["unexpected object"]);

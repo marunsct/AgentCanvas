@@ -98,7 +98,7 @@ test("no page has an unlabelled button", async ({ page }) => {
     await page.getByRole("tab", { name: dock, exact: true }).click();
     await expectAllLabelled(page, `the editor's ${dock} panel`);
   }
-  for (const path of ["/", "/workspace", "/inbox", "/memory", "/events", "/playground", "/knowledge", ...SETTINGS,
+  for (const path of ["/", "/workspace", "/inbox", "/memory", "/events", "/playground", "/knowledge", "/runs", ...SETTINGS,
     `${new URL(editorUrl).pathname}/evaluation`, `${new URL(editorUrl).pathname}/workspace`]) {
     await page.goto(path);
     await expectAllLabelled(page, path);

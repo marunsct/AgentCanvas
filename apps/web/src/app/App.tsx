@@ -16,6 +16,7 @@ const InboxPage = lazy(() => import("../inbox/InboxPage").then((m) => ({ default
 const MemoryPage = lazy(() => import("../memory/MemoryPage").then((m) => ({ default: m.MemoryPage })));
 const KnowledgePage = lazy(() => import("../knowledge/KnowledgePage").then((m) => ({ default: m.KnowledgePage })));
 const EvaluationPage = lazy(() => import("../evaluation/EvaluationPage").then((m) => ({ default: m.EvaluationPage })));
+const RunsPage = lazy(() => import("../runs/RunsPage").then((m) => ({ default: m.RunsPage })));
 const SettingsPage = lazy(() => import("../settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const SharePage = lazy(() => import("../share/SharePage").then((m) => ({ default: m.SharePage })));
 const PlaygroundPage = lazy(() => import("../playground/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })));
@@ -54,6 +55,7 @@ export function App() {
             <Route path="/workflows/:id/workspace" element={<WorkspacePage />} />
             <Route path="/settings/:section?" element={<SettingsPage />} />
             <Route path="/playground" element={<PlaygroundPage />} />
+            <Route path="/runs" element={<RunsPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/memory" element={<MemoryPage />} />
             <Route path="/knowledge" element={<KnowledgePage />} />

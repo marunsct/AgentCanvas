@@ -550,3 +550,19 @@ async def test_mock_models_follow_the_conversation_across_resume(triage_api, app
     assert state["messages"][-1]["content"] == "Mocked: reply sent."
     unknown = {**body, "thread_id": None, "mocks": {"nope": ["x"]}}
     assert (await api.post(f"/v1/workflows/{wf}/runs/stream", json=unknown)).status_code == 422
+
+
+async def test_the_runs_page_lists_a_projects_conversations_with_their_runs(app, api_client):
+    """GET /threads?project_id=: each conversation with its workflow's name and a summary of its runs."""
+    from test_publish import make_greeter
+
+    wf = await make_greeter(api_client)
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}})
+    assert r.status_code == 200
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    page = (await api_client.get("/v1/threads", params={"project_id": "prj_default"})).json()["items"]
+    mine = [t for t in page if t["workflow_id"] == wf]
+    assert len(mine) == 1 and mine[0]["workflow_name"] == "Greeter" and mine[0]["runs"] == 1
+    assert mine[0]["last_started_at"] and mine[0]["last_ended_at"] and mine[0]["last_error"] is None
+    assert (await api_client.get("/v1/threads", params={"project_id": other})).json()["items"] == []
+    assert (await api_client.get("/v1/threads", params={"project_id": "prj_nope"})).status_code == 404

@@ -91,3 +91,16 @@ test("the workflow list renames, duplicates and deletes, and finds by name", asy
   await answerDialog(page);
   await expect(list.locator("li")).toHaveCount(1);
 });
+
+test("Runs lists a workflow's conversations and opens one in the editor", async ({ page }) => {
+  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Ran ${Date.now()}` } })).json();
+  const ran = await page.request.post(`/api/v1/workflows/${wf.id}/runs/stream`, { data: { input: {} } });
+  expect(ran.ok()).toBeTruthy();
+  await page.goto("/runs");
+  await page.getByLabel("filter by workflow").selectOption(wf.id);
+  const row = page.getByTestId("runs").locator("tbody tr").first();
+  await expect(row).toContainText(wf.name);
+  await expect(row).toContainText("Editor");
+  await row.getByRole("link", { name: wf.name }).click();
+  await expect(page).toHaveURL(new RegExp(`/workflows/${wf.id}\\?thread=th_`));
+});

@@ -64,6 +64,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **The workflow list** on Home: search, sort by last change or name, and per workflow Rename, Duplicate (the
   draft and its layout; `POST /workflows/{id}/duplicate`) and Delete with a confirmation (`PATCH /workflows/{id}`
   renames). Dates read "3 min ago", with the exact time on hover.
+- **Runs** (top bar): every conversation with the project's workflows, newest first, with status, where it came
+  from (editor or API), when, how long, how many runs and their cost, the last error; filter by status and
+  workflow, open one in the editor's timeline, delete one, load more. `GET /threads` takes `project_id` and returns
+  each thread's workflow name and run summary.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

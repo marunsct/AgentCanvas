@@ -134,6 +134,15 @@ class ThreadOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    # the Runs page's summary (filled by GET /threads)
+    workflow_name: str | None = None
+    deployment_id: str | None = Field(None, description="set when the conversation came through a deployment's API")
+    runs: int = 0
+    tokens: int = 0
+    cost_usd: float = 0.0
+    last_started_at: datetime | None = None
+    last_ended_at: datetime | None = None
+    last_error: str | None = None
 
 
 class ThreadPage(BaseModel):
@@ -345,36 +354,59 @@ async def cancel_run(run_id: str, r: Runner = Depends(runner)) -> dict[str, Any]
 @router.get("/threads", response_model=ThreadPage)
 async def list_threads(
     workflow_id: str | None = None,
+    project_id: str | None = Query(None, description="only this project's conversations"),
     status: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> ThreadPage:
+    """Conversations (threads) newest first, each with its workflow's name and a summary of its runs."""
     q = (
-        select(Thread)
+        select(Thread, WorkflowRow.name)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
         .where(Project.org_id == user.org_id)
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
+    if project_id:
+        q = q.where(WorkflowRow.project_id == project_id)
     if status:
         q = q.where(Thread.status == status)
     if cursor:
         q = q.where(Thread.id < cursor)
-    rows = list((await session.scalars(q.order_by(Thread.id.desc()).limit(limit + 1))).all())
-    items = [
-        ThreadOut(
-            id=t.id,
-            workflow_id=t.workflow_id,
-            title=t.title,
-            status=t.status,
-            created_at=t.created_at,
-            updated_at=t.updated_at,
+    rows = list((await session.execute(q.order_by(Thread.id.desc()).limit(limit + 1))).all())
+    page = rows[:limit]
+    runs: dict[str, list[Run]] = {}
+    if page:
+        found = await session.scalars(
+            select(Run).where(Run.thread_id.in_([t.id for t, _ in page])).order_by(Run.started_at)
         )
-        for t in rows[:limit]
-    ]
+        for r in found:
+            runs.setdefault(r.thread_id, []).append(r)
+    items = []
+    for t, wf_name in page:
+        mine = runs.get(t.id, [])
+        last = mine[-1] if mine else None
+        items.append(
+            ThreadOut(
+                id=t.id,
+                workflow_id=t.workflow_id,
+                title=t.title,
+                status=t.status,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                workflow_name=wf_name,
+                deployment_id=t.deployment_id,
+                runs=len(mine),
+                tokens=sum(r.tokens_in + r.tokens_out for r in mine),
+                cost_usd=float(sum(r.cost_usd for r in mine)),
+                last_started_at=last.started_at if last else None,
+                last_ended_at=last.ended_at if last else None,
+                last_error=last.error if last else None,
+            )
+        )
     return ThreadPage(items=items, next_cursor=items[-1].id if len(rows) > limit else None)
 
 

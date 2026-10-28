@@ -1953,12 +1953,23 @@ export type Passed3 = number;
 export type Results2 = CaseResult[];
 export type Text6 = string;
 export type Title6 = string;
+export type CostUsd3 = number;
 export type CreatedAt28 = string;
+/**
+ * set when the conversation came through a deployment's API
+ */
+export type DeploymentId3 = string | null;
 export type Id51 = string;
+export type LastEndedAt = string | null;
+export type LastError = string | null;
+export type LastStartedAt = string | null;
+export type Runs3 = number;
 export type Status14 = string;
 export type Title7 = string | null;
+export type Tokens2 = number;
 export type UpdatedAt10 = string;
 export type WorkflowId8 = string;
+export type WorkflowName1 = string | null;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
 /**
@@ -1991,16 +2002,16 @@ export type SecretKey = {
 } | null;
 export type MissingSecrets = string[];
 export type CreatedAt29 = string;
-export type DeploymentId3 = string | null;
+export type DeploymentId4 = string | null;
 export type Enabled9 = boolean;
 export type Id52 = string;
 export type Kind9 = string;
 export type Secret = string | null;
 export type Url3 = string | null;
-export type DeploymentId4 = string | null;
+export type DeploymentId5 = string | null;
 export type Kind10 = "webhook" | "cron";
 export type CreatedAt30 = string;
-export type DeploymentId5 = string | null;
+export type DeploymentId6 = string | null;
 export type Enabled10 = boolean;
 export type Id53 = string;
 export type Kind11 = string;
@@ -5143,12 +5154,20 @@ export interface TextIn {
  * via the `definition` "ThreadOut".
  */
 export interface ThreadOut {
+  cost_usd?: CostUsd3;
   created_at: CreatedAt28;
+  deployment_id?: DeploymentId3;
   id: Id51;
+  last_ended_at?: LastEndedAt;
+  last_error?: LastError;
+  last_started_at?: LastStartedAt;
+  runs?: Runs3;
   status: Status14;
   title: Title7;
+  tokens?: Tokens2;
   updated_at: UpdatedAt10;
   workflow_id: WorkflowId8;
+  workflow_name?: WorkflowName1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5207,7 +5226,7 @@ export interface Guides {
 export interface TriggerCreated {
   config: Config7;
   created_at: CreatedAt29;
-  deployment_id: DeploymentId3;
+  deployment_id: DeploymentId4;
   enabled: Enabled9;
   id: Id52;
   kind: Kind9;
@@ -5223,7 +5242,7 @@ export interface Config7 {
  */
 export interface TriggerIn {
   config?: Config8;
-  deployment_id?: DeploymentId4;
+  deployment_id?: DeploymentId5;
   kind: Kind10;
 }
 export interface Config8 {
@@ -5236,7 +5255,7 @@ export interface Config8 {
 export interface TriggerOut {
   config: Config9;
   created_at: CreatedAt30;
-  deployment_id: DeploymentId5;
+  deployment_id: DeploymentId6;
   enabled: Enabled10;
   id: Id53;
   kind: Kind11;

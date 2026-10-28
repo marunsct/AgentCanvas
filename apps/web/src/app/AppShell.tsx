@@ -1,7 +1,7 @@
 /** The frame around every page except the editor (which has its own bar and borrows `PersonMenu`): one top bar with
  * the project, the product's pages, Settings and the person's menu, so moving between pages never goes through Home. */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, Brain, ChevronDown, FolderCode, Inbox, LayoutGrid, LogOut, Plus, Radio, Settings, Sparkles, User } from "lucide-react";
+import { Activity, BookOpen, Brain, ChevronDown, FolderCode, Inbox, LayoutGrid, LogOut, Plus, Radio, Settings, Sparkles, User } from "lucide-react";
 import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router";
 import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
@@ -38,6 +38,7 @@ function TopBar() {
       <nav className="nav-links" aria-label="Pages">
         {link("/", "Workflows", <LayoutGrid {...ICON} />, "workflows-link", true)}
         {canBuild && link("/playground", "Playground", <Sparkles {...ICON} />, "playground-link")}
+        {link("/runs", "Runs", <Activity {...ICON} />, "runs-link")}
         <NavLink to="/inbox" data-testid="inbox-link" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
           <Inbox {...ICON} /><span>Inbox</span>{pending > 0 && <span className="badge warn" aria-label={`${pending} waiting`}>{pending}</span>}
         </NavLink>
