@@ -3,7 +3,13 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { can, useCan, useMe } from "../api/session";
 import { useEditor } from "../editor/store";
+import { useQuery } from "@tanstack/react-query";
+import { History } from "lucide-react";
+import { apiFetch } from "../api/client";
+import type { CopilotThreadOut } from "../api/generated";
+import { confirmDialog } from "../ui/dialog";
 import { Markdown } from "../ui/Markdown";
+import { Menu } from "../ui/Menu";
 import { type Brief, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
 import { describe, preview } from "./review";
 
@@ -28,6 +34,44 @@ function BriefCard({ brief }: { brief: Brief }) {
         <div key={k}><span className="muted small">{k}</span><ul>{v!.map((x) => <li key={x}>{x}</li>)}</ul></div>
       ))}
     </section>
+  );
+}
+
+/** The person's earlier conversations about this workflow: reopen one, or delete it. */
+function Threads({ workflowId, current, busy }: { workflowId: string | null; current: string | null; busy: boolean }) {
+  const threads = useQuery({
+    queryKey: ["copilot-threads", workflowId, current],
+    queryFn: () => apiFetch<CopilotThreadOut[]>(`/workflows/${workflowId}/copilot/threads`),
+    enabled: Boolean(workflowId),
+  });
+  const others = (threads.data ?? []).filter((t) => !t.open);
+  return (
+    <Menu label={<><History size={14} aria-hidden /> History</>} testId="copilot-history" title="Earlier conversations about this workflow">
+      {(close) => (
+        <>
+          <p className="menu-heading">Earlier conversations</p>
+          {threads.isError && <p className="error-text small">Could not list them: {(threads.error as Error).message}</p>}
+          {threads.data && others.length === 0 && <p className="muted small" style={{ margin: "4px 10px" }}>None yet. New chat keeps this one here.</p>}
+          {others.map((t) => (
+            <div key={t.id} className="thread-row">
+              <button type="button" role="menuitem" disabled={busy} title={t.title ?? "Untitled"}
+                onClick={() => { close(); void useCopilot.getState().openThread(t.id); }}>
+                <span className="thread-title">{t.title ?? "Untitled"}</span>
+                <small className="muted">{new Date(t.updated_at).toLocaleDateString()} · {t.messages} messages</small>
+              </button>
+              <button type="button" className="link small" aria-label={`delete conversation ${t.title ?? ""}`} disabled={busy}
+                onClick={async () => {
+                  close();
+                  if (await confirmDialog({ title: "Delete this conversation?", body: t.title ?? undefined, confirm: "Delete", danger: true })) {
+                    await useCopilot.getState().deleteThread(t.id);
+                    void threads.refetch();
+                  }
+                }}>×</button>
+            </div>
+          ))}
+        </>
+      )}
+    </Menu>
   );
 }
 
@@ -151,7 +195,9 @@ export function CopilotPanel() {
           {conversation.model.model ?? "No model yet"}
         </span>
         <span className="spacer" />
-        <button type="button" className="link small" onClick={() => void useCopilot.getState().newChat()} disabled={busy}>New chat</button>
+        <Threads workflowId={workflowId} current={conversation.id} busy={busy} />
+        <button type="button" className="link small" onClick={() => void useCopilot.getState().newChat()} disabled={busy}
+          title="Start a new conversation; this one is kept under History">New chat</button>
       </div>
       {conversation.model.problem && (
         <p className="error-text small" data-testid="copilot-model-problem">

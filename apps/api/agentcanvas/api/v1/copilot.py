@@ -11,12 +11,13 @@ import asyncio
 import json
 import re
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,7 +43,7 @@ from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["copilot"])
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-_busy: set[tuple[str, str]] = set()  # (workflow, person) answering right now: one turn at a time per conversation
+LEASE = timedelta(minutes=15)  # a turn holds its conversation this long at most (a crashed server's lease expires)
 _packs: dict[str, Pack] = {}  # registry + templates fingerprint -> pack
 
 
@@ -108,9 +109,15 @@ async def _conversation(
     session: AsyncSession, wf_id: str, user_id: str, lock: bool = False
 ) -> CopilotConversation | None:
     q = select(CopilotConversation).where(
-        CopilotConversation.workflow_id == wf_id, CopilotConversation.user_id == user_id
+        CopilotConversation.workflow_id == wf_id,
+        CopilotConversation.user_id == user_id,
+        CopilotConversation.archived_at.is_(None),
     )
     return await session.scalar(q.with_for_update() if lock else q)
+
+
+def _aware(t: datetime | None) -> datetime | None:
+    return t.replace(tzinfo=UTC) if t is not None and t.tzinfo is None else t
 
 
 async def _model(
@@ -195,15 +202,24 @@ async def send_message(
     """Ask the Copilot (`ask`: questions only, any role) or have it build (`build`: builders) — an SSE stream."""
     if body.mode == "build" and RANK.get(user.role, -1) < RANK["builder"]:
         raise Forbidden("only builders can have the Copilot change workflows; use Ask mode for questions")
-    key = (wf_id, user.id)
-    if key in _busy:  # checked and taken with no await in between
-        raise Conflict("the Copilot is still answering your last message")
-    _busy.add(key)
+    leased: list[str] = []
     try:
-        return await _start_turn(wf_id, body, request, session, settings, user, key)
+        return await _start_turn(wf_id, body, request, session, settings, user, leased)
     except BaseException:
-        _busy.discard(key)
+        # the turn never started streaming: an uncommitted lease goes with the rollback, which also lets go of the
+        # row lock before the release below (on Postgres it would otherwise wait for this session for ever)
+        await session.rollback()
+        if leased:
+            await _release(request.app.state.db, leased[0])
         raise
+
+
+async def _release(db: Any, conv_id: str) -> None:
+    async with db.sessionmaker() as s:
+        row = await s.get(CopilotConversation, conv_id, with_for_update=True)
+        if row is not None:
+            row.busy_until = None
+            await s.commit()
 
 
 async def _start_turn(
@@ -213,7 +229,7 @@ async def _start_turn(
     session: AsyncSession,
     settings: Settings,
     user: CurrentUser,
-    key: tuple[str, str],
+    leased: list[str],
 ) -> StreamingResponse:
     svc = _service(request, session, settings)
     view = await svc.get(wf_id)
@@ -223,15 +239,20 @@ async def _start_turn(
     if not cs.enabled:
         raise Forbidden("the Copilot is switched off for this project")
     model = await _model(svc, view, project.settings or {}, cs, body.mode)
-    conv = await _conversation(session, wf_id, user.id)
+    now = datetime.now(UTC)
+    conv = await _conversation(session, wf_id, user.id, lock=True)  # the lease: one turn at a time, on any replica
     if conv is None:
         conv = CopilotConversation(id=new_id("cpc"), workflow_id=wf_id, user_id=user.id, messages=[], proposals=[])
         conv.usage = {}
         session.add(conv)
-        try:
-            await session.flush()
-        except IntegrityError as exc:  # the same person's first message from another tab won
-            raise Conflict("the Copilot is still answering your last message") from exc
+    elif (until := _aware(conv.busy_until)) is not None and until > now:
+        raise Conflict("the Copilot is still answering your last message")
+    conv.busy_until = now + LEASE
+    try:
+        await session.flush()
+    except IntegrityError as exc:  # the same person's first message from another tab won
+        raise Conflict("the Copilot is still answering your last message") from exc
+    leased.append(conv.id)
     usage: dict[str, int] = dict(conv.usage or {})
     if usage.get("input_tokens", 0) + usage.get("output_tokens", 0) >= cs.token_cap:
         raise TooManyRequests("this conversation reached its token limit; start a new chat")
@@ -274,6 +295,10 @@ async def _start_turn(
             if row is None:  # "New chat" while answering
                 return
             row.messages = [*(row.messages or []), *turn.history[seen_messages:]]
+            row.busy_until = None
+            if not row.title:  # the first question names the conversation in the thread list
+                first = next((m.get("content", "") for m in row.messages if m.get("role") == "user"), "")
+                row.title = " ".join(first.split())[:80] or None
             row.proposals = merge_proposals(list(row.proposals or []), turn.proposals)
             row.brief = ctx.brief
             now = dict(row.usage or {})
@@ -291,10 +316,7 @@ async def _start_turn(
                             p["status"] = "superseded"
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         finally:
-            try:
-                await asyncio.shield(save())
-            finally:
-                _busy.discard(key)
+            await asyncio.shield(save())
 
     return StreamingResponse(counted_stream(stream()), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -349,12 +371,107 @@ async def decide_proposal(
 async def new_chat(
     wf_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> Response:
-    """Forget this conversation (brief, messages and proposals) and start over."""
-    await session.execute(
-        delete(CopilotConversation).where(
-            CopilotConversation.workflow_id == wf_id, CopilotConversation.user_id == user.id
-        )
+    """Start over: the open conversation is archived (listed under the person's conversations), or dropped when it
+    has no messages."""
+    conv = await _conversation(session, wf_id, user.id, lock=True)
+    if conv is not None:
+        if (until := _aware(conv.busy_until)) is not None and until > datetime.now(UTC):
+            raise Conflict("the Copilot is still answering; stop it first")
+        if conv.messages:
+            conv.archived_at = datetime.now(UTC)
+        else:
+            await session.delete(conv)
+        await session.commit()
+    return Response(status_code=204)
+
+
+class CopilotThreadOut(BaseModel):
+    id: str
+    title: str | None
+    messages: int
+    open: bool = Field(description="the conversation the panel shows; the others are archived")
+    created_at: datetime
+    updated_at: datetime
+
+
+async def _thread(session: AsyncSession, wf_id: str, user_id: str, conv_id: str) -> CopilotConversation:
+    row = await session.get(CopilotConversation, conv_id, with_for_update=True)
+    if row is None or row.workflow_id != wf_id or row.user_id != user_id:
+        raise NotFound(f"conversation '{conv_id}' not found")
+    return row
+
+
+@router.get("/workflows/{wf_id}/copilot/threads", response_model=list[CopilotThreadOut])
+async def list_threads(
+    wf_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> list[CopilotThreadOut]:
+    """The person's Copilot conversations about this workflow, newest first."""
+    rows = await session.scalars(
+        select(CopilotConversation)
+        .where(CopilotConversation.workflow_id == wf_id, CopilotConversation.user_id == user.id)
+        .order_by(CopilotConversation.updated_at.desc(), CopilotConversation.id.desc())
     )
+    return [
+        CopilotThreadOut(
+            id=r.id,
+            title=r.title,
+            messages=len(r.messages or []),
+            open=r.archived_at is None,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/workflows/{wf_id}/copilot/threads/{conv_id}/open", status_code=204)
+async def open_thread(
+    wf_id: str, conv_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> Response:
+    """Reopen an archived conversation; the open one is archived (or dropped when empty)."""
+    target = await _thread(session, wf_id, user.id, conv_id)
+    current = await _conversation(session, wf_id, user.id, lock=True)
+    if current is not None and current.id != target.id:
+        if (until := _aware(current.busy_until)) is not None and until > datetime.now(UTC):
+            raise Conflict("the Copilot is still answering; stop it first")
+        if current.messages:
+            current.archived_at = datetime.now(UTC)
+        else:
+            await session.delete(current)
+        await session.flush()
+    target.archived_at = None
+    await session.commit()
+    return Response(status_code=204)
+
+
+class CopilotThreadPatch(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+@router.patch("/workflows/{wf_id}/copilot/threads/{conv_id}", response_model=CopilotThreadOut)
+async def rename_thread(
+    wf_id: str,
+    conv_id: str,
+    body: CopilotThreadPatch,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> CopilotThreadOut:
+    row = await _thread(session, wf_id, user.id, conv_id)
+    row.title = body.title.strip()
+    await session.commit()
+    await session.refresh(row)  # updated_at comes from the database
+    return CopilotThreadOut(id=row.id, title=row.title, messages=len(row.messages or []), open=row.archived_at is None,
+                     created_at=row.created_at, updated_at=row.updated_at)  # fmt: skip
+
+
+@router.delete("/workflows/{wf_id}/copilot/threads/{conv_id}", status_code=204)
+async def delete_thread(
+    wf_id: str, conv_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> Response:
+    row = await _thread(session, wf_id, user.id, conv_id)
+    if (until := _aware(row.busy_until)) is not None and until > datetime.now(UTC):
+        raise Conflict("the Copilot is still answering; stop it first")
+    await session.delete(row)
     await session.commit()
     return Response(status_code=204)
 

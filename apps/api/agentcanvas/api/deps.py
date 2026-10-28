@@ -160,6 +160,9 @@ ROLE_EXCEPTIONS = {
     ("DELETE", "/me/invitations/{org_id}"): "viewer",
     ("POST", "/workflows/{wf_id}/copilot/messages"): "viewer",  # Ask mode for everyone; Build checks for builder
     ("DELETE", "/workflows/{wf_id}/copilot"): "viewer",  # anyone starts their own chat over
+    ("POST", "/workflows/{wf_id}/copilot/threads/{conv_id}/open"): "viewer",  # their own conversations
+    ("PATCH", "/workflows/{wf_id}/copilot/threads/{conv_id}"): "viewer",
+    ("DELETE", "/workflows/{wf_id}/copilot/threads/{conv_id}"): "viewer",
     ("PUT", "/workflows/{wf_id}/gates/{environment}"): "admin",  # a builder must not lower the bar they publish over
     ("DELETE", "/workflows/{wf_id}/gates/{environment}"): "admin",
     ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server

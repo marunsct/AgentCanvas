@@ -321,3 +321,52 @@ async def test_saving_some_copilot_settings_keeps_the_others(api_client):
     assert cleared["base_url"] is None and cleared["model"] == "openai:gpt-5-mini"
     switched = (await api_client.put(SETTINGS, json={"source": "workflow"})).json()
     assert switched["source"] == "workflow"
+
+
+async def test_conversations_are_kept_listed_reopened_renamed_and_deleted(app, api_client):
+    """New chat archives the conversation instead of deleting it; the panel lists them and reopens one."""
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    base = f"/v1/workflows/{wf}/copilot"
+    script(app, "It triages tickets.")
+    await ask(api_client, wf, "What does   this do?", mode="ask")
+    first = (await api_client.get(base)).json()["id"]
+    assert (await api_client.delete(base)).status_code == 204  # New chat
+    assert (await api_client.get(base)).json()["messages"] == []
+    script(app, "Three queues.")
+    await ask(api_client, wf, "How many queues?", mode="ask")
+
+    threads = (await api_client.get(f"{base}/threads")).json()
+    assert [(t["title"], t["open"], t["messages"]) for t in threads] == [
+        ("How many queues?", True, 2), ("What does this do?", False, 2)]  # fmt: skip
+    assert (await api_client.post(f"{base}/threads/{first}/open")).status_code == 204
+    assert (await api_client.get(base)).json()["messages"][0]["content"] == "What does   this do?"
+    assert [t["open"] for t in (await api_client.get(f"{base}/threads")).json()].count(True) == 1
+
+    renamed = await api_client.patch(f"{base}/threads/{first}", json={"title": "Overview"})
+    assert renamed.status_code == 200 and renamed.json()["title"] == "Overview"
+    other = next(t["id"] for t in threads if t["id"] != first)
+    assert (await api_client.delete(f"{base}/threads/{other}")).status_code == 204
+    assert [t["id"] for t in (await api_client.get(f"{base}/threads")).json()] == [first]
+    assert (await api_client.post(f"{base}/threads/cpc_nope/open")).status_code == 404
+
+
+async def test_one_turn_at_a_time_on_any_replica(app, api_client):
+    """The lease is in the database, so another API process sees it; an expired one (a crashed server) is taken over."""
+    from datetime import UTC, datetime, timedelta
+
+    from agentcanvas.db.models import CopilotConversation
+
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    script(app, "Hello.")
+    await ask(api_client, wf, "hi", mode="ask")
+    conv_id = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["id"]
+    for until, expect in ((timedelta(minutes=5), 409), (timedelta(minutes=-1), 200)):
+        async with app.state.db.sessionmaker() as s:
+            row = await s.get(CopilotConversation, conv_id)
+            row.busy_until = datetime.now(UTC) + until  # type: ignore[union-attr]
+            await s.commit()
+        script(app, "Again.")
+        r = await api_client.post(f"/v1/workflows/{wf}/copilot/messages", json={"text": "again", "mode": "ask"})
+        assert r.status_code == expect, (until, r.text)
+    async with app.state.db.sessionmaker() as s:  # the finished turn gave the lease back
+        assert (await s.get(CopilotConversation, conv_id)).busy_until is None  # type: ignore[union-attr]

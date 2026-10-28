@@ -694,10 +694,15 @@ class EventDedup(Base):
 
 
 class CopilotConversation(Base):
-    """A person's Copilot chat about one workflow (S14): one per (workflow, user); "New chat" starts it over."""
+    """A person's Copilot chat about one workflow (S14). One is open per (workflow, user); "New chat" archives it,
+    and an archived one can be reopened. `busy_until` is the lease of the turn answering now (one at a time)."""
 
     __tablename__ = "copilot_conversation"
-    __table_args__ = (UniqueConstraint("workflow_id", "user_id"),)
+    __table_args__ = (
+        Index("copilot_conversation_open_once", "workflow_id", "user_id", unique=True,
+              postgresql_where=text("archived_at IS NULL"), sqlite_where=text("archived_at IS NULL")),
+        Index("copilot_conversation_by_person", "workflow_id", "user_id", "updated_at"),
+    )  # fmt: skip
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(Text)
@@ -705,6 +710,9 @@ class CopilotConversation(Base):
     brief: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
     proposals: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     usage: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    title: Mapped[str | None] = mapped_column(Text)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    busy_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False

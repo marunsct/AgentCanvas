@@ -101,6 +101,8 @@ interface CopilotState {
   accept: () => Promise<void>;
   reject: () => Promise<void>;
   newChat: () => Promise<void>;
+  openThread: (id: string) => Promise<void>;
+  deleteThread: (id: string) => Promise<void>;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -272,6 +274,21 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     if (!p || !workflowId) return;
     set({ ghost: null, selection: null });
     await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "rejected" } });
+    await get().load(workflowId);
+  },
+
+  openThread: async (id) => {
+    const { workflowId } = get();
+    if (!workflowId) return;
+    await apiFetch(`/workflows/${workflowId}/copilot/threads/${id}/open`, { method: "POST" });
+    set({ ghost: null, selection: null, error: null });
+    await get().load(workflowId);
+  },
+
+  deleteThread: async (id) => {
+    const { workflowId } = get();
+    if (!workflowId) return;
+    await apiFetch(`/workflows/${workflowId}/copilot/threads/${id}`, { method: "DELETE" });
     await get().load(workflowId);
   },
 

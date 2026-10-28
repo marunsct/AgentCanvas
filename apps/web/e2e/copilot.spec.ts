@@ -82,3 +82,19 @@ test("the person keeps part of a proposal: unticking a step drops its wires, and
   expect(saved.ir.nodes).toEqual([]);
   expect(saved.ir.resources.map((r: { name: string }) => r.name)).toEqual(["demo_model"]);
 });
+
+test("New chat keeps the conversation under History, and it can be reopened", async ({ page }) => {
+  await page.request.put("/api/v1/projects/prj_default/copilot-settings", { data: { source: "separate", model: "anthropic:claude-haiku-4-5" } });
+  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `History ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByTestId("copilot-button").click();
+  const panel = page.getByTestId("copilot-panel");
+  await page.getByLabel("Message the Copilot").fill("What can you do?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(panel).toContainText("demo Copilot");
+  await panel.getByRole("button", { name: "New chat" }).click();
+  await expect(panel).toContainText("What are we building?");
+  await page.getByTestId("copilot-history").click();
+  await page.getByRole("menuitem", { name: /What can you do\?/ }).click();
+  await expect(panel).toContainText("demo Copilot");
+});

@@ -13,6 +13,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   the project's model", which is what it did.
 - The MCP endpoint refuses a browser `Origin` other than its own or a configured CORS origin (403) and an
   `MCP-Protocol-Version` it does not speak (400), as the Streamable HTTP transport requires.
+- The Copilot took one turn at a time per conversation with a set in each API process's memory, which two
+  replicas did not share: the turn now holds a lease on the conversation row (`busy_until`, 15 minutes at most).
 - Deleting a workflow that had been published and called failed on Postgres (references to its versions and
   deployments had no delete rule). A migration adds the rules.
 
@@ -54,6 +56,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   step unticks the wires to it, ticking a wire ticks what it connects; the canvas previews only what is ticked, and
   blocks the proposal removes are drawn red and dashed instead of vanishing; tests and notes can be left out too.
   The decision records which changes were kept.
+- **Copilot history**: New chat keeps the conversation (it used to delete it); the panel's History lists earlier
+  conversations, titled by their first question, to reopen or delete (`/workflows/{id}/copilot/threads`).
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

@@ -1085,3 +1085,8 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .change-list ul, ul.plain { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
 .change-list label, ul.plain label { margin: 0; color: var(--text); font-size: 12.5px; font-weight: 400; align-items: flex-start; }
 .change-list input[type=checkbox], ul.plain input[type=checkbox] { width: auto; margin: 2px 0 0; }
+.thread-row { display: flex; align-items: center; gap: 2px; }
+.thread-row > button[role=menuitem] { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 6px 10px; border: 0; background: transparent; box-shadow: none; border-radius: 6px; min-width: 0; }
+.thread-row > button[role=menuitem]:hover { background: var(--accent-soft); }
+.thread-title { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.copilot-head .menu > button { font-size: 12px; padding: 3px 6px; }
