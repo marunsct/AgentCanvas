@@ -2,9 +2,10 @@
 
 The API sends one request per call: the project's workspace (a tar.gz), the function to run and its input. This
 service unpacks the workspace into a fresh temporary directory, runs the sandbox child with limits and no network
-(`runners.subprocess_command`), returns the child's result and deletes the directory. It holds no database
-credentials, no API keys and no other project's files, and its container should have no route to the network, so the
-code it runs can reach nothing beyond the files it was sent. Run it as:
+(`runners.subprocess_command`), or only the egress proxy when the call carries an egress list, returns the child's
+result and deletes the directory. It holds no database credentials, no API keys and no other project's files, and its
+container should have no route to the network but the egress proxy, so the code it runs can reach nothing beyond the
+files it was sent and the hosts its project allows. Run it as:
 
     AGENTCANVAS_SANDBOX_TOKEN=... uvicorn agentcanvas.sandbox.service:app --host 0.0.0.0 --port 8090
 
@@ -91,6 +92,10 @@ class RunIn(BaseModel):
     workspace: str = Field(description="the workspace as a base64 tar.gz")
     timeout_s: float = Field(default=TIMEOUT_S, gt=0, le=600)
     memory_mb: int = Field(default=MEMORY_MB, ge=32, le=4096)
+    egress_proxy: str | None = Field(
+        None, max_length=8000, pattern=r"^http://[^/\s]+$",
+        description="the call's egress proxy with its signed allow-list (sandbox.json egress); None = no network",
+    )  # fmt: skip
 
 
 def create_service(token: str | None = None, run: Callable[..., Any] = _exchange) -> FastAPI:
@@ -129,8 +134,9 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
                     raise HTTPException(422, f"bad workspace: {exc}") from None
                 try:
                     return await run(
-                        "subprocess", work, body.import_path, body.payload, "", body.timeout_s, body.memory_mb
-                    )
+                        "subprocess", work, body.import_path, body.payload, "", body.timeout_s, body.memory_mb,
+                        body.egress_proxy,
+                    )  # fmt: skip
                 except TimeoutError:
                     return {"ok": False, "timeout": True, "error": f"ran longer than {body.timeout_s:g} s"}
                 except ScriptError as exc:

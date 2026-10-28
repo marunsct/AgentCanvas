@@ -5,8 +5,8 @@ Standard library only (it also runs inside a bare python image):
     python child.py scripts.score:run   < {"state": {...}, "config": {...}|null}   > {"ok": true, "update": {...}}
 
 The working directory is the workspace root. Anything the script prints goes to stderr, so stdout carries only
-the result line. With AC_BLOCK_NETWORK=1 socket connections raise (defense in depth for the subprocess mode;
-the Docker mode has no network interface at all).
+the result line. With AC_BLOCK_NETWORK=1 socket connections raise, except to the egress proxy in AC_EGRESS_PROXY
+(defense in depth for the subprocess mode; the Docker mode has no network interface, or only the egress network).
 """
 
 from __future__ import annotations
@@ -22,14 +22,39 @@ import sys
 import traceback
 
 
-def _block_network() -> None:
-    def refuse(*_a, **_k):
-        raise PermissionError("network access is disabled in the script sandbox")
+def _block_network(proxy: str = "") -> None:
+    """No connections, or only to the egress proxy (`host:port` in AC_EGRESS_PROXY) when the project allows some
+    hosts: HTTP clients reach those through it (HTTPS_PROXY), and the proxy checks the list."""
+    host, _, port = proxy.rpartition(":")
+    real_getaddrinfo = socket.getaddrinfo
+    real_connect, real_connect_ex = socket.socket.connect, socket.socket.connect_ex
+    proxy_ips = {info[4][0] for info in real_getaddrinfo(host, int(port))} if proxy else set()
 
-    socket.socket.connect = refuse  # type: ignore[method-assign]
-    socket.socket.connect_ex = refuse  # type: ignore[method-assign]
-    socket.create_connection = refuse  # type: ignore[assignment]
-    socket.getaddrinfo = refuse  # type: ignore[assignment]
+    def to_proxy(address) -> bool:
+        return isinstance(address, tuple) and len(address) >= 2 and address[0] in proxy_ips and address[1] == int(port)
+
+    def refuse(*_a, **_k):
+        raise PermissionError(
+            "network access is disabled in the script sandbox"
+            + ("; the hosts in sandbox.json are reached through the egress proxy (HTTPS_PROXY)" if proxy else "")
+        )
+
+    def getaddrinfo(name, *a, **k):
+        if proxy and name == host:
+            return real_getaddrinfo(name, *a, **k)
+        return refuse()
+
+    def connect(self, address):
+        return real_connect(self, address) if to_proxy(address) else refuse()
+
+    def connect_ex(self, address):
+        return real_connect_ex(self, address) if to_proxy(address) else refuse()
+
+    socket.socket.connect = connect  # type: ignore[method-assign]
+    socket.socket.connect_ex = connect_ex  # type: ignore[method-assign]
+    socket.getaddrinfo = getaddrinfo  # type: ignore[assignment]
+    if not proxy:
+        socket.create_connection = refuse  # type: ignore[assignment]
 
 
 def _load(import_path: str):
@@ -140,7 +165,7 @@ class _Actions:
 
 def main() -> int:
     if os.environ.get("AC_BLOCK_NETWORK") == "1":
-        _block_network()
+        _block_network(os.environ.get("AC_EGRESS_PROXY", ""))
     out = sys.stdout
     try:
         payload = json.loads(sys.stdin.read() or "{}")

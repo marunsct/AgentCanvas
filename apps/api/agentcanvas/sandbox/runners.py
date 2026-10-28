@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.log import get_logger
-from agentcanvas.sandbox.policy import PolicyError, load_policy
+from agentcanvas.sandbox.policy import PolicyError, SandboxPolicy, load_policy
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -50,18 +50,41 @@ def _limits(memory_bytes: int, cpu_s: int) -> Callable[[], None]:
     return apply
 
 
-def subprocess_command(workspace: Path, import_path: str) -> tuple[list[str], dict[str, str], Path]:
+def proxy_env(proxy: str | None) -> dict[str, str]:
+    """The variables HTTP clients (requests, httpx, urllib) read to send everything through the egress proxy."""
+    if not proxy:
+        return {}
+    return {name: proxy for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY")} | {
+        "NO_PROXY": "", "no_proxy": ""
+    }  # fmt: skip
+
+
+def subprocess_command(
+    workspace: Path, import_path: str, proxy: str | None = None
+) -> tuple[list[str], dict[str, str], Path]:
     env = {"PATH": "/usr/bin:/bin", "AC_BLOCK_NETWORK": "1", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"}
+    if proxy:  # the child may connect to the proxy and nothing else (the network around it enforces the same)
+        env |= proxy_env(proxy) | {"AC_EGRESS_PROXY": proxy.rpartition("@")[2]}
     return [sys.executable, "-I", str(CHILD), import_path], env, workspace
 
 
 def docker_command(
-    image: str, workspace: Path, import_path: str, memory_mb: int = 512, name: str | None = None
+    image: str,
+    workspace: Path,
+    import_path: str,
+    memory_mb: int = 512,
+    name: str | None = None,
+    proxy: str | None = None,
 ) -> list[str]:
+    # no network at all; with an egress allow-list, the internal network whose only way out is the egress proxy
+    from agentcanvas.sandbox.docker_egress import NETWORK
+
+    env = [arg for k, v in proxy_env(proxy).items() for arg in ("-e", f"{k}={v}")]
     return [
         "docker", "run", "--rm", "-i", *(["--name", name] if name else []),
         "--user", "65534:65534",  # nobody: never root inside the sandbox (S2)
-        "--network", "none", "--memory", f"{memory_mb}m", "--cpus", "1", "--pids-limit", "64",
+        "--network", NETWORK if proxy else "none", *env,
+        "--memory", f"{memory_mb}m", "--cpus", "1", "--pids-limit", "64",
         "--read-only", "--tmpfs", "/tmp:size=16m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "-v", f"{workspace}:/ws:ro", "-v", f"{CHILD}:/sandbox/child.py:ro", "-w", "/ws",
         "-e", "PYTHONDONTWRITEBYTECODE=1",
@@ -89,12 +112,13 @@ async def _exchange(
     image: str,
     timeout: float,
     memory_mb: int = MEMORY_MB,
+    proxy: str | None = None,
 ) -> dict:
     name = f"ac-sbx-{uuid.uuid4().hex[:12]}"
     if mode == "docker":
-        argv, env, cwd = docker_command(image, workspace, import_path, memory_mb, name), None, None
+        argv, env, cwd = docker_command(image, workspace, import_path, memory_mb, name, proxy), None, None
     else:
-        argv, env, cwd = subprocess_command(workspace, import_path)
+        argv, env, cwd = subprocess_command(workspace, import_path, proxy)
     limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout))
     proc = await asyncio.create_subprocess_exec(
         *argv,
@@ -145,7 +169,13 @@ REMOTE_TRANSPORT: Any = None
 
 
 async def _remote_exchange(
-    settings: Settings, workspace: Path, import_path: str, payload: dict[str, Any], timeout: float, memory_mb: int
+    settings: Settings,
+    workspace: Path,
+    import_path: str,
+    payload: dict[str, Any],
+    timeout: float,
+    memory_mb: int,
+    proxy: str | None = None,
 ) -> dict:
     """Run one call in the sandbox service (`script_execution = "remote"`): its own container, with no database
     credentials, keys or other projects' files. The workspace travels with each call."""
@@ -163,7 +193,7 @@ async def _remote_exchange(
         raise ScriptError(f"{import_path} failed: {exc}") from None
     body = {
         "import_path": import_path, "payload": payload, "workspace": base64.b64encode(packed).decode(),
-        "timeout_s": timeout, "memory_mb": memory_mb,
+        "timeout_s": timeout, "memory_mb": memory_mb, "egress_proxy": proxy,
     }  # fmt: skip
     try:
         async with httpx.AsyncClient(
@@ -229,25 +259,15 @@ class SandboxRunner:
         except PolicyError as exc:
             raise ScriptError(str(exc)) from None
         mode = self.settings.script_execution
-        if (
-            mode != "langsmith"
-            and (policy.egress or policy.inject)
-            and (key := (str(self.workspace), mode)) not in _WARNED
-        ):
-            _WARNED.add(key)  # once per workspace: sandbox.json allows a network that this mode does not have
-            log.warning(
-                "sandbox.egress_not_enforced", mode=mode, workspace=str(self.workspace),
-                hint="egress and inject rules in sandbox.json only work with AGENTCANVAS_SCRIPT_EXECUTION=langsmith; "
-                "in this mode workspace code has no network at all",
-            )  # fmt: skip
+        proxy = await self._egress(policy, mode)
         if mode == "remote":
             return await _remote_exchange(
-                self.settings, self.workspace, import_path, payload, policy.timeout_s, policy.memory_mb
+                self.settings, self.workspace, import_path, payload, policy.timeout_s, policy.memory_mb, proxy
             )
         if mode != "langsmith":
             image = self.settings.sandbox_image
             return await _exchange(
-                mode, self.workspace, import_path, payload, image, policy.timeout_s, policy.memory_mb
+                mode, self.workspace, import_path, payload, image, policy.timeout_s, policy.memory_mb, proxy
             )
         if self._box is None:
             from agentcanvas.sandbox.langsmith import LangSmithBox
@@ -258,6 +278,47 @@ class SandboxRunner:
         except PolicyError as exc:
             raise ScriptError(str(exc)) from None
         return _parse(import_path, out, err, code)
+
+    async def _egress(self, policy: SandboxPolicy, mode: str) -> str | None:
+        """The proxy URL that lets this call reach the policy's allow-list, or None for no network at all.
+
+        `docker` and `remote` enforce the list through the egress proxy. `inprocess` and `subprocess` cannot: in
+        staging and production a list there is refused (the code would get no network, or all of it, silently);
+        in development it is logged once and the code runs with no network (`subprocess`) or the API's own."""
+        allow = policy.allow_list()
+        if not allow or mode == "langsmith":  # LangSmith's own auth proxy applies the list
+            return None
+        if mode in ("docker", "remote"):
+            from agentcanvas.sandbox import docker_egress
+            from agentcanvas.sandbox.egress import proxy_url
+
+            secret = docker_egress.secret(self.settings)
+            if mode == "remote":
+                if not self.settings.egress_proxy or not self.settings.egress_secret:
+                    raise ScriptError(
+                        "sandbox.json allows network access, and script execution 'remote' reaches it through the "
+                        "egress proxy: set AGENTCANVAS_EGRESS_PROXY and AGENTCANVAS_EGRESS_SECRET"
+                    )
+                address = self.settings.egress_proxy
+            else:
+                try:
+                    address = self.settings.egress_proxy or await docker_egress.ensure(self.settings)
+                except docker_egress.EgressUnavailable as exc:
+                    raise ScriptError(f"sandbox.json allows network access, but {exc}") from None
+            return proxy_url(address, allow, secret, policy.timeout_s + 60)
+        if self.settings.env in ("staging", "prod"):
+            raise ScriptError(
+                f"sandbox.json allows network access, which script execution '{mode}' cannot restrict; "
+                "use AGENTCANVAS_SCRIPT_EXECUTION=docker, remote or langsmith, or empty the egress list"
+            )
+        if (key := (str(self.workspace), mode)) not in _WARNED:
+            _WARNED.add(key)  # once per workspace: sandbox.json allows a network that this mode cannot restrict
+            log.warning(
+                "sandbox.egress_not_enforced", mode=mode, workspace=str(self.workspace),
+                hint="egress rules in sandbox.json are enforced with AGENTCANVAS_SCRIPT_EXECUTION=docker, remote or "
+                "langsmith; here the code has " + ("the API's network" if mode == "inprocess" else "no network"),
+            )  # fmt: skip
+        return None
 
     async def aclose(self) -> None:
         if self._box is not None:

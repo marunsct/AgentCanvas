@@ -68,7 +68,9 @@ def test_policy_parse_and_proxy_config(tmp_path):
     assert check_policy(ws.root, "subprocess", set()) == []  # no sandbox.json: nothing to say
     ws.write("sandbox.json", json.dumps({**POLICY, "egress": ["*:443"]}))
     codes = {p["code"] for p in check_policy(ws.root, "docker", set())}
-    assert codes == {"E083", "W082", "W074"}  # unknown secret, no network in docker, allow-all egress
+    assert codes == {"E083", "W083", "W074"}  # unknown secret, inject is LangSmith's only, allow-all egress
+    assert "W082" in {p["code"] for p in check_policy(ws.root, "subprocess", set())}  # cannot restrict: a warning
+    assert "E084" in {p["code"] for p in check_policy(ws.root, "inprocess", set(), env="prod")}  # ... refused there
     ws.write("sandbox.json", json.dumps(POLICY))
     assert check_policy(ws.root, "langsmith", {"CRM_TOKEN"}) == []
     ws.write("sandbox.json", "{nope")
@@ -294,7 +296,7 @@ def test_the_child_supplies_the_sdk_on_a_bare_image(tmp_path):
 
 
 async def test_network_rules_in_a_mode_without_a_network_are_reported_once(tmp_path):
-    """sandbox.json egress/inject only work in LangSmith mode; elsewhere the code is offline, and the log says so."""
+    """An egress list the mode cannot restrict (development: allowed) is logged once per workspace."""
     from structlog.testing import capture_logs
 
     from agentcanvas.sandbox import runners

@@ -8,9 +8,10 @@
       "memory_mb": 512
     }
 
-`egress` is an allow-list (default: no network). `inject` rules are applied by the LangSmith auth proxy outside the
-sandbox, so secret values never enter it; their hosts are allowed on port 443 automatically. The local sandboxes
-(subprocess, docker) have no network at all and only apply the limits.
+`egress` is an allow-list (default: no network). The `docker` and `remote` modes enforce it through the egress proxy
+(`sandbox.egress`), LangSmith through its own; `inprocess` and `subprocess` cannot (an error in staging and
+production, a warning in development). `inject` rules are applied by the LangSmith auth proxy outside the sandbox, so
+secret values never enter it; their hosts are allowed on port 443 automatically. Elsewhere they are not applied.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 POLICY_FILE = "sandbox.json"
 SECRET_REF = re.compile(r"\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+# host, host:port, *.domain, an IPv4 or [IPv6] address with or without a port; "*" and LangSmith's "~regex" pass
+_EGRESS = re.compile(r"^(\*|~.+|(\*\.)?[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])(:\d{1,5})?$")
 _HOST = re.compile(r"^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$")
 
 
@@ -44,7 +47,9 @@ class HeaderRule(BaseModel):
 class SandboxPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    egress: list[str] = Field(default_factory=list, description="allow-list: host, host:port, *.domain; [] = offline")
+    egress: list[str] = Field(
+        default_factory=list, max_length=100, description="allow-list: host, host:port, *.domain; [] = offline"
+    )
     inject: list[HeaderRule] = Field(default_factory=list)
     timeout_s: float = Field(default=30.0, gt=0, le=900)
     memory_mb: int = Field(default=512, ge=64, le=16384)
@@ -76,6 +81,9 @@ def parse_policy(text: str) -> SandboxPolicy:
         err = exc.errors()[0]
         where = ".".join(str(p) for p in err["loc"]) or "(root)"
         raise PolicyError(f"{POLICY_FILE}: {where}: {err['msg']}") from None
+    bad = [e for e in policy.egress if not _EGRESS.match(e.strip())]
+    if bad:
+        raise PolicyError(f"{POLICY_FILE}: egress: '{bad[0]}' is not a host, host:port or *.domain (no scheme or path)")
     for rule in policy.inject:
         bad = [h for h in rule.hosts if not _HOST.match(h)]
         if bad:
@@ -100,8 +108,13 @@ def load_policy(root: Path) -> SandboxPolicy:
     return cached[1]
 
 
-def check_policy(root: Path, mode: str, secrets: set[str]) -> list[dict[str, str]]:
-    """Workspace problems for the policy: E082 invalid file, E083 unknown secret, W082/W074 egress it cannot get."""
+ENFORCING = ("docker", "remote", "langsmith")  # the modes that give code exactly its egress list
+
+
+def check_policy(root: Path, mode: str, secrets: set[str], env: str = "dev") -> list[dict[str, str]]:
+    """Workspace problems for the policy: E082 invalid file, E083 unknown secret, E084/W082 an egress list this
+    server cannot enforce (error in staging and production, where such code is refused), W083 inject rules it
+    cannot apply, W074 egress open to every host."""
     if not (root / POLICY_FILE).is_file():
         return []
     try:
@@ -112,12 +125,20 @@ def check_policy(root: Path, mode: str, secrets: set[str]) -> list[dict[str, str
         {"path": POLICY_FILE, "code": "E083", "message": f"inject uses secret '{name}', which this project lacks"}
         for name in sorted(policy.secret_names() - secrets)
     ]
-    wants_network = bool(policy.egress or policy.inject)
-    if wants_network and mode != "langsmith":
+    if policy.allow_list() and mode not in ENFORCING:
         how = "run in the API process with its network" if mode == "inprocess" else "have no network at all"
+        strict = env in ("staging", "prod")
         out.append({
-            "path": POLICY_FILE, "code": "W082",
-            "message": f"egress and inject rules need script execution 'langsmith'; '{mode}' scripts {how}",
+            "path": POLICY_FILE, "code": "E084" if strict else "W082",
+            "message": f"script execution '{mode}' cannot restrict network access ('{mode}' scripts {how})"
+            + ("; this server refuses to run code with an egress list" if strict else "")
+            + ": use docker, remote or langsmith",
+        })  # fmt: skip
+    if policy.inject and mode != "langsmith":
+        out.append({
+            "path": POLICY_FILE, "code": "W083",
+            "message": f"inject rules are applied by LangSmith's proxy only; with '{mode}' requests go out without "
+            "those headers",
         })  # fmt: skip
     if any(e.split(":")[0] in ("*", "~.*", "~.+") for e in policy.egress):
         out.append({"path": POLICY_FILE, "code": "W074", "message": "egress allows every host; list the hosts needed"})

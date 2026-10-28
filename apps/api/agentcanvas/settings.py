@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     )
     sandbox_token: str | None = None  # the bearer token the service expects
     sandbox_image: str = "python:3.12-slim"
+    # sandbox.json egress allow-lists (docker, remote): sandboxed code reaches the network only through this proxy
+    # (`agentcanvas.sandbox.egress`), which admits the hosts of the call's signed list. "remote": its address as the
+    # sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container
+    egress_proxy: str | None = None
+    egress_secret: str | None = None  # signs each call's list; shared with the proxy (docker: derived when unset)
     langsmith_snapshot: str | None = None  # snapshot name/id to boot from; None = LangSmith's default snapshot
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)

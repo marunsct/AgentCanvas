@@ -4512,6 +4512,49 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HeaderRule": {
+        "additionalProperties": false,
+        "properties": {
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "values may use {{ secret.NAME }}",
+            "minProperties": 1,
+            "title": "Headers",
+            "type": "object"
+          },
+          "hosts": {
+            "description": "hostnames, or `*.example.com`; no scheme, port or path",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Hosts",
+            "type": "array"
+          },
+          "name": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "paths": {
+            "description": "path prefixes to match (empty: every path)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "hosts",
+          "headers"
+        ],
+        "title": "HeaderRule",
+        "type": "object"
+      },
       "ImportFile": {
         "properties": {
           "file": {
@@ -7867,6 +7910,106 @@
           }
         },
         "title": "RunRequest",
+        "type": "object"
+      },
+      "SandboxOut": {
+        "properties": {
+          "applies_inject": {
+            "description": "inject rules add their headers (LangSmith only)",
+            "title": "Applies Inject",
+            "type": "boolean"
+          },
+          "enforces_egress": {
+            "description": "an egress list gives code exactly those hosts",
+            "title": "Enforces Egress",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "mode": {
+            "description": "how this server runs workspace code (AGENTCANVAS_SCRIPT_EXECUTION)",
+            "title": "Mode",
+            "type": "string"
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SandboxPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the saved policy; null when sandbox.json is invalid"
+          },
+          "problems": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LintItem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "refuses_egress": {
+            "description": "an egress list makes this server refuse to run the code",
+            "title": "Refuses Egress",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "enforces_egress",
+          "refuses_egress",
+          "applies_inject",
+          "policy"
+        ],
+        "title": "SandboxOut",
+        "type": "object"
+      },
+      "SandboxPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "egress": {
+            "description": "allow-list: host, host:port, *.domain; [] = offline",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Egress",
+            "type": "array"
+          },
+          "inject": {
+            "items": {
+              "$ref": "#/components/schemas/HeaderRule"
+            },
+            "title": "Inject",
+            "type": "array"
+          },
+          "memory_mb": {
+            "default": 512,
+            "maximum": 16384.0,
+            "minimum": 64.0,
+            "title": "Memory Mb",
+            "type": "integer"
+          },
+          "timeout_s": {
+            "default": 30.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 900.0,
+            "title": "Timeout S",
+            "type": "number"
+          }
+        },
+        "title": "SandboxPolicy",
         "type": "object"
       },
       "SavedFile": {
@@ -18016,6 +18159,146 @@
         "summary": "Make Workflow",
         "tags": [
           "playground"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sandbox": {
+      "get": {
+        "description": "The project's sandbox policy (`sandbox.json`) and what this server does with it.",
+        "operationId": "get_sandbox_v1_projects__project_id__sandbox_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Sandbox",
+        "tags": [
+          "workspace"
+        ]
+      },
+      "put": {
+        "description": "Save the sandbox policy as `sandbox.json` (the same checks as the file: hostnames, secrets, limits).",
+        "operationId": "put_sandbox_v1_projects__project_id__sandbox_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Sandbox",
+        "tags": [
+          "workspace"
         ]
       }
     },
