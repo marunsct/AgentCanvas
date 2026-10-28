@@ -121,7 +121,7 @@ export function EditorPage() {
     <div className="editor">
       <header className="topbar">
         <Link to="/" className="brand">AgentCanvas</Link>
-        <span className="crumb">/ {wf.name}</span>
+        <span className="crumb" title={wf.name}>/ {wf.name}</span>
         {canBuild
           ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
           : <span className="save-state" data-testid="view-only" title={`your role is ${role}`}>View only</span>}
@@ -134,6 +134,8 @@ export function EditorPage() {
           <button type="button" className={simple ? "" : "active"} aria-pressed={!simple} data-testid="full-toggle"
             onClick={() => useUi.getState().setSimple(false)} title="Every block, panel and tool">Full</button>
         </div>
+        <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link"
+          title="Datasets, evaluators and experiments: check this workflow's answers before you publish">Evaluate</Link>
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}
         </Link>
@@ -141,7 +143,7 @@ export function EditorPage() {
           <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
           <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
         </div>
-        {!simple && <MoreMenu wfId={wf.id} blast={blast} />}
+        <MoreMenu wfId={wf.id} blast={blast} simple={simple} />
         <div className="toolbar-group" role="group" aria-label="History">
           <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)" aria-label="Undo">↶</button>
           <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo">↷</button>

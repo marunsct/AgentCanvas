@@ -5,6 +5,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- On a 1024-px laptop window the editor's bar pushed ▶ Test, Copilot and the person menu out of sight (the bar
+  scrolls without a scrollbar). Below 1180 px the framework badges give way and a long workflow name is shortened.
 - **Runs listed conversations by id, not by time**: a thread named by its caller (`support-42`) sorted above or below
   everything else whatever its age. `GET /threads` now orders by when each conversation began; its cursor is still
   the last id, and an unknown one is refused (422) instead of returning an arbitrary page.
@@ -27,6 +29,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **Evaluate is on the editor's bar**, and Simple mode keeps Versions (Publish), Evaluate and the More menu's
+  Workspace, Knowledge and Memory: it hides advanced blocks and canvas tools, not the product.
 - **The event log pages back and filters**: Events shows the newest 50, then "Load older"; a type filter offers the
   map's types and any logged. `GET /projects/{id}/events` takes `before` (an event id), `type` and `status`.
 - **One top bar on every page** (`app/AppShell.tsx`): the project (switch, or create a new one), Workflows, Playground,

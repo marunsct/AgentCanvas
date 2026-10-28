@@ -863,6 +863,11 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
   .topbar > button, .topbar .toolbar-group button, .more-menu > button { padding-left: 7px; padding-right: 7px; }
   .topbar > a:not(.brand), .topbar .inbox-link { padding-left: 7px; padding-right: 7px; }
 }
+/* a laptop window: the framework badges give way (the Inspector's workflow settings show the framework) so ▶ Test fits */
+@media (max-width: 1180px) {
+  .editor > .topbar .framework-badges { display: none; }
+  .editor > .topbar .crumb { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 .framework-badge {
   font-size: 11px; line-height: 1; padding: 4px 8px; border-radius: 999px; cursor: default;
   border: 1px solid var(--border); background: var(--surface-2, transparent); color: var(--muted);

@@ -62,9 +62,10 @@ tools, approvals and more steps. Nothing you type in the playground is saved.
 ## Simple mode
 
 At the top of the editor, **Simple** shows only what a first workflow needs: the blocks that ask AI, run an agent,
-choose a path, set values or ask a person, with their models and tools; and the Inspector, Copilot and Run panels.
-The power tools (subgraphs, frames, blast radius, versions, code, the workspace) are hidden, not removed: press
-**Full** to see everything again. The editor remembers your choice in this browser.
+choose a path, set values or ask a person, with their models and tools; and the Inspector, Copilot, Run and
+Versions panels, so you can still publish. **Evaluate** stays on the bar and **More** still opens the workspace,
+knowledge and memory. The power tools (subgraphs, maps, frames, blast radius, tests, code) are hidden, not removed:
+press **Full** to see everything again. The editor remembers your choice in this browser.
 
 Built something in Langflow, Flowise or n8n before? [Import it](switching.md).
 

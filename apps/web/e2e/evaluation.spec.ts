@@ -17,7 +17,6 @@ test("dataset, evaluator, experiment with a variant, results grid and comparison
   expect((await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir }, headers: { "If-Match": "1" } })).ok()).toBeTruthy();
 
   await page.goto(`/workflows/${wf.id}`);
-  await page.getByTestId("more-menu").click();
   await page.getByTestId("evaluation-link").click();
   await page.getByLabel("dataset name").fill("Greetings");
   await page.getByRole("button", { name: "Create dataset" }).click();
