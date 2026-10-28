@@ -80,6 +80,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **Annotation queues**: the rubric is rows (name, a scale from yes/no to 1-10, what a good score means) instead
   of "helpful:5, correct:2"; runs are added from a list of the workflow's recent runs instead of typed ids; items
   show when and why they were added. `GET /threads` returns each thread's `last_run_id`.
+- **Experiment variants as rows**: "change <block>'s <setting> to <value>", with the block's settings listed from
+  its schema and its current value shown, instead of an overrides JSON box.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

@@ -58,7 +58,11 @@ test("dataset, evaluator, experiment with a variant, results grid and comparison
   await expect(page.getByTestId("experiments")).toContainText("done");
   await page.getByRole("button", { name: "+ Add a version or variant" }).click();
   await page.getByLabel("target 2 label").fill("hi");
-  await page.getByLabel("target 2 overrides").fill('{"greet": {"values": {"out": "Hi {{ state.who }}"}}}');
+  const variant = page.getByRole("group", { name: "target 2" }); // the variant's changes, as rows
+  await variant.getByRole("button", { name: "+ Change a setting" }).click();
+  await variant.getByLabel("target 2 change 1 block").selectOption("greet");
+  await variant.getByLabel("target 2 change 1 setting").selectOption("values");
+  await variant.getByLabel("target 2 change 1 value").fill('{"out": "Hi {{ state.who }}"}');
   await page.getByRole("button", { name: "▶ Run experiment" }).click();
   const results = page.getByTestId("results");
   await expect(results).toContainText("Hi Ada");

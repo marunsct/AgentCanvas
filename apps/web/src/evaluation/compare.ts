@@ -70,9 +70,9 @@ export const fmt = (v: number | null | undefined, digits = 2) => (v == null ? "â
 export const pct = (v: number | null | undefined) => (v == null ? "â€”" : `${Math.round(v * 100)}%`);
 
 /** Convert and compare (S25): one target per installed framework the experiment does not run on yet. */
-export function frameworksToCompare<T extends { framework: string; version: string; overrides: string; label: string }>(
-  frameworks: { id: string }[], own: string, targets: T[],
-): { framework: string; version: string; overrides: string; label: string }[] {
+export function frameworksToCompare<T extends { framework: string }>(
+  frameworks: { id: string }[], own: string, targets: T[], blank: () => Omit<T, "framework">,
+): T[] {
   const covered = new Set(targets.map((t) => t.framework || own));
-  return frameworks.filter((f) => !covered.has(f.id)).map((f) => ({ framework: f.id, version: "", overrides: "", label: "" }));
+  return frameworks.filter((f) => !covered.has(f.id)).map((f) => ({ ...blank(), framework: f.id }) as T);
 }

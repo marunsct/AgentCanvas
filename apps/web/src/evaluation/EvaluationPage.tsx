@@ -17,6 +17,7 @@ import { ScoreBadge } from "./ScoreBadge";
 import { confirmDialog, toast } from "../ui/dialog";
 import { EvaluatorForm, useEvaluatorKinds } from "./EvaluatorForm";
 import { ExampleForm } from "./ExampleForm";
+import { fromRows, OverrideEditor } from "./OverrideEditor";
 import { PageHeader } from "../ui/PageHeader";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
@@ -40,7 +41,10 @@ export function EvaluationPage() {
   const [tab, setTab] = useState<Tab>("datasets");
   const wf = useQuery({
     queryKey: ["workflow", id],
-    queryFn: () => apiFetch<{ name: string; ir: { framework?: string; state?: { channels?: { name: string; io?: string | null }[] } } }>(`/workflows/${id}`),
+    queryFn: () => apiFetch<{ name: string; ir: {
+      framework?: string; state?: { channels?: { name: string; io?: string | null }[] };
+      nodes?: Element[]; resources?: Element[];
+    } }>(`/workflows/${id}`),
   });
   return (
     <div className="page evaluation">
@@ -54,7 +58,8 @@ export function EvaluationPage() {
       </nav>
       {tab === "datasets" && <Datasets wfId={id} channels={wf.data?.ir.state?.channels ?? []} />}
       {tab === "evaluators" && <Evaluators wfId={id} />}
-      {tab === "experiments" && <Experiments wfId={id} wfFramework={wf.data?.ir.framework ?? "langchain"} />}
+      {tab === "experiments" && <Experiments wfId={id} wfFramework={wf.data?.ir.framework ?? "langchain"}
+        elements={[...(wf.data?.ir.nodes ?? []), ...(wf.data?.ir.resources ?? [])]} />}
       {tab === "gates" && <Gates wfId={id} />}
       {tab === "production" && <Production wfId={id} />}
       {tab === "queues" && <Queues wfId={id} />}
@@ -257,10 +262,12 @@ function TryEvaluator({ evaluatorId }: { evaluatorId: string }) {
 }
 
 // --------------------------------------------------------------------------------------------- experiments ----
-interface TargetDraft { version: string; overrides: string; label: string; framework: string }
-const NEW_TARGET: TargetDraft = { version: "", overrides: "", label: "", framework: "" };
+interface TargetDraft { version: string; changes: { element: string; field: string; value: string }[]; label: string; framework: string }
+const NEW_TARGET: TargetDraft = { version: "", changes: [], label: "", framework: "" };
 
-function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string }) {
+type Element = { id: string; name: string; label?: string | null; type: string; config?: Record<string, unknown> };
+
+function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramework: string; elements: Element[] }) {
   const qc = useQueryClient();
   const key = ["experiments", wfId];
   const list = useQuery({
@@ -284,7 +291,7 @@ function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string 
         dataset_id: dataset || datasets.data?.[0]?.id, split: split || null,
         targets: targets.map((t) => ({
           version: t.version || null, label: t.label || null, framework: t.framework || null,
-          overrides: t.overrides.trim() ? parseJson(t.overrides, "overrides") : {},
+          overrides: fromRows(t.changes),
         })),
         simulation: sim.on ? { model: sim.model.trim() || null, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
       },
@@ -321,16 +328,15 @@ function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string 
                 </select>
               )}
               <input aria-label={`target ${i + 1} label`} placeholder="label" value={t.label} onChange={(e) => setTarget(i, { label: e.target.value })} style={{ width: 110 }} />
-              <input aria-label={`target ${i + 1} overrides`} placeholder='overrides, e.g. {"llm": {"model": "openai:gpt-5-mini"}}' value={t.overrides}
-                onChange={(e) => setTarget(i, { overrides: e.target.value })} />
               {targets.length > 1 && <button type="button" className="link small" onClick={() => setTargets((ts) => ts.filter((_, j) => j !== i))}>Remove</button>}
+              <OverrideEditor label={`target ${i + 1}`} elements={elements} rows={t.changes} onChange={(changes) => setTarget(i, { changes })} />
             </div>
           ))}
           <div className="row gap">
             <button type="button" className="link small" onClick={() => setTargets((ts) => [...ts, NEW_TARGET])}>+ Add a version or variant</button>
             {frameworks.length > 1 && (
               <button type="button" className="link small" data-testid="compare-frameworks"
-                onClick={() => setTargets((ts) => [...ts, ...frameworksToCompare(frameworks, wfFramework, ts)])}>
+                onClick={() => setTargets((ts) => [...ts, ...frameworksToCompare(frameworks, wfFramework, ts, () => ({ version: "", changes: [], label: "" }))])}>
                 + Compare on the other frameworks
               </button>
             )}
