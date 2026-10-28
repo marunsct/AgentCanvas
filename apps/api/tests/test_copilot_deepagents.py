@@ -10,6 +10,7 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from pydantic import Field
 from test_copilot import ask, new_workflow, of
 
 from agentcanvas.testing import DemoResources
@@ -19,8 +20,8 @@ class Streamer(BaseChatModel):
     """Scripted replies, streamed word by word; remembers the tools it was offered and the messages it was sent."""
 
     replies: list[AIMessage]
-    offered: list[list[str]] = []
-    received: list[list[BaseMessage]] = []
+    offered: list[list[str]] = Field(default_factory=list)
+    received: list[list[BaseMessage]] = Field(default_factory=list)
 
     @property
     def _llm_type(self) -> str:

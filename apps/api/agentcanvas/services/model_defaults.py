@@ -45,12 +45,18 @@ def stored(project_settings: dict[str, Any] | None) -> dict[str, str]:
 def resolve(project_settings: dict[str, Any] | None, purpose: str) -> Resolved:
     own = stored(project_settings).get(purpose)
     if own and purpose != "chat":
-        return Resolved(purpose=purpose, model=own, origin=f"the project's default for {PURPOSES[purpose]}")
+        return Resolved(
+            purpose=purpose, model=own, origin=f"the project's default for {PURPOSES[purpose]}", problem=None
+        )
     if purpose == "embedding":
-        return Resolved(purpose=purpose, model=BUILTIN_EMBEDDING, origin="the server's built-in embedding (offline)")
+        return Resolved(
+            purpose=purpose, model=BUILTIN_EMBEDDING, origin="the server's built-in embedding (offline)", problem=None
+        )
     project_model = ((project_settings or {}).get("default_model") or {}).get("model")
     if project_model:
-        return Resolved(purpose=purpose, model=project_model, origin="the project's model (Settings > Models)")
+        return Resolved(
+            purpose=purpose, model=project_model, origin="the project's model (Settings > Models)", problem=None
+        )
     what = "a model for the project" if purpose == "chat" else f"a model for {PURPOSES[purpose]}"
     return Resolved(purpose=purpose, model=None, origin="none", problem=f"choose {what} in Settings > Models")
 

@@ -103,15 +103,16 @@ class DeepAgentTurn(CopilotTurn):
             + "\n\nThe full workflow is also in your files as /workflow.json (the copy above may be cut short). "
             "For a task of several steps, keep a short plan with write_todos and tick items off as you go."
         )  # fmt: skip
+        middleware: list[Any] = [
+            TodoListMiddleware(),
+            ModelCallLimitMiddleware(run_limit=MAX_STEPS, exit_behavior="end"),
+            _HideTools({SHELL, *(set(TOOLS) - set(allowed))}),
+        ]
         agent = create_deep_agent(
             model=self.resources.model("copilot", {**self.model.config, "model": self.model.model}),
             tools=self._tools(allowed, events),
             system_prompt=system,
-            middleware=[
-                TodoListMiddleware(),
-                ModelCallLimitMiddleware(run_limit=MAX_STEPS, exit_behavior="end"),
-                _HideTools({SHELL, *(set(TOOLS) - set(allowed))}),
-            ],
+            middleware=middleware,
         )
         messages = [*self._history(), HumanMessage(content=text)]
         self.history.append({"role": "user", "content": text, "at": _now(), "mode": mode})
@@ -120,12 +121,14 @@ class DeepAgentTurn(CopilotTurn):
         said: list[str] = []
         streamed = ""
         yield {"type": "start", "model": self.model.model, "origin": self.model.origin, "engine": "deepagents"}
-        stream = agent.astream(
-            {"messages": messages, "files": self._files()},
+        state: Any = {"messages": messages, "files": self._files()}
+        stream: Any = agent.astream(
+            state,
             config={"recursion_limit": STEPS_PER_TURN, "callbacks": [meter]},
             stream_mode=["messages", "updates"],
         )
         try:
+            chunk: Any
             async for kind, chunk in stream:
                 if kind == "messages":
                     msg, meta = chunk

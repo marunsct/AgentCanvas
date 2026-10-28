@@ -113,7 +113,7 @@ def _private(address: str) -> bool:
 
 async def _resolve(host: str, port: int) -> list[str]:
     infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    return list(dict.fromkeys(info[4][0] for info in infos))
+    return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
 # ------------------------------------------------------------------ the proxy ----

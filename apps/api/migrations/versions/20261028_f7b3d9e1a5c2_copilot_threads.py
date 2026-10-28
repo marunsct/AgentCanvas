@@ -31,8 +31,10 @@ NAMES = {"uq": "uq_%(table_name)s_%(column_0_N_name)s"}
 
 
 def _unique_name() -> str:
-    return f"{TABLE}_workflow_id_user_id_key" if op.get_bind().dialect.name == "postgresql" else (
-        f"uq_{TABLE}_workflow_id_user_id"
+    return (
+        f"{TABLE}_workflow_id_user_id_key"
+        if op.get_bind().dialect.name == "postgresql"
+        else (f"uq_{TABLE}_workflow_id_user_id")
     )
 
 

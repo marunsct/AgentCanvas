@@ -77,6 +77,8 @@ def _render(transcript: list[dict[str, str]]) -> str:
 async def next_message(sim: Simulation, goal: str, transcript: list[dict[str, str]], complete: Complete) -> str | None:
     """The simulated user's next message, or None when they stop."""
     system = SYSTEM.format(persona=sim.persona, goal=goal or "(none given: act naturally)", stop=sim.stop_phrase)
+    if not sim.model:  # set from the project's default when the experiment is saved
+        raise ValueError("the simulated user has no model")
     reply = (await complete(system, _render(transcript), sim.model)).strip()
     if not reply or reply.rstrip(".!").strip().upper() == sim.stop_phrase.upper():
         return None
