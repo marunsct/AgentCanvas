@@ -135,7 +135,7 @@ neither sees no rows.
 
 #### Audit forwarding
 
-AgentCanvas keeps every change in its own audit log (**Audit log**). Security-relevant ones (publishing and
+AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
 unpublishing, deployment keys, secrets, approvals, members, organisation settings and policies, release gates, trace
 export, project workspaces) also go to an audit sink. Matura has no audit ingest API yet, so by default the sink does
 nothing. With `AGENTCANVAS_MATURA_AUDIT_URL` set, each entry is POSTed there as a CloudEvent

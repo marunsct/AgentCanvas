@@ -84,7 +84,7 @@ def score_lead(state: dict, cfg: dict) -> dict:
 
 ## Secrets
 
-Store API keys and passwords on the Workspace page under **Secrets** (**Save secret**). Names are
+Store API keys and passwords in **Settings › Secrets** (**Save secret**; the Workspace page links there). Names are
 `UPPER_SNAKE_CASE`. Secrets are encrypted at rest, can't be read back through the API, and are masked as `***` in
 run events and traces.
 

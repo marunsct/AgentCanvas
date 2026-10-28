@@ -50,8 +50,7 @@ The workflow's **Framework** setting says when its framework is not set up on th
 4. Hosted providers: paste your **API key**. It is stored encrypted as a project secret and never shown again.
    Local servers: leave **Server address** empty to use the default port on your computer.
 5. Click **Test connection**: AgentCanvas sends one short message and shows the reply, or the error.
-6. Click **Save**. Templates you open from now on use this model. You can change it any time from **Model** in the
-   top bar, and pick a different model on any AI model block on the canvas.
+6. Click **Save**. Templates you open from now on use this model. You can change it any time in **Settings › Models**, and pick a different model on any AI model block on the canvas.
 
 Models on your own computer are reached from inside Docker through `host.docker.internal`, so start Ollama
 (`ollama serve`, then `ollama pull llama3.3`) or LM Studio's local server before testing.
@@ -182,7 +181,7 @@ Same as `cd apps/web && pnpm dev`. Open <http://localhost:5173>. The web dev ser
 port 8000, so no extra configuration is needed.
 
 You land on **Home**: a *Start the guided build* button, a *New workflow* box, eight template cards and your
-workflow list. The top bar shows `you · admin`.
+workflow list. Your initial at the right of the top bar opens a menu that says you are an admin.
 
 ![Home page](img/home.png)
 
@@ -214,7 +213,7 @@ make dev-api      # same as dev-fake, but calls the models you choose
 ```
 
 `make dev-api` runs `cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000`. Then, in the web
-app, click **Model** in the top bar (or **Choose a model** on Home) and pick any provider, hosted or local, with its
+app, open **Settings › Models** (or **Choose a model** on Home) and pick any provider, hosted or local, with its
 API key: the same first-run screen as in [Docker](#run-everything-in-docker). Every supported provider's integration
 is installed by `make setup`.
 
@@ -283,7 +282,7 @@ from **Members**.
 | `pnpm: command not found` | `corepack enable && corepack prepare pnpm@10 --activate`, or `npm i -g pnpm@10`. |
 | `address already in use` on 8000 or 5173 | Another process holds the port: stop it (`lsof -i :8000` on macOS/Linux) or stop an old server. |
 | The web app shows an error on every page | The API is not running or not on port 8000. Check `curl localhost:8000/healthz`. |
-| A run fails with an authentication error from the provider | The key is missing or wrong: enter it again under **Model**, or check the project secret named after the provider on the **Workspace** page. |
+| A run fails with an authentication error from the provider | The key is missing or wrong: enter it again in **Settings › Models**, or check the project secret named after the provider in **Settings › Secrets**. |
 | **Test connection** to Ollama / LM Studio fails with a connection error | The local server is not running, or listens on another port: start it, or enter its address under *Server address*. In Docker, the address must use `host.docker.internal`, not `localhost`. |
 | A model shows *integration is not installed on this server* | Run `make setup` again (it installs every provider), or `docker compose … up --build`. |
 | `make docker-up` fails with *port is already allocated* | Something else uses 7777: set `WEB_PORT=7778` in `infra/.env.local`. |

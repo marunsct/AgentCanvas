@@ -8,7 +8,7 @@ default model once on the first-run screen, and any **AI model** block on the ca
 ## Supported providers
 
 A model is written `provider:model`. Type it in a AI model block's **Model** field (suggestions are listed), or pick it
-on the **Model** screen.
+in **Settings › Models**.
 
 | Provider | Example model id | API key (project secret or server variable) |
 |---|---|---|

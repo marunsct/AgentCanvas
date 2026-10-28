@@ -31,7 +31,7 @@ for example look up an order, then write a reply based on what it found.
 
 ## Build your first workflow in 5 steps
 
-Before you start, pick your AI model once on the home page (**Model**, or the *Set up your model* banner). Every
+Before you start, pick your AI model once (the *Set up your model* banner on Home, or **Settings › Models**). Every
 new AI model block uses it automatically.
 
 1. On the home page, type a name and press **Create empty**.
@@ -90,7 +90,7 @@ Built something in Langflow, Flowise or n8n before? [Import it](switching.md).
 | *has no outgoing flow edge* | A dead end: nothing comes after this step. | Click its right-hand dot and choose the next step, or Finish. |
 | *refers to unknown state channel* | A step uses a data field that does not exist. | Click empty canvas and add the field with **+ Channel**, using the exact name. |
 | *template error* | A `{{ }}` is not closed. | Every `{{` needs a matching `}}`. |
-| The run says the API key is wrong | The AI provider refused your key. | Re-enter it on the home page under **Model**, or in Workspace → Secrets. |
+| The run says the API key is wrong | The AI provider refused your key. | Re-enter it in **Settings › Models**, or replace the secret in **Settings › Secrets**. |
 | The run says connection refused | The AI model's server could not be reached. | If you use Ollama or LM Studio, make sure it is running. |
 
 Next: browse the [Block reference](widgets.md) or read [Core concepts](concepts.md) for the details.

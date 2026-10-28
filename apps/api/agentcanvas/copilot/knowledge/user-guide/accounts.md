@@ -32,7 +32,7 @@ Buttons for actions your role can't take are hidden.
 
 ![Members page](img/members.png)
 
-Admins open **Members**, enter an email, pick a role and click **Invite**. The invitation takes effect at the person's
+Admins open **Settings › Members**, enter an email, pick a role and click **Invite**. The invitation takes effect at the person's
 first sign-in with that (verified) email. Admins can change roles or remove people. An organisation can never be left without an admin who
 has signed in.
 
@@ -41,7 +41,7 @@ admins of the default organisation on first sign-in.
 
 ## Audit log
 
-**Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a
+**Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a
 hash of exactly what was approved; publishing past a failed release gate records the reason given. Rows are kept
 for 400 days by default.
 

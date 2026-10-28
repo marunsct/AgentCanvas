@@ -35,6 +35,7 @@ Then dive into the area you need:
 - [Memory](memory.md)
 - [Evaluation Studio](evaluation.md)
 - [Publish and integrate](publish.md)
+- [Settings and moving around](settings.md)
 - [Organisations, roles and policies](accounts.md)
 - [Deploy and operate](deploy.md)
 - [FAQ](faq.md)

@@ -12,7 +12,7 @@
 | **Side panel** (right) | **Inspector** (settings of the selection, or the Workflow panel when nothing is selected), **Run**, **Tests**, **Versions**, **Code**. |
 | **Dock** (bottom) | **Problems**, **Timeline**, **Explain**. |
 
-**Themes.** The switch at the right of the top bar on every page picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is remembered in this browser.
+**Themes.** The menu under your initial at the right of the top bar picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is remembered in this browser.
 
 ## Add and connect steps
 
@@ -79,4 +79,4 @@ replaces every risky tool with a recorder so you can run the whole workflow safe
 
 The **Code** tab shows the LangGraph Python program generated from the canvas. Each block is tagged with the card
 it came from (`# ── @canvas-node … ──`). It is read-only: change the canvas and the code follows. To take the code
-away, use **Export** (see [Publish and integrate](publish.md#export-as-a-python-project)).
+away, use **Export** (see [Export and deploy](export.md#export)).

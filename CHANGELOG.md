@@ -40,6 +40,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   embeddings saved without a model get the project's default for that purpose, else the project's model, else a
   422 that says what to choose (`GET/PUT /projects/{id}/model-defaults`, `GET /projects/{id}/models/resolve`). The
   Evaluation page no longer pre-fills `anthropic:claude-haiku-4-5`.
+- **Settings › Organisation**: General (the organisation's name and conversation retention, which had an API and no
+  page) and Server (admins: how the server is set up, each setting with its environment variable; never a secret).
+- The user guide has a page for the top bar and Settings, and its references to the old **Model**, **Members**,
+  **Audit log** links and the Workspace's secrets are updated.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 
