@@ -49,6 +49,8 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(Text)
     # days a conversation is kept after its last activity (M8-T4); NULL = AGENTCANVAS_RETENTION_DAYS, 0 = forever
     retention_days: Mapped[int | None] = mapped_column(Integer)
+    # where workflows are published (dev, staging, prod...); None: any name, the web app offers the usual three
+    environments: Mapped[list[str] | None] = mapped_column(Json, nullable=True)
     created_at: Mapped[datetime] = _now()
 
 

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
-import type { Check, DeploymentOut, PublishOut } from "../api/generated";
+import type { Check, DeploymentOut, OrgSettingsOut, PublishOut } from "../api/generated";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
@@ -15,6 +15,10 @@ export function PublishSection({ wfId }: { wfId: string }) {
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [key, setKey] = useState<{ deployment: string; key: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const org = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
+  const offered = org.data?.offered_environments ?? ["prod"];
+  const [env, setEnv] = useState("prod");
+  const target = offered.includes(env) ? env : offered[offered.length - 1];
   const deps = useQuery({ queryKey: ["deployments", wfId], queryFn: () => apiFetch<DeploymentOut[]>(`/workflows/${wfId}/deployments`) });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["deployments", wfId] });
@@ -24,7 +28,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
   const publish = useMutation({
     mutationFn: async (override_reason?: string) => {
       await useEditor.getState().flush();
-      return apiFetch<PublishOut>(`/workflows/${wfId}/publish`, { method: "POST", json: { environment: "prod", override_reason } });
+      return apiFetch<PublishOut>(`/workflows/${wfId}/publish`, { method: "POST", json: { environment: target, override_reason } });
     },
     onSuccess: (out) => {
       setChecks(out.checklist ?? []);
@@ -58,8 +62,13 @@ export function PublishSection({ wfId }: { wfId: string }) {
   return (
     <section className="publish" aria-label="publish">
       <h4>Publish</h4>
+      {can("builder") && offered.length > 1 && (
+        <select aria-label="environment" value={target} onChange={(e) => setEnv(e.target.value)} className="env-select">
+          {offered.map((e) => <option key={e} value={e}>{e}</option>)}
+        </select>
+      )}
       {can("builder") && <button type="button" className="primary" disabled={publish.isPending} onClick={() => publish.mutate(undefined)}>
-        {publish.isPending ? "Checking…" : "Publish to prod"}
+        {publish.isPending ? "Checking…" : `Publish to ${target}`}
       </button>}
       {publish.error && <p className="error-text small" role="alert">{(publish.error as Error).message}</p>}
       {actionError && <p className="error-text small" role="alert">{actionError}</p>}

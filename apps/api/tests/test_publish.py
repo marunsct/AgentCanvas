@@ -190,3 +190,18 @@ async def test_concurrent_first_publishes_share_one_deployment(app, api_client):
     async with app.state.db.sessionmaker() as s:
         rows = (await s.scalars(select(Deployment).where(Deployment.workflow_id == wf))).all()
     assert [(d.environment, d.version_id) for d in rows] == [("qa", version.id)]
+
+
+async def test_an_organisation_can_limit_where_workflows_are_published(api_client):
+    """No list: any environment (the web app offers dev, staging, prod). A list: only its names."""
+    settings = (await api_client.get("/v1/org/settings")).json()
+    assert settings["environments"] is None and settings["offered_environments"] == ["dev", "staging", "prod"]
+    wf = await make_greeter(api_client)
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "qa"})).status_code == 200
+    out = (await api_client.put("/v1/org/settings", json={"environments": ["staging", "prod", "prod"]})).json()
+    assert out["environments"] == ["staging", "prod"] and out["offered_environments"] == ["staging", "prod"]
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "qa"})
+    assert refused.status_code == 422 and "Settings > Organisation" in refused.json()["detail"]
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "staging"})).status_code == 200
+    assert (await api_client.put("/v1/org/settings", json={"environments": ["Bad Name"]})).status_code == 422
+    assert (await api_client.put("/v1/org/settings", json={"environments": []})).json()["environments"] is None

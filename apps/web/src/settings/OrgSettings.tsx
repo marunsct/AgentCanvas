@@ -17,12 +17,15 @@ export function OrgSettings() {
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"server" | "days" | "forever">("server");
   const [n, setN] = useState(90);
+  const [envs, setEnvs] = useState<string[]>([]);
+  const [newEnv, setNewEnv] = useState("");
   useEffect(() => {
     if (!q.data) return;
     setName(q.data.name);
     const r = q.data.retention_days;
     setMode(r == null ? "server" : r === 0 ? "forever" : "days");
     setN(r || q.data.effective_retention_days || 90);
+    setEnvs(q.data.offered_environments);
   }, [q.data]);
   const save = useMutation({
     mutationFn: () => apiFetch<OrgSettingsOut>("/org/settings", {
@@ -30,6 +33,8 @@ export function OrgSettings() {
       json: {
         ...(q.data?.name_editable && name.trim() !== q.data.name ? { name: name.trim() } : {}),
         retention_days: mode === "server" ? null : mode === "forever" ? 0 : n,
+        // only when changed: an organisation without a list publishes anywhere, and saving retention must not change that
+        ...(JSON.stringify(envs) !== JSON.stringify(q.data?.offered_environments) ? { environments: envs } : {}),
       },
     }),
     onSuccess: (out) => { qc.setQueryData(["org-settings"], out); toast("Saved the organisation settings"); },
@@ -56,6 +61,24 @@ export function OrgSettings() {
         <label className="row"><input type="radio" name="retention" checked={mode === "forever"} disabled={!admin} onChange={() => setMode("forever")} />
           Forever</label>
       </div>
+
+      <h3>Environments</h3>
+      <p className="muted small">Where workflows are published. Publishing to a name not on the list is refused.</p>
+      <ul className="chip-list" aria-label="environments">
+        {envs.map((e) => (
+          <li key={e}><code>{e}</code>{admin && envs.length > 1 && (
+            <button type="button" className="link small" aria-label={`remove ${e}`} onClick={() => setEnvs(envs.filter((x) => x !== e))}>×</button>
+          )}</li>
+        ))}
+      </ul>
+      {admin && (
+        <div className="row gap">
+          <input aria-label="new environment" placeholder="e.g. qa" value={newEnv} pattern="[a-z][a-z0-9-]{0,30}" style={{ width: 160 }}
+            onChange={(e) => setNewEnv(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} />
+          <button type="button" disabled={!/^[a-z][a-z0-9-]{0,30}$/.test(newEnv) || envs.includes(newEnv)}
+            onClick={() => { setEnvs([...envs, newEnv]); setNewEnv(""); }}>Add</button>
+        </div>
+      )}
 
       <h3>Set by the server</h3>
       <p className="muted small">

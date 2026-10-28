@@ -6859,6 +6859,23 @@
       "OrgSettings": {
         "description": "Fields left out keep their value; `retention_days: null` returns to the server default.",
         "properties": {
+          "environments": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[a-z][a-z0-9-]{0,30}$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "where workflows are published; null: any name (dev, staging, prod offered)",
+            "title": "Environments"
+          },
           "name": {
             "anyOf": [
               {
@@ -6903,6 +6920,21 @@
             "title": "Effective Retention Days",
             "type": "integer"
           },
+          "environments": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the organisation's list, or null when none is set",
+            "title": "Environments"
+          },
           "memory_retention_days": {
             "description": "the server's: memories not updated for this long go (0 = kept)",
             "title": "Memory Retention Days",
@@ -6916,6 +6948,14 @@
             "description": "false in Matura mode, where organisations are named in Matura",
             "title": "Name Editable",
             "type": "boolean"
+          },
+          "offered_environments": {
+            "description": "what the web app offers when publishing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Offered Environments",
+            "type": "array"
           },
           "retention_days": {
             "anyOf": [
@@ -6935,7 +6975,9 @@
           "retention_days",
           "effective_retention_days",
           "audit_retention_days",
-          "memory_retention_days"
+          "memory_retention_days",
+          "environments",
+          "offered_environments"
         ],
         "title": "OrgSettingsOut",
         "type": "object"

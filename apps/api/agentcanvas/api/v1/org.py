@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
@@ -167,6 +167,12 @@ class OrgSettings(BaseModel):
         None, ge=0, le=3650,
         description="days a conversation is kept after its last activity; null = the server default, 0 = forever",
     )  # fmt: skip
+    environments: list[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{0,30}$")]] | None = Field(
+        None, max_length=20, description="where workflows are published; null: any name (dev, staging, prod offered)"
+    )
+
+
+DEFAULT_ENVIRONMENTS = ["dev", "staging", "prod"]
 
 
 class OrgSettingsOut(BaseModel):
@@ -176,6 +182,8 @@ class OrgSettingsOut(BaseModel):
     effective_retention_days: int = Field(description="what applies now (0 = conversations are kept forever)")
     audit_retention_days: int = Field(description="the server's: audit-log rows older than this go (0 = kept)")
     memory_retention_days: int = Field(description="the server's: memories not updated for this long go (0 = kept)")
+    environments: list[str] | None = Field(description="the organisation's list, or null when none is set")
+    offered_environments: list[str] = Field(description="what the web app offers when publishing")
 
 
 async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
@@ -188,6 +196,7 @@ async def _settings_out(session: AsyncSession, request: Request, org_id: str) ->
         name=org.name, name_editable=server.auth_mode != "matura", retention_days=days,
         effective_retention_days=server.retention_days if days is None else days,
         audit_retention_days=server.audit_retention_days, memory_retention_days=server.memory_retention_days,
+        environments=org.environments, offered_environments=org.environments or DEFAULT_ENVIRONMENTS,
     )  # fmt: skip
 
 
@@ -219,6 +228,9 @@ async def put_org_settings(
         org.name = (body.name or "").strip()
     if "retention_days" in body.model_fields_set:
         org.retention_days = body.retention_days
+    if "environments" in body.model_fields_set:
+        names = list(dict.fromkeys(body.environments or []))
+        org.environments = names or None
     await session.commit()
     note(request, target=f"org_id={user.org_id}", **body.model_dump(include=body.model_fields_set))
     return await _settings_out(session, request, user.org_id)

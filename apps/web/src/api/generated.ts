@@ -1158,6 +1158,143 @@ export type MinSamples2 = number | null;
 export type Sampling2 = number | null;
 export type WindowMinutes2 = number | null;
 /**
+ * where workflows are published; null: any name (dev, staging, prod offered)
+ */
+export type Environments =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+  | [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+  | [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+  | [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+  | [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+  | [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+  | [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+  | null;
+/**
  * the organisation's name
  */
 export type Name40 = string | null;
@@ -1174,6 +1311,10 @@ export type AuditRetentionDays = number;
  */
 export type EffectiveRetentionDays = number;
 /**
+ * the organisation's list, or null when none is set
+ */
+export type Environments1 = string[] | null;
+/**
  * the server's: memories not updated for this long go (0 = kept)
  */
 export type MemoryRetentionDays = number;
@@ -1182,6 +1323,10 @@ export type Name41 = string;
  * false in Matura mode, where organisations are named in Matura
  */
 export type NameEditable = boolean;
+/**
+ * what the web app offers when publishing
+ */
+export type OfferedEnvironments = string[];
 export type RetentionDays1 = number | null;
 /**
  * shown with every violation
@@ -1191,7 +1336,7 @@ export type Enabled3 = boolean;
 /**
  * enforce only when publishing to these (empty: always, also in the editor)
  */
-export type Environments = string[];
+export type Environments2 = string[];
 /**
  * CEL: which elements the policy is about
  */
@@ -1215,7 +1360,7 @@ export type Enabled4 = boolean;
 /**
  * enforce only when publishing to these (empty: always, also in the editor)
  */
-export type Environments1 = string[];
+export type Environments3 = string[];
 export type Id44 = string;
 /**
  * CEL: which elements the policy is about
@@ -4532,6 +4677,7 @@ export interface OnlinePatch {
  * via the `definition` "OrgSettings".
  */
 export interface OrgSettings {
+  environments?: Environments;
   name?: Name40;
   retention_days?: RetentionDays;
 }
@@ -4542,9 +4688,11 @@ export interface OrgSettings {
 export interface OrgSettingsOut {
   audit_retention_days: AuditRetentionDays;
   effective_retention_days: EffectiveRetentionDays;
+  environments: Environments1;
   memory_retention_days: MemoryRetentionDays;
   name: Name41;
   name_editable: NameEditable;
+  offered_environments: OfferedEnvironments;
   retention_days: RetentionDays1;
 }
 /**
@@ -4554,7 +4702,7 @@ export interface OrgSettingsOut {
 export interface PolicyIn {
   description?: Description17;
   enabled?: Enabled3;
-  environments?: Environments;
+  environments?: Environments2;
   match?: Match;
   name: Name42;
   require: Require;
@@ -4569,7 +4717,7 @@ export interface PolicyOut {
   created_at: CreatedAt23;
   description?: Description18;
   enabled?: Enabled4;
-  environments?: Environments1;
+  environments?: Environments3;
   id: Id44;
   match?: Match1;
   name: Name43;

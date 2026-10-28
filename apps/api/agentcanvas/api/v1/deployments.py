@@ -21,7 +21,7 @@ from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.runs import _context, _respond, _thread
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
-from agentcanvas.db.models import Deployment, Project, Run, RunScore, Thread, WorkflowVersion
+from agentcanvas.db.models import Deployment, Organization, Project, Run, RunScore, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import breaking_changes, contract
@@ -91,6 +91,12 @@ async def publish(
     key."""
     view = await svc.get(wf_id)
     wf, project_id = view.workflow, view.row.project_id
+    org = await session.get(Organization, user.org_id)
+    if org is not None and org.environments and body.environment not in org.environments:
+        raise InvalidInput(
+            f"'{body.environment}' is not one of this organisation's environments ({', '.join(org.environments)}); "
+            "an admin adds it in Settings > Organisation"
+        )
     # the organisation's policies as they apply to this environment (FR-X-19) are their own checklist item
     diagnostics = await svc._validate(wf, project_id, environment=body.environment)
     errors = [f"{d.code} {d.message}" for d in diagnostics if d.severity == "error" and d.code not in POLICY_CODES]

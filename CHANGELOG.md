@@ -103,6 +103,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - Home leads with the workflow list; empty states say what goes there; policies are edited in place; the Search
   knowledge block picks its base from a list; Members, Events and Memory get headers, confirmations and role gating;
   Settings > You lists the keyboard shortcuts; CI caches uv downloads.
+- **Environments**: an organisation can list where workflows are published (Settings > Organisation > General);
+  with a list, publishing elsewhere is refused; without one, any name works and dev, staging and prod are offered.
+  The editor's Publish picks the environment instead of always using prod (migration `a8c4e2f6b0d3`).
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 
