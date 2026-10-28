@@ -58,6 +58,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   The decision records which changes were kept.
 - **Copilot history**: New chat keeps the conversation (it used to delete it); the panel's History lists earlier
   conversations, titled by their first question, to reopen or delete (`/workflows/{id}/copilot/threads`).
+- The inspector asks the Copilot about the selected block (and, for a builder, to fix its errors); `get_problems`
+  gives the Copilot best-practice suggestions (a router without a default, a model without a backup, thin
+  instructions) apart from the validator's problems (FR-COP-04).
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

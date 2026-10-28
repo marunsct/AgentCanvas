@@ -12,6 +12,8 @@ import { ScriptPanel } from "./ScriptPanel";
 import { PoliciesEditor } from "./PoliciesEditor";
 import { WiredPorts } from "./WiredPorts";
 import { WorkflowPanel } from "./WorkflowPanel";
+import { useCopilot } from "../copilot/copilot";
+import { useCan } from "../api/session";
 
 const NAME = /^[a-z][a-z0-9_]{0,62}$/;
 
@@ -22,6 +24,7 @@ export function Inspector() {
   const dispatch = useEditor((s) => s.dispatch);
   const breakpoints = useEditor((s) => s.breakpoints);
   const manifests = useManifests();
+  const canBuild = useCan("builder");
   if (!wf) return null;
   const el = selected ? findElement(wf, selected) : undefined;
   if (!el) return <WorkflowPanel />;
@@ -35,6 +38,16 @@ export function Inspector() {
     <div className="panel-body" key={el.id}>
       <h3>{m?.label ?? el.type} <small className="muted" title="internal type id">{el.type}</small></h3>
       {m?.description && <p className="muted">{m.description}</p>}
+      <div className="row gap ask-copilot" data-testid="ask-copilot-block">
+        {/* the block's name and id go with the question, so the Copilot looks at this one */}
+        <button type="button" className="link small" onClick={() => useCopilot.getState().askFor(
+          `Explain the block "${el.label || el.name}" (id ${el.id}): what it does here, what it reads and writes, and anything I should change.`, "ask")}>
+          ✦ Ask the Copilot about this block</button>
+        {canBuild && mine.some((d) => d.severity === "error") && (
+          <button type="button" className="link small" onClick={() => useCopilot.getState().askFor(
+            `Fix the problems of the block "${el.label || el.name}" (id ${el.id}).`, "build")}>Fix with the Copilot</button>
+        )}
+      </div>
       <label>
         Name (letters, digits and _ only; used to refer to it)
         <input className="mono" defaultValue={el.name} aria-label="node name"
