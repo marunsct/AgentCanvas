@@ -655,7 +655,7 @@ export type Targets1 =
   | [TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn]
   | [TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn, TargetIn];
 /**
- * the framework this target runs on (S25); None: the workflow's own
+ * the framework this target runs on; None: the workflow's own
  */
 export type Framework2 = string | null;
 export type Label8 = string | null;
@@ -1064,7 +1064,7 @@ export type Namespace1 = string;
 export type Parts = string[];
 export type Name38 = string;
 /**
- * create it in this workflow's own folder (S17)
+ * create it in this workflow's own folder
  */
 export type WorkflowId6 = string | null;
 export type Writes = string[];
@@ -3334,7 +3334,7 @@ export interface DatasetVersionOut {
   number: Number;
 }
 /**
- * Debug-run aids (M4-T9); never part of the workflow or its exported code.
+ * Debug-run aids; never part of the workflow or its exported code.
  *
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "DebugOptions".

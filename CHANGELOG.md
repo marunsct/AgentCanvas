@@ -90,6 +90,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   from their name ("Manager approval"). Page descriptions sit in the page header on every page.
 - **Workspace files as a folder tree** (folders open and close; the open file's folder starts open), and the New
   file box no longer wraps its button.
+- Honest labels: the API documentation no longer shows the plan's work-item ids ("(S17)", "(M7-T3)"; a test keeps
+  it so); beta blocks are marked in the palette; "stub risky tools" reads "tools that change things are only
+  recorded".
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

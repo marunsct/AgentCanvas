@@ -183,3 +183,23 @@ async def test_no_query_parameter_breaks_a_route(api_client, app):
                     failures.append(f"GET {path} ?{name}={value[:20]!r}: HTTP {r.status_code} {r.text[:100]}")
     assert calls > 300, calls  # the sweep really covers the API's query parameters
     assert not failures, f"{len(failures)} query values broke the API:\n" + "\n".join(sorted(set(failures))[:40])
+
+
+def test_the_api_docs_carry_no_planning_ids(app):
+    """Route docstrings name the plan's work items for the code's readers; /docs and the OpenAPI document do not."""
+    import re
+
+    found: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in ("description", "summary") and isinstance(v, str) and re.search(r"\((?:S\d+|M\d+-T\d+)", v):
+                    found.append(v[:80])
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(app.openapi())
+    assert not found, found

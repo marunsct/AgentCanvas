@@ -12,6 +12,11 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### The IR's `settings.experimental` flag stays, unread
+Nothing reads it. Removing it from the IR would make documents that contain it invalid (the IR refuses unknown
+fields), for no gain; I010 already says when a block uses an upstream feature that may change, and the palette now
+marks beta blocks. *Reverse:* remove it with an IR version bump and a migration of stored documents.
+
 ### The Copilot work so far, and the calls in it
 - **Deep Agents is built, not yet the default.** `AGENTCANVAS_COPILOT_ENGINE=deepagents` runs it; every Copilot test
   runs on both engines and passes. I left the loop as the default because neither engine has been measured on a

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -67,6 +68,30 @@ def sandbox_hint(settings: Settings) -> str | None:
             "or langsmith when people you do not trust can edit workspaces"
         )
     return None
+
+
+# the plan's work-item ids ("(S17)", "(M7-T3)", "(FR-X-13)") keep the code traceable; the API's readers do not need them
+_REF = r"(?:S\d+|M\d+-T\d+|T\d+|FR-[A-Z]+-\d+|SP-\d+|TS\d+)"
+_REFS = re.compile(rf"\s*\({_REF}(?:[ ,;/]+{_REF})*\)")
+
+
+def plain_openapi(app: FastAPI) -> dict:
+    """The OpenAPI document with the planning ids taken out of its descriptions (cached like FastAPI's own)."""
+    if app.openapi_schema is None:
+        from fastapi.openapi.utils import get_openapi
+
+        doc = get_openapi(title=app.title, version=app.version, routes=app.routes)
+
+        def clean(node: object) -> object:
+            if isinstance(node, dict):
+                return {k: _REFS.sub("", v) if k in ("description", "summary") and isinstance(v, str) else clean(v)
+                        for k, v in node.items()}  # fmt: skip
+            if isinstance(node, list):
+                return [clean(v) for v in node]
+            return node
+
+        app.openapi_schema = clean(doc)  # type: ignore[assignment]
+    return app.openapi_schema
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -219,6 +244,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
     app = FastAPI(title="AgentCanvas API", version="0.32.3", lifespan=lifespan, **docs)
     app.state.settings = settings
+    app.openapi = lambda: plain_openapi(app)  # type: ignore[method-assign]
     install_problem_handlers(app)
     observability.setup_tracing(app)
     app.add_middleware(BodyLimit)  # 413 for bodies over 20 MB, whoever reaches the API

@@ -85,7 +85,7 @@ export function RunPanel() {
       </div>
       <label className="row small" title="Tools that write, send or execute only record what they would have done">
         <input type="checkbox" checked={dryRun} onChange={(e) => useUi.getState().setDryRun(e.target.checked)} aria-label="dry run" />
-        Dry run (stub risky tools)
+        Dry run (tools that change things are only recorded)
       </label>
       {chat ? <ChatInput wf={wf} disabled={blocked} /> : <FormInput wf={wf} disabled={blocked || busyEditing} />}
       {errors > 0 && <p className="muted">{errors} problem(s) must be fixed before you can run — see Problems at the bottom; each one says how to fix it.</p>}

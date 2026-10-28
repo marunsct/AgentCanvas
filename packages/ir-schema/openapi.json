@@ -2466,7 +2466,7 @@
         "type": "object"
       },
       "DebugOptions": {
-        "description": "Debug-run aids (M4-T9); never part of the workflow or its exported code.",
+        "description": "Debug-run aids; never part of the workflow or its exported code.",
         "properties": {
           "dry_run": {
             "default": false,
@@ -6120,7 +6120,7 @@
                 "type": "null"
               }
             ],
-            "description": "create it in this workflow's own folder (S17)",
+            "description": "create it in this workflow's own folder",
             "title": "Workflow Id"
           },
           "writes": {
@@ -9571,7 +9571,7 @@
                 "type": "null"
               }
             ],
-            "description": "the framework this target runs on (S25); None: the workflow's own",
+            "description": "the framework this target runs on; None: the workflow's own",
             "title": "Framework"
           },
           "label": {
@@ -11195,7 +11195,7 @@
     },
     "/v1/agent-frameworks": {
       "get": {
-        "description": "Frameworks an Agent block can be designed for: generated in that framework's own code (S21).",
+        "description": "Frameworks an Agent block can be designed for: generated in that framework's own code.",
         "operationId": "list_agent_frameworks_v1_agent_frameworks_get",
         "parameters": [
           {
@@ -14572,7 +14572,7 @@
     },
     "/v1/frameworks": {
       "get": {
-        "description": "The frameworks this server can run workflows on (S20): abilities and which blocks each runs, natively or by\nemulation, and whether each one's runtime is set up here. The first one is the default for new workflows.",
+        "description": "The frameworks this server can run workflows on: abilities and which blocks each runs, natively or by\nemulation, and whether each one's runtime is set up here. The first one is the default for new workflows.",
         "operationId": "frameworks_v1_frameworks_get",
         "parameters": [
           {
@@ -15738,7 +15738,7 @@
     },
     "/v1/mcp-connectors": {
       "get": {
-        "description": "The one-click connector gallery (S15): curated MCP servers with their settings and the secrets they need.",
+        "description": "The one-click connector gallery: curated MCP servers with their settings and the secrets they need.",
         "operationId": "mcp_connectors_v1_mcp_connectors_get",
         "parameters": [
           {
@@ -15937,7 +15937,7 @@
     },
     "/v1/me/invitations": {
       "get": {
-        "description": "Organisations that invited you while you belong to another one; joining needs your acceptance (S11).",
+        "description": "Organisations that invited you while you belong to another one; joining needs your acceptance.",
         "operationId": "my_invitations_v1_me_invitations_get",
         "parameters": [
           {
@@ -17364,7 +17364,7 @@
     },
     "/v1/org/settings": {
       "get": {
-        "description": "Organisation settings: its name, how long conversations are kept (M8-T4), and the server's other retentions.",
+        "description": "Organisation settings: its name, how long conversations are kept, and the server's other retentions.",
         "operationId": "get_org_settings_v1_org_settings_get",
         "parameters": [
           {
@@ -19082,7 +19082,7 @@
     },
     "/v1/projects/{project_id}/scripts": {
       "post": {
-        "description": "Scaffold `scripts/<name>.py` for a Script node (FR-SCR-01), or `flows/<workflow>/scripts/<name>.py`\nwith `workflow_id` (S17); returns its import path.",
+        "description": "Scaffold `scripts/<name>.py` for a Script node, or `flows/<workflow>/scripts/<name>.py`\nwith `workflow_id`; returns its import path.",
         "operationId": "new_script_v1_projects__project_id__scripts_post",
         "parameters": [
           {
@@ -20484,7 +20484,7 @@
             }
           },
           {
-            "description": "only shared code and this workflow's own (S17)",
+            "description": "only shared code and this workflow's own",
             "in": "query",
             "name": "workflow_id",
             "required": false,
@@ -20497,7 +20497,7 @@
                   "type": "null"
                 }
               ],
-              "description": "only shared code and this workflow's own (S17)",
+              "description": "only shared code and this workflow's own",
               "title": "Workflow Id"
             }
           },
@@ -20761,7 +20761,7 @@
     },
     "/v1/runs/{run_id}/test-case": {
       "post": {
-        "description": "Record/replay (FR-X-13): a run (e.g. from production) becomes a regression test replaying its model replies.",
+        "description": "Record/replay: a run (e.g. from production) becomes a regression test replaying its model replies.",
         "operationId": "test_case_from_run_v1_runs__run_id__test_case_post",
         "parameters": [
           {
@@ -20837,7 +20837,7 @@
     },
     "/v1/runs/{run_id}/trace": {
       "get": {
-        "description": "Redirect to the run's LangSmith trace (M6-T6). The web app asks for `format=json`: a browser link\ncannot carry the sign-in token.",
+        "description": "Redirect to the run's LangSmith trace. The web app asks for `format=json`: a browser link\ncannot carry the sign-in token.",
         "operationId": "open_trace_v1_runs__run_id__trace_get",
         "parameters": [
           {
@@ -21187,7 +21187,7 @@
     },
     "/v1/templates": {
       "get": {
-        "description": "The template gallery (S23): each starter template with its category, tags, difficulty and a sample input.",
+        "description": "The template gallery: each starter template with its category, tags, difficulty and a sample input.",
         "operationId": "templates_v1_templates_get",
         "parameters": [
           {
@@ -21597,7 +21597,7 @@
     },
     "/v1/threads/{thread_id}/explain": {
       "get": {
-        "description": "Explain mode (FR-X-17): what ran at each super-step, what it wrote and why routers chose their route.",
+        "description": "Explain mode: what ran at each super-step, what it wrote and why routers chose their route.",
         "operationId": "explain_thread_v1_threads__thread_id__explain_get",
         "parameters": [
           {
@@ -21680,7 +21680,7 @@
     },
     "/v1/threads/{thread_id}/fork": {
       "post": {
-        "description": "Time travel: continue from a past checkpoint, optionally after editing it (M4-T7).",
+        "description": "Time travel: continue from a past checkpoint, optionally after editing it.",
         "operationId": "fork_thread_v1_threads__thread_id__fork_post",
         "parameters": [
           {
@@ -23106,7 +23106,7 @@
     },
     "/v1/workflows/{wf_id}/blast-radius": {
       "get": {
-        "description": "What each step can do to the outside world and whether a human gates it (FR-X-02).",
+        "description": "What each step can do to the outside world and whether a human gates it.",
         "operationId": "get_blast_radius_v1_workflows__wf_id__blast_radius_get",
         "parameters": [
           {
@@ -23338,7 +23338,7 @@
     },
     "/v1/workflows/{wf_id}/code": {
       "get": {
-        "description": "The workflow's generated code; `?framework=` previews it converted to another installed framework (S25).",
+        "description": "The workflow's generated code; `?framework=` previews it converted to another installed framework.",
         "operationId": "get_code_v1_workflows__wf_id__code_get",
         "parameters": [
           {
@@ -23715,7 +23715,7 @@
     },
     "/v1/workflows/{wf_id}/copilot/code": {
       "post": {
-        "description": "Copilot help in the code editor (S17): write code from a description, explain it, or fix it. The answer is a\nproposal the editor shows as a diff; nothing is written to the workspace here.",
+        "description": "Copilot help in the code editor: write code from a description, explain it, or fix it. The answer is a\nproposal the editor shows as a diff; nothing is written to the workspace here.",
         "operationId": "code_help_v1_workflows__wf_id__copilot_code_post",
         "parameters": [
           {
@@ -24797,7 +24797,7 @@
     },
     "/v1/workflows/{wf_id}/export.zip": {
       "get": {
-        "description": "The workflow (draft, or `?version=`) as a deployable project of its framework (or `?framework=`), with the\ndeploy kit for `target` when it is a LangGraph service (M6-T2/T3, S16).",
+        "description": "The workflow (draft, or `?version=`) as a deployable project of its framework (or `?framework=`), with the\ndeploy kit for `target` when it is a LangGraph service.",
         "operationId": "export_zip_v1_workflows__wf_id__export_zip_get",
         "parameters": [
           {
@@ -24908,7 +24908,7 @@
     },
     "/v1/workflows/{wf_id}/export/plan": {
       "get": {
-        "description": "What deploying the export to `target` will need, before downloading it (S16).",
+        "description": "What deploying the export to `target` will need, before downloading it.",
         "operationId": "export_plan_v1_workflows__wf_id__export_plan_get",
         "parameters": [
           {
@@ -25245,7 +25245,7 @@
     },
     "/v1/workflows/{wf_id}/github": {
       "post": {
-        "description": "Push the export (as `export.zip` would download it) to a GitHub repository as one commit (S31).",
+        "description": "Push the export (as `export.zip` would download it) to a GitHub repository as one commit.",
         "operationId": "push_to_github_v1_workflows__wf_id__github_post",
         "parameters": [
           {
@@ -25398,7 +25398,7 @@
     },
     "/v1/workflows/{wf_id}/portability": {
       "get": {
-        "description": "For each installed framework (S20): can this workflow move to it, and which blocks stop or bend it.",
+        "description": "For each installed framework: can this workflow move to it, and which blocks stop or bend it.",
         "operationId": "get_portability_v1_workflows__wf_id__portability_get",
         "parameters": [
           {
@@ -25767,7 +25767,7 @@
     },
     "/v1/workflows/{wf_id}/spend": {
       "get": {
-        "description": "What the workflow's runs spent today and this month (UTC), against its day and month budgets, and its latest\ncost alerts (S26).",
+        "description": "What the workflow's runs spent today and this month (UTC), against its day and month budgets, and its latest\ncost alerts.",
         "operationId": "get_spend_v1_workflows__wf_id__spend_get",
         "parameters": [
           {

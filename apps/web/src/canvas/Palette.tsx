@@ -134,7 +134,9 @@ export function Palette() {
               onDoubleClick={() => addElement(m.type)}
               onKeyDown={onActivate(() => addElement(m.type))}
             >
-              <b>{m.label}</b>
+              <b>{m.label}{m.stability && m.stability !== "stable" && (
+                <span className="badge beta" title="This block may still change; its settings or behaviour can differ in a later version">
+                  {m.stability}</span>)}</b>
               <small className="blurb">{firstSentence(m.description) || m.type}{m.provenance === "workspace" ? " · workspace" : ""}</small>
             </div>
           ))}
