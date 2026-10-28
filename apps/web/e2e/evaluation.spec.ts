@@ -23,8 +23,8 @@ test("dataset, evaluator, experiment with a variant, results grid and comparison
   await page.getByRole("button", { name: "Create dataset" }).click();
   const view = page.getByTestId("dataset-view");
   for (const who of ["Ada", "Bob"]) {
-    await view.getByLabel("example input").fill(JSON.stringify({ who }));
-    await view.getByLabel("example reference").fill(JSON.stringify({ out: `Hello ${who}` }));
+    await view.getByLabel("input who").fill(who); // a field per workflow field, not JSON
+    await view.getByLabel("expected out").fill(`Hello ${who}`);
     await view.getByRole("button", { name: "Add example" }).click();
     await expect(view.getByTestId("examples")).toContainText(who);
   }

@@ -16,6 +16,7 @@ import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
 import { confirmDialog, toast } from "../ui/dialog";
 import { EvaluatorForm, useEvaluatorKinds } from "./EvaluatorForm";
+import { ExampleForm } from "./ExampleForm";
 import { PageHeader } from "../ui/PageHeader";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
@@ -38,7 +39,8 @@ export function EvaluationPage() {
   const { id = "" } = useParams();
   const [tab, setTab] = useState<Tab>("datasets");
   const wf = useQuery({
-    queryKey: ["workflow", id], queryFn: () => apiFetch<{ name: string; ir: { framework?: string } }>(`/workflows/${id}`),
+    queryKey: ["workflow", id],
+    queryFn: () => apiFetch<{ name: string; ir: { framework?: string; state?: { channels?: { name: string; io?: string | null }[] } } }>(`/workflows/${id}`),
   });
   return (
     <div className="page evaluation">
@@ -50,7 +52,7 @@ export function EvaluationPage() {
             onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates", production: "Production", queues: "Annotation queues" }[t]}</button>
         ))}
       </nav>
-      {tab === "datasets" && <Datasets wfId={id} />}
+      {tab === "datasets" && <Datasets wfId={id} channels={wf.data?.ir.state?.channels ?? []} />}
       {tab === "evaluators" && <Evaluators wfId={id} />}
       {tab === "experiments" && <Experiments wfId={id} wfFramework={wf.data?.ir.framework ?? "langchain"} />}
       {tab === "gates" && <Gates wfId={id} />}
@@ -61,7 +63,7 @@ export function EvaluationPage() {
 }
 
 // ------------------------------------------------------------------------------------------------ datasets ----
-function Datasets({ wfId }: { wfId: string }) {
+function Datasets({ wfId, channels }: { wfId: string; channels: { name: string; io?: string | null }[] }) {
   const qc = useQueryClient();
   const key = ["datasets", wfId];
   const list = useQuery({ queryKey: key, queryFn: () => apiFetch<DatasetOut[]>(`/workflows/${wfId}/datasets`) });
@@ -97,12 +99,12 @@ function Datasets({ wfId }: { wfId: string }) {
           </tbody>
         </table>
       )}
-      {open && <DatasetView dsId={open} onGone={() => { setOpen(null); void qc.invalidateQueries({ queryKey: key }); }} />}
+      {open && <DatasetView dsId={open} channels={channels} onGone={() => { setOpen(null); void qc.invalidateQueries({ queryKey: key }); }} />}
     </section>
   );
 }
 
-function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
+function DatasetView({ dsId, channels, onGone }: { dsId: string; channels: { name: string; io?: string | null }[]; onGone: () => void }) {
   const qc = useQueryClient();
   const [version, setVersion] = useState<number | null>(null);
   const key = ["dataset", dsId];
@@ -112,20 +114,15 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
   });
   const versions = useQuery({ queryKey: [...key, "versions", ds.data?.version], queryFn: () => apiFetch<DatasetVersionOut[]>(`/datasets/${dsId}/versions`) });
   const changed = () => { setVersion(null); void qc.invalidateQueries({ queryKey: key }); void qc.invalidateQueries({ queryKey: ["datasets"] }); };
-  const [input, setInput] = useState('{"who": "Ada"}');
-  const [reference, setReference] = useState("");
-  const [split, setSplit] = useState("");
   const add = useMutation({
-    mutationFn: () => apiFetch(`/datasets/${dsId}/examples`, {
-      method: "POST",
-      json: { examples: [{ input: parseJson(input, "input"), reference: parseJson(reference, "reference"), split }] },
-    }),
-    onSuccess: () => { setReference(""); changed(); },
+    mutationFn: (example: { input: Record<string, unknown>; reference: Record<string, unknown>; split: string }) =>
+      apiFetch(`/datasets/${dsId}/examples`, { method: "POST", json: { examples: [example] } }),
+    onSuccess: changed,
   });
   const fromTests = useMutation({ mutationFn: () => apiFetch(`/datasets/${dsId}/examples/from-test-cases`, { method: "POST", json: {} }), onSuccess: changed });
   const upload = useMutation({
     mutationFn: async (file: File) => apiFetch(`/datasets/${dsId}/import`, {
-      method: "POST", json: { format: file.name.endsWith(".csv") ? "csv" : "jsonl", content: await file.text(), split: split || null },
+      method: "POST", json: { format: file.name.endsWith(".csv") ? "csv" : "jsonl", content: await file.text(), split: null },
     }),
     onSuccess: changed,
   });
@@ -174,25 +171,22 @@ function DatasetView({ dsId, onGone }: { dsId: string; onGone: () => void }) {
           {d.items.map((ex, i) => (
             <tr key={ex.id}>
               <td>{i + 1}</td><td><code>{short(ex.input)}</code></td><td><code>{short(ex.reference ?? {})}</code></td><td>{ex.split}</td>
-              <td>{builder && <button type="button" className="link small" onClick={() => remove.mutate(ex.id!)}>Remove</button>}</td>
+              <td>{builder && <button type="button" className="link small" onClick={async () => {
+                if (await confirmDialog({ title: `Remove example ${i + 1}?`, body: "The dataset gets a new version without it; older versions keep it.", confirm: "Remove", danger: true })) remove.mutate(ex.id!);
+              }}>Remove</button>}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {builder && (
-        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-          <div className="row gap">
-            <input aria-label="example input" placeholder='input, e.g. {"question": "…"}' value={input} onChange={(e) => setInput(e.target.value)} />
-            <input aria-label="example reference" placeholder='reference output, e.g. {"answer": "…"}' value={reference} onChange={(e) => setReference(e.target.value)} />
-            <input aria-label="example split" placeholder="split" value={split} onChange={(e) => setSplit(e.target.value)} style={{ width: 90 }} />
-            <button type="submit" disabled={add.isPending}>Add example</button>
-          </div>
+        <>
+          <ExampleForm channels={channels} busy={add.isPending} onAdd={(ex) => add.mutate(ex)} />
           <div className="row gap small">
             <button type="button" className="link small" onClick={() => fromTests.mutate()}>Add the saved test cases</button>
             <label className="small">Import CSV or JSONL <input type="file" accept=".csv,.jsonl,.json" aria-label="import file"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ""; }} /></label>
           </div>
-        </form>
+        </>
       )}
     </div>
   );

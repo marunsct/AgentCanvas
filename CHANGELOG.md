@@ -74,6 +74,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **Evaluators are a form, not JSON**: each kind's settings are a form built from its schema
   (`GET /evaluator-kinds`, with a label and what it checks), and evaluators can be edited and deleted (with a
   confirmation) from the list, which shows each kind by name.
+- **Dataset examples are fields, not JSON**: one field per workflow input and expected output (numbers, true/false,
+  lists and objects are read as JSON, everything else as text), with "As JSON" for nested values; removing an
+  example asks first.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 
