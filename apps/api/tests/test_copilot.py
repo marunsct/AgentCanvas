@@ -202,7 +202,7 @@ async def test_model_choice_policy_and_token_cap(app, api_client):
     r = await api_client.put(SETTINGS, json={"source": "separate", "model": "openai:gpt-5.5", "token_cap": 1000})
     assert r.status_code == 200 and r.json()["resolved"]["model"] == "openai:gpt-5.5"
     assert (await api_client.get(f"/v1/workflows/{tri}/copilot")).json()["model"]["origin"] == "Copilot settings"
-    assert (await api_client.put(SETTINGS, json={"source": "separate"})).status_code == 422
+    assert (await api_client.put(SETTINGS, json={"source": "separate", "model": None})).status_code == 422  # merged
 
     policy = {"name": "Only Anthropic", "scope": "resource", "match": 'resource.type == "model.chat"',
               "require": 'resource.config.model.startsWith("anthropic:")'}  # fmt: skip
