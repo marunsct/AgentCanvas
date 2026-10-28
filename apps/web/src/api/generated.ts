@@ -1177,6 +1177,7 @@ export type CreatedAt23 = string;
 export type Id44 = string;
 export type Name41 = string;
 export type WorkspaceId1 = string | null;
+export type Name42 = string;
 export type WorkspaceId2 = string | null;
 export type Status11 = "accepted" | "rejected";
 export type BaseUrl3 = string | null;
@@ -1207,7 +1208,7 @@ export type Checklist = Check[];
  */
 export type Version11 = number | null;
 export type Instructions = string;
-export type Name42 = string;
+export type Name43 = string;
 export type ReviewersPerItem = number;
 /**
  * @minItems 1
@@ -1410,7 +1411,7 @@ export type ThumbsDown = boolean;
 export type CreatedAt24 = string;
 export type Id46 = string;
 export type Instructions1 = string;
-export type Name43 = string;
+export type Name44 = string;
 export type ReviewersPerItem1 = number;
 /**
  * @minItems 1
@@ -1604,7 +1605,7 @@ export type Rubric1 =
     ];
 export type WorkflowId7 = string;
 export type Instructions2 = string | null;
-export type Name44 = string | null;
+export type Name45 = string | null;
 export type ReviewersPerItem2 = number | null;
 export type Commands1 = {
   [k: string]: unknown;
@@ -1670,7 +1671,7 @@ export type Title = string | null;
 export type Results1 = SearchResult[];
 export type Value5 = string;
 export type CreatedAt25 = string;
-export type Name45 = string;
+export type Name46 = string;
 /**
  * used for this request only; omit to use the saved key
  */
@@ -1808,7 +1809,7 @@ export type SpentUsd1 = number;
 export type Tokens1 = number;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
-export type Name46 = string | null;
+export type Name47 = string | null;
 /**
  * @minItems 1
  */
@@ -1818,7 +1819,7 @@ export type Category2 = string | null;
 export type Description18 = string;
 export type Difficulty = ("beginner" | "intermediate") | null;
 export type Id48 = string;
-export type Name47 = string;
+export type Name48 = string;
 export type NodeCount = number;
 export type SampleInput = {
   [k: string]: unknown;
@@ -1827,13 +1828,13 @@ export type Tags = string[];
 export type Context6 = {
   [k: string]: unknown;
 } | null;
-export type Name48 = string;
+export type Name49 = string;
 export type Context7 = {
   [k: string]: unknown;
 } | null;
 export type CreatedAt26 = string;
 export type Id49 = string;
-export type Name49 = string;
+export type Name50 = string;
 /**
  * run only these cases (default: all)
  */
@@ -1917,26 +1918,26 @@ export type Message14 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
 export type Model10 = string | null;
-export type Name50 = string;
+export type Name51 = string;
 export type SystemPrompt1 = string;
 export type Temperature1 = number | null;
 export type CreatedAt32 = string;
 export type Diagnostics5 = Diagnostic[];
 export type Id55 = string;
 export type IrHash6 = string;
-export type Name51 = string;
+export type Name52 = string;
 export type ProjectId4 = string;
 export type UpdatedAt10 = string;
 export type Version13 = number;
 export type Id56 = string;
-export type Name52 = string;
+export type Name53 = string;
 export type UpdatedAt11 = string;
 export type Version14 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
 export type Id57 = string;
 export type IsDefault = boolean;
-export type Name53 = string;
+export type Name54 = string;
 export type Error8 = string | null;
 export type Ok4 = boolean;
 export type Reply1 = string | null;
@@ -2093,6 +2094,7 @@ export interface ApiSchemas {
   Progress?: Progress;
   ProjectIn?: ProjectIn;
   ProjectOut?: ProjectOut;
+  ProjectRenameIn?: ProjectRenameIn;
   ProjectWorkspaceIn?: ProjectWorkspaceIn;
   ProposalDecision?: ProposalDecision;
   ProviderInfo?: ProviderInfo;
@@ -4368,6 +4370,13 @@ export interface ProjectOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ProjectRenameIn".
+ */
+export interface ProjectRenameIn {
+  name: Name42;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ProjectWorkspaceIn".
  */
 export interface ProjectWorkspaceIn {
@@ -4431,7 +4440,7 @@ export interface PushIn {
  */
 export interface QueueIn {
   instructions?: Instructions;
-  name: Name42;
+  name: Name43;
   reviewers_per_item?: ReviewersPerItem;
   rubric: Rubric;
   rules?: Rules;
@@ -4460,7 +4469,7 @@ export interface QueueOut {
   created_at: CreatedAt24;
   id: Id46;
   instructions?: Instructions1;
-  name: Name43;
+  name: Name44;
   progress: Progress;
   reviewers_per_item?: ReviewersPerItem1;
   rubric: Rubric1;
@@ -4479,7 +4488,7 @@ export interface Agreement {
  */
 export interface QueuePatch {
   instructions?: Instructions2;
-  name?: Name44;
+  name?: Name45;
   reviewers_per_item?: ReviewersPerItem2;
   rules?: Rules | null;
 }
@@ -4623,7 +4632,7 @@ export interface SecretIn {
  */
 export interface SecretOut {
   created_at: CreatedAt25;
-  name: Name45;
+  name: Name46;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4785,7 +4794,7 @@ export interface Values1 {
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
-  name?: Name46;
+  name?: Name47;
   node_ids: NodeIds;
 }
 /**
@@ -4798,7 +4807,7 @@ export interface TemplateInfo {
   description: Description18;
   difficulty?: Difficulty;
   id: Id48;
-  name: Name47;
+  name: Name48;
   node_count: NodeCount;
   sample_input?: SampleInput;
   tags?: Tags;
@@ -4812,7 +4821,7 @@ export interface TestCaseIn {
   expect?: Expect;
   input?: Input9;
   mocks?: Mocks3;
-  name: Name48;
+  name: Name49;
   pins?: Pins3;
 }
 export interface Input9 {
@@ -4844,7 +4853,7 @@ export interface TestCaseOut {
   input?: Input10;
   last_result?: CaseResult | null;
   mocks?: Mocks4;
-  name: Name49;
+  name: Name50;
   pins?: Pins4;
 }
 export interface Input10 {
@@ -5051,7 +5060,7 @@ export interface VersionOut {
  */
 export interface WorkflowIn {
   model?: Model10;
-  name?: Name50;
+  name?: Name51;
   system_prompt?: SystemPrompt1;
   temperature?: Temperature1;
 }
@@ -5066,7 +5075,7 @@ export interface WorkflowOut {
   ir: Ir5;
   ir_hash: IrHash6;
   layout: Layout4;
-  name: Name51;
+  name: Name52;
   project_id: ProjectId4;
   updated_at: UpdatedAt10;
   version: Version13;
@@ -5091,7 +5100,7 @@ export interface WorkflowPage {
  */
 export interface WorkflowSummary {
   id: Id56;
-  name: Name52;
+  name: Name53;
   updated_at: UpdatedAt11;
   version: Version14;
 }
@@ -5102,7 +5111,7 @@ export interface WorkflowSummary {
 export interface WorkspaceOut {
   id: Id57;
   is_default: IsDefault;
-  name: Name53;
+  name: Name54;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

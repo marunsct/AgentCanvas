@@ -6969,6 +6969,21 @@
         "title": "ProjectOut",
         "type": "object"
       },
+      "ProjectRenameIn": {
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectRenameIn",
+        "type": "object"
+      },
       "ProjectWorkspaceIn": {
         "properties": {
           "workspace_id": {
@@ -16129,6 +16144,8 @@
             "schema": {
               "anyOf": [
                 {
+                  "maximum": 9223372036854775807,
+                  "minimum": 0,
                   "type": "integer"
                 },
                 {
@@ -16910,6 +16927,139 @@
         ]
       }
     },
+    "/v1/projects/{project_id}": {
+      "delete": {
+        "description": "Delete a project with everything in it: workflows and their versions, deployments (their endpoints stop\nanswering), runs, datasets, knowledge, secrets and the workspace's code. An organisation keeps at least one\nproject (409 for the last one). Admins only.",
+        "operationId": "delete_project_v1_projects__project_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Project",
+        "tags": [
+          "projects"
+        ]
+      },
+      "patch": {
+        "description": "Rename a project (409 when another project of the organisation has the name).",
+        "operationId": "rename_project_v1_projects__project_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRenameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/copilot-settings": {
       "get": {
         "operationId": "get_copilot_settings_v1_projects__project_id__copilot_settings_get",
@@ -16975,7 +17125,7 @@
         ]
       },
       "put": {
-        "description": "Turn the Copilot on or off, pick its model (the workflow's own or a separate one) and its token limit.",
+        "description": "Turn the Copilot on or off, pick its model (the project's or a separate one) and its token limit. Fields left\nout keep their saved value (an explicit null clears one), so a client that does not know a field cannot erase it.",
         "operationId": "put_copilot_settings_v1_projects__project_id__copilot_settings_put",
         "parameters": [
           {

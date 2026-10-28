@@ -163,3 +163,21 @@ async def test_wrong_typed_requests_are_errors_not_crashes(api_client):
     assert (await api_client.post(mcp, json=call, headers=auth)).status_code == 200
     note = await api_client.post(a2a, json=rpc("tasks/get", {"id": "x"}, id_=None), headers=auth)
     assert note.status_code == 204
+
+
+async def test_mcp_refuses_foreign_origins_and_unknown_protocol_versions(api_client):
+    """Streamable HTTP: servers validate `Origin` (DNS rebinding) and answer 400 to an unsupported
+    `MCP-Protocol-Version`; a request without either header (a server-side client) is fine."""
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    url, auth = f"/v1/deployments/{dep}/mcp", bearer(key)
+    evil = await api_client.post(url, json=rpc("tools/list"), headers={**auth, "Origin": "http://attacker.example"})
+    assert evil.status_code == 403 and "attacker.example" in evil.json()["error"]["message"]
+    for origin in ("http://test", "http://localhost:5173"):  # the server itself, and a configured CORS origin
+        ok = await api_client.post(url, json=rpc("tools/list"), headers={**auth, "Origin": origin})
+        assert ok.status_code == 200, (origin, ok.text)
+    old = await api_client.post(url, json=rpc("tools/list"), headers={**auth, "MCP-Protocol-Version": "1999-01-01"})
+    assert old.status_code == 400 and "1999-01-01" in old.json()["error"]["message"]
+    for version in ("2025-11-25", "2025-06-18", "2025-03-26"):
+        ok = await api_client.post(url, json=rpc("tools/list"), headers={**auth, "MCP-Protocol-Version": version})
+        assert ok.status_code == 200, version
+    assert (await api_client.post(url, json=rpc("tools/list"), headers=auth)).status_code == 200

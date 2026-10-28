@@ -27,7 +27,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.api.deps import get_session
+from agentcanvas.api.deps import get_session, get_settings_dep
 from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start
 from agentcanvas.api.v1.runs import _thread
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
@@ -35,6 +35,7 @@ from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, To
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["agent protocols"])
 
@@ -247,14 +248,34 @@ async def _mcp_call(
     raise RpcError(-32602, f"unknown tool '{name}'")
 
 
+def _mcp_transport_refusal(request: Request, settings: Settings) -> JSONResponse | None:
+    """The Streamable HTTP transport's two checks. `Origin`: a browser page may only call from this server's own
+    origin or one of the API's CORS origins (403 otherwise; the defence against DNS rebinding, which the transport
+    requires). `MCP-Protocol-Version`: when sent, one this server speaks (400 otherwise); absent means 2025-03-26."""
+    origin = request.headers.get("origin")
+    own = f"{request.url.scheme}://{request.url.netloc}"
+    if origin is not None and origin != own and origin not in settings.cors_origins:
+        return JSONResponse(_rpc_error(None, -32600, f"requests from the origin '{origin[:200]}' are not allowed"), 403)
+    version = request.headers.get("mcp-protocol-version")
+    if version is not None and version not in MCP_VERSIONS:
+        known = ", ".join(MCP_VERSIONS)
+        return JSONResponse(
+            _rpc_error(None, -32600, f"MCP protocol version '{version[:40]}' is not supported ({known})"), 400
+        )
+    return None
+
+
 @router.post("/deployments/{dep_id}/mcp")
 async def mcp_endpoint(
     dep_id: str,
     request: Request,
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ) -> Response:
     """The deployment as a remote MCP server (Streamable HTTP; every response is a single JSON message)."""
+    if (refused := _mcp_transport_refusal(request, settings)) is not None:
+        return refused
     dep, wf = await _caller(request, session, dep_id, authorization)
     try:
         msg = await _rpc(request)
