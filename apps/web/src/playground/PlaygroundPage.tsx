@@ -52,11 +52,8 @@ export function PlaygroundPage() {
 
   return (
     <div className="page playground" data-testid="playground">
-      <PageHeader title="Playground" />
-      <p className="muted">
-        Try a model and its instructions in a chat. When the answers look right, make it a workflow: you get one AI agent
-        with these instructions and this model, ready to add tools, approvals and more steps.
-      </p>
+      <PageHeader title="Playground" description={<>Try a model and its instructions in a chat. When the answers look right, make it a workflow: you get one AI agent
+        with these instructions and this model, ready to add tools, approvals and more steps.</>} />
       <div className="playground-grid">
         <section className="stack">
           <label htmlFor="pg-model">Model</label>

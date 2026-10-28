@@ -26,6 +26,6 @@ test("the audit log shows who changed a member", async ({ page }) => {
   await page.getByTestId("settings-link").click();
   await page.getByTestId("settings-audit").click();
   await page.getByLabel("action").fill("set_member");
-  await expect(page.getByTestId("audit").locator("tr").first()).toContainText("dev@localhost");
-  await expect(page.getByTestId("audit").locator("tr").first()).toContainText("set_member");
+  await expect(page.getByTestId("audit").locator("tbody tr").first()).toContainText("dev@localhost");
+  await expect(page.getByTestId("audit").locator("tbody tr").first()).toContainText("Set member");
 });

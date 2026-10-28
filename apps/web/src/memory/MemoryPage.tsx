@@ -34,8 +34,7 @@ export function MemoryPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Memory" />
-      <p className="muted">What agents and memory nodes remember across conversations, per space and owner.</p>
+      <PageHeader title="Memory" description={<>What agents and memory nodes remember across conversations, per space and owner.</>} />
       <QueryStatus q={spaces} what="memory spaces" />
       {spaces.data?.length === 0 && <p className="muted" data-testid="memory-empty">Nothing has been remembered yet.</p>}
       <div className="memory-layout">

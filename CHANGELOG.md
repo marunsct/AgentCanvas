@@ -84,6 +84,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   show when and why they were added. `GET /threads` returns each thread's `last_run_id`.
 - **Experiment variants as rows**: "change <block>'s <setting> to <value>", with the block's settings listed from
   its schema and its current value shown, instead of an overrides JSON box.
+- **Audit log**: column headers, actions in words, a date range (`since`/`until` on `GET /org/audit`), an entry
+  opens to its details, and Export CSV.
+- Inbox cards say what is asked ("An agent wants to use a tool") instead of the raw kind; unlabelled blocks are named
+  from their name ("Manager approval"). Page descriptions sit in the page header on every page.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

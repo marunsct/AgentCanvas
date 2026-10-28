@@ -42,11 +42,8 @@ export function KnowledgePage() {
 
   return (
     <div className="page">
-      <PageHeader title="Knowledge" />
-      <p className="muted">
-        Documents your workflows can search. Add files, web pages or text, then use a <strong>Search knowledge</strong> block
-        to find the passages that answer a question, with citations.
-      </p>
+      <PageHeader title="Knowledge" description={<>Documents your workflows can search. Add files, web pages or text, then use a <strong>Search knowledge</strong> block
+        to find the passages that answer a question, with citations.</>} />
       <QueryStatus q={kbs} what="knowledge bases" />
       {builder && (
         <div className="row gap wrap kb-create">

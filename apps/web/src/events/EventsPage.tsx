@@ -50,9 +50,8 @@ export function EventsPage() {
 
   return (
     <div className="page events-page">
-      <PageHeader title="Events" />
-      <p className="muted">Generated from <code>events/*.py</code> in the <Link to="/workspace">workspace</Link>:
-        which events start or resume which workflows.</p>
+      <PageHeader title="Events" description={<>Generated from <code>events/*.py</code> in the <Link to="/workspace">workspace</Link>:
+        which events start or resume which workflows.</>} />
       {handlers.length === 0 && <p className="muted" data-testid="no-handlers">No handlers yet — add <code>@on("type")</code> functions in <code>events/</code>.</p>}
       <table className="event-map" data-testid="event-map">
         <tbody>

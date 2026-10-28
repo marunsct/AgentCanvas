@@ -92,13 +92,22 @@ async def audit_log(
     actor_id: str | None = None,
     target: str | None = Query(None, description="matches part of the target, e.g. a workflow id"),
     before: int | None = Query(None, ge=0, le=2**63 - 1, description="page: entries older than this id"),
+    since: datetime | None = Query(None, description="entries at or after this time"),
+    until: datetime | None = Query(None, description="entries before this time"),
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> list[AuditOut]:
     """The organisation's audit log, newest first."""
     rows = await AuditRepo(session).list(
-        user.org_id, action=action, actor_id=actor_id, target=target, before=before, limit=limit
+        user.org_id,
+        action=action,
+        actor_id=actor_id,
+        target=target,
+        before=before,
+        limit=limit,
+        since=since,
+        until=until,
     )
     return [
         AuditOut(

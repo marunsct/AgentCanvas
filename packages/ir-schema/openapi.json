@@ -16818,6 +16818,44 @@
             }
           },
           {
+            "description": "entries at or after this time",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "entries at or after this time",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "entries before this time",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "entries before this time",
+              "title": "Until"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,

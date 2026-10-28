@@ -627,7 +627,9 @@ def _intr(
 ) -> InterruptOut:
     node = next((n for n in (ir or {}).get("nodes", []) if n.get("id") == x.canvas_node_id), None)
     return InterruptOut(
-        node_label=(node.get("label") or node.get("name")) if node else None,
+        node_label=(node.get("label") or str(node.get("name", "")).replace("_", " ").capitalize() or None)
+        if node
+        else None,
         id=x.id,
         workflow_id=workflow_id,
         workflow_name=workflow_name,

@@ -265,6 +265,8 @@ class AuditRepo:
         target: str | None = None,
         before: int | None = None,
         limit: int = 100,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[tuple[AuditLog, str | None]]:
         q = (
             select(AuditLog, AppUser.email)
@@ -275,6 +277,10 @@ class AuditRepo:
             q = q.where(AuditLog.action == action)
         if actor_id:
             q = q.where(AuditLog.actor_id == actor_id)
+        if since is not None:
+            q = q.where(AuditLog.created_at >= since)
+        if until is not None:
+            q = q.where(AuditLog.created_at < until)
         if target:
             q = q.where(AuditLog.target.contains(target))
         if before:

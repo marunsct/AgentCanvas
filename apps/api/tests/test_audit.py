@@ -93,3 +93,16 @@ async def test_mutations_without_an_id_in_the_path_name_their_target(api_client)
     assert r.status_code == 204
     [entry] = await log(api_client, action="delete_item")
     assert entry["target"] == f"namespace={ns}" and entry["detail"]["key"] == "about:drinks"
+
+
+async def test_the_audit_log_filters_by_time(api_client):
+    from datetime import UTC, datetime, timedelta
+
+    await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "x"})
+    now = datetime.now(UTC)
+    recent = await api_client.get("/v1/org/audit", params={"since": (now - timedelta(minutes=5)).isoformat()})
+    assert any(e["action"] == "put_secret" for e in recent.json())
+    later = await api_client.get("/v1/org/audit", params={"since": (now + timedelta(minutes=5)).isoformat()})
+    assert later.json() == []
+    earlier = await api_client.get("/v1/org/audit", params={"until": (now - timedelta(days=1)).isoformat()})
+    assert all(e["action"] != "put_secret" for e in earlier.json())

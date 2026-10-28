@@ -24,11 +24,23 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
   }
 }
 
+const TITLE: Record<string, string> = {
+  tool_approval: "An agent wants to use a tool",
+  approval: "Approve this to continue",
+  input: "Your answer is needed",
+};
+const HINT: Record<string, string> = {
+  tool_approval: "Approve, edit the arguments, or reject with a reason the agent reads.",
+  approval: "Approve, edit the value, or reject.",
+  input: "The run continues with what you send.",
+};
+
 export function DecisionCard({ intr, onDecide, busy }: { intr: PendingInterrupt; onDecide: (value: unknown) => void; busy?: boolean }) {
   const payload = (intr.payload ?? {}) as Record<string, unknown>;
   return (
     <div className="interrupt-card" role="group" aria-label={intr.kind === "input" ? "Input needed" : "Approval needed"}>
-      <b>{intr.kind === "input" ? "Input needed" : "Approval needed"}</b> <small className="muted">{intr.kind}</small>
+      <b>{TITLE[intr.kind] ?? (intr.kind === "input" ? "Input needed" : "Approval needed")}</b>{" "}
+      <small className="muted">{HINT[intr.kind] ?? ""}</small>
       {intr.kind === "tool_approval"
         ? <ToolApproval requests={(payload.action_requests as ActionRequest[]) ?? []} onDecide={onDecide} busy={busy} />
         : intr.kind === "approval"
