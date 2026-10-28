@@ -193,7 +193,7 @@ export function EditorPage() {
           {dock === "explain" && <ExplainView />}
         </ErrorBoundary>
       </footer>
-      <CommandPalette onRun={() => setTab("run")} />
+      <CommandPalette onRun={() => setTab("run")} onCopilot={() => setTab("copilot")} />
       <Tutor />
       <HelpDrawer />
     </div>

@@ -2462,7 +2462,8 @@
           "type": "string",
           "title": "Knowledge base",
           "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
-          "description": "The name of a knowledge base in this project (Knowledge page). Exports ship it as knowledge/<name>.jsonl."
+          "description": "The name of a knowledge base in this project (Knowledge page). Exports ship it as knowledge/<name>.jsonl.",
+          "format": "knowledge_base"
         },
         "query": {
           "type": "string",

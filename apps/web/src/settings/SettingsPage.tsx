@@ -36,6 +36,7 @@ export const SECTIONS: Section[] = [
   { id: "audit", group: "Organisation", label: "Audit log", read: "admin", render: () => <AuditPage /> },
   { id: "server", group: "Organisation", label: "Server", read: "admin", render: () => <ServerSettings /> },
   { id: "appearance", group: "You", label: "Appearance", render: () => <Appearance /> },
+  { id: "shortcuts", group: "You", label: "Keyboard shortcuts", render: () => <Shortcuts /> },
 ];
 
 export function SettingsPage() {
@@ -75,6 +76,32 @@ function Appearance() {
       <h2>Appearance</h2>
       <p className="muted small">The colour theme of this browser. System follows your computer's light or dark setting.</p>
       <ThemeSwitcher />
+    </section>
+  );
+}
+
+const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+const SHORTCUTS: [string, string][] = [
+  [`${MOD} K`, "Command palette: add a block, run, open the Copilot, or type a request for it"],
+  [`${MOD} Z`, "Undo (a Copilot proposal you accepted is one step)"],
+  [`${MOD} Shift Z`, "Redo"],
+  [`${MOD} C / ${MOD} V`, "Copy and paste the selected blocks"],
+  [`${MOD} G`, "Turn the selected steps into a subgraph"],
+  ["Delete / Backspace", "Delete the selected blocks or wires"],
+  ["Enter or Space", "Add the focused block from the palette; open a port's menu"],
+  ["Tab / Shift Tab", "Move between the canvas, the palette and the panels"],
+  ["Escape", "Close a menu, a dialog or the command palette"],
+  ["Enter", "Send a message to the Copilot (Shift Enter for a new line)"],
+];
+
+function Shortcuts() {
+  return (
+    <section className="settings-card" aria-label="Keyboard shortcuts">
+      <h2>Keyboard shortcuts</h2>
+      <p className="muted small">In the workflow editor. Shortcuts do nothing while you type in a field.</p>
+      <table className="table">
+        <tbody>{SHORTCUTS.map(([k, what]) => <tr key={k}><td style={{ width: "34%" }}><kbd>{k}</kbd></td><td>{what}</td></tr>)}</tbody>
+      </table>
     </section>
   );
 }

@@ -1,9 +1,11 @@
 /** Custom RJSF widgets for AgentCanvas config formats (M2-T7). */
 import type { WidgetProps } from "@rjsf/utils";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import { useShallow } from "zustand/react/shallow";
 import { apiFetch } from "../api/client";
-import { useModelProviders, useModels } from "../api/queries";
+import { PROJECT_ID, useModelProviders, useModels } from "../api/queries";
 import type { ProviderInfo } from "../api/types";
 import { useEditor } from "../editor/store";
 import { estimateTokens } from "./schema";
@@ -116,7 +118,26 @@ export function MonoWidget(props: WidgetProps) {
     disabled={disabled || readonly} onChange={(e) => onChange(e.target.value)} />;
 }
 
+/** A knowledge base of this project, chosen from the list (a name no knowledge base has stays visible, marked). */
+export function KnowledgeBaseWidget(props: WidgetProps) {
+  const { id, value, onChange, disabled, readonly } = props;
+  const bases = useQuery({ queryKey: ["knowledge", PROJECT_ID], queryFn: () => apiFetch<{ name: string; documents: number }[]>(`/projects/${PROJECT_ID}/knowledge`) });
+  const names = (bases.data ?? []).map((b) => b.name);
+  const known = typeof value !== "string" || !value || !bases.data || names.includes(value);
+  return (
+    <>
+      <select id={id} value={typeof value === "string" ? value : ""} disabled={disabled || readonly}
+        onChange={(e) => onChange(e.target.value || undefined)} className={known ? "" : "invalid"}>
+        <option value="">— choose a knowledge base —</option>
+        {!known && <option value={value as string}>{value as string} (not in this project)</option>}
+        {bases.data?.map((b) => <option key={b.name} value={b.name}>{b.name} ({b.documents} documents)</option>)}
+      </select>
+      {bases.data && bases.data.length === 0 && <p className="small muted">No knowledge bases yet: add one on the <Link to="/knowledge">Knowledge</Link> page.</p>}
+    </>
+  );
+}
+
 export const WIDGETS = {
   prompt: PromptWidget, template: PromptWidget, channel: ChannelWidget, cel: CelWidget, model: ModelWidget,
-  import_path: MonoWidget, regex: MonoWidget, url_template: MonoWidget,
+  import_path: MonoWidget, regex: MonoWidget, url_template: MonoWidget, knowledge_base: KnowledgeBaseWidget,
 };
