@@ -246,7 +246,7 @@ async def test_a_runaway_loop_stops(app, api_client, steps):
     assert events[-1]["type"] == "done"
 
 
-async def test_eval_harness_scores_a_case():
+async def test_eval_harness_scores_a_case(engine):
     from agentcanvas.adapters import model_service
     from agentcanvas.copilot.evals import CASES, run_case
     from agentcanvas.copilot.settings import ResolvedModel
@@ -261,7 +261,11 @@ async def test_eval_harness_scores_a_case():
     ]  # fmt: skip
     resources = DemoResources(overrides={"copilot": scripted(*replies)})
     model = ResolvedModel(model="anthropic:claude-haiku-4-5", origin="test")
-    result = await run_case(case, model_service(), resources, model, default_registry(), Settings(env="test"))
+    from agentcanvas.copilot.evals import engine_class
+
+    result = await run_case(
+        case, model_service(), resources, model, default_registry(), Settings(env="test"), engine_class(engine)
+    )
     assert result.passed and result.turns == 2 and result.applied, result
 
 
@@ -370,3 +374,24 @@ async def test_one_turn_at_a_time_on_any_replica(app, api_client):
         assert r.status_code == expect, (until, r.text)
     async with app.state.db.sessionmaker() as s:  # the finished turn gave the lease back
         assert (await s.get(CopilotConversation, conv_id)).busy_until is None  # type: ignore[union-attr]
+
+
+async def test_another_persons_conversation_is_not_found(app, api_client):
+    """conv_id is checked against the workflow and the caller: someone else's conversation answers 404."""
+    from test_roles import act_as
+
+    from agentcanvas.api.deps import current_user
+
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    script(app, "Hi.")
+    await ask(api_client, wf, "hi", mode="ask")
+    mine = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["id"]
+    act_as(app, "admin", user_id="usr_other")
+    try:
+        base = f"/v1/workflows/{wf}/copilot/threads/{mine}"
+        for method, url in (("POST", f"{base}/open"), ("PATCH", base), ("DELETE", base)):
+            r = await api_client.request(method, url, json={"title": "x"} if method == "PATCH" else None)
+            assert r.status_code == 404, (method, r.text)
+        assert (await api_client.get(f"/v1/workflows/{wf}/copilot/threads")).json() == []
+    finally:
+        app.dependency_overrides.pop(current_user, None)

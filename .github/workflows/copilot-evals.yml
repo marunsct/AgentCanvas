@@ -1,0 +1,61 @@
+name: copilot-evals
+# The Copilot against a real model (PLAN.md section 2.5): build ten workflows from plain requests and fix about
+# thirty planted bugs, on both engines, and fail below a pass rate. It needs a provider key in the repository's
+# secrets (ANTHROPIC_API_KEY, or OPENAI_API_KEY with COPILOT_EVAL_MODEL set to an OpenAI model); without one the
+# job says so and stops. The model is the repository variable COPILOT_EVAL_MODEL (default: a small Claude model, to
+# keep a nightly run cheap). Results are kept as an artifact for 30 days.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      model: { description: "provider:model (empty: COPILOT_EVAL_MODEL)", required: false }
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copilot-evals
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [loop, deepagents]
+    defaults: { run: { working-directory: apps/api } }
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      MODEL: ${{ inputs.model || vars.COPILOT_EVAL_MODEL || 'anthropic:claude-haiku-4-5' }}
+    steps:
+      - name: Is there a key?
+        id: key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY$OPENAI_API_KEY" ]; then
+            echo "::notice::No ANTHROPIC_API_KEY or OPENAI_API_KEY secret: the Copilot evaluation needs one, skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.key.outputs.run == 'true'
+        uses: actions/checkout@v7
+      - if: steps.key.outputs.run == 'true'
+        uses: astral-sh/setup-uv@v7
+      - if: steps.key.outputs.run == 'true'
+        run: uv sync --frozen
+      - name: Build ten workflows from requests
+        if: steps.key.outputs.run == 'true'
+        run: uv run python -m agentcanvas.copilot.evals --model "$MODEL" --engine ${{ matrix.engine }} --suite build --min-pass 0.7 --out build.json
+      - name: Fix planted bugs
+        if: steps.key.outputs.run == 'true' && always()
+        run: uv run python -m agentcanvas.copilot.evals --model "$MODEL" --engine ${{ matrix.engine }} --suite debug --min-pass 0.7 --out debug.json
+      - if: steps.key.outputs.run == 'true' && always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: copilot-evals-${{ matrix.engine }}
+          path: apps/api/*.json
+          retention-days: 30

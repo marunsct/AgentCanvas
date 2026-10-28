@@ -1,10 +1,13 @@
 """Copilot eval harness (S14): build workflows from plain requests with a real model and check the results.
 
     uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5 [--suite debug] [--case greeter]
+        [--engine deepagents] [--min-pass 0.8] [--out results.json]
 
 Each case starts from an empty workflow, sends the request in Build mode, answers a brief with "Yes, build it",
 then checks the proposal: it applies, has no validation errors, and uses the expected blocks. The model's key comes
-from the usual environment variable (e.g. ANTHROPIC_API_KEY). CI runs the harness with a scripted model only.
+from the usual environment variable (e.g. ANTHROPIC_API_KEY). CI runs the harness with a scripted model on every
+change, and with a real model nightly when the repository has a key (`.github/workflows/copilot-evals.yml`);
+`--min-pass` fails a run below a pass rate.
 """
 
 from __future__ import annotations
@@ -66,7 +69,13 @@ class CaseResult:
 
 
 async def run_case(
-    case: dict[str, Any], models: Any, resources: Any, model: ResolvedModel, registry: Registry, settings: Settings
+    case: dict[str, Any],
+    models: Any,
+    resources: Any,
+    model: ResolvedModel,
+    registry: Registry,
+    settings: Settings,
+    engine: type[CopilotTurn] = CopilotTurn,
 ) -> CaseResult:
     started = time.monotonic()
     templates = list_templates(settings)
@@ -83,7 +92,7 @@ async def run_case(
     result = CaseResult(id=case["id"], passed=False)
     for text in (case["request"], CONFIRM):
         ctx = ToolContext(empty, registry, templates, check, brief=brief)
-        turn = CopilotTurn(
+        turn = engine(
             models, resources, model, pack, ctx, history=history, proposals=proposals, usage=usage,
             token_cap=2_000_000, base_version=1,
         )  # fmt: skip
@@ -157,7 +166,15 @@ def debug_cases(settings: Settings, registry: Registry) -> list[dict[str, Any]]:
     return cases
 
 
-async def run(model: str, only: str | None = None, suite: str = "build") -> list[CaseResult]:
+def engine_class(name: str) -> type[CopilotTurn]:
+    if name == "deepagents":
+        from agentcanvas.adapters.langchain.copilot import DeepAgentTurn
+
+        return DeepAgentTurn
+    return CopilotTurn
+
+
+async def run(model: str, only: str | None = None, suite: str = "build", engine: str = "loop") -> list[CaseResult]:
     from agentcanvas.adapters import get_adapter, model_service
 
     resources = get_adapter().new_resources()
@@ -166,7 +183,8 @@ async def run(model: str, only: str | None = None, suite: str = "build") -> list
     registry = default_registry()
     pool = CASES if suite == "build" else debug_cases(settings, registry)
     cases = [c for c in pool if only in (None, c["id"])]
-    return [await run_case(c, model_service(), resources, resolved, registry, settings) for c in cases]
+    turn = engine_class(engine)
+    return [await run_case(c, model_service(), resources, resolved, registry, settings, turn) for c in cases]
 
 
 def main() -> None:
@@ -174,17 +192,22 @@ def main() -> None:
     parser.add_argument("--model", required=True, help="provider:model")
     parser.add_argument("--case", help="run one case by id")
     parser.add_argument("--suite", choices=["build", "debug"], default="build", help="debug: ~30 planted bugs")
+    parser.add_argument("--engine", choices=["loop", "deepagents"], default="loop", help="the Copilot's engine")
+    parser.add_argument("--min-pass", type=float, default=0.0, help="exit 1 when fewer cases pass (0-1)")
     parser.add_argument("--out", help="write the results as JSON")
     args = parser.parse_args()
-    results = asyncio.run(run(args.model, args.case, args.suite))
+    results = asyncio.run(run(args.model, args.case, args.suite, args.engine))
     for r in results:
         status = "PASS" if r.passed else "FAIL"
         detail = r.problem or "; ".join(r.errors + [f"missing {t}" for t in r.missing_types])
         print(f"{status} {r.id:12} {r.tokens:>7} tok {r.seconds:>5}s {detail}")
-    print(f"{sum(r.passed for r in results)}/{len(results)} passed")
+    passed = sum(r.passed for r in results)
+    print(f"{passed}/{len(results)} passed ({args.engine}, {args.model}, {args.suite})")
     if args.out:
         with open(args.out, "w") as f:
             json.dump([asdict(r) for r in results], f, indent=2)
+    if results and passed / len(results) < args.min_pass:
+        raise SystemExit(f"pass rate {passed / len(results):.0%} is below {args.min_pass:.0%}")
 
 
 if __name__ == "__main__":
