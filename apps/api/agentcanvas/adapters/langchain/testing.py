@@ -145,8 +145,7 @@ class DemoCopilotModel(BaseChatModel):
         super().__init__(**{"disable_streaming": True, **kwargs})
 
     def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> DemoCopilotModel:  # type: ignore[override]
-        names = [t["function"]["name"] if "function" in t else t.get("name", "") for t in tools]
-        return DemoCopilotModel(tool_names=names)
+        return DemoCopilotModel(tool_names=[_tool_name(t) for t in tools])
 
     def _generate(
         self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
@@ -177,6 +176,13 @@ def _demo_code_help(asked: str) -> str:
     )
     code = current if asked.startswith("Fix") else f"{current.rstrip()}\n\n\n{helper}"
     return f"I added a small helper (demo Copilot: no model key configured).\n\n```python\n{code.strip()}\n```"
+
+
+def _tool_name(tool: Any) -> str:
+    """A bound tool's name: a tool object (the Deep Agents engine) or an OpenAI-style dict (the loop)."""
+    if isinstance(tool, dict):
+        return tool["function"]["name"] if "function" in tool else str(tool.get("name", ""))
+    return str(getattr(tool, "name", ""))
 
 
 def _last_human(messages: list[BaseMessage]) -> str:
