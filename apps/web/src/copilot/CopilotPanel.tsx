@@ -4,7 +4,8 @@ import { Link } from "react-router";
 import { can, useCan, useMe } from "../api/session";
 import { useEditor } from "../editor/store";
 import { Markdown } from "../ui/Markdown";
-import { type Brief, type Mode, type Todo, toolLabel, useCopilot } from "./copilot";
+import { type Brief, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
+import { describe, preview } from "./review";
 
 const STARTERS = [
   "Build a workflow that classifies support emails and drafts a reply",
@@ -44,6 +45,65 @@ function Plan({ todos }: { todos: Todo[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/** The open proposal: each change with a tick box (unticking a step unticks the wires to it), its tests and notes,
+ * and Accept for what is ticked. The canvas shows the ticked changes as they would be. */
+function ProposalCard({ pending, busy, canBuild }: { pending: Proposal; busy: boolean; canBuild: boolean }) {
+  const selection = useCopilot((s) => s.selection);
+  const wf = useEditor((s) => s.wf);
+  const cmds = pending.commands ?? [];
+  const named = wf && cmds.length ? preview(wf, cmds, new Set(cmds.keys())).workflow : null;
+  const sel: Selection = selection ?? { changes: new Set(cmds.keys()), tests: new Set((pending.tests ?? []).keys()), notes: true };
+  const kept = sel.changes.size + sel.tests.size + (sel.notes && pending.notes?.length ? 1 : 0);
+  const partial = sel.changes.size < cmds.length || sel.tests.size < (pending.tests?.length ?? 0);
+  const { toggleChange, toggleTest, toggleNotes } = useCopilot.getState();
+  return (
+    <section className="copilot-proposal" data-testid="copilot-proposal" aria-label="Proposed changes">
+      <strong>Proposed: {pending.summary}</strong>
+      {pending.stale
+        ? <p className="warn-text small">{pending.problem ?? "The workflow changed since; ask again."}</p>
+        : <p className="small muted">
+            On the canvas: green is new, amber is changed, red dashed is removed.
+            {pending.errors > 0 && ` It still has ${pending.errors} problem${pending.errors > 1 ? "s" : ""}.`}
+          </p>}
+      {!pending.stale && cmds.length > 0 && named && (
+        <details className="change-list" open={cmds.length <= 8}>
+          <summary className="small">{sel.changes.size} of {cmds.length} change{cmds.length > 1 ? "s" : ""} kept</summary>
+          <ul>
+            {cmds.map((c, i) => (
+              <li key={i}>
+                <label className="row">
+                  <input type="checkbox" checked={sel.changes.has(i)} disabled={busy} onChange={() => toggleChange(i)} />
+                  <span>{describe(c, named)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {Boolean(pending.tests?.length) && (
+        <div className="small" data-testid="copilot-proposal-tests">
+          Saves tests:
+          <ul className="plain">
+            {pending.tests!.map((t, i) => (
+              <li key={i}><label className="row"><input type="checkbox" checked={sel.tests.has(i)} disabled={busy} onChange={() => toggleTest(i)} /> {t.name}</label></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {Boolean(pending.notes?.length) && (
+        <label className="row small"><input type="checkbox" checked={sel.notes} disabled={busy} onChange={toggleNotes} />
+          Add to project notes: {pending.notes!.join("; ")}</label>
+      )}
+      <div className="row gap">
+        <button type="button" className="primary" disabled={busy || pending.stale || !canBuild || kept === 0}
+          onClick={() => void useCopilot.getState().accept()}>{partial ? "Accept the ticked changes" : "Accept"}</button>
+        <button type="button" disabled={busy} onClick={() => void useCopilot.getState().reject()}>Reject</button>
+      </div>
+      <p className="small muted">After accepting, Undo (Ctrl/⌘+Z) takes it back in one step.</p>
+    </section>
   );
 }
 
@@ -147,30 +207,7 @@ export function CopilotPanel() {
         <div ref={end} />
       </div>
 
-      {pending && (
-        <section className="copilot-proposal" data-testid="copilot-proposal" aria-label="Proposed changes">
-          <strong>Proposed: {pending.summary}</strong>
-          {pending.stale
-            ? <p className="warn-text small">{pending.problem ?? "The workflow changed since; ask again."}</p>
-            : <p className="small muted">
-                Shown on the canvas: {pending.diff?.added.length ?? 0} new, {pending.diff?.changed.length ?? 0} changed
-                {pending.diff?.removed.length ? `, ${pending.diff.removed.length} removed` : ""}.
-                {pending.errors > 0 && ` It still has ${pending.errors} problem${pending.errors > 1 ? "s" : ""}.`}
-              </p>}
-          {Boolean(pending.tests?.length) && (
-            <p className="small" data-testid="copilot-proposal-tests">
-              Saves {pending.tests!.length} test{pending.tests!.length > 1 ? "s" : ""}: {pending.tests!.map((t) => t.name).join(", ")}
-            </p>
-          )}
-          {Boolean(pending.notes?.length) && <p className="small">Adds to project notes: {pending.notes!.join("; ")}</p>}
-          <div className="row gap">
-            <button type="button" className="primary" disabled={busy || pending.stale || !canBuild}
-              onClick={() => void useCopilot.getState().accept()}>Accept</button>
-            <button type="button" disabled={busy} onClick={() => void useCopilot.getState().reject()}>Reject</button>
-          </div>
-          <p className="small muted">After accepting, Undo (Ctrl/⌘+Z) takes it back in one step.</p>
-        </section>
-      )}
+      {pending && <ProposalCard pending={pending} busy={busy} canBuild={canBuild} />}
       {error && (
         <div className="copilot-error" role="alert" data-testid="copilot-error">
           <span>{error}</span>

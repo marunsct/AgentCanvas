@@ -61,3 +61,24 @@ test("the Problems list hands its errors to the Copilot", async ({ page }) => {
   await expect(page.getByTestId("copilot-panel")).toContainText("Find and fix the problems");
   await expect(page.getByTestId("copilot-panel")).toContainText("demo Copilot");
 });
+
+test("the person keeps part of a proposal: unticking a step drops its wires, and the canvas shows the rest", async ({ page }) => {
+  await page.request.put("/api/v1/projects/prj_default/copilot-settings", { data: { source: "separate", model: "anthropic:claude-haiku-4-5" } });
+  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Partial ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByTestId("copilot-button").click();
+  await page.getByLabel("Message the Copilot").fill("Build a workflow that greets people");
+  await page.getByRole("button", { name: "Send" }).click();
+  const card = page.getByTestId("copilot-proposal");
+  await expect(card).toContainText("Add a Greet step");
+  await expect(page.getByTestId("node-greet")).toBeVisible();
+
+  await card.getByLabel("Add the step “Greet”").uncheck();
+  await expect(card.getByLabel("Connect Start to “Greet”")).not.toBeChecked(); // its wires go with it
+  await expect(page.getByTestId("node-greet")).toHaveCount(0); // and the preview no longer has it
+  await card.getByRole("button", { name: "Accept the ticked changes" }).click();
+  await expect(page.locator(".save-state")).toHaveText("Saved");
+  const saved = await (await page.request.get(`/api/v1/workflows/${wf.id}`)).json();
+  expect(saved.ir.nodes).toEqual([]);
+  expect(saved.ir.resources.map((r: { name: string }) => r.name)).toEqual(["demo_model"]);
+});

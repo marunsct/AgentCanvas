@@ -251,3 +251,29 @@ def record_tool_results(monkeypatch) -> list[dict]:
 
         monkeypatch.setitem(copilot_tools.TOOLS, name, dataclasses.replace(tool, run=run))
     return results
+
+
+async def test_a_proposal_is_accepted_in_part(app, api_client):
+    """FR-COP-01: the person keeps some changes, some tests and not the notes; the record says what was kept."""
+    await separate_model(api_client)
+    wf = await make_greeter(api_client)
+    tests = [{"name": f"case {i}", "input": {"who": "Bo"}, "expect": {"channels": {"out": "Hi Bo"}}} for i in (1, 2)]
+    script(
+        app,
+        call("propose_changes", summary="Say Hi", commands=FIX_GREETING),
+        call("propose_tests", summary="Add tests", tests=tests),
+        call("save_note", note="Greetings start with Hi."),
+        "Proposed.",
+    )  # fmt: skip
+    events = await ask(api_client, wf, "make it say Hi, with tests")
+    proposal = of(events, "proposal")[0]["proposal"]
+    url = f"/v1/workflows/{wf}/copilot/proposals/{proposal['id']}"
+    total = len(proposal["commands"])
+    bad = await api_client.post(url, json={"status": "accepted", "commands": [total]})
+    assert bad.status_code == 422
+    r = await api_client.post(url, json={"status": "accepted", "commands": [0], "tests": [1], "notes": False})
+    assert r.status_code == 204, r.text
+    assert [c["name"] for c in (await api_client.get(f"/v1/workflows/{wf}/test-cases")).json()] == ["case 2"]
+    assert "Greetings start with Hi." not in (await api_client.get(SETTINGS)).json()["notes"]
+    kept = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["proposals"][-1]
+    assert kept["status"] == "accepted" and kept["accepted_commands"] == [0]

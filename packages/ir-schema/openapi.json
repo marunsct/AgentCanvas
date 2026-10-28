@@ -7154,6 +7154,27 @@
       },
       "ProposalDecision": {
         "properties": {
+          "commands": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "accepted: the indices of the changes kept (the editor applied those); null = all",
+            "title": "Commands"
+          },
+          "notes": {
+            "default": true,
+            "description": "accepted: add the proposal's notes to the project's Copilot notes",
+            "title": "Notes",
+            "type": "boolean"
+          },
           "status": {
             "enum": [
               "accepted",
@@ -7161,6 +7182,21 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "tests": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "accepted: the indices of the tests to save; null = all",
+            "title": "Tests"
           }
         },
         "required": [

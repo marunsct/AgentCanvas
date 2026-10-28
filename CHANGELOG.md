@@ -50,6 +50,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   conversation (summarised when long) instead of the last 24 messages, the full workflow as a file it reads instead
   of a copy cut at 30,000 characters, a sub-agent for side questions, and prompt caching for Anthropic models. It has
   no shell. Every Copilot test runs on both engines.
+- **Review a Copilot proposal change by change** (FR-COP-01): each change in words with a tick box; unticking a
+  step unticks the wires to it, ticking a wire ticks what it connects; the canvas previews only what is ticked, and
+  blocks the proposal removes are drawn red and dashed instead of vanishing; tests and notes can be left out too.
+  The decision records which changes were kept.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

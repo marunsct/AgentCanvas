@@ -6,6 +6,7 @@ import type { Command } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
 import { useEditor } from "../editor/store";
 import { postStream } from "../run/sse";
+import { dependencies, preview, type ReviewDiff, toggle } from "./review";
 
 export type Mode = "build" | "ask";
 
@@ -74,7 +75,10 @@ type Event =
   | { type: "error"; message: string };
 
 /** What the canvas draws while a proposal is open: the workflow as it would be, with the changes marked. */
-export interface Ghost { workflow: WF; diff: ProposalDiff }
+export interface Ghost { workflow: WF; diff: ReviewDiff }
+
+/** What the person keeps of the open proposal: which changes, which tests, and whether the notes. */
+export interface Selection { changes: Set<number>; tests: Set<number>; notes: boolean }
 
 interface CopilotState {
   workflowId: string | null;
@@ -84,6 +88,10 @@ interface CopilotState {
   error: string | null;
   last: { text: string; mode: Mode } | null; // the last message sent, for Retry
   ghost: Ghost | null;
+  selection: Selection | null;
+  toggleChange: (i: number) => void;
+  toggleTest: (i: number) => void;
+  toggleNotes: () => void;
   request: { text: string; mode: Mode } | null; // "Ask the Copilot" from elsewhere in the editor (S15)
   askFor: (text: string, mode: Mode) => void;
   load: (workflowId: string) => Promise<void>;
@@ -117,9 +125,17 @@ const TOOL_LABELS: Record<string, string> = {
 };
 export const toolLabel = (name: string) => TOOL_LABELS[name] ?? name;
 
-function ghostOf(p: Proposal | null): Ghost | null {
+function ghostOf(p: Proposal | null, sel?: Selection | null): Ghost | null {
   if (!p || p.status !== "pending" || p.stale || !p.preview || !p.diff) return null;
-  return { workflow: normalize(p.preview), diff: p.diff };
+  const wf = useEditor.getState().wf;
+  if (!wf || !p.commands) return { workflow: normalize(p.preview), diff: { ...p.diff, removed: p.diff.removed ?? [] } };
+  // drawn from the draft as it is now, with the ticked changes, so the canvas shows what Accept would do
+  return preview(wf, p.commands, sel?.changes ?? new Set(p.commands.keys()));
+}
+
+function allOf(p: Proposal | null): Selection | null {
+  if (!p || p.status !== "pending" || p.stale) return null;
+  return { changes: new Set((p.commands ?? []).keys()), tests: new Set((p.tests ?? []).keys()), notes: true };
 }
 
 /** The Copilot answer being read; leaving the editor stops reading it (the server finishes the turn). */
@@ -138,7 +154,27 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   error: null,
   last: null,
   ghost: null,
+  selection: null,
   request: null,
+  toggleChange: (i) => {
+    const { conversation, selection } = get();
+    const p = conversation?.pending;
+    if (!p?.commands || !selection) return;
+    const changes = toggle(selection.changes, i, dependencies(p.commands));
+    const next = { ...selection, changes };
+    set({ selection: next, ghost: ghostOf(p, next) });
+  },
+  toggleTest: (i) => {
+    const selection = get().selection;
+    if (!selection) return;
+    const tests = new Set(selection.tests);
+    if (tests.has(i)) tests.delete(i); else tests.add(i);
+    set({ selection: { ...selection, tests } });
+  },
+  toggleNotes: () => {
+    const selection = get().selection;
+    if (selection) set({ selection: { ...selection, notes: !selection.notes } });
+  },
   askFor: (text, mode) => set({ request: { text, mode } }),
 
   load: async (workflowId) => {
@@ -147,7 +183,8 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     set({ workflowId, error: null });
     const conversation = await apiFetch<Conversation>(`/workflows/${workflowId}/copilot`);
     if (get().workflowId !== workflowId) return;
-    set({ conversation, ghost: ghostOf(conversation.pending) });
+    const selection = allOf(conversation.pending);
+    set({ conversation, selection, ghost: ghostOf(conversation.pending, selection) });
   },
 
   send: async (text, mode) => {
@@ -171,7 +208,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
         case "tool": set({ live: { ...live, activity: [...live.activity, e] } }); break;
         case "brief": if (c) set({ conversation: { ...c, brief: e.brief } }); break;
         case "usage": case "done": if (c) set({ conversation: { ...c, usage: e.usage } }); break;
-        case "proposal": set({ ghost: ghostOf(e.proposal) }); break;
+        case "proposal": { const selection = allOf(e.proposal); set({ selection, ghost: ghostOf(e.proposal, selection) }); break; }
         case "error": set({ error: e.message }); break;
       }
     };
@@ -203,24 +240,29 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   },
 
   accept: async () => {
-    const { conversation, workflowId } = get();
+    const { conversation, workflowId, selection } = get();
     const p = conversation?.pending;
     if (!p || !workflowId) return;
-    if (p.commands?.length) {
+    const keep = selection ?? allOf(p)!;
+    const commands = (p.commands ?? []).filter((_, i) => keep.changes.has(i));
+    if (commands.length) {
       const editor = useEditor.getState();
       if (editor.workflowId !== workflowId) return;
       await editor.flush(); // earlier edits first, so the version below moves only with these commands
       const before = useEditor.getState().version;
       editor.setNotice(null);
       // edits made since the proposal are fine while the commands still apply; otherwise the edit is refused
-      editor.dispatch(p.commands);
+      editor.dispatch(commands);
       await editor.flush();
       const after = useEditor.getState();
       // refused (error), not allowed (view only) or lost to someone else's save (conflict): not accepted
       if (after.notice || after.version === before) return;
     }
-    set({ ghost: null });
-    await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "accepted" } });
+    set({ ghost: null, selection: null });
+    await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, {
+      method: "POST",
+      json: { status: "accepted", commands: [...keep.changes].sort((a, b) => a - b), tests: [...keep.tests].sort((a, b) => a - b), notes: keep.notes },
+    });
     await get().load(workflowId);
   },
 
@@ -228,7 +270,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const { conversation, workflowId } = get();
     const p = conversation?.pending;
     if (!p || !workflowId) return;
-    set({ ghost: null });
+    set({ ghost: null, selection: null });
     await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "rejected" } });
     await get().load(workflowId);
   },

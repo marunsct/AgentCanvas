@@ -1224,7 +1224,19 @@ export type Name44 = string;
 export type WorkspaceId1 = string | null;
 export type Name45 = string;
 export type WorkspaceId2 = string | null;
+/**
+ * accepted: the indices of the changes kept (the editor applied those); null = all
+ */
+export type Commands1 = number[] | null;
+/**
+ * accepted: add the proposal's notes to the project's Copilot notes
+ */
+export type Notes2 = boolean;
 export type Status11 = "accepted" | "rejected";
+/**
+ * accepted: the indices of the tests to save; null = all
+ */
+export type Tests = number[] | null;
 export type BaseUrl3 = string | null;
 export type BaseUrlRequired = boolean;
 export type Example1 = string;
@@ -1234,7 +1246,7 @@ export type KeyEnv = string | null;
 export type Label15 = string;
 export type Local1 = boolean;
 export type Module = string;
-export type Notes2 = string;
+export type Notes3 = string;
 export type OptionalKeyEnv = string | null;
 export type Package = string;
 export type Environment2 = string;
@@ -1652,7 +1664,7 @@ export type WorkflowId7 = string;
 export type Instructions2 = string | null;
 export type Name48 = string | null;
 export type ReviewersPerItem2 = number | null;
-export type Commands1 = {
+export type Commands2 = {
   [k: string]: unknown;
 }[];
 export type DryRun1 = boolean;
@@ -1782,7 +1794,7 @@ export type Model9 = string | null;
 /**
  * project conventions the Copilot always reads
  */
-export type Notes3 = string;
+export type Notes4 = string;
 /**
  * local_only: the Copilot may only use models running on your own machines
  */
@@ -4531,7 +4543,10 @@ export interface ProjectWorkspaceIn {
  * via the `definition` "ProposalDecision".
  */
 export interface ProposalDecision {
+  commands?: Commands1;
+  notes?: Notes2;
   status: Status11;
+  tests?: Tests;
 }
 /**
  * A model provider: the `provider:` prefix of a model id, its integration and where its API key comes from.
@@ -4549,7 +4564,7 @@ export interface ProviderInfo {
   label: Label15;
   local?: Local1;
   module: Module;
-  notes?: Notes2;
+  notes?: Notes3;
   optional_key_env?: OptionalKeyEnv;
   package: Package;
 }
@@ -4643,7 +4658,7 @@ export interface QueuePatch {
  * via the `definition` "RefactorOut".
  */
 export interface RefactorOut {
-  commands: Commands1;
+  commands: Commands2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4842,7 +4857,7 @@ export interface SettingsOut {
   base_url?: BaseUrl5;
   enabled?: Enabled5;
   model?: Model9;
-  notes?: Notes3;
+  notes?: Notes4;
   privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
   source?: Source9;

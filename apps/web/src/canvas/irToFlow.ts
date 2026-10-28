@@ -23,7 +23,7 @@ export interface CanvasData extends Record<string, unknown> {
   preview?: string; // tail of the streamed tokens (M4-T3)
   metrics?: string; // "1.2k tok · $0.003 · 850 ms" for the last run (M4-T11)
   pinned?: boolean; // debug runs replay a pinned output (M4-T9)
-  diff?: "added" | "changed"; // compared with a saved version (M6-T1)
+  diff?: "added" | "changed" | "removed"; // compared with a saved version (M6-T1), or a proposal's preview
   blast?: { effects: string[]; ungated: boolean }; // blast-radius overlay (FR-X-02)
   framework?: FrameworkBadge; // agents from other frameworks, remote (A2A) and MCP agents (S16)
 }
@@ -34,7 +34,7 @@ export interface FlowExtras {
   output?: Record<string, string>;
   metrics?: Record<string, NodeMetrics>;
   pins?: Record<string, unknown>;
-  diff?: { added: string[]; changed: string[] } | null;
+  diff?: { added: string[]; changed: string[]; removed?: string[] } | null;
   blast?: Record<string, { effects: string[]; ungated: boolean }> | null;
 }
 
@@ -93,6 +93,7 @@ export function irToFlow(
   const bp = new Set(extras.breakpoints ?? []);
   const added = new Set(extras.diff?.added ?? []);
   const changed = new Set(extras.diff?.changed ?? []);
+  const removed = new Set(extras.diff?.removed ?? []);
   const auto = autoPositions(wf);
   const placed = (id: string) => layout[id] ?? auto[id] ?? { x: 0, y: 0 };
   // START/END without a saved position sit left/right of whatever the user placed, never on top of it
@@ -121,7 +122,7 @@ export function irToFlow(
         breakpoint: bp.has(el.id), highlight: hl.has(el.id), pinned: Boolean(extras.pins?.[el.id]),
         preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
         metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
-        diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : undefined,
+        diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : removed.has(el.id) ? "removed" : undefined,
         blast: extras.blast?.[el.id],
         framework: kind === "node" ? frameworkBadge(el.type, (el as IRNode).config) : undefined,
       },
@@ -142,7 +143,7 @@ export function irToFlow(
       const color = PORT_COLORS[out?.type ?? ""] ?? "#8b5cf6";
       return {
         id: e.id, source: e.source.node, target: e.target.node, sourceHandle: out?.name ?? e.source.port ?? null,
-        targetHandle: e.target.port ?? null, className: "edge-wiring", data: { kind: "wiring" },
+        targetHandle: e.target.port ?? null, className: `edge-wiring${removed.has(e.id) ? " edge-removed" : ""}`, data: { kind: "wiring" },
         style: { stroke: color, strokeDasharray: "5 4", strokeWidth: 1.5 },
       };
     }
@@ -151,7 +152,7 @@ export function irToFlow(
     const active = status[e.source.node] === "ok" && ["running", "ok", "interrupted"].includes(status[e.target.node] ?? "");
     return {
       id: e.id, source: e.source.node, target: e.target.node, sourceHandle: e.source.port ?? "next", targetHandle: "in",
-      label: route, className: "edge-flow", animated: active, data: { kind: e.kind },
+      label: route, className: `edge-flow${removed.has(e.id) ? " edge-removed" : ""}`, animated: active, data: { kind: e.kind },
       style: { strokeWidth: 2, stroke: active ? "#22c55e" : "var(--flow)" },
     };
   });

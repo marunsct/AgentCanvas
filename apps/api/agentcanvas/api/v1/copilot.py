@@ -53,6 +53,11 @@ class MessageIn(BaseModel):
 
 class ProposalDecision(BaseModel):
     status: Literal["accepted", "rejected"]
+    commands: list[int] | None = Field(
+        None, description="accepted: the indices of the changes kept (the editor applied those); null = all"
+    )
+    tests: list[int] | None = Field(None, description="accepted: the indices of the tests to save; null = all")
+    notes: bool = Field(True, description="accepted: add the proposal's notes to the project's Copilot notes")
 
 
 class ModelInfoOut(BaseModel):
@@ -311,15 +316,23 @@ async def decide_proposal(
     if match["status"] != "pending":
         raise Conflict(f"proposal '{proposal_id}' is already {match['status']}")
     match["status"] = body.status
+    if body.status == "accepted" and body.commands is not None:  # partly accepted: what was kept, for the record
+        total = len(match.get("commands") or [])
+        if any(not 0 <= i < total for i in body.commands):
+            raise InvalidInput(f"the proposal has {total} changes; keep indices from 0 to {total - 1}")
+        match["accepted_commands"] = sorted(set(body.commands))
+    kept_tests = list(match.get("tests") or [])
+    if body.tests is not None:
+        kept_tests = [t for i, t in enumerate(kept_tests) if i in set(body.tests)]
     conv.proposals = proposals
     if body.status == "accepted":  # the editor applied the commands; tests and notes are saved here
         tests = TestCaseService(session)
-        for t in match.get("tests") or []:
+        for t in kept_tests:
             await tests.add(
                 wf_id, name=t["name"], input=t["input"], expect=Expect.model_validate(t.get("expect") or {}),
                 mocks=t.get("mocks") or {}, created_by=user.id,
             )  # fmt: skip
-        if notes := match.get("notes"):
+        if body.notes and (notes := match.get("notes")):
             row = await WorkflowRepo(session).require(wf_id)
             project = await ProjectRepo(session).require(row.project_id)
             cs = copilot_settings.load(project.settings)

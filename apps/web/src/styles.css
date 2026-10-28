@@ -623,6 +623,8 @@ td.status-handled { color: var(--ok); }
 /* versions & tests */
 .widget.diff-added, .resource.diff-added { outline: 3px solid var(--ok); outline-offset: 3px; }
 .widget.diff-changed, .resource.diff-changed { outline: 3px solid var(--warn); outline-offset: 3px; }
+.widget.diff-removed, .resource.diff-removed { outline: 3px dashed var(--err); outline-offset: 3px; opacity: .55; }
+.react-flow__edge.edge-removed path { stroke: var(--err) !important; stroke-dasharray: 4 4; opacity: .7; }
 .case-list, .version-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
 .case-list > li, .version-list > li { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; min-width: 0; background: var(--panel-2); }
 .connect code { display: block; overflow-wrap: anywhere; }
@@ -1079,3 +1081,7 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .copilot-error { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--tint-err); color: var(--err); font-size: 12.5px; }
 .copilot-error button { flex: none; }
 .copilot-msg .badge { margin-left: 6px; }
+.change-list summary { cursor: pointer; margin: 4px 0; }
+.change-list ul, ul.plain { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
+.change-list label, ul.plain label { margin: 0; color: var(--text); font-size: 12.5px; font-weight: 400; align-items: flex-start; }
+.change-list input[type=checkbox], ul.plain input[type=checkbox] { width: auto; margin: 2px 0 0; }
