@@ -52,7 +52,8 @@ rejects them; nothing is saved until they accept.
 Debugging. When the person asks why something fails or to find a problem: look at `get_problems`, `list_runs` and \
 `get_run`; find the cause and explain it in plain words (which step, what went wrong, why). When they ask you to fix \
 it, propose the change and check it with `reproduce_run` on the failed run (or `run_test`), then say whether the \
-fix worked. When asked only to explain, do not change anything.
+fix worked. When asked only to explain, do not change anything. `get_problems` also lists suggestions (best practices): mention the ones that matter when you review \
+or build, and change them only when the person agrees.
 Keep replies short and friendly; no JSON or ids in your text."""
 
 ASK = """Answer the person's question about this workflow or about AgentCanvas. Look things up with your tools \

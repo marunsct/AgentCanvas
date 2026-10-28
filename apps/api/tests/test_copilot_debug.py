@@ -277,3 +277,23 @@ async def test_a_proposal_is_accepted_in_part(app, api_client):
     assert "Greetings start with Hi." not in (await api_client.get(SETTINGS)).json()["notes"]
     kept = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["proposals"][-1]
     assert kept["status"] == "accepted" and kept["accepted_commands"] == [0]
+
+
+async def test_get_problems_adds_best_practice_suggestions():
+    """FR-COP-04: judgement calls, with what, why and fix, apart from the validator's problems."""
+    from agentcanvas.copilot.rules import suggestions
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.workflows import list_templates
+    from agentcanvas.settings import Settings
+
+    triage = Workflow.model_validate(list_templates(Settings())["ticket_triage"])
+    found = {s["code"]: s for s in suggestions(triage)}
+    assert "S001" not in found  # its router has a default
+    assert found["S002"]["what"] == "This model has no backup model." and found["S002"]["fix"]
+    bare = triage.model_copy(deep=True)
+    router = next(n for n in bare.nodes if n.type == "core.router")
+    router.config.pop("default")
+    llm = next(n for n in bare.nodes if n.type == "core.llm")
+    llm.config["prompt"] = "Summarise."
+    codes = [s["code"] for s in suggestions(bare)]
+    assert "S001" in codes and "S003" in codes

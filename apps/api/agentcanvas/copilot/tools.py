@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from agentcanvas.copilot import docs
+from agentcanvas.copilot import docs, rules
 from agentcanvas.copilot.pack import block_summary
 from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_commands
@@ -207,7 +207,11 @@ async def set_brief(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------- S15: debug, test ----
 async def get_problems(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     diags = await ctx.validate(ctx.workflow)
-    return {"ok": True, "problems": _diagnostics(diags, explained=True), "count": len(diags)}
+    return {
+        "ok": True, "problems": _diagnostics(diags, explained=True), "count": len(diags),
+        # judgement calls (FR-COP-04): mention them when reviewing; fix them only when the person agrees
+        "suggestions": rules.suggestions(ctx.workflow),
+    }  # fmt: skip
 
 
 async def list_runs(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -417,7 +421,8 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "get_problems",
-            "The workflow's validation problems, each with a plain explanation and how to fix it.",
+            "The workflow's validation problems, each with a plain explanation and how to fix it, and best-practice "
+            "suggestions (a router without a default, a model without a backup, thin instructions).",
             {"type": "object", "properties": {}},
             get_problems,
         ),
