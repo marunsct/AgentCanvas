@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Working on one branch, no new PRs
+You asked for this on 2026-10-28: I keep committing to `claude/hardening-3` (fast-forwarded to `main` after #72) and push it,
+and I open no pull request until you say so. Anything I fix is in the branch's commits and in this file.
+
+### TOML strings get their own writer
+`json.dumps` is not a TOML string (surrogate pairs for emoji). A tiny `agentcanvas/tomltext.py` writes basic strings
+with only what TOML requires escaped; Unicode stays as it is. One helper for all packagers, not six local fixes.
+
 ### Kubernetes: schema-check the manifests, no kind cluster on this machine
 GitHub CI already deploys an export to a kind cluster. Locally I did not add one: it needs privileged containers and a
 ~1 GB node image beside your running apps, which crosses the rule that your Docker stays untouched. Instead the rendered

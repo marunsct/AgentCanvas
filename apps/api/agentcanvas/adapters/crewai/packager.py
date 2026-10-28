@@ -19,6 +19,7 @@ from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _s
 from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.tomltext import toml_string
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -34,7 +35,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str]) -> str:
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
-description = {json.dumps(f"{wf.name} — a CrewAI flow exported from AgentCanvas")}
+description = {toml_string(f"{wf.name} — a CrewAI flow exported from AgentCanvas")}
 requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]

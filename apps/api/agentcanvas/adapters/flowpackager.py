@@ -28,6 +28,7 @@ from agentcanvas.adapters.pydantic_ai.codegen import PYDANTIC_AI_VERSION
 from agentcanvas.adapters.strands.codegen import STRANDS_VERSION
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.tomltext import toml_string
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[1]  # the `agentcanvas` package directory
@@ -312,7 +313,7 @@ def _pyproject(wf: Workflow, t: Target, pkg: str, version: str, extra: list[str]
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
-description = {json.dumps(f"{wf.name} — a {t.label} flow exported from AgentCanvas")}
+description = {toml_string(f"{wf.name} — a {t.label} flow exported from AgentCanvas")}
 requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]

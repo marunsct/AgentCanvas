@@ -44,6 +44,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Hardening, third pass
 
 ### Fixed
+- **An export of a workflow with an emoji in its name or description could not be installed**: the description was
+  written into `pyproject.toml` with `json.dumps`, which spells a character outside the Basic Multilingual Plane as a
+  surrogate pair that TOML rejects. All six packagers (LangGraph, the flow frameworks, Google ADK, CrewAI, OpenAI Agents,
+  agent designs) now use `toml_string`.
 - **Exports and the server could be installed on a Python too new for them**: `requires-python` had no ceiling, so with
   Python 3.15 installed `uv` picked it and the install failed (a dependency has no 3.15 wheel). It now stops at 3.14.
 - **Share-link frame allow-lists never worked behind nginx** (the production web image): `auth_request` does not expand
@@ -58,6 +62,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- `test_export_hostile_text.py`: workflow names, descriptions and step labels full of quotes, line breaks, shell and template
+  syntax, paths and Unicode go into every deploy target and every framework export; each file must still parse and the
+  text must stay text (never a key, an instruction or a path).
 - Rendered Helm manifests (the platform chart, and every exported chart with autoscaling and ingress on) are checked
   against the Kubernetes 1.31 API schemas with kubeconform, in `make ci-full` and in GitHub CI. `helm lint` and
   `helm template` accept a field of the wrong type or name.
