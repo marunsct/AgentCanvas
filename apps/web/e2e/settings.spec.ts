@@ -117,3 +117,15 @@ test("the editor's History tab lists this workflow's runs and opens one in the T
   await expect(page.getByRole("tab", { name: "Timeline", exact: true })).toHaveAttribute("aria-selected", "true");
   expect(thread).toMatch(/^th_/);
 });
+
+test("on a 1024-px laptop the top bar keeps Settings and the person menu in sight; page names stay readable", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await page.goto("/runs");
+  for (const id of ["settings-link", "me", "events-link"]) {
+    const box = await page.getByTestId(id).boundingBox();
+    expect(box && box.x + box.width, id).toBeLessThanOrEqual(1024);
+  }
+  await expect(page.getByRole("link", { name: "Events" })).toHaveAttribute("title", "Events"); // shown on hover
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/\/settings/);
+});

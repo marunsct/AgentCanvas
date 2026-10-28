@@ -27,8 +27,8 @@ function TopBar() {
   const canBuild = useCan("builder");
   const pending = useInbox().data?.length ?? 0;
   const link = (to: string, label: string, icon: React.ReactNode, testId?: string, end = false) => (
-    <NavLink to={to} end={end} data-testid={testId} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-      {icon}<span>{label}</span>
+    <NavLink to={to} end={end} data-testid={testId} title={label} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+      {icon}<span className="nav-label">{label}</span>
     </NavLink>
   );
   return (
@@ -39,8 +39,8 @@ function TopBar() {
         {link("/", "Workflows", <LayoutGrid {...ICON} />, "workflows-link", true)}
         {canBuild && link("/playground", "Playground", <Sparkles {...ICON} />, "playground-link")}
         {link("/runs", "Runs", <Activity {...ICON} />, "runs-link")}
-        <NavLink to="/inbox" data-testid="inbox-link" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          <Inbox {...ICON} /><span>Inbox</span>{pending > 0 && <span className="badge warn" aria-label={`${pending} waiting`}>{pending}</span>}
+        <NavLink to="/inbox" data-testid="inbox-link" title="Inbox" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+          <Inbox {...ICON} /><span className="nav-label">Inbox</span>{pending > 0 && <span className="badge warn" aria-label={`${pending} waiting`}>{pending}</span>}
         </NavLink>
         {link("/knowledge", "Knowledge", <BookOpen {...ICON} />, "knowledge-link")}
         {link("/memory", "Memory", <Brain {...ICON} />, "memory-link")}

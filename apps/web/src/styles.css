@@ -1048,7 +1048,16 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 @media (max-width: 760px) {
   .settings-layout { grid-template-columns: 1fr; }
   .settings-rail { position: static; flex-direction: row; flex-wrap: wrap; }
-  .nav-link span { display: none; }
+}
+/* a laptop window: the page links become icons (the open page keeps its name), so Settings and the person menu fit;
+ * the names stay for screen readers and show on hover */
+@media (max-width: 1320px) {
+  .nav-link:not(.active) > .nav-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
+@media (max-width: 760px) {
+  .nav-link.active > .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 .settings-card form.row > input, .settings-card form.row > select { flex: 1 1 200px; width: auto; margin: 0; }
 .settings-card form.row > button { flex: none; width: auto; }

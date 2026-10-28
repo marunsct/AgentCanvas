@@ -5,6 +5,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- On a laptop window (under ~1320 px) the top bar hid Events, Settings and the person menu past its right edge. The
+  page links now become icons there (the open page keeps its name; names show on hover and stay for screen readers).
 - On a 1024-px laptop window the editor's bar pushed ▶ Test, Copilot and the person menu out of sight (the bar
   scrolls without a scrollbar). Below 1180 px the framework badges give way and a long workflow name is shortened.
 - **Runs listed conversations by id, not by time**: a thread named by its caller (`support-42`) sorted above or below
