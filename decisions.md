@@ -12,6 +12,15 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### PLAN.md: the product plan, and two decisions I am not taking alone
+You asked for a plan to make the product feel finished (settings, the Copilot, anything else). `PLAN.md` at the root
+is it, from three code surveys and a look at the open-source options. Two choices in it change architecture, so I
+will not start them until you say so: swapping the Copilot's hand-written loop for Deep Agents with AG-UI as the
+event stream (§2.1; my recommendation, with the reasons and the rejected CopilotKit option in the table), and how
+to enforce sandbox egress outside LangSmith (§6). The shell, design system and Settings tracks need no decision and
+are what I will start on next, on this branch, under the standing instruction. *Reverse:* edit the plan; nothing is
+built from it yet.
+
 ### Wrong-shaped answers: a notice, not a validator
 When the API answers JSON of another shape than a page expects (a stale cached app against an upgraded server), the page
 ends in the error boundary. I added a hint to the notice (reload; the page and server may differ) and did not add runtime
