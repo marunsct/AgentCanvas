@@ -39,7 +39,7 @@ async def _set_default_model(api_client) -> None:
 async def test_playground_needs_a_model(app, api_client):
     _script(app, "hi")
     r = await api_client.post(f"{P}/playground/chat", json={"messages": [{"role": "user", "content": "hi"}]})
-    assert r.status_code == 422 and "default model" in r.text
+    assert r.status_code == 422 and "Settings > Models" in r.text
 
 
 async def test_playground_chat_uses_the_default_model_and_the_whole_conversation(app, api_client):
@@ -231,3 +231,25 @@ async def test_push_needs_the_builder_role(app, api_client):
     finally:
         app.dependency_overrides.pop(current_user, None)
     assert r.status_code == 403 and chat.status_code == 403
+
+
+async def test_playground_streams_the_answer(app, api_client):
+    """POST .../chat/stream: the answer as delta events, then done with the whole reply; a failure is an event."""
+    import json
+
+    await _set_default_model(api_client)
+    _script(app, "Bonjour tout le monde !")
+    r = await api_client.post(f"{P}/playground/chat/stream", json={"messages": [{"role": "user", "content": "hi"}]})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith("data:")]
+    assert "".join(e["text"] for e in events if e["type"] == "delta") == "Bonjour tout le monde !", events
+    assert events[-1] == {**events[-1], "type": "done", "reply": "Bonjour tout le monde !"}
+
+    async def broken(*a, **kw):
+        raise RuntimeError("rate limited")
+        yield ""
+
+    app.state.models.stream = broken
+    r = await api_client.post(f"{P}/playground/chat/stream", json={"messages": [{"role": "user", "content": "hi"}]})
+    last = json.loads([line for line in r.text.splitlines() if line.startswith("data:")][-1][5:])
+    assert last["type"] == "error" and "rate limited" in last["message"]

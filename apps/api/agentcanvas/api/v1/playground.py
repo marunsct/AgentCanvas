@@ -8,9 +8,12 @@ same instructions and model, so what worked in the playground becomes the start 
 from __future__ import annotations
 
 import asyncio
+import json
+from collections.abc import AsyncIterator
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,16 +61,14 @@ async def _model(session: AsyncSession, project_id: str, model: str | None) -> t
     default = (project.settings or {}).get("default_model") or {}
     chosen = model or default.get("model")
     if not chosen:
-        raise InvalidInput("choose a model, or set the project's default model on the Model page first")
+        raise InvalidInput("choose a model, or set the project's model in Settings > Models first")
     config = {k: v for k, v in default.items() if k != "model" and v} if chosen == default.get("model") else {}
     return chosen, config
 
 
-@router.post("/chat", response_model=ChatOut)
-async def chat(
-    project_id: str, body: ChatIn, request: Request, session: AsyncSession = Depends(get_session)
-) -> ChatOut:
-    """One answer from the model to the conversation so far (nothing is saved)."""
+async def _prepare(
+    project_id: str, body: ChatIn, request: Request, session: AsyncSession
+) -> tuple[str, dict[str, Any], Any, list[dict[str, Any]], dict[str, str]]:
     model, config = await _model(session, project_id, body.model)
     if body.temperature is not None:
         config["temperature"] = body.temperature
@@ -81,6 +82,20 @@ async def chat(
     )
     messages = [{"role": "system", "content": body.system_prompt}] if body.system_prompt.strip() else []
     messages += [m.model_dump() for m in body.messages]
+    return model, config, resources, messages, secrets
+
+
+def _failure(exc: Exception, secrets: dict[str, str]) -> str:
+    hidden = [v for v in secrets.values() if isinstance(v, str) and len(v) >= 6]
+    return redact(f"the model call failed: {type(exc).__name__}: {exc}", hidden)[:500]
+
+
+@router.post("/chat", response_model=ChatOut)
+async def chat(
+    project_id: str, body: ChatIn, request: Request, session: AsyncSession = Depends(get_session)
+) -> ChatOut:
+    """One answer from the model to the conversation so far (nothing is saved)."""
+    model, config, resources, messages, secrets = await _prepare(project_id, body, request, session)
     usage: dict[str, int] = {}
     try:
         reply = await asyncio.wait_for(
@@ -89,9 +104,39 @@ async def chat(
     except TimeoutError as exc:
         raise InvalidInput(f"the model did not answer within {TIMEOUT_S} s") from exc
     except Exception as exc:
-        hidden = [v for v in secrets.values() if isinstance(v, str) and len(v) >= 6]
-        raise InvalidInput(redact(f"the model call failed: {type(exc).__name__}: {exc}", hidden)[:500]) from exc
+        raise InvalidInput(_failure(exc, secrets)) from exc
     return ChatOut(reply=str(reply.get("content") or ""), model=model, usage=usage)
+
+
+@router.post("/chat/stream", response_class=StreamingResponse)
+async def chat_stream(
+    project_id: str, body: ChatIn, request: Request, session: AsyncSession = Depends(get_session)
+) -> StreamingResponse:
+    """The answer as it is generated, as server-sent events: `delta` {text} pieces, then `done` {reply, model,
+    usage}, or `error` {message}. Nothing is saved."""
+    model, config, resources, messages, secrets = await _prepare(project_id, body, request, session)
+    await session.close()  # no connection held while the model answers
+
+    async def events() -> AsyncIterator[str]:
+        usage: dict[str, int] = {}
+        reply = ""
+        try:
+            async with asyncio.timeout(TIMEOUT_S):
+                async for piece in request.app.state.models.stream(resources, model, messages, usage, config):
+                    reply += piece
+                    yield f"data: {json.dumps({'type': 'delta', 'text': piece})}\n\n"
+        except TimeoutError:
+            late = f"the model did not answer within {TIMEOUT_S} s"
+            yield f"data: {json.dumps({'type': 'error', 'message': late})}\n\n"
+            return
+        except Exception as exc:  # noqa: BLE001 - the stream has started: the failure is an event, keys redacted
+            yield f"data: {json.dumps({'type': 'error', 'message': _failure(exc, secrets)})}\n\n"
+            return
+        yield f"data: {json.dumps({'type': 'done', 'reply': reply, 'model': model, 'usage': usage})}\n\n"
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @router.post("/workflow", response_model=WorkflowOut, status_code=201)

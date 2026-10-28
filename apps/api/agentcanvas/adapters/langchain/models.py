@@ -7,6 +7,7 @@ service, never a framework adapter, so a workflow's framework does not decide wh
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 
@@ -83,3 +84,26 @@ class LangChainModels:
             for i, c in enumerate(getattr(reply, "tool_calls", None) or [])
         ]
         return {"content": str(content or ""), "tool_calls": calls}
+
+    async def stream(
+        self,
+        resources: Any,
+        model: str,
+        messages: list[dict[str, Any]],
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+        kinds = {"system": SystemMessage, "user": HumanMessage, "assistant": AIMessage}
+        converted = [kinds[m["role"]](content=str(m.get("content") or "")) for m in messages if m["role"] in kinds]
+        llm = resources.model("copilot", {**(config or {}), "model": model})
+        async for chunk in llm.astream(converted):
+            if usage is not None and (meta := getattr(chunk, "usage_metadata", None)):
+                usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
+                usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+            content = chunk.content
+            if isinstance(content, list):  # content blocks: keep the text ones
+                content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
+            if content:
+                yield str(content)

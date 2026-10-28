@@ -13,6 +13,7 @@ import re
 import sys
 import time
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -75,7 +76,7 @@ _REF = r"(?:S\d+|M\d+-T\d+|T\d+|FR-[A-Z]+-\d+|SP-\d+|TS\d+)"
 _REFS = re.compile(rf"\s*\({_REF}(?:[ ,;/]+{_REF})*\)")
 
 
-def plain_openapi(app: FastAPI) -> dict:
+def plain_openapi(app: FastAPI) -> dict[str, Any]:
     """The OpenAPI document with the planning ids taken out of its descriptions (cached like FastAPI's own)."""
     if app.openapi_schema is None:
         from fastapi.openapi.utils import get_openapi
@@ -90,7 +91,7 @@ def plain_openapi(app: FastAPI) -> dict:
                 return [clean(v) for v in node]
             return node
 
-        app.openapi_schema = clean(doc)  # type: ignore[assignment]
+        app.openapi_schema = cast("dict[str, Any]", clean(doc))
     return app.openapi_schema
 
 
