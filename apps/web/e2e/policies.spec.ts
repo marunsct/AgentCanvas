@@ -29,6 +29,11 @@ test("add a policy, see it in the editor, switch it off and delete it", async ({
   await expect(page.locator(".problems")).not.toContainText("E095");
 
   await page.goto("/policies");
+  await row.getByRole("button", { name: "Edit" }).click(); // edited in place: the form fills, Save keeps the id
+  const form = page.getByRole("form", { name: "Edit policy" });
+  await form.getByLabel("description").fill("edited: a person approves first");
+  await form.getByRole("button", { name: "Save policy" }).click();
+  await expect(row).toContainText("edited: a person approves first");
   await row.getByRole("button", { name: "Delete" }).click();
   await answerDialog(page);
   await expect(row).toHaveCount(0);
