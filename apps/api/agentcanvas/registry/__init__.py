@@ -83,7 +83,7 @@ class ModelInfo(BaseModel):
     vision: bool = False
     reasoning: bool = False
     context_window: int | None = None
-    price_in_per_mtok: float | None = None  # USD per 1M input tokens; None = unknown (fill from provider pricing)
+    price_in_per_mtok: float | None = None  # USD per 1M input tokens; None = unknown (AGENTCANVAS_MODEL_PRICES)
     price_out_per_mtok: float | None = None
 
 
@@ -149,9 +149,34 @@ def load_manifests(directory: Path = HERE / "nodes") -> list[NodeManifest]:
     return [NodeManifest.model_validate(json.loads(p.read_text())) for p in sorted(directory.glob("*.json"))]
 
 
+def priced(models: list[ModelInfo], raw: str | None) -> list[ModelInfo]:
+    """Apply AGENTCANVAS_MODEL_PRICES, `{"openai:gpt-5.5": [in, out], ...}` in USD per million tokens: the catalog
+    prices only the models whose list price was checked, and an operator knows their own (or negotiated) prices.
+    A malformed value or an unknown model is refused, so a budget never silently counts nothing."""
+    if not raw:
+        return models
+    try:
+        table = json.loads(raw)
+        prices = {str(k): (float(v[0]), float(v[1])) for k, v in table.items()}
+    except (ValueError, TypeError, IndexError, AttributeError) as exc:
+        raise ValueError(f'AGENTCANVAS_MODEL_PRICES must be JSON like {{"provider:model": [in, out]}}: {exc}') from None
+    known = {m.id for m in models}
+    if unknown := sorted(set(prices) - known):
+        raise ValueError(f"AGENTCANVAS_MODEL_PRICES names models not in the catalog: {', '.join(unknown)}")
+    if any(x < 0 for pair in prices.values() for x in pair):
+        raise ValueError("AGENTCANVAS_MODEL_PRICES: prices cannot be negative")
+    return [
+        m.model_copy(update={"price_in_per_mtok": prices[m.id][0], "price_out_per_mtok": prices[m.id][1]})
+        if m.id in prices
+        else m
+        for m in models
+    ]
+
+
 @cache
 def default_registry() -> Registry:
-    models = [ModelInfo.model_validate(m) for m in json.loads((HERE / "models.json").read_text())]
+    catalog = [ModelInfo.model_validate(m) for m in json.loads((HERE / "models.json").read_text())]
+    models = priced(catalog, os.environ.get("AGENTCANVAS_MODEL_PRICES"))
     providers = [ProviderInfo.model_validate(p) for p in json.loads((HERE / "providers.json").read_text())]
     return Registry(load_manifests(), models, providers)
 

@@ -215,7 +215,7 @@ def cost_budget_prices(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     "W015",
                     f"{which} has no catalog price, so the USD budget does not count its calls",
                     node_id=r.id,
-                    hint="set price_in_per_mtok / price_out_per_mtok in the model catalog, or use a token budget",
+                    hint="an operator sets its price with AGENTCANVAS_MODEL_PRICES, or use a token budget",
                 )
 
 

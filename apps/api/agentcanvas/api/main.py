@@ -35,6 +35,7 @@ from agentcanvas.db.rls import bypasses_policies
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
+from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
 from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.paused import DatabasePaused, MemoryPaused
@@ -99,6 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
     check_auth_settings(settings)
+    default_registry()  # a malformed AGENTCANVAS_MODEL_PRICES stops the start, not the first run that needs a price
 
     def _not_dumpable() -> None:
         """Linux: /proc/<this pid>/environ, mem and maps become readable by root only, and ptrace is refused, so a

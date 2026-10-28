@@ -12,6 +12,12 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Only the Claude models get catalog prices; the rest are the operator's to set
+Costs, USD budgets and cost alerts all read the catalog's prices, and it had none. I filled in the Claude models
+from Anthropic's published list prices (as of 2026-10-06) and left the other providers empty rather than write down
+prices I could not check; `AGENTCANVAS_MODEL_PRICES` lets an operator price them (or record negotiated prices),
+and W015 still names any model a USD budget cannot count. *Reverse:* remove the `price_*` fields from `models.json`.
+
 ### Opening another project's workflow switches the app to that project
 The Inbox spans the organisation (documented, and reviewers want one queue), but every page reads the project chosen
 at start-up, so a workflow reached from it could open with the wrong project's blocks and models. I made the editor
