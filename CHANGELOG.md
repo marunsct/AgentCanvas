@@ -68,6 +68,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   find a working URL for 54 of the 61 routes that take an id, and sends each of them (and every other method the same
   path accepts) as a user of another organisation, who must be told 403 or 404. Found nothing; with scoping removed for
   two kinds of id it fails at once. Public by design and left out: share links and the A2A agent card.
+- `test_secret_in_no_response.py`: a stored secret (also in a run's state and a model resource) is looked for in every
+  response of every GET route it can reach, and in every file of every export zip. It is in none (a planted copy in a
+  workflow name is found at once).
 - Sign-in tests for tokens a stranger might send: alg `none`, HS256 signed with the issuer's public key, no expiry, not
   yet valid, issued in the future, wrong or missing audience, no or blank subject, a 200 kB token, malformed parts; and
   one that keeps the server from fetching the issuer's keys once per request when the key id is made up (60 tokens, at
