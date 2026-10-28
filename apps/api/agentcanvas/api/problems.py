@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -40,16 +41,29 @@ def install_problem_handlers(app: FastAPI) -> None:
             errors=errors,
         )
 
-    @app.exception_handler(DataError)
-    async def _data(_: Request, exc: DataError) -> JSONResponse:
-        # the database refused a value as such: a NUL character in a name or id (Postgres text cannot hold one), a
-        # number out of range, text longer than a column. The client's input is at fault; the SQL stays in the log.
+    def _out_of_range() -> JSONResponse:
         return problem(
             422,
             "Invalid input",
             "a value contains something the database cannot store (a NUL character, a number out of range)",
             "https://agentcanvas.dev/errors/invalid",
         )
+
+    @app.exception_handler(DataError)
+    @app.exception_handler(psycopg.DataError)  # LangGraph's Postgres store talks psycopg directly (the memory routes)
+    async def _data(_: Request, exc: Exception) -> JSONResponse:
+        # the database refused a value as such: a NUL character in a name or id (Postgres text cannot hold one), a
+        # number out of range, text longer than a column. The client's input is at fault; the SQL stays in the log.
+        return _out_of_range()
+
+    @app.exception_handler(OverflowError)
+    async def _overflow(_: Request, exc: OverflowError) -> JSONResponse:
+        # SQLite's way of saying DataError ("Python int too large to convert to SQLite INTEGER"): the same cause and
+        # answer. Any other overflow is a bug and goes on to the 500 below. (Registered for this class, not left to the
+        # `Exception` handler, which runs outside the middleware that would let the answer replace the failure.)
+        if "SQLite" not in str(exc):
+            raise exc
+        return _out_of_range()
 
     @app.exception_handler(Exception)
     async def _unexpected(_: Request, exc: Exception) -> JSONResponse:

@@ -44,6 +44,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Hardening, third pass
 
 ### Fixed
+- **Two query values answered with a 500**: a page cursor or dataset version too large for a 64-bit integer (SQLite
+  raises `OverflowError`, not `DataError`), and a NUL character in a memory namespace on Postgres (LangGraph's store
+  raises psycopg's `DataError`, not SQLAlchemy's). Both are 422 now, and the audit cursor is bounded.
 - **A misrouted `/api` crashed every page** when a proxy answered an API path with the app's own page (HTTP 200, HTML): the
   client handed the HTML to components as data ("`data.map is not a function`"). It is now an error that says so ("the server
   answered with a web page instead of data. Is /api forwarded to the AgentCanvas API?"). A page that still receives data
@@ -70,6 +73,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Hostile query parameters on every GET route (`test_api_robustness.py`), and on routes reached with real ids
+  (`test_query_params_real_data.py`), so paging, cursors and version filters meet the values.
 - `e2e/chaos.spec.ts`: every page against an API that answers 500, a proxy's 502 page, HTML with a 200, a dropped
   connection, `null` or an unexpected object: no page goes blank or throws an uncaught error, and none but the last
   (a different version) ends in the crash notice.
