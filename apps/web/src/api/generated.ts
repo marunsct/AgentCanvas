@@ -894,6 +894,10 @@ export type Decision1 = {
 } | null;
 export type Id35 = string;
 export type Kind6 = string;
+/**
+ * the waiting block's label (or name) in the workflow's draft
+ */
+export type NodeLabel = string | null;
 export type RunId4 = string;
 export type Status7 = string;
 export type ThreadId4 = string;
@@ -4055,6 +4059,7 @@ export interface InterruptOut {
   decision: Decision1;
   id: Id35;
   kind: Kind6;
+  node_label?: NodeLabel;
   payload: Payload;
   run_id: RunId4;
   status: Status7;

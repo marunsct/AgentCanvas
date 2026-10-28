@@ -157,6 +157,7 @@ class InterruptOut(BaseModel):
     thread_id: str
     run_id: str
     canvas_node_id: str
+    node_label: str | None = Field(None, description="the waiting block's label (or name) in the workflow's draft")
     kind: str
     payload: dict[str, Any]
     status: str
@@ -619,8 +620,12 @@ async def delete_thread(
 
 
 # ------------------------------------------------------------------- inbox ----
-def _intr(x: InterruptTask, workflow_id: str | None = None, workflow_name: str | None = None) -> InterruptOut:
+def _intr(
+    x: InterruptTask, workflow_id: str | None = None, workflow_name: str | None = None, ir: dict | None = None
+) -> InterruptOut:
+    node = next((n for n in (ir or {}).get("nodes", []) if n.get("id") == x.canvas_node_id), None)
     return InterruptOut(
+        node_label=(node.get("label") or node.get("name")) if node else None,
         id=x.id,
         workflow_id=workflow_id,
         workflow_name=workflow_name,
@@ -645,7 +650,7 @@ async def inbox(
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
     q = (
-        select(InterruptTask, Thread.workflow_id, WorkflowRow.name)
+        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, WorkflowRow.draft_ir)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
@@ -655,7 +660,7 @@ async def inbox(
         q = q.where(Thread.workflow_id == workflow_id)
     # newest first: a long backlog must not hide what is waiting right now
     rows = (await session.execute(q.order_by(InterruptTask.created_at.desc()).limit(limit))).all()
-    return [_intr(x, wid, name) for x, wid, name in rows]
+    return [_intr(x, wid, name, ir) for x, wid, name, ir in rows]
 
 
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])

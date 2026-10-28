@@ -5,7 +5,7 @@ import { maturaMode } from "./auth";
 import { apiFetch } from "./client";
 import { can } from "./session";
 import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
-import type { McpConnector } from "./generated";
+import type { InterruptOut, McpConnector } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
@@ -160,16 +160,7 @@ export function useWorkflows() {
 }
 
 /** A run waiting for a person (an approval or an answer), in any workflow of the organisation. */
-export interface InboxItem {
-  id: string;
-  workflow_id: string | null;
-  workflow_name: string | null;
-  thread_id: string;
-  canvas_node_id: string;
-  kind: string;
-  payload: Record<string, unknown>;
-  created_at: string;
-}
+export type InboxItem = InterruptOut;
 
 export function useInbox() {
   return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });

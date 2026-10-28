@@ -70,7 +70,7 @@ test("inbox shows pending approvals across workflows and resumes the run", async
   const thread = (await page.locator("label.row code").first().textContent())!.trim();
   expect(thread).toMatch(/^th_/);
   await page.getByTestId("inbox-link").click();
-  const mine = page.getByTestId("inbox-item").filter({ hasText: `thread ${thread}` });
+  const mine = page.getByTestId("inbox-item").filter({ has: page.locator(`a[href$="thread=${thread}"]`) });
   await expect(mine).toHaveCount(1);
   await mine.getByRole("button", { name: "Approve" }).click();
   await expect(mine).toHaveCount(0, { timeout: 10_000 });

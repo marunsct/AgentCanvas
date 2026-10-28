@@ -4871,6 +4871,18 @@
             "title": "Kind",
             "type": "string"
           },
+          "node_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the waiting block's label (or name) in the workflow's draft",
+            "title": "Node Label"
+          },
           "payload": {
             "additionalProperties": true,
             "title": "Payload",
