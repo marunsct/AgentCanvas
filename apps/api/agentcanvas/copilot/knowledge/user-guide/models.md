@@ -96,7 +96,7 @@ Open it from **Choose a model** on Home (until setup is done) or **Settings › 
    create from templates afterwards use it instead of the template's own models (their other settings, such as
    temperature, are kept). Existing workflows don't change.
 
-**Skip for now** hides the prompt; templates then keep their own models.
+**Not now, hide the reminder** hides the prompt on Workflows; templates then keep their own models.
 
 ## Checks in the editor
 
