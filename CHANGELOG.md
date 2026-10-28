@@ -44,6 +44,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   page) and Server (admins: how the server is set up, each setting with its environment variable; never a secret).
 - The user guide has a page for the top bar and Settings, and its references to the old **Model**, **Members**,
   **Audit log** links and the Workspace's secrets are updated.
+- **The Copilot on Deep Agents** (`AGENTCANVAS_COPILOT_ENGINE=deepagents`; the loop stays the default until the
+  real-model evaluation): LangChain's agent harness runs the same tools, instructions and proposals, and adds text
+  streamed as it is generated (`text_delta` events), the agent's plan as a live to-do list (`todos`), the whole
+  conversation (summarised when long) instead of the last 24 messages, the full workflow as a file it reads instead
+  of a copy cut at 30,000 characters, a sub-agent for side questions, and prompt caching for Anthropic models. It has
+  no shell. Every Copilot test runs on both engines.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

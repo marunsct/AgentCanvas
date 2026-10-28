@@ -5,10 +5,19 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from test_copilot import SETTINGS, ask, call, of, script
 from test_publish import make_greeter
 
 from agentcanvas.copilot import docs
+
+
+@pytest.fixture(autouse=True, params=["loop", "deepagents"])
+def engine(request, settings):
+    """Every Copilot test runs on both engines: the loop and the Deep Agents harness (PLAN.md section 2)."""
+    settings.copilot_engine = request.param
+    return request.param
+
 
 FIX_GREETING = [{"op": "UpdateNode", "id": "n_g", "patch": {"config": {"values": {"out": "Hi {{ state.who }}"}}}}]
 
@@ -26,7 +35,7 @@ async def a_run(api_client, wf: str, who: str = "Ada") -> str:
     return next(e["runId"] for e in events if e.get("runId"))
 
 
-async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
+async def test_debug_explains_a_run_and_checks_a_fix(app, api_client, monkeypatch):
     await separate_model(api_client)
     wf = await make_greeter(api_client)
     run_id = await a_run(api_client, wf)
@@ -39,30 +48,19 @@ async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
     assert not of(events, "proposal")
 
     # fix and check: propose the change, reproduce the old run on it, test it with an expectation
-    seen: list = []
-    original = app.state.models.chat
-
-    async def spy(resources, model, messages, tools, usage=None, config=None):
-        seen.append(messages)
-        return await original(resources, model, messages, tools, usage=usage, config=config)
-
-    app.state.models.chat = spy
-    try:
-        script(
-            app,
-            call("propose_changes", summary="Say Hi", commands=FIX_GREETING),
-            call("reproduce_run", run_id=run_id),
-            call("run_test", input={"who": "Bo"}, expect={"channels": {"out": "Hi Bo"}}),
-            call("propose_tests", summary="Add a test", tests=[
-                {"name": "greets Bo", "input": {"who": "Bo"}, "expect": {"channels": {"out": "Hi Bo"}}}]),
-            call("save_note", note="Greetings start with Hi."),
-            "Fixed: it now says Hi, and the test passes.",
-        )  # fmt: skip
-        events = await ask(api_client, wf, "make it say Hi instead and check it")
-    finally:
-        app.state.models.chat = original
-    results = [m for m in seen[-1] if m["role"] == "tool"]
-    reproduced, tested = json.loads(results[1]["content"]), json.loads(results[2]["content"])
+    results = record_tool_results(monkeypatch)
+    script(
+        app,
+        call("propose_changes", summary="Say Hi", commands=FIX_GREETING),
+        call("reproduce_run", run_id=run_id),
+        call("run_test", input={"who": "Bo"}, expect={"channels": {"out": "Hi Bo"}}),
+        call("propose_tests", summary="Add a test", tests=[
+            {"name": "greets Bo", "input": {"who": "Bo"}, "expect": {"channels": {"out": "Hi Bo"}}}]),
+        call("save_note", note="Greetings start with Hi."),
+        "Fixed: it now says Hi, and the test passes.",
+    )  # fmt: skip
+    events = await ask(api_client, wf, "make it say Hi instead and check it")
+    reproduced, tested = results[1], results[2]
     assert (
         reproduced["ok"] and reproduced["output"]["out"] == "Hi Ada" and reproduced["original"]["status"] == "success"
     )
@@ -86,25 +84,14 @@ async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
     assert ran["passed"] == 1
 
 
-async def test_problems_are_explained_and_tests_wait_for_a_valid_workflow(app, api_client):
+async def test_problems_are_explained_and_tests_wait_for_a_valid_workflow(app, api_client, monkeypatch):
     await separate_model(api_client)
     wf = await make_greeter(api_client)
     broken = [{"op": "Disconnect", "id": "e2"}]
     script(app, call("propose_changes", summary="x", commands=broken), call("get_problems"),
            call("run_test", input={"who": "x"}), "It no longer reaches the end.")  # fmt: skip
-    seen: list = []
-    original = app.state.models.chat
-
-    async def spy(resources, model, messages, tools, usage=None, config=None):
-        seen.append(messages)
-        return await original(resources, model, messages, tools, usage=usage, config=config)
-
-    app.state.models.chat = spy
-    try:
-        await ask(api_client, wf, "remove the last arrow")
-    finally:
-        app.state.models.chat = original
-    results = [json.loads(m["content"]) for m in seen[-1] if m["role"] == "tool"]
+    results = record_tool_results(monkeypatch)
+    await ask(api_client, wf, "remove the last arrow")
     problems = results[1]["problems"]
     assert problems and all("what" in p and "fix" in p for p in problems if p["code"].startswith("E"))
     assert not results[2]["ok"] and "fix the" in results[2]["error"]
@@ -246,3 +233,21 @@ async def test_a_reproduction_replays_risky_tools_instead_of_stubbing_them():
     res.dry_run = {"send_email"}
     tools = res.tool("mail", {"transport": "http", "url": "https://mail.example/mcp"}, "mcp.server")
     assert await tools[0].ainvoke({"to": "a@b.c"}) == "sent #42"
+
+
+def record_tool_results(monkeypatch) -> list[dict]:
+    """Every tool result of the turn, in order, whichever engine runs it (both call the tools in `TOOLS`)."""
+    import dataclasses
+
+    from agentcanvas.copilot import tools as copilot_tools
+
+    results: list[dict] = []
+    for name, tool in list(copilot_tools.TOOLS.items()):
+
+        async def run(ctx, args, _run=tool.run):
+            out = await _run(ctx, args)
+            results.append(out)
+            return out
+
+        monkeypatch.setitem(copilot_tools.TOOLS, name, dataclasses.replace(tool, run=run))
+    return results

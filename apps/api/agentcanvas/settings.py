@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)
     recursion_limit: int = 50
+    # the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (PLAN.md section 2; the loop stays the
+    # default until Deep Agents has passed the same suite and the real-model evaluation)
+    copilot_engine: Literal["loop", "deepagents"] = "loop"
     cors_origins: list[str] = ["http://localhost:5173"]
     log_json: bool = False
     metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)

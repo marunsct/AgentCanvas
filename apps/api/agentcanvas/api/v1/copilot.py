@@ -78,6 +78,15 @@ class SettingsOut(CopilotSettings):
     resolved: ModelInfoOut | None = None
 
 
+def _engine(settings: Settings) -> type[CopilotTurn]:
+    """The loop (default) or the Deep Agents harness (AGENTCANVAS_COPILOT_ENGINE=deepagents)."""
+    if settings.copilot_engine == "deepagents":
+        from agentcanvas.adapters.langchain.copilot import DeepAgentTurn
+
+        return DeepAgentTurn
+    return CopilotTurn
+
+
 def _service(request: Request, session: AsyncSession, settings: Settings) -> WorkflowService:
     return WorkflowService(session, settings, request.app.state.projects.registry)
 
@@ -242,7 +251,7 @@ async def _start_turn(
         if factory
         else request.app.state.projects.for_workflow(view.workflow)
     )
-    turn = CopilotTurn(
+    turn = _engine(settings)(
         request.app.state.models, resources, model, _pack(registry, templates), ctx,
         history=list(conv.messages or []), proposals=[dict(p) for p in conv.proposals or []], usage=usage,
         token_cap=cs.token_cap, base_version=view.row.version, project_notes=cs.notes, saved=view.workflow,

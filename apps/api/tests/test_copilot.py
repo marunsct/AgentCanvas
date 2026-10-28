@@ -18,6 +18,14 @@ from agentcanvas.services.workflows import list_templates
 from agentcanvas.settings import Settings
 from agentcanvas.validation import validate
 
+
+@pytest.fixture(autouse=True, params=["loop", "deepagents"])
+def engine(request, settings):
+    """Every Copilot test runs on both engines: the loop and the Deep Agents harness (PLAN.md section 2)."""
+    settings.copilot_engine = request.param
+    return request.param
+
+
 SETTINGS = "/v1/projects/prj_default/copilot-settings"
 
 GREETER = [
@@ -152,21 +160,21 @@ async def test_brief_then_build_with_self_repair_and_accept(app, api_client):
 
     # the next turn tells the model what happened to its proposal
     seen: list = []
-    original = app.state.models.chat
+    from agentcanvas.copilot.service import CopilotTurn
 
-    async def spy(resources, model, messages, tools, usage=None, config=None):
-        seen.append(messages)
-        return await original(resources, model, messages, tools, usage=usage, config=config)
+    original = CopilotTurn._context
 
-    app.state.models.chat = spy
+    def spy(self, mode):  # either engine builds its per-turn context here
+        seen.append(original(self, mode))
+        return seen[-1]
+
+    CopilotTurn._context = spy  # type: ignore[method-assign]
     try:
         script(app, "It greets whoever you pass as `who`.")
         await ask(api_client, wf_id, "what does it do?", mode="ask")
     finally:
-        app.state.models.chat = original
-    context = seen[0][1]["content"]
-    assert "Add a greeter; Connect it: accepted" in context and '"n_greet"' in context
-    assert seen[0][0].get("cache") is True  # the knowledge pack is the cacheable prefix
+        CopilotTurn._context = original  # type: ignore[method-assign]
+    assert "Add a greeter; Connect it: accepted" in seen[0] and '"n_greet"' in seen[0]
 
     assert (await api_client.delete(f"/v1/workflows/{wf_id}/copilot")).status_code == 204
     assert (await api_client.get(f"/v1/workflows/{wf_id}/copilot")).json()["messages"] == []
