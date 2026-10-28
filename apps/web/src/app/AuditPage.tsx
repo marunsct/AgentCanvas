@@ -49,9 +49,9 @@ export function AuditPage() {
       if (pageParam) q.set("before", String(pageParam));
       return apiFetch<Entry[]>(`/org/audit?${q}`);
     },
-    getNextPageParam: (last) => (last.length === PAGE ? last[last.length - 1].id : undefined),
+    getNextPageParam: (last) => (Array.isArray(last) && last.length === PAGE ? last[last.length - 1].id : undefined),
   });
-  const rows = useMemo(() => log.data?.pages.flat() ?? [], [log.data]);
+  const rows = useMemo(() => (log.data?.pages ?? []).flatMap((p) => (Array.isArray(p) ? p : [])), [log.data]);
   const seen = useMemo(() => [...new Set(rows.map((e) => e.action))].sort(), [rows]);
   return (
     <section className="settings-card audit">

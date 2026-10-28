@@ -11,6 +11,8 @@ import { confirmDialog, toast } from "../ui/dialog";
 import { PageHeader } from "../ui/PageHeader";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
+import { EmptyState } from "../ui/EmptyState";
+import { Activity } from "lucide-react";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   idle: { label: "done", cls: "ok" },
@@ -42,13 +44,14 @@ export function RunsPage() {
       if (pageParam) q.set("cursor", pageParam);
       return apiFetch<ThreadPage>(`/threads?${q}`);
     },
-    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    getNextPageParam: (last) => last?.next_cursor ?? undefined,
   });
   const remove = useMutation({
     mutationFn: (id: string) => apiFetch(`/threads/${id}`, { method: "DELETE" }),
     onSuccess: () => { toast("Deleted the conversation"); void qc.invalidateQueries({ queryKey: ["threads"] }); },
   });
-  const items = threads.data?.pages.flatMap((p) => p.items) ?? [];
+  // a page of another shape (a server of another version) shows as nothing, not a crash
+  const items = threads.data?.pages.flatMap((p) => (Array.isArray(p?.items) ? p.items : [])) ?? [];
   return (
     <div className="page runs-page">
       <PageHeader title="Runs" description="Every conversation with this project's workflows: from the editor, the API, triggers and share links." />
@@ -64,7 +67,9 @@ export function RunsPage() {
       </div>
       <QueryStatus q={threads} what="the runs" />
       {threads.data && items.length === 0 && (
-        <div className="empty-state">{status || workflow ? "No runs match these filters." : "No runs yet. Run a workflow from the editor with ▶ Test."}</div>
+        status || workflow
+          ? <div className="empty-state">No runs match these filters.</div>
+          : <EmptyState icon={Activity} title="No runs yet">Run a workflow from the editor with ▶ Test, or call a published one; every conversation shows here.</EmptyState>
       )}
       {items.length > 0 && (
         <table className="table runs-table" data-testid="runs">
