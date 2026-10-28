@@ -1044,3 +1044,9 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .settings-card form.row > button { flex: none; width: auto; }
 .danger-zone { border-color: color-mix(in srgb, var(--err) 35%, var(--border)); }
 .danger-zone > button { margin-top: 6px; }
+.settings-card h3 { margin: 18px 0 6px; font-size: 14px; }
+.chip-list { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-list li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--border); border-radius: 99px; background: var(--panel-2); }
+.notice { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; background: var(--panel-2); font-size: 13px; }
+.notice p { margin: 4px 0; }
+.notice.error { border-color: color-mix(in srgb, var(--err) 45%, var(--border)); background: var(--tint-err); }

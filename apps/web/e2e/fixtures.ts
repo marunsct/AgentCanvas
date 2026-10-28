@@ -30,4 +30,4 @@ export async function answerDialog(page: import("@playwright/test").Page, text?:
 }
 
 /** Every section of the Settings page (settings/SettingsPage.tsx), for sweeps that visit every page. */
-export const SETTINGS = ["general", "models", "copilot", "secrets", "observability", "members", "policies", "audit", "appearance"].map((s) => `/settings/${s}`);
+export const SETTINGS = ["general", "models", "copilot", "secrets", "sandbox", "observability", "members", "policies", "audit", "appearance"].map((s) => `/settings/${s}`);

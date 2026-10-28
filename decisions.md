@@ -12,6 +12,18 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Egress: how it is enforced, and the one place it is not
+The proxy is our own (about 250 lines of standard library) rather than Squid or Envoy: it has to check a list that
+differs per call and per project, which those would need a plugin or a control plane for; ours checks an HMAC-signed
+list carried in the proxy credentials, so it keeps no state and the code cannot widen its own list. It refuses names
+that resolve to private addresses unless the list names the address itself, so a project cannot reach the database
+or cloud metadata by listing a name that points there. Header injection (`inject`) stays LangSmith-only: doing it
+ourselves means intercepting TLS, which I will not add without a reason. The in-process mode has no single place
+where code starts, so it cannot refuse per call: there an egress list is a lint error (E084) in staging and
+production on top of the existing "not isolated" start-up warning; the subprocess mode refuses at run time.
+Production compose now requires `AGENTCANVAS_EGRESS_SECRET` (in the changelog under Upgrading). *Reverse:* set
+`sandbox.egress.enabled=false` (Helm) or drop the service; code then has no network, as before.
+
 ### Approved by you: the Copilot on Deep Agents with AG-UI, and egress enforced or refused
 You said yes to both (2026-10-28). The Copilot moves to `deepagents` behind the adapter boundary, built behind a
 setting so the current loop stays the default until the new one passes the same scripted suite; then the old loop

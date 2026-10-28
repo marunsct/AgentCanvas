@@ -38,3 +38,16 @@ test("the top bar reaches every page, and the old addresses lead into Settings",
     await expect(page).toHaveURL(new RegExp(`/settings/${now}$`));
   }
 });
+
+test("the sandbox limits are a form, and the network list is offered only where it is enforced", async ({ page }) => {
+  await page.goto("/settings/sandbox");
+  // the key-less dev server runs workspace code in-process: no network list, and the page says why
+  await expect(page.getByTestId("egress-not-enforced")).toContainText("cannot limit which hosts");
+  await expect(page.getByLabel("host to allow")).toHaveCount(0);
+  await page.getByLabel("Time limit per call (seconds)").fill("45");
+  await page.getByRole("button", { name: "Save sandbox settings" }).click();
+  await expect(page.getByTestId("toasts")).toContainText("Saved the sandbox settings");
+  const file = await (await page.request.get("/api/v1/projects/prj_default/files/sandbox.json")).json();
+  expect(JSON.parse(file.content).timeout_s).toBe(45);
+  await page.request.put("/api/v1/projects/prj_default/sandbox", { data: {} }); // back to the defaults for other journeys
+});

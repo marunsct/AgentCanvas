@@ -10,6 +10,7 @@ import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
 import { ProjectSettings } from "./ProjectSettings";
+import { SandboxSettings } from "./SandboxSettings";
 import { SecretsSettings } from "./SecretsSettings";
 
 const ModelSettings = lazy(() => import("../app/SetupPage").then((m) => ({ default: m.SetupPage })));
@@ -24,6 +25,7 @@ export const SECTIONS: Section[] = [
   { id: "models", group: "Project", label: "Models", render: () => <ModelSettings /> },
   { id: "copilot", group: "Project", label: "Copilot", render: () => <CopilotSettings /> },
   { id: "secrets", group: "Project", label: "Secrets", render: () => <SecretsSettings /> },
+  { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },

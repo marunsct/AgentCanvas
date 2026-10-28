@@ -13,6 +13,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   the project's model", which is what it did.
 - The MCP endpoint refuses a browser `Origin` other than its own or a configured CORS origin (403) and an
   `MCP-Protocol-Version` it does not speak (400), as the Streamable HTTP transport requires.
+- Deleting a workflow that had been published and called failed on Postgres (references to its versions and
+  deployments had no delete rule). A migration adds the rules.
 
 ### Added
 - **One top bar on every page** (`app/AppShell.tsx`): the project (switch, or create a new one), Workflows, Playground,
@@ -28,8 +30,18 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - Projects can be renamed (`PATCH /projects/{id}`) and deleted with everything in them (`DELETE /projects/{id}`,
   which also removes the workspace folder and the cached sandbox); admins only, and an organisation keeps its last
   project. Settings › Project › General does both; deleting asks for the project's name.
+- **Sandbox egress is enforced.** A project's `sandbox.json` host list was honoured only by LangSmith. Now the
+  `docker` and `remote` modes give code exactly those hosts through an egress proxy (`agentcanvas.sandbox.egress`):
+  each call's list is signed by the API, private addresses stay out of reach, and code has no other route out. The
+  compose files and the Helm chart run the proxy (set `AGENTCANVAS_EGRESS_SECRET`); the `docker` mode starts its
+  own. Modes that cannot limit the network refuse a list in staging and production. Settings › Sandbox edits the
+  limits and the list, which it offers only where it is enforced.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
+
+### Upgrading
+- Production compose needs `AGENTCANVAS_EGRESS_SECRET` (32+ random characters) in `infra/.env.prod`; a Helm install
+  with `sandbox.egress.enabled` (the default) needs the key `AGENTCANVAS_EGRESS_SECRET` in its Secret.
 
 ### Changed
 - Saving the project's model from Settings stays in Settings with a notice; only the first choice, from the Home
