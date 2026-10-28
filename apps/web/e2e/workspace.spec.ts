@@ -124,7 +124,7 @@ test("secrets are write-only, and live in Settings", async ({ page }) => {
 test("the sandbox policy is scaffolded and checked", async ({ page }) => {
   await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json"); // fresh
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Sandbox policy" }).click();
+  await page.getByRole("button", { name: "Sandbox policy (file)" }).click();
   await expect(page.getByTestId("code-editor")).toContainText('"egress": []');
   await expect(page.getByTestId("lint")).toContainText("no problems");
   const policy = { egress: [], inject: [{ name: "crm", hosts: ["api.crm.example.com"], headers: { Authorization: "Bearer {{ secret.NOPE_E2E }}" } }] };
@@ -133,4 +133,22 @@ test("the sandbox policy is scaffolded and checked", async ({ page }) => {
   await expect(page.getByTestId("lint")).toContainText("E083"); // the project has no such secret
   await expect(page.getByTestId("lint")).toContainText("W082"); // in-process scripts cannot enforce egress
   await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json");
+});
+
+test("switching files with unsaved changes asks first, and Keep editing keeps them", async ({ page }) => {
+  const stamp = Date.now();
+  for (const name of ["a", "b"]) {
+    await page.request.put(`/api/v1/projects/prj_default/files/scripts/guard_${stamp}_${name}.py`, { data: { content: `x = "${name}"\n` } });
+  }
+  await page.goto(`/workspace?file=scripts/guard_${stamp}_a.py`);
+  await typeCode(page, "# unsaved");
+  await page.getByRole("button", { name: `scripts/guard_${stamp}_b.py` }).click();
+  const dialog = page.getByTestId("dialog");
+  await expect(dialog).toContainText("Discard your changes");
+  await dialog.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page).toHaveURL(new RegExp(`guard_${stamp}_a\\.py`));
+  await expect(page.locator(".cm-content")).toContainText("# unsaved");
+  await page.getByRole("button", { name: `scripts/guard_${stamp}_b.py` }).click();
+  await dialog.getByRole("button", { name: "Discard changes" }).click();
+  await expect(page).toHaveURL(new RegExp(`guard_${stamp}_b\\.py`));
 });

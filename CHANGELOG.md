@@ -15,6 +15,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   `MCP-Protocol-Version` it does not speak (400), as the Streamable HTTP transport requires.
 - The Copilot took one turn at a time per conversation with a set in each API process's memory, which two
   replicas did not share: the turn now holds a lease on the conversation row (`busy_until`, 15 minutes at most).
+- The Workspace dropped unsaved edits when another file was opened: it now asks (Discard changes / Keep editing),
+  and the browser warns before the tab closes; a failed delete says why.
 - Deleting a workflow that had been published and called failed on Postgres (references to its versions and
   deployments had no delete rule). A migration adds the rules.
 

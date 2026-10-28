@@ -77,7 +77,8 @@ export function WorkspacePage() {
       setParams({ file: path });
     },
   });
-  const openPolicy = () => {
+  const openPolicy = async () => {
+    if (!(await leave())) return;
     if (files.data?.files.some((f) => f.path === POLICY)) setParams({ file: POLICY });
     else create.mutate({ path: POLICY, content: POLICY_TEMPLATE });
   };
@@ -86,12 +87,24 @@ export function WorkspacePage() {
     onSuccess: () => { setParams({}); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); },
   });
   const dirty = draft !== null && draft !== file.data?.content;
+  // leaving a file with unsaved changes (another file, a new one, or closing the tab) asks first
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const leave = async () => !dirty || await confirmDialog({
+    title: `Discard your changes to ${selected}?`, body: "They are not saved yet.", confirm: "Discard changes",
+    cancel: "Keep editing", danger: true,
+  });
+  const open = async (path: string) => { if (path !== selected && await leave()) setParams({ file: path }); };
   const doSave = () => { if (selected && draft !== null) save.mutate({ path: selected, content: draft }); };
-  const newFile = (path: string) => create.mutate({ path, content: starter(path) });
+  const newFile = async (path: string) => { if (await leave()) create.mutate({ path, content: starter(path) }); };
   const prefix = folder ? `${folder}/` : "";
   const fileButton = (f: FileOut) => (
     <li key={f.path}>
-      <button type="button" className={f.path === selected ? "active" : ""} onClick={() => setParams({ file: f.path })} title={f.path}>
+      <button type="button" className={f.path === selected ? "active" : ""} onClick={() => void open(f.path)} title={f.path}>
         {prefix && f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path}
       </button>
     </li>
@@ -115,7 +128,7 @@ export function WorkspacePage() {
             ))}
           </div>
           {create.error && <p className="error-text small">{(create.error as Error).message}</p>}
-          <button type="button" className="link" onClick={openPolicy}>Sandbox policy</button>
+          <button type="button" className="link" onClick={() => void openPolicy()} title="sandbox.json as a file; Settings › Sandbox edits it as a form">Sandbox policy (file)</button>
           <QueryStatus q={files} what="workspace files" />
           {folder && (
             <>
@@ -145,6 +158,7 @@ export function WorkspacePage() {
                 {diagnostics.length === 0 && <li className="muted">{selected.endsWith(".py") ? "ruff: no problems" : "no problems"}</li>}
               </ul>
               {save.error && <p className="error-text">{(save.error as Error).message}</p>}
+              {remove.error && <p className="error-text" role="alert">Could not delete {selected}: {(remove.error as Error).message}</p>}
               {selected.endsWith(".py") && (
                 <CodeHelp workflowId={workflowId} path={selected} content={draft ?? file.data.content} diagnostics={diagnostics}
                   selection={() => editorApi.current?.selection() ?? ""} onAccept={(code) => editorApi.current?.setText(code)} />
