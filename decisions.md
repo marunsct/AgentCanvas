@@ -12,6 +12,13 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### The RLS migration stays one transaction (the plan said split it)
+Enabling row-level security and creating a policy change only the catalogue (no table is rewritten), so the 35
+tables are locked for a moment, and the 60 s `lock_timeout` stops the migration rather than queueing traffic behind
+it. Splitting it would mean committing inside a migration, which breaks the one-transaction advisory lock that keeps
+replicas from migrating at once, and installs that upgraded since 2026-10-17 have already run it. *Reverse:* write a
+new migration that drops and recreates the policies table by table, if a large install ever times out on it.
+
 ### The Copilot's "interrupts" are its proposals, not a checkpointer
 The plan wanted LangGraph interrupts, with a persistent checkpointer per conversation, before real test runs and
 workspace file writes. Both are approvals, and the product already has one: nothing the Copilot proposes changes

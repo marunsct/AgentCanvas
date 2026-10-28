@@ -22,7 +22,7 @@ Sections 2–5 are the product plan. Section 6 is the hardening backlog carried 
 | §4.6 Dialogs | All native confirm/prompt replaced; toasts; workflow list rename/duplicate/delete/search/sort | — |
 | §4.7 Labels | Planning ids out of the API docs; beta blocks marked; "stub" wording | — |
 | §4.8 Docs | README and HANDOVER current; user-guide page for the shell and Settings | — |
-| §6 Hardening | Egress enforced (proxy) or refused; MCP Origin/version checks; SQLite cascades; delete rules on Postgres | RLS migration split; CI framework cache |
+| §6 Hardening | Egress enforced (proxy) or refused; MCP Origin/version checks; SQLite cascades; delete rules on Postgres | — (CI caches framework downloads; the RLS split was declined, see decisions.md) |
 
 ## 1. What the survey found, in one paragraph each
 
@@ -298,9 +298,9 @@ Effort: tokens and components 4 days; the rebuilds are counted in §4.
 | Project selection in `queries.ts` (58 uses) | **Do, as part of §4.1**: the project switcher needs a store anyway |
 | ~16 hand-written response types | Accepted (one-field reads); the Settings work replaces Policies/Setup/CodeHelp shapes with generated ones |
 | React Compiler lint rules off (12 rules) | Do after §4 rebuilds, one rule at a time; the rebuilt pages will satisfy most |
-| RLS migration locks 35 tables in one transaction | **Do**: split into one transaction per table with the advisory lock held across; 1 day |
+| RLS migration locks 35 tables in one transaction | **Declined** after a closer look: metadata-only DDL under the 60 s lock timeout, already applied by existing installs (decisions.md) |
 | Duplicated engine/worker/packager code (~1,200 lines); `Resources` is LangChain's object | Do when the next framework lands, not before; the duplication is contained and tested |
-| No framework-environment cache in CI | Do: `uv cache` and `actions/cache` keyed on the pins; half a day |
+| No framework-environment cache in CI | Done: `setup-uv` caches downloads keyed on `uv.lock` and the Makefile's pins |
 | Sandbox egress only enforced with LangSmith | **Design call for you**: enforce with a network namespace in the Docker backend (2 days) or document it as LangSmith-only and hide the field for other backends |
 | Cross-org sweep: 7 routes unreached | Do with §4.2 (run traces) and §2 (agent code); the seed grows |
 | Screen-reader pass | A person, one afternoon, after §5 |
