@@ -346,6 +346,7 @@ async def decide_proposal(
     if match["status"] != "pending":
         raise Conflict(f"proposal '{proposal_id}' is already {match['status']}")
     match["status"] = body.status
+    match["decided_by"], match["decided_at"] = user.id, datetime.now(UTC).isoformat()  # a version credits it
     if body.status == "accepted" and body.commands is not None:  # partly accepted: what was kept, for the record
         total = len(match.get("commands") or [])
         if any(not 0 <= i < total for i in body.commands):

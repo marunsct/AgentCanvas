@@ -158,6 +158,19 @@ async def test_brief_then_build_with_self_repair_and_accept(app, api_client):
     convo = (await api_client.get(f"/v1/workflows/{wf_id}/copilot")).json()
     assert convo["pending"] is None and convo["proposals"][0]["status"] == "accepted"
 
+    # the next version credits it: "Copilot (accepted by ...)" in the history (FR-COP-07); the one after does not
+    v1 = (await api_client.post(f"/v1/workflows/{wf_id}/versions", json={"message": "greeter"})).json()
+    [credit] = v1["copilot_changes"]
+    assert credit["summary"] == "Add a greeter; Connect it" and credit["accepted_by"] == "usr_dev"
+    assert credit["accepted_by_email"] and credit["changes"] == len(proposal["commands"])
+    rename = [{"op": "UpdateMeta", "name": "Greeter, by hand"}]
+    r = await api_client.post(f"/v1/workflows/{wf_id}/commands", json={"commands": rename}, headers={"If-Match": "2"})
+    assert r.status_code == 200
+    v2 = (await api_client.post(f"/v1/workflows/{wf_id}/versions", json={"message": "renamed"})).json()
+    assert v2["copilot_changes"] == []
+    listed = (await api_client.get(f"/v1/workflows/{wf_id}/versions")).json()
+    assert [len(v["copilot_changes"]) for v in listed] == [0, 1]  # newest first
+
     # the next turn tells the model what happened to its proposal
     seen: list = []
     from agentcanvas.copilot.service import CopilotTurn

@@ -1934,6 +1934,47 @@
         "title": "ConversationOut",
         "type": "object"
       },
+      "CopilotChange": {
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "accepted_by": {
+            "title": "Accepted By",
+            "type": "string"
+          },
+          "accepted_by_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted By Email"
+          },
+          "changes": {
+            "description": "how many of the proposal's changes were kept",
+            "title": "Changes",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "accepted_by",
+          "accepted_at",
+          "changes"
+        ],
+        "title": "CopilotChange",
+        "type": "object"
+      },
       "CopilotSettings": {
         "properties": {
           "api_key": {
@@ -10858,6 +10899,14 @@
       },
       "VersionDetail": {
         "properties": {
+          "copilot_changes": {
+            "description": "the Copilot proposals accepted since the version before, and by whom",
+            "items": {
+              "$ref": "#/components/schemas/CopilotChange"
+            },
+            "title": "Copilot Changes",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -10950,6 +10999,14 @@
       },
       "VersionOut": {
         "properties": {
+          "copilot_changes": {
+            "description": "the Copilot proposals accepted since the version before, and by whom",
+            "items": {
+              "$ref": "#/components/schemas/CopilotChange"
+            },
+            "title": "Copilot Changes",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",

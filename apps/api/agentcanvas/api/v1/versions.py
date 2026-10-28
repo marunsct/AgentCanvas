@@ -37,6 +37,14 @@ class VersionIn(BaseModel):
     bump: Bump = "minor"
 
 
+class CopilotChange(BaseModel):
+    summary: str
+    accepted_by: str
+    accepted_by_email: str | None = None
+    accepted_at: datetime
+    changes: int = Field(description="how many of the proposal's changes were kept")
+
+
 class VersionOut(BaseModel):
     id: str
     semver: str
@@ -45,6 +53,9 @@ class VersionOut(BaseModel):
     workspace_commit: str | None
     created_by: str | None
     created_at: datetime
+    copilot_changes: list[CopilotChange] = Field(
+        default_factory=list, description="the Copilot proposals accepted since the version before, and by whom"
+    )
 
 
 class VersionDetail(VersionOut):

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import AppUser, CopilotConversation, WorkflowRow, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
@@ -77,6 +78,7 @@ class VersionService:
             if reuse_unchanged:
                 return latest, False
             raise Conflict(f"nothing changed since v{latest.semver}", version_id=latest.id, semver=latest.semver)
+        now = datetime.now(UTC)  # to the microsecond (SQLite's own clock is to the second): changes are credited once
         version = WorkflowVersion(
             id=new_id("ver"),
             workflow_id=wf_id,
@@ -86,12 +88,38 @@ class VersionService:
             ir_hash=row.ir_hash,
             workspace_commit=workspace_commit,
             message=message,
+            copilot_changes=await self._copilot_changes(wf_id, _utc(latest.created_at) if latest else None, now),
             created_by=created_by,
+            created_at=now,
         )
         self.s.add(version)
         await self.s.commit()
         await self.s.refresh(version)
         return version, True
+
+    async def _copilot_changes(self, wf_id: str, since: datetime | None, until: datetime) -> list[dict[str, Any]]:
+        """The Copilot proposals accepted after the version before (FR-COP-07), oldest first, with who accepted them;
+        kept on the version, since the conversations that held them may be archived or expire."""
+        convs = await self.s.scalars(select(CopilotConversation).where(CopilotConversation.workflow_id == wf_id))
+        found: list[dict[str, Any]] = []
+        for conv in convs:
+            for p in conv.proposals or []:
+                at = _parse(p.get("decided_at"))
+                if p.get("status") != "accepted" or at is None or at > until or (since is not None and at <= since):
+                    continue
+                kept = p.get("accepted_commands")
+                found.append({
+                    "summary": p.get("summary") or "Changes to the workflow",
+                    "accepted_by": p.get("decided_by") or conv.user_id,
+                    "accepted_at": p["decided_at"],
+                    "changes": len(kept) if kept is not None else len(p.get("commands") or []),
+                })  # fmt: skip
+        if found:
+            ids = {c["accepted_by"] for c in found}
+            emails = dict((await self.s.execute(select(AppUser.id, AppUser.email).where(AppUser.id.in_(ids)))).all())
+            for c in found:
+                c["accepted_by_email"] = emails.get(c["accepted_by"])
+        return sorted(found, key=lambda c: c["accepted_at"])
 
     async def workflow_at(self, wf_id: str, ref: str) -> Workflow:
         """The IR of a version, or of the draft for `ref == "draft"`."""
@@ -102,3 +130,14 @@ class VersionService:
 
     async def diff(self, wf_id: str, a: str, b: str) -> WorkflowDiff:
         return diff_workflows(await self.workflow_at(wf_id, a), await self.workflow_at(wf_id, b))
+
+
+def _utc(d: datetime) -> datetime:
+    return d if d.tzinfo else d.replace(tzinfo=UTC)  # SQLite gives back naive UTC
+
+
+def _parse(text: Any) -> datetime | None:
+    try:
+        return _utc(datetime.fromisoformat(text)) if isinstance(text, str) else None
+    except ValueError:
+        return None

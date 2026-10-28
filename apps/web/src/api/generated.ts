@@ -370,6 +370,14 @@ export type Proposals = {
   [k: string]: unknown;
 }[];
 export type TokenCap = number;
+export type AcceptedAt = string;
+export type AcceptedBy = string;
+export type AcceptedByEmail = string | null;
+/**
+ * how many of the proposal's changes were kept
+ */
+export type Changes = number;
+export type Summary2 = string;
 /**
  * {"$secret": NAME}
  */
@@ -510,7 +518,7 @@ export type Id25 = string;
 export type Name20 = string | null;
 export type Changed = ElementChange[];
 export type Removed = string[];
-export type Summary2 = string;
+export type Summary3 = string;
 export type Workflow = FieldChange[];
 export type Characters = number;
 export type Chunks = number;
@@ -695,7 +703,7 @@ export type LatencyP95Ms = number | null;
 export type PassRate2 = number | null;
 export type Target1 = number;
 export type Tokens = number;
-export type Summary3 = TargetSummary[];
+export type Summary4 = TargetSummary[];
 export type Framework3 = string | null;
 export type Label10 = string;
 export type Version5 = string | null;
@@ -725,7 +733,7 @@ export type TokensOut = number;
 export type Trajectory2 = string[] | null;
 export type Id31 = string;
 export type Label11 = string;
-export type Summary4 = string;
+export type Summary5 = string;
 export type Targets3 = ExportTargetOut[];
 export type Kind6 = "cel" | "template";
 export type Source5 = string;
@@ -2194,6 +2202,10 @@ export type Id53 = string;
 export type Kind12 = string;
 export type Url4 = string | null;
 export type Url5 = string;
+/**
+ * the Copilot proposals accepted since the version before, and by whom
+ */
+export type CopilotChanges = CopilotChange[];
 export type CreatedAt31 = string;
 export type CreatedBy2 = string | null;
 export type Id54 = string;
@@ -2203,6 +2215,10 @@ export type Semver1 = string;
 export type WorkspaceCommit = string | null;
 export type Bump = "major" | "minor" | "patch";
 export type Message13 = string;
+/**
+ * the Copilot proposals accepted since the version before, and by whom
+ */
+export type CopilotChanges1 = CopilotChange[];
 export type CreatedAt32 = string;
 export type CreatedBy3 = string | null;
 export type Id55 = string;
@@ -2281,6 +2297,7 @@ export interface ApiSchemas {
   ContractChange?: ContractChange;
   ContractOut?: ContractOut;
   ConversationOut?: ConversationOut;
+  CopilotChange?: CopilotChange;
   CopilotSettings?: CopilotSettings;
   CopilotThreadOut?: CopilotThreadOut;
   CopilotThreadPatch?: CopilotThreadPatch;
@@ -3320,6 +3337,17 @@ export interface Usage2 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "CopilotChange".
+ */
+export interface CopilotChange {
+  accepted_at: AcceptedAt;
+  accepted_by: AcceptedBy;
+  accepted_by_email?: AcceptedByEmail;
+  changes: Changes;
+  summary: Summary2;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "CopilotSettings".
  */
 export interface CopilotSettings {
@@ -3557,7 +3585,7 @@ export interface DiffOut {
   edges?: ElementDiff;
   nodes?: ElementDiff;
   resources?: ElementDiff;
-  summary: Summary2;
+  summary: Summary3;
   workflow?: Workflow;
 }
 /**
@@ -3823,7 +3851,7 @@ export interface ExperimentOut {
   simulation?: Simulation | null;
   split: Split3;
   status: Status4;
-  summary: Summary3;
+  summary: Summary4;
   targets: Targets2;
   workflow_id: WorkflowId3;
 }
@@ -3912,7 +3940,7 @@ export interface Prerequisites {
 export interface ExportTargetOut {
   id: Id31;
   label: Label11;
-  summary: Summary4;
+  summary: Summary5;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5501,6 +5529,7 @@ export interface UrlIn {
  * via the `definition` "VersionDetail".
  */
 export interface VersionDetail {
+  copilot_changes?: CopilotChanges;
   created_at: CreatedAt31;
   created_by: CreatedBy2;
   id: Id54;
@@ -5530,6 +5559,7 @@ export interface VersionIn {
  * via the `definition` "VersionOut".
  */
 export interface VersionOut {
+  copilot_changes?: CopilotChanges1;
   created_at: CreatedAt32;
   created_by: CreatedBy3;
   id: Id55;

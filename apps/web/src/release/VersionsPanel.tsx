@@ -89,6 +89,12 @@ export function VersionsPanel() {
                 ⬇ zip</button>
             </div>
             {v.message && <p className="small">{v.message}</p>}
+            {(v.copilot_changes ?? []).map((c, i) => (
+              <p key={i} className="small muted" data-testid="copilot-credit" title={`accepted ${new Date(c.accepted_at).toLocaleString()}`}>
+                ✦ Copilot (accepted by {c.accepted_by_email ?? c.accepted_by}): {c.summary}
+                {c.changes > 0 && ` · ${c.changes} change${c.changes === 1 ? "" : "s"}`}
+              </p>
+            ))}
           </li>
         ))}
       </ul>

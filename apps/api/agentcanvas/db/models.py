@@ -128,6 +128,8 @@ class WorkflowVersion(Base):
     ir_hash: Mapped[str] = mapped_column(Text)
     workspace_commit: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # the Copilot proposals accepted since the version before: [{summary, accepted_by, accepted_at, changes}]
+    copilot_changes: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 

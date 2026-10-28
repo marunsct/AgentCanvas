@@ -35,6 +35,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **Versions credit the Copilot** (FR-COP-07): a saved version lists the Copilot proposals accepted since the one
+  before, "✦ Copilot (accepted by ada@example.com): Add a greeter · 4 changes". It is kept on the version
+  (`copilot_changes` in `VersionOut`), so it outlives the conversation.
 - **Evaluate is on the editor's bar**, and Simple mode keeps Versions (Publish), Evaluate and the More menu's
   Workspace, Knowledge and Memory: it hides advanced blocks and canvas tools, not the product.
 - **The event log pages back and filters**: Events shows the newest 50, then "Load older"; a type filter offers the
@@ -132,6 +135,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   (pinned at 1.52.0).
 
 ### Upgrading
+- Migration `c6e0a4b8d2f7` adds `workflow_version.copilot_changes` (an empty list for existing versions); it runs with
+  the others at start-up.
 - Production compose needs `AGENTCANVAS_EGRESS_SECRET` (32+ random characters) in `infra/.env.prod`; a Helm install
   with `sandbox.egress.enabled` (the default) needs the key `AGENTCANVAS_EGRESS_SECRET` in its Secret.
 

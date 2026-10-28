@@ -28,6 +28,13 @@ test("the Copilot builds a workflow the person accepts, and undo takes it back",
   await expect(page.getByTestId("node-greet")).toBeVisible();
   await expect(page.getByTestId("copilot-proposal")).toHaveCount(0);
 
+  // a version saved now credits the Copilot and the person who accepted (FR-COP-07)
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByLabel("version message").fill("greeter");
+  await page.getByRole("button", { name: "Save version" }).click();
+  await expect(page.getByTestId("copilot-credit")).toContainText("Copilot (accepted by");
+  await expect(page.getByTestId("copilot-credit")).toContainText("Add a Greet step");
+
   await page.locator(".react-flow__pane").click();
   await page.keyboard.press("Control+z");
   await expect(page.getByTestId("node-greet")).toHaveCount(0);
