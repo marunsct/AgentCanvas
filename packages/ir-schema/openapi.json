@@ -5872,6 +5872,12 @@
       },
       "MessageIn": {
         "properties": {
+          "allow_real_runs": {
+            "default": false,
+            "description": "the person allows test runs that call real models",
+            "title": "Allow Real Runs",
+            "type": "boolean"
+          },
           "mode": {
             "default": "build",
             "enum": [
@@ -18859,6 +18865,75 @@
           }
         ],
         "summary": "Chat",
+        "tags": [
+          "playground"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/playground/chat/stream": {
+      "post": {
+        "description": "The answer as it is generated, as server-sent events: `delta` {text} pieces, then `done` {reply, model,\nusage}, or `error` {message}. Nothing is saved.",
+        "operationId": "chat_stream_v1_projects__project_id__playground_chat_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chat Stream",
         "tags": [
           "playground"
         ]

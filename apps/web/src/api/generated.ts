@@ -1028,6 +1028,10 @@ export type CreatedAt21 = string | null;
 export type Key = string;
 export type Namespace = string[];
 export type UpdatedAt8 = string | null;
+/**
+ * the person allows test runs that call real models
+ */
+export type AllowRealRuns = boolean;
 export type Mode2 = "build" | "ask";
 export type Text3 = string;
 export type Embedding2 = string | null;
@@ -4328,6 +4332,7 @@ export interface Value3 {
  * via the `definition` "MessageIn".
  */
 export interface MessageIn {
+  allow_real_runs?: AllowRealRuns;
   mode?: Mode2;
   text: Text3;
 }
