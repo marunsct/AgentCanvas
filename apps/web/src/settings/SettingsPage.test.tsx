@@ -36,13 +36,13 @@ describe("Settings", () => {
   it("lists the audit log for admins only, and opens the first section when none is named", async () => {
     as("admin");
     await act(async () => { at("/settings"); });
-    expect(screen.getByTestId("settings-section-models")).toBeTruthy();
+    expect(screen.getByTestId("settings-section-general")).toBeTruthy();
     expect(screen.getByTestId("settings-audit")).toBeTruthy();
     cleanup();
     as("viewer");
     await act(async () => { at("/settings/audit"); }); // a section the role cannot read: back to the first one
     expect(screen.queryByTestId("settings-audit")).toBeNull();
-    expect(screen.getByTestId("settings-section-models")).toBeTruthy();
+    expect(screen.getByTestId("settings-section-general")).toBeTruthy();
   });
 
   it("is reached from the top bar, which shows a viewer no Playground", async () => {

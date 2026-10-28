@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Project
 from agentcanvas.db.repositories import ProjectRepo
-from agentcanvas.errors import InvalidInput
+from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.services import matura
 from agentcanvas.settings import Settings
 
@@ -102,3 +105,50 @@ async def set_project_workspace(
     p.workspace_id = body.workspace_id
     await session.commit()
     return _out(p)
+
+
+class ProjectRenameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+@router.patch("/projects/{project_id}", response_model=ProjectOut)
+async def rename_project(
+    project_id: str,
+    body: ProjectRenameIn,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectOut:
+    """Rename a project (409 when another project of the organisation has the name)."""
+    p = await ProjectRepo(session).require(project_id)
+    p.name = body.name.strip()
+    if not p.name:
+        raise InvalidInput("a project needs a name")
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise Conflict(f"a project named '{body.name.strip()}' already exists") from None
+    return _out(p)
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+async def delete_project(
+    project_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+    settings: Settings = Depends(get_settings_dep),
+) -> Response:
+    """Delete a project with everything in it: workflows and their versions, deployments (their endpoints stop
+    answering), runs, datasets, knowledge, secrets and the workspace's code. An organisation keeps at least one
+    project (409 for the last one). Admins only."""
+    repo = ProjectRepo(session)
+    p = await repo.require(project_id)
+    if len(await repo.list(user.org_id)) <= 1:
+        raise Conflict("this is the organisation's only project: create another one before deleting it")
+    await session.delete(p)
+    await session.commit()
+    projects = getattr(request.app.state, "projects", None)
+    if projects is not None:
+        await projects.forget(project_id)
+    shutil.rmtree(Path(settings.workspaces_dir) / project_id, ignore_errors=True)
+    return Response(status_code=204)

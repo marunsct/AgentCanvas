@@ -165,7 +165,9 @@ ROLE_EXCEPTIONS = {
     ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server
     ("DELETE", "/projects/{project_id}/trace-export"): "admin",
     ("GET", "/deployments/{dep_id}/share"): "builder",  # the link is a capability: builders hand it out (S23)
-    ("POST", "/knowledge/{kb_id}/search"): "viewer",  # a read: what a Search knowledge block would find (S24)
+    ("POST", "/knowledge/{kb_id}/search"): "viewer",
+    ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
+    ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)
 }
 
 

@@ -1042,3 +1042,5 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 }
 .settings-card form.row > input, .settings-card form.row > select { flex: 1 1 200px; width: auto; margin: 0; }
 .settings-card form.row > button { flex: none; width: auto; }
+.danger-zone { border-color: color-mix(in srgb, var(--err) 35%, var(--border)); }
+.danger-zone > button { margin-top: 6px; }

@@ -9,6 +9,7 @@ import { CopilotSettings } from "../copilot/CopilotSettings";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
+import { ProjectSettings } from "./ProjectSettings";
 import { SecretsSettings } from "./SecretsSettings";
 
 const ModelSettings = lazy(() => import("../app/SetupPage").then((m) => ({ default: m.SetupPage })));
@@ -19,6 +20,7 @@ const AuditPage = lazy(() => import("../app/AuditPage").then((m) => ({ default: 
 interface Section { id: string; group: "Project" | "Organisation" | "You"; label: string; read?: Role; render: () => React.ReactNode }
 
 export const SECTIONS: Section[] = [
+  { id: "general", group: "Project", label: "General", render: () => <ProjectSettings /> },
   { id: "models", group: "Project", label: "Models", render: () => <ModelSettings /> },
   { id: "copilot", group: "Project", label: "Copilot", render: () => <CopilotSettings /> },
   { id: "secrets", group: "Project", label: "Secrets", render: () => <SecretsSettings /> },

@@ -61,6 +61,17 @@ class ProjectRegistry:
             if runner is not None and hasattr(runner, "aclose"):
                 await runner.aclose()
 
+    async def forget(self, project_id: str) -> None:
+        """A deleted project: close its sandbox and drop what is cached for it."""
+        res = self._resources.pop(project_id, None)
+        runner = getattr(res, "script_runner", None)
+        if runner is not None and hasattr(runner, "aclose"):
+            await runner.aclose()
+        self._catalogs.pop(project_id, None)
+        self.secrets.pop(project_id, None)
+        for wf_id in [w for w, p in PROJECT_OF.items() if p == project_id]:
+            PROJECT_OF.pop(wf_id, None)
+
     def has_handlers(self, project_id: str) -> bool:
         """True when the project's workspace has event handler code (without creating the workspace)."""
         events = Path(self.settings.workspaces_dir) / project_id / "events"
