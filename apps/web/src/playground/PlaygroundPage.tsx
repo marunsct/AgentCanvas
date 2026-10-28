@@ -98,7 +98,7 @@ export function PlaygroundPage() {
         </section>
         <section className="chat">
           <div className="chat-log" role="log" aria-live="polite" aria-label="Conversation" data-testid="pg-log">
-            {turns.length === 0 && <p className="muted small">Write a message to start.</p>}
+            {turns.length === 0 && <p className="muted small empty-hint">Write a message to try the model with these instructions.</p>}
             {turns.map((t, i) => (
               <div key={i} className={`bubble ${t.role === "user" ? "human" : "ai"}`}>{t.role === "user" ? t.content : <Markdown text={t.content} />}</div>
             ))}
