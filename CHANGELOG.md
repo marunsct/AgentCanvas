@@ -44,6 +44,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Hardening, third pass
 
 ### Fixed
+- **A sign-in token with an empty or blank `sub` was accepted** (PyJWT only checks that the claim exists), so every such token
+  would have shared one account. It is refused with a 401.
 - **An export of a workflow with an emoji in its name or description could not be installed**: the description was
   written into `pyproject.toml` with `json.dumps`, which spells a character outside the Basic Multilingual Plane as a
   surrogate pair that TOML rejects. All six packagers (LangGraph, the flow frameworks, Google ADK, CrewAI, OpenAI Agents,
@@ -62,6 +64,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Sign-in tests for tokens a stranger might send: alg `none`, HS256 signed with the issuer's public key, no expiry, not
+  yet valid, issued in the future, wrong or missing audience, no or blank subject, a 200 kB token, malformed parts; and
+  one that keeps the server from fetching the issuer's keys once per request when the key id is made up (60 tokens, at
+  most two fetches; PyJWT's refresh cooldown, which this test now guards).
 - `test_importers_fuzz.py` (Langflow, Flowise, n8n files damaged at random places must import into a valid workflow or be
   refused with the importer's own message; 1,500 rounds on three seeds found nothing) and `test_run_hostile_input.py`
   (runs with null, huge, deeply nested, NUL and lone-surrogate input end in a readable terminal event, leave readable

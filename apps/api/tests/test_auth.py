@@ -245,3 +245,94 @@ async def test_joining_another_organisation_needs_acceptance(app, client):
     assert (await client.get("/v1/me/invitations", headers=bob)).json() == []
     assert set((await client.get("/v1/me", headers=bob)).json()["memberships"]) == {"org_b"}
     assert (await client.post("/v1/me/invitations/org_default/accept", headers=bob)).status_code == 404
+
+
+async def test_unknown_key_ids_do_not_make_the_server_fetch_keys_for_every_request(settings):
+    """Tokens are checked before anyone is signed in, so a stranger can send as many as they like. A key id the issuer
+    does not list must not turn each of them into a fetch of the issuer's key set (PyJWKClient's refresh cooldown)."""
+    import http.server
+    import threading
+
+    hits: list[str] = []
+    body = json.dumps({"keys": [SIGNING_JWK]}).encode()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        auth = Authenticator(
+            settings.model_copy(update={"oidc_jwks_url": f"http://127.0.0.1:{server.server_address[1]}/keys"})
+        )
+        now = int(time.time())
+        claims = {"iss": ISSUER, "aud": AUDIENCE, "sub": "x", "iat": now, "exp": now + 300}
+        for i in range(60):
+            forged = jwt.encode(claims, OTHER_KEY, algorithm="RS256", headers={"kid": f"random-{i}"})
+            with pytest.raises(Exception, match="signing key"):
+                await auth.verify(forged)
+        assert len(hits) <= 2, f"{len(hits)} fetches of the issuer's keys for 60 tokens with unknown key ids"
+        assert (await auth.verify(token())).subject == "alice-sub"  # the real key still works
+    finally:
+        server.shutdown()
+
+
+def _b64(obj) -> str:
+    import base64
+
+    raw = obj if isinstance(obj, bytes) else json.dumps(obj).encode()
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _forged_tokens() -> dict[str, str]:
+    import hashlib
+    import hmac
+
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+    now = int(time.time())
+    good = {"iss": ISSUER, "aud": AUDIENCE, "sub": "mallory", "email": "alice@example.com", "email_verified": True,
+            "iat": now, "exp": now + 300}  # fmt: skip
+    header = {"kid": "k1"}
+
+    def rs256(claims: dict, key=SIGNING_KEY) -> str:
+        return jwt.encode(claims, key, "RS256", header)
+
+    def without(name: str) -> dict:
+        return {k: v for k, v in good.items() if k != name}
+
+    # the classic algorithm confusion: HS256, "signed" with the issuer's public key as the secret (PyJWT will not
+    # create one, so it is made by hand)
+    public_pem = SIGNING_KEY.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+    signing_input = f"{_b64({'alg': 'HS256', 'typ': 'JWT', 'kid': 'k1'})}.{_b64(good)}".encode()
+    mac = hmac.new(public_pem, signing_input, hashlib.sha256).digest()
+    return {
+        "alg none": f"{_b64({'alg': 'none', 'typ': 'JWT', 'kid': 'k1'})}.{_b64(good)}.",
+        "HS256 with the public key": f"{signing_input.decode()}.{_b64(mac)}",
+        "no expiry": rs256(without("exp")),
+        "not yet valid": rs256({**good, "nbf": now + 3600}),
+        "issued in the future": rs256({**good, "iat": now + 3600}),
+        "no audience": rs256(without("aud")),
+        "audience list without ours": rs256({**good, "aud": ["a", "b"]}),
+        "no subject": rs256(without("sub")),
+        "empty subject": rs256({**good, "sub": ""}),
+        "blank subject": rs256({**good, "sub": "  "}),
+        "huge token": rs256({**good, "pad": "A" * 200_000}, OTHER_KEY),
+        "garbage header": "!!!.e30.sig",
+        "five parts": "a.b.c.d.e",
+        "empty parts": "..",
+    }
+
+
+@pytest.mark.parametrize("what", list(_forged_tokens()))
+async def test_forged_and_malformed_tokens_are_401(client, what):
+    r = await client.get("/v1/projects", headers=bearer(_forged_tokens()[what]))
+    assert r.status_code == 401, (what, r.status_code, r.text[:200])

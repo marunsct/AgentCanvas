@@ -134,6 +134,8 @@ class Authenticator:
             raise Unauthorized("token expired") from None
         except jwt.PyJWTError as exc:
             raise Unauthorized(f"invalid token: {exc}") from None
+        if not str(claims["sub"]).strip():  # identities are keyed by subject: a blank one would be everybody's account
+            raise Unauthorized("invalid token: the subject is empty")
         email = claims.get(s.oidc_email_claim) or claims.get("email") or ""
         return Identity(
             subject=str(claims["sub"]),
