@@ -25,9 +25,11 @@ from agentcanvas.ir.models import Workflow
 
 PROJECT = "prj_default"
 # Not a tenant boundary: a share link is public by design (its token is the capability), so is the A2A agent card
-# (protocols.py: clients read it before they authenticate; the deployment id is the capability); the streams stay open.
+# (protocols.py: clients read it before they authenticate; the deployment id is the capability), and the user guide
+# ships with the server, the same for every organisation; the streams stay open.
 SKIP = {
     "/v1/share/{token}",
+    "/v1/guide/{page}",
     "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json",
     "/v1/deployments/{dep_id}/a2a/.well-known/agent.json",
     "/v1/runs/{run_id}/events",
