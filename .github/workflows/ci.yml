@@ -141,6 +141,7 @@ jobs:
       LANGGRAPH_AES_KEY: ci-only-aes-key-0123456789abcdef
       AGENTCANVAS_SECRET_KEY: ci-only-secret-key-not-for-real-use-0123456789abcdef0123456789abcdef
       AGENTCANVAS_SANDBOX_TOKEN: ci-only-sandbox-token-0123456789abcdef0123
+      AGENTCANVAS_EGRESS_SECRET: ci-only-egress-secret-0123456789abcdef0123
       AGENTCANVAS_OIDC_ISSUER: https://login.example.com/realms/ci
       AGENTCANVAS_OIDC_AUDIENCE: agentcanvas-api
       AGENTCANVAS_OIDC_CLIENT_ID: agentcanvas-web

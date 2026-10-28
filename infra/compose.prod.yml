@@ -29,6 +29,9 @@ x-api: &api
     AGENTCANVAS_SCRIPT_EXECUTION: ${AGENTCANVAS_SCRIPT_EXECUTION:-remote}
     AGENTCANVAS_SANDBOX_URL: ${AGENTCANVAS_SANDBOX_URL:-http://sandbox:8090}
     AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:?set AGENTCANVAS_SANDBOX_TOKEN (32+ random characters)}
+    # hosts a project's sandbox.json allows are reached through the `egress` service below, and only those
+    AGENTCANVAS_EGRESS_PROXY: egress:3128
+    AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:?set AGENTCANVAS_EGRESS_SECRET (32+ random characters)}
     FORWARDED_ALLOW_IPS: "*"                   # only nginx (web) reaches the API on this network
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -37,7 +40,8 @@ x-api: &api
 
 services:
   # Runs workspace code for the API (script_execution=remote). Same image, none of the API's secrets, read-only root,
-  # no capabilities, and a network (`sandbox`, internal) that only the API shares and that has no route out.
+  # no capabilities, and a network (`sandbox`, internal) that only the API and the egress proxy share: no route out
+  # except through the proxy, for the hosts a project's sandbox.json lists.
   sandbox:
     image: ${API_IMAGE:-agentcanvas-api:latest}
     command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
@@ -53,6 +57,25 @@ services:
     cpus: 2
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=2)"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # The sandbox network's only way out (sandbox.json egress): admits the hosts each call's project lists, signed by the
+  # API, and refuses names that resolve to private addresses (the database, the API, cloud metadata).
+  egress:
+    image: ${API_IMAGE:-agentcanvas-api:latest}
+    command: ["python", "-m", "agentcanvas.sandbox.egress", "--port", "3128"]
+    environment:
+      AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:?set AGENTCANVAS_EGRESS_SECRET (32+ random characters)}
+    networks: [default, sandbox]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 2)"]
       interval: 5s
       retries: 20
     restart: unless-stopped
@@ -113,7 +136,7 @@ services:
 
 networks:
   sandbox:
-    internal: true                             # no route out: the code it runs cannot reach the internet or the database
+    internal: true                             # no route out but the egress proxy: never the database, only listed hosts
 
 volumes:
   pgdata:

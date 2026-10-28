@@ -15,6 +15,7 @@ export API_IMAGE=agentcanvas-api:ci WEB_IMAGE=agentcanvas-web:ci
 export POSTGRES_PASSWORD=ci-only POSTGRES_APP_PASSWORD=ci-only-app LANGGRAPH_AES_KEY=ci-only-aes-key-0123456789abcdef
 export AGENTCANVAS_SECRET_KEY=ci-only-secret-key-not-for-real-use-0123456789abcdef0123456789abcdef
 export AGENTCANVAS_SANDBOX_TOKEN=ci-only-sandbox-token-0123456789abcdef0123
+export AGENTCANVAS_EGRESS_SECRET=ci-only-egress-secret-0123456789abcdef0123
 export AGENTCANVAS_OIDC_ISSUER=https://login.example.com/realms/ci AGENTCANVAS_OIDC_AUDIENCE=agentcanvas-api
 export AGENTCANVAS_OIDC_CLIENT_ID=agentcanvas-web
 TRIVY_IMAGE=aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
@@ -56,8 +57,10 @@ check "sign-in is on"                          sh_ "curl -fsS $B/api/v1/auth/con
 check "a stranger is refused (401)"            sh_ "test \"\$(curl -s -o /dev/null -w '%{http_code}' $B/api/v1/projects)\" = 401"
 check "the API runs as uid 10001"              sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001"
 check "the sandbox runs as uid 10001"          sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox id -u | grep -qx 10001"
+check "the egress proxy runs as uid 10001"     sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T egress id -u | grep -qx 10001"
+check "the egress proxy refuses unsigned calls" sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox python -c \"import socket; s=socket.create_connection(('egress', 3128), 3); s.sendall(b'CONNECT example.com:443 HTTP/1.1\\r\\n\\r\\n'); assert b' 407 ' in s.recv(200)\""
 check "the sandbox holds none of the API's secrets" sh_ "test -z \"\$(docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox env | grep -E 'DATABASE_URL|SECRET_KEY|AES_KEY|API_KEY')\""
-check "the sandbox has no route out"           sh_ "! docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox python -c \"import socket; socket.create_connection(('1.1.1.1', 443), 3)\""
+check "the sandbox has no route out but the proxy" sh_ "! docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox python -c \"import socket; socket.create_connection(('1.1.1.1', 443), 3)\""
 check "the API's database role is an ordinary one (row-level security applies)" sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T postgres psql -U agentcanvas -tAc \"SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'agentcanvas_app'\" | grep -qx f"
 check "metrics are not served through nginx"   sh_ "test \"\$(curl -s -o /dev/null -w '%{http_code}' $B/api/metrics)\" = 404"
 check "metrics exist inside the API"           sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T api python -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/metrics').read().decode())\" | grep -q agentcanvas_runs_active"
@@ -99,5 +102,54 @@ assert "frame-ancestors 'self';" in csp("/s/sh_does_not_exist"), "an unknown lin
 open_link = call("PUT", f"/deployments/{dep}/share", {"enabled": True, "frame_origins": []})
 assert "frame-ancestors *;" in csp(open_link["path"]), "a link with no list may be framed by any site"
 print("share links: the allowed sites reach the page's frame-ancestors")
+PY
+# workspace code in the sandbox service reaches the hosts its sandbox.json lists (through the egress proxy), and only those
+python3 - "$L" <<'PY' || { local_ logs --no-color --tail 40 egress sandbox >&2; echo "images: sandbox egress failed" >&2; exit 1; }
+import json, sys, urllib.request
+
+base = sys.argv[1]
+SCRIPT = """
+import socket, urllib.request
+
+
+def run(state):
+    out = {}
+    for name, url in (("listed", "https://pypi.org/simple/"), ("other", "https://example.com/")):
+        try:
+            out[name] = urllib.request.urlopen(url, timeout=20).status
+        except Exception as e:
+            out[name] = str(e)[:120]
+    try:
+        socket.create_connection(("1.1.1.1", 443), 3)
+        out["direct"] = "reached"
+    except Exception as e:
+        out["direct"] = type(e).__name__
+    return {"out": json.dumps(out)}
+""".replace("import socket", "import json, socket")
+
+
+def call(method, path, body=None, raw=False):
+    req = urllib.request.Request(base + "/api/v1" + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"content-type": "application/json", "If-Match": "1"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return r.read().decode() if raw else json.load(r)
+
+
+call("PUT", "/projects/prj_default/files/sandbox.json", {"content": json.dumps({"egress": ["pypi.org"]})})
+call("PUT", "/projects/prj_default/files/scripts/egress_probe.py", {"content": SCRIPT})
+wf = call("POST", "/projects/prj_default/workflows", {"name": "egress probe"})
+ir = {"id": wf["id"], "name": "egress probe", "state": {"channels": [{"name": "out"}]},
+      "nodes": [{"id": "n_s", "type": "core.script", "name": "probe", "config": {"import_path": "scripts.egress_probe:run"}}],
+      "edges": [{"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_s"}},
+                {"id": "e2", "kind": "flow", "source": {"node": "n_s"}, "target": {"node": "END"}}]}
+call("PUT", f"/workflows/{wf['id']}", {"ir": ir})
+stream = call("POST", f"/workflows/{wf['id']}/runs/stream", {"input": {}}, raw=True)
+last = json.loads([ln[5:] for ln in stream.splitlines() if ln.startswith("data:")][-1])
+out = json.loads(last["output"]["out"])
+assert out["listed"] == 200, out
+assert "403" in str(out["other"]), out
+assert out["direct"] != "reached", out
+call("PUT", "/projects/prj_default/files/sandbox.json", {"content": "{}"})
+print("sandbox egress: the listed host answers, others are refused, nothing else is reachable")
 PY
 echo "local stack: all probes passed"

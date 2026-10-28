@@ -6,7 +6,7 @@ image:
 imagePullSecrets: []
 
 secrets:
-  # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY, AGENTCANVAS_SANDBOX_TOKEN (32+ random characters; with the sandbox service); optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
+  # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY, AGENTCANVAS_SANDBOX_TOKEN (32+ random characters; with the sandbox service), AGENTCANVAS_EGRESS_SECRET (32+ random characters; with sandbox.egress); optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
   # Row-level security (Matura mode) needs the API to connect as an ordinary role: point DATABASE_URL at that role
   # and add MIGRATE_DATABASE_URL (the owner) plus APP_DB_USER / APP_DB_PASSWORD; the migrate Job creates the role.
   # A superuser or BYPASSRLS role is refused at startup in staging and prod when AUTH_MODE=matura.
@@ -60,6 +60,16 @@ sandbox:
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }
+  # the sandbox's only way out: a proxy that admits the hosts each project's sandbox.json lists (signed per call by
+  # the API with AGENTCANVAS_EGRESS_SECRET), and no private address; off = workspace code has no network at all
+  egress:
+    enabled: true
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+    # address ranges the proxy may never reach, whatever a list says (the cluster, cloud metadata)
+    deniedCidrs: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"]
 
 web:
   replicas: 2

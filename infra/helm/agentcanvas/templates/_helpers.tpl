@@ -51,6 +51,10 @@ app.kubernetes.io/component: {{ .component }}
 {{- if eq .Values.config.scriptExecution "remote" }}
 - name: AGENTCANVAS_SANDBOX_URL
   value: {{ printf "http://%s-sandbox:8090" (include "agentcanvas.fullname" .) | quote }}
+{{- if .Values.sandbox.egress.enabled }}
+- name: AGENTCANVAS_EGRESS_PROXY
+  value: {{ printf "%s-egress:3128" (include "agentcanvas.fullname" .) | quote }}
+{{- end }}
 {{- end }}
 - name: FORWARDED_ALLOW_IPS
   value: {{ .Values.config.forwardedAllowIps | quote }}
