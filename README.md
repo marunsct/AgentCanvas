@@ -12,7 +12,7 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) — code at **v0.28.x**; no release has been tagged yet (tags are the owner's call) |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — code at **v0.32.3** plus the unreleased hardening and product passes; no release has been tagged yet (tags are the owner's call) |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 | Handover (continue in a new session or as a new person) | [HANDOVER.md](HANDOVER.md) |
 
@@ -136,3 +136,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | v0.26.1–v0.26.3: review after the roadmap (40 fixes), framework setup in Docker | ✅ done (#41–#43) |
 | v0.27.0–v0.28.0: sign-in through Matura, workspaces, row-level security, audit sink | ✅ done (#49, #50) |
 | v0.28.1–v0.29.0: fixes from the deep review of 2026-10-18 | ✅ done (#51, #52) |
+| v0.29.1–v0.32.3: sandbox service, share-link framing, parallel branches, keyboard canvas, session state | ✅ done |
+| Hardening passes (unreleased): local CI, exports, sweeps for access, secrets, chaos and hostile input | ✅ done ([HARDENING.md](HARDENING.md)) |
+| Product pass (unreleased, [PLAN.md](PLAN.md)): one app shell, Settings, Runs, the Copilot on Deep Agents (behind a switch), forms instead of JSON on the Evaluation page, sandbox egress enforced | 🚧 in progress |
