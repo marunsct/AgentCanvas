@@ -32,6 +32,7 @@ from agentcanvas.api.v1 import (
     protocols,
     runs,
     secrets,
+    server,
     setup,
     share,
     tools,
@@ -71,6 +72,7 @@ signed_in.include_router(annotation.router)
 signed_in.include_router(deployments.router)
 signed_in.include_router(share.router)
 signed_in.include_router(triggers.router)
+signed_in.include_router(server.router)
 
 router = APIRouter(prefix="/v1")
 router.include_router(signed_in)

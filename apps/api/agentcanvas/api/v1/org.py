@@ -14,8 +14,9 @@ from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, members_here
 from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
-from agentcanvas.errors import InvalidInput, NotFound
+from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
+from agentcanvas.services import matura
 from agentcanvas.validation.policies import check_policy
 
 router = APIRouter(prefix="/org", tags=["organisation"])
@@ -150,30 +151,42 @@ def _checked(body: PolicyIn) -> dict[str, Any]:
 
 
 class OrgSettings(BaseModel):
+    """Fields left out keep their value; `retention_days: null` returns to the server default."""
+
+    name: str | None = Field(None, min_length=1, max_length=100, description="the organisation's name")
     retention_days: int | None = Field(
         None, ge=0, le=3650,
         description="days a conversation is kept after its last activity; null = the server default, 0 = forever",
     )  # fmt: skip
 
 
-class OrgSettingsOut(OrgSettings):
+class OrgSettingsOut(BaseModel):
+    name: str
+    name_editable: bool = Field(description="false in Matura mode, where organisations are named in Matura")
+    retention_days: int | None
     effective_retention_days: int = Field(description="what applies now (0 = conversations are kept forever)")
+    audit_retention_days: int = Field(description="the server's: audit-log rows older than this go (0 = kept)")
+    memory_retention_days: int = Field(description="the server's: memories not updated for this long go (0 = kept)")
 
 
 async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
     org = await session.get(Organization, org_id)
     if org is None:
         raise NotFound(f"organisation '{org_id}' not found")
-    default = request.app.state.settings.retention_days
+    server = request.app.state.settings
     days = org.retention_days
-    return OrgSettingsOut(retention_days=days, effective_retention_days=default if days is None else days)
+    return OrgSettingsOut(
+        name=org.name, name_editable=server.auth_mode != "matura", retention_days=days,
+        effective_retention_days=server.retention_days if days is None else days,
+        audit_retention_days=server.audit_retention_days, memory_retention_days=server.memory_retention_days,
+    )  # fmt: skip
 
 
 @router.get("/settings", response_model=OrgSettingsOut)
 async def get_org_settings(
     request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> OrgSettingsOut:
-    """Organisation settings: how long conversations are kept (M8-T4)."""
+    """Organisation settings: its name, how long conversations are kept (M8-T4), and the server's other retentions."""
     return await _settings_out(session, request, user.org_id)
 
 
@@ -187,9 +200,18 @@ async def put_org_settings(
     org = await session.get(Organization, user.org_id)
     if org is None:
         raise NotFound(f"organisation '{user.org_id}' not found")
-    org.retention_days = body.retention_days
+    if "name" in body.model_fields_set:
+        if request.app.state.settings.auth_mode == "matura":
+            raise Conflict(
+                "organisations are named in Matura" + matura.portal_hint(matura.portal_base(request.app.state.settings))
+            )
+        if not (body.name or "").strip():
+            raise InvalidInput("an organisation needs a name")
+        org.name = (body.name or "").strip()
+    if "retention_days" in body.model_fields_set:
+        org.retention_days = body.retention_days
     await session.commit()
-    note(request, target=f"org_id={user.org_id}", retention_days=body.retention_days)
+    note(request, target=f"org_id={user.org_id}", **body.model_dump(include=body.model_fields_set))
     return await _settings_out(session, request, user.org_id)
 
 

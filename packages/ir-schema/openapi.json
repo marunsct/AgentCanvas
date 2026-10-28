@@ -6716,7 +6716,22 @@
         "type": "object"
       },
       "OrgSettings": {
+        "description": "Fields left out keep their value; `retention_days: null` returns to the server default.",
         "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the organisation's name",
+            "title": "Name"
+          },
           "retention_days": {
             "anyOf": [
               {
@@ -6737,28 +6752,49 @@
       },
       "OrgSettingsOut": {
         "properties": {
+          "audit_retention_days": {
+            "description": "the server's: audit-log rows older than this go (0 = kept)",
+            "title": "Audit Retention Days",
+            "type": "integer"
+          },
           "effective_retention_days": {
             "description": "what applies now (0 = conversations are kept forever)",
             "title": "Effective Retention Days",
             "type": "integer"
           },
+          "memory_retention_days": {
+            "description": "the server's: memories not updated for this long go (0 = kept)",
+            "title": "Memory Retention Days",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "name_editable": {
+            "description": "false in Matura mode, where organisations are named in Matura",
+            "title": "Name Editable",
+            "type": "boolean"
+          },
           "retention_days": {
             "anyOf": [
               {
-                "maximum": 3650.0,
-                "minimum": 0.0,
                 "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "days a conversation is kept after its last activity; null = the server default, 0 = forever",
             "title": "Retention Days"
           }
         },
         "required": [
-          "effective_retention_days"
+          "name",
+          "name_editable",
+          "retention_days",
+          "effective_retention_days",
+          "audit_retention_days",
+          "memory_retention_days"
         ],
         "title": "OrgSettingsOut",
         "type": "object"
@@ -8556,6 +8592,35 @@
           "ok"
         ],
         "title": "ServerModelsOut",
+        "type": "object"
+      },
+      "ServerSetting": {
+        "properties": {
+          "env": {
+            "description": "the environment variable an operator sets it with",
+            "title": "Env",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group",
+          "label",
+          "value",
+          "env"
+        ],
+        "title": "ServerSetting",
         "type": "object"
       },
       "SetChannels": {
@@ -16930,7 +16995,7 @@
     },
     "/v1/org/settings": {
       "get": {
-        "description": "Organisation settings: how long conversations are kept (M8-T4).",
+        "description": "Organisation settings: its name, how long conversations are kept (M8-T4), and the server's other retentions.",
         "operationId": "get_org_settings_v1_org_settings_get",
         "parameters": [
           {
@@ -20478,6 +20543,67 @@
         "summary": "Open Trace",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/v1/server/settings": {
+      "get": {
+        "description": "The effective server settings an admin may want to know (never a secret's value).",
+        "operationId": "server_settings_v1_server_settings_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServerSetting"
+                  },
+                  "title": "Response Server Settings V1 Server Settings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Server Settings",
+        "tags": [
+          "server"
         ]
       }
     },

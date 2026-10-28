@@ -1050,3 +1050,8 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .notice { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; background: var(--panel-2); font-size: 13px; }
 .notice p { margin: 4px 0; }
 .notice.error { border-color: color-mix(in srgb, var(--err) 45%, var(--border)); background: var(--tint-err); }
+.radio-list { display: flex; flex-direction: column; gap: 2px; }
+.radio-list label { margin: 4px 0; color: var(--text); font-size: 13.5px; }
+.radio-list input[type=radio] { width: auto; margin: 0; }
+.server-table td:first-child { width: 40%; }
+.server-table td:last-child { width: 1%; white-space: nowrap; }

@@ -47,7 +47,8 @@ async def test_organisations_choose_their_retention(app, api_client):
     wf = await make_greeter(api_client)
     await converse(api_client, wf, "th_a")
     await age(app, "th_a", 20)
-    assert (await api_client.get("/v1/org/settings")).json() == {"retention_days": None, "effective_retention_days": 90}
+    got = (await api_client.get("/v1/org/settings")).json()
+    assert got["retention_days"] is None and got["effective_retention_days"] == 90
 
     keep = await api_client.put("/v1/org/settings", json={"retention_days": 0})  # forever
     assert keep.status_code == 200 and keep.json()["effective_retention_days"] == 0
@@ -89,3 +90,16 @@ async def test_audit_rows_and_memories_expire(app, api_client):
         assert await store.aget(("org:org_default", "users", "u1"), "likes") is None
     finally:
         job.memory_days = 0
+
+
+async def test_an_organisation_is_renamed_and_a_partial_save_keeps_the_rest(api_client):
+    """Settings > Organisation > General: the name, with the retention left as it was; the server's own retentions
+    are shown, not changed."""
+    await api_client.put("/v1/org/settings", json={"retention_days": 30})
+    r = await api_client.put("/v1/org/settings", json={"name": "  Acme Support  "})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["name"] == "Acme Support" and out["retention_days"] == 30 and out["name_editable"] is True
+    assert out["audit_retention_days"] == 400 and out["memory_retention_days"] == 0
+    assert (await api_client.put("/v1/org/settings", json={"name": "   "})).status_code == 422
+    assert (await api_client.put("/v1/org/settings", json={"retention_days": None})).json()["retention_days"] is None
