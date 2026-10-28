@@ -299,6 +299,7 @@ async def _start_turn(
     conv_id = conv.id
     seen_messages = len(turn.history)
     usage_before = dict(usage)
+    spent_before = _spent(list(conv.messages or []))  # the earlier answers' costs, as GET /copilot sums them
     await session.commit()  # the stream outlives this request's session (it is closed when the response starts)
     db = request.app.state.db
 
@@ -333,8 +334,13 @@ async def _start_turn(
                 event = raw
                 if event["type"] in ("usage", "done"):  # what the conversation has cost so far, when the price is known
                     used = event["usage"]
-                    spent = price(model.model, used.get("input_tokens", 0), used.get("output_tokens", 0))
-                    event = {**event, "cost_usd": spent}
+                    now = price(
+                        model.model,
+                        used.get("input_tokens", 0) - usage_before.get("input_tokens", 0),
+                        used.get("output_tokens", 0) - usage_before.get("output_tokens", 0),
+                    )  # this turn, on top of the earlier answers: the same total a reload shows
+                    total = None if now is None and spent_before is None else (spent_before or 0) + (now or 0)
+                    event = {**event, "cost_usd": total}
                 if event["type"] == "proposal":  # older open proposals are replaced by the new one
                     for p in turn.proposals[:-1]:
                         if p.get("status") == "pending":

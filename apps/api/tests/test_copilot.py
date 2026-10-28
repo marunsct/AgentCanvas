@@ -426,10 +426,11 @@ async def test_each_answer_keeps_what_it_cost_and_the_conversation_sums_them(app
     spend = {"input_tokens": 1000, "output_tokens": 200, "total_tokens": 1200}
     for text in ("Hi.", "Hello again."):
         script(app, AIMessage(content=text, usage_metadata=spend))  # type: ignore[arg-type]
-        await ask(api_client, wf, "hi", mode="ask")
+        done = (await ask(api_client, wf, "hi", mode="ask"))[-1]
     convo = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()
     answers = [m for m in convo["messages"] if m["role"] == "assistant"]
     assert [a["usage"] for a in answers] == [{"input_tokens": 1000, "output_tokens": 200}] * 2  # each its own turn
     assert answers[0]["cost_usd"] > 0 and answers[0]["model"]
     assert convo["cost_usd"] == pytest.approx(answers[0]["cost_usd"] + answers[1]["cost_usd"])
+    assert done["cost_usd"] == pytest.approx(convo["cost_usd"])  # the live figure matches what a reload shows
     assert convo["usage"]["input_tokens"] == 2000
