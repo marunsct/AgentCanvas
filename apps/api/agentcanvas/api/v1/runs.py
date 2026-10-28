@@ -15,7 +15,7 @@ from typing import Any, Literal, cast
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
@@ -377,8 +377,14 @@ async def list_threads(
     if status:
         q = q.where(Thread.status == status)
     if cursor:
-        q = q.where(Thread.id < cursor)
-    rows = list((await session.execute(q.order_by(Thread.id.desc()).limit(limit + 1))).all())
+        # ordered by when each began, not by id: a caller may name its own threads ("support-42"), which sort anywhere
+        if await session.get(Thread, cursor) is None:
+            raise InvalidInput(f"unknown cursor '{cursor}'")
+        # compared in SQL, not through a bound value: SQLite keeps CURRENT_TIMESTAMP as text a datetime never equals
+        after = select(Thread.created_at).where(Thread.id == cursor).scalar_subquery()
+        q = q.where(or_(Thread.created_at < after, and_(Thread.created_at == after, Thread.id < cursor)))
+    order = (Thread.created_at.desc(), Thread.id.desc())
+    rows = list((await session.execute(q.order_by(*order).limit(limit + 1))).all())
     page = rows[:limit]
     runs: dict[str, list[Run]] = {}
     if page:

@@ -569,3 +569,33 @@ async def test_the_runs_page_lists_a_projects_conversations_with_their_runs(app,
     assert mine[0]["last_run_id"].startswith("run_")
     assert (await api_client.get("/v1/threads", params={"project_id": other})).json()["items"] == []
     assert (await api_client.get("/v1/threads", params={"project_id": "prj_nope"})).status_code == 404
+
+
+async def test_the_runs_page_orders_conversations_by_when_they_began_not_by_id(app, api_client):
+    """A caller may name its own thread ("zz-support"); it still sorts by time, and paging walks every one once."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+    from test_publish import make_greeter
+
+    from agentcanvas.db.models import Thread
+
+    wf = await make_greeter(api_client)
+    for tid in ("zz-support", "th_b", "aa-support", "th_d"):
+        body = {"input": {"who": "Ada"}, "thread_id": tid}
+        assert (await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)).status_code == 200
+    began = datetime(2026, 1, 1, tzinfo=UTC)
+    async with app.state.db.sessionmaker() as s:  # a second apart: SQLite's CURRENT_TIMESTAMP is to the second
+        for i, tid in enumerate(("zz-support", "th_b", "aa-support", "th_d")):
+            await s.execute(update(Thread).where(Thread.id == tid).values(created_at=began + timedelta(seconds=i)))
+        await s.commit()
+    seen, cursor = [], None
+    for _ in range(10):
+        params = {"workflow_id": wf, "limit": 1, **({"cursor": cursor} if cursor else {})}
+        page = (await api_client.get("/v1/threads", params=params)).json()
+        seen += page["items"]
+        if not (cursor := page["next_cursor"]):
+            break
+    assert [t["id"] for t in seen] == ["th_d", "aa-support", "th_b", "zz-support"]
+    assert (await api_client.get("/v1/threads", params={"cursor": "th_nope"})).status_code == 422
+

@@ -5,6 +5,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **Runs listed conversations by id, not by time**: a thread named by its caller (`support-42`) sorted above or below
+  everything else whatever its age. `GET /threads` now orders by when each conversation began; its cursor is still
+  the last id, and an unknown one is refused (422) instead of returning an arbitrary page.
 - **SQLite did not enforce the schema's cascades**: a deleted workflow's published endpoint kept answering with its
   old key, and its versions, deployments, threads and runs stayed in the database. App connections now turn on
   `PRAGMA foreign_keys`; migrations keep their own engine, where a batch table rebuild must not cascade.
