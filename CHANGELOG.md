@@ -5,6 +5,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **No model had a price, so costs read $0 and USD budgets and cost alerts never fired**: the catalog carried no
+  prices at all (W015 warned on every cost budget, with a remedy no user could apply). It now prices the Claude
+  models (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 4.5 $1/$5 per million tokens), and
+  `AGENTCANVAS_MODEL_PRICES` prices any other catalog model; a malformed table stops the server from starting.
+- The Deep Agents Copilot under-counted tokens from providers that do not name their model in a reply (Ollama,
+  OpenAI-compatible servers): LangChain's usage handler skips those replies. The token cap and cost now count them.
 - **A workflow of another project opened with this project's blocks, models and settings**: the Inbox is
   organisation-wide, so "see the run" (or a pasted link) could open a workflow the app's current project does not
   hold, and its custom blocks showed as unknown. The editor now switches to the workflow's project and loads again
@@ -35,6 +41,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **What each Copilot answer cost**: its tokens (and dollars, where the model has a price) under it, kept with the
+  conversation, and the conversation's total after a reload (`cost_usd` on the conversation and each answer).
 - **Versions credit the Copilot** (FR-COP-07): a saved version lists the Copilot proposals accepted since the one
   before, "✦ Copilot (accepted by ada@example.com): Add a greeter · 4 changes". It is kept on the version
   (`copilot_changes` in `VersionOut`), so it outlives the conversation.

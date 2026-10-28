@@ -53,6 +53,8 @@ test("Ask mode answers without changing anything", async ({ page }) => {
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByTestId("copilot-panel")).toContainText("demo Copilot");
   await expect(page.getByTestId("copilot-proposal")).toHaveCount(0);
+  // each answer says what it used; claude-haiku-4-5 has a catalog price, so in dollars too
+  await expect(page.getByTestId("answer-cost").last()).toContainText(/\d+ tokens · \$\d/);
 });
 
 test("the Problems list hands its errors to the Copilot", async ({ page }) => {

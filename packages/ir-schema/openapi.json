@@ -1857,6 +1857,18 @@
             ],
             "title": "Brief"
           },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "what the conversation's answers cost, where the model's price is known (each answer's own `usage` and `cost_usd` are on its message)",
+            "title": "Cost Usd"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"

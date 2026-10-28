@@ -39,7 +39,10 @@ export interface Proposal {
   problem?: string;
 }
 
-export interface ChatMessage { role: "user" | "assistant"; content: string; proposal_id?: string; mode?: Mode; stopped?: boolean }
+export interface ChatMessage {
+  role: "user" | "assistant"; content: string; proposal_id?: string; mode?: Mode; stopped?: boolean;
+  usage?: { input_tokens?: number; output_tokens?: number }; cost_usd?: number | null; model?: string; // an answer's own
+}
 
 export interface Activity { name: string; ok: boolean; error?: string | null; summary?: string | null }
 
@@ -59,6 +62,7 @@ export interface Conversation {
   proposals: Proposal[];
   pending: Proposal | null;
   usage: { input_tokens?: number; output_tokens?: number };
+  cost_usd?: number | null; // the answers' costs, summed (where the model's price is known)
   token_cap: number;
   model: { model?: string | null; origin?: string | null; problem?: string | null };
 }
@@ -91,7 +95,7 @@ interface CopilotState {
   realRuns: boolean; // the person allowed test runs that call real models, for this conversation
   asking: string[] | null; // models the Copilot wanted to run for real, waiting for the person's yes
   allowRealRuns: () => Promise<void>;
-  cost: number | null; // what this conversation has cost, when the model's price is known (from this session's turns)
+  cost: number | null; // what this conversation has cost, when the model's price is known
   ghost: Ghost | null;
   selection: Selection | null;
   toggleChange: (i: number) => void;
@@ -198,7 +202,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const conversation = await apiFetch<Conversation>(`/workflows/${workflowId}/copilot`);
     if (get().workflowId !== workflowId) return;
     const selection = allOf(conversation.pending);
-    set({ conversation, selection, ghost: ghostOf(conversation.pending, selection) });
+    set({ conversation, selection, ghost: ghostOf(conversation.pending, selection), cost: conversation.cost_usd ?? null });
   },
 
   send: async (text, mode) => {

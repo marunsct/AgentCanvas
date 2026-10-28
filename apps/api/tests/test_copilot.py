@@ -53,6 +53,8 @@ def script(app, *replies) -> None:
     """The model's replies for the next turn, in order (a fresh script per request)."""
 
     def message(i: int, reply) -> AIMessage:
+        if isinstance(reply, AIMessage):  # as given, e.g. with usage
+            return reply
         if isinstance(reply, str):
             return AIMessage(content=reply)
         calls = [
@@ -417,3 +419,17 @@ async def test_usage_events_say_what_the_conversation_cost(app, api_client):
     done = events[-1]
     assert done["type"] == "done" and "cost_usd" in done  # 0 tokens from the scripted model: a cost of 0
     assert done["cost_usd"] is None or done["cost_usd"] >= 0
+
+
+async def test_each_answer_keeps_what_it_cost_and_the_conversation_sums_them(app, api_client):
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]  # its model, claude-haiku, has a price
+    spend = {"input_tokens": 1000, "output_tokens": 200, "total_tokens": 1200}
+    for text in ("Hi.", "Hello again."):
+        script(app, AIMessage(content=text, usage_metadata=spend))  # type: ignore[arg-type]
+        await ask(api_client, wf, "hi", mode="ask")
+    convo = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()
+    answers = [m for m in convo["messages"] if m["role"] == "assistant"]
+    assert [a["usage"] for a in answers] == [{"input_tokens": 1000, "output_tokens": 200}] * 2  # each its own turn
+    assert answers[0]["cost_usd"] > 0 and answers[0]["model"]
+    assert convo["cost_usd"] == pytest.approx(answers[0]["cost_usd"] + answers[1]["cost_usd"])
+    assert convo["usage"]["input_tokens"] == 2000

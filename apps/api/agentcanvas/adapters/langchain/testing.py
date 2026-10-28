@@ -89,15 +89,7 @@ class DemoChatModel(BaseChatModel):
     def _generate(
         self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
     ) -> ChatResult:
-        reply = self._reply(messages)
-        # approximate usage (characters / 4) so the demo shows tokens per node like a real provider would
-        tokens_in = max(1, sum(len(str(m.content)) for m in messages) // 4)
-        tokens_out = max(1, (len(str(reply.content)) + len(str(reply.tool_calls))) // 4)
-        reply.usage_metadata = {
-            "input_tokens": tokens_in,
-            "output_tokens": tokens_out,
-            "total_tokens": tokens_in + tokens_out,
-        }
+        reply = _with_usage(self._reply(messages), messages)
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
     def _reply(self, messages: list[BaseMessage]) -> AIMessage:
@@ -162,7 +154,16 @@ class DemoCopilotModel(BaseChatModel):
                 {"name": "propose_changes", "args": args, "id": "demo_copilot_1"}])  # fmt: skip
         else:
             reply = AIMessage(content="This is the demo Copilot (no model key configured). Ask me to build something.")
-        return ChatResult(generations=[ChatGeneration(message=reply)])
+        return ChatResult(generations=[ChatGeneration(message=_with_usage(reply, messages))])
+
+
+def _with_usage(reply: AIMessage, messages: list[BaseMessage]) -> AIMessage:
+    """Approximate usage (characters / 4), so the demo shows tokens (and cost) like a real provider would."""
+    tokens_in = max(1, sum(len(str(m.content)) for m in messages) // 4)
+    tokens_out = max(1, (len(str(reply.content)) + len(str(reply.tool_calls))) // 4)
+    total = tokens_in + tokens_out
+    reply.usage_metadata = {"input_tokens": tokens_in, "output_tokens": tokens_out, "total_tokens": total}
+    return reply
 
 
 def _demo_code_help(asked: str) -> str:

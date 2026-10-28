@@ -774,6 +774,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .copilot-msg { padding: 9px 13px; border-radius: 16px; white-space: pre-wrap; line-height: 1.5; max-width: 86%; font-size: 13.5px; overflow-wrap: anywhere; }
 .copilot-msg.user { align-self: flex-end; background: var(--gradient); color: var(--accent-fg); border-bottom-right-radius: 5px; box-shadow: var(--shadow-sm); }
 .copilot-msg.assistant { align-self: flex-start; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+.copilot-cost { margin-top: 4px; font-size: 11px; white-space: normal; }
 .copilot-msg.live p { margin: 4px 0; }
 .copilot-activity { display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; }
 .copilot-activity > div { display: flex; gap: 6px; align-items: baseline; }

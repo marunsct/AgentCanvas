@@ -10,7 +10,7 @@ import type { CopilotThreadOut } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
 import { Markdown } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
-import { type Brief, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
+import { type Brief, type ChatMessage, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
 import { describe, preview } from "./review";
 
 const STARTERS = [
@@ -227,6 +227,7 @@ export function CopilotPanel() {
                 ? <Markdown text={m.content || (m.proposal_id ? "Proposed changes." : "")} />
                 : m.content}
               {m.stopped && <span className="badge small" title="You stopped this answer">stopped</span>}
+              {m.role === "assistant" && m.usage && <AnswerCost m={m} />}
             </div>
           </div>
         ))}
@@ -293,6 +294,18 @@ export function CopilotPanel() {
             : <button type="submit" className="primary" disabled={!text.trim()}>Send <span aria-hidden="true">↑</span></button>}
         </div>
       </form>
+    </div>
+  );
+}
+
+/** What one answer used, under it: tokens, and dollars when the model's price is known. */
+function AnswerCost({ m }: { m: ChatMessage }) {
+  const tokens = (m.usage?.input_tokens ?? 0) + (m.usage?.output_tokens ?? 0);
+  const usd = m.cost_usd;
+  return (
+    <div className="copilot-cost small muted" data-testid="answer-cost"
+      title={`${(m.usage?.input_tokens ?? 0).toLocaleString()} in, ${(m.usage?.output_tokens ?? 0).toLocaleString()} out${m.model ? ` on ${m.model}` : ""}`}>
+      {tokens.toLocaleString()} tokens{usd != null && usd > 0 ? ` · $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}` : ""}
     </div>
   );
 }

@@ -77,6 +77,11 @@ class ConversationOut(BaseModel):
     proposals: list[dict[str, Any]]
     pending: dict[str, Any] | None = Field(default=None, description="the open proposal with its diff and preview")
     usage: dict[str, int]
+    cost_usd: float | None = Field(
+        None,
+        description="what the conversation's answers cost, where the model's price is known (each answer's own "
+        "`usage` and `cost_usd` are on its message)",
+    )
     token_cap: int
     model: ModelInfoOut
     pack_tokens: int
@@ -170,10 +175,16 @@ async def get_conversation(
         proposals=[{k: v for k, v in p.items() if k != "commands"} for p in (conv.proposals if conv else [])],
         pending=_pending(conv, view),
         usage=conv.usage if conv else {},
+        cost_usd=_spent(conv.messages if conv else []),
         token_cap=cs.token_cap,
         model=model,
         pack_tokens=_pack(registry, list_templates(settings)).tokens,
     )
+
+
+def _spent(messages: list[dict[str, Any]]) -> float | None:
+    costs = [m["cost_usd"] for m in messages if isinstance(m.get("cost_usd"), int | float)]
+    return round(sum(costs), 6) if costs else None
 
 
 DECIDED = ("accepted", "rejected")
@@ -297,7 +308,13 @@ async def _start_turn(
             row = await s.get(CopilotConversation, conv_id, with_for_update=True)
             if row is None:  # "New chat" while answering
                 return
-            row.messages = [*(row.messages or []), *turn.history[seen_messages:]]
+            new = [dict(m) for m in turn.history[seen_messages:]]
+            spent = {k: v - usage_before.get(k, 0) for k, v in turn.usage.items() if v > usage_before.get(k, 0)}
+            answer = next((m for m in reversed(new) if m.get("role") == "assistant"), None)
+            if answer is not None and spent:  # what this answer cost, shown under it and summed for the conversation
+                cost = price(model.model, spent.get("input_tokens", 0), spent.get("output_tokens", 0))
+                answer.update(usage=spent, model=model.model, cost_usd=cost)
+            row.messages = [*(row.messages or []), *new]
             row.busy_until = None
             if not row.title:  # the first question names the conversation in the thread list
                 first = next((m.get("content", "") for m in row.messages if m.get("role") == "user"), "")

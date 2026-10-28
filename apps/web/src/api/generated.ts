@@ -348,6 +348,10 @@ export type Surfaces = Surface[];
 export type Brief = {
   [k: string]: unknown;
 } | null;
+/**
+ * what the conversation's answers cost, where the model's price is known (each answer's own `usage` and `cost_usd` are on its message)
+ */
+export type CostUsd = number | null;
 export type Enabled = boolean;
 export type Id17 = string | null;
 export type Messages1 = {
@@ -687,7 +691,7 @@ export type Pairwise = string[];
 export type Split3 = string | null;
 export type Status4 = string;
 export type Completed = number;
-export type CostUsd = number;
+export type CostUsd1 = number;
 /**
  * runs that did not end in success
  */
@@ -709,7 +713,7 @@ export type Label10 = string;
 export type Version5 = string | null;
 export type Targets2 = TargetOut[];
 export type WorkflowId3 = string;
-export type CostUsd1 = number;
+export type CostUsd2 = number;
 export type Error2 = string | null;
 export type ExampleId = string;
 export type Id30 = string;
@@ -1876,7 +1880,7 @@ export type Pins1 = {
   };
 } | null;
 export type Stream1 = boolean;
-export type CostUsd2 = number;
+export type CostUsd3 = number;
 export type EndedAt1 = string | null;
 export type Error6 = string | null;
 export type Id48 = string;
@@ -2137,7 +2141,7 @@ export type Passed3 = number;
 export type Results2 = CaseResult[];
 export type Text6 = string;
 export type Title6 = string;
-export type CostUsd3 = number;
+export type CostUsd4 = number;
 export type CreatedAt28 = string;
 /**
  * set when the conversation came through a deployment's API
@@ -3313,6 +3317,7 @@ export interface Surface {
  */
 export interface ConversationOut {
   brief: Brief;
+  cost_usd?: CostUsd;
   enabled: Enabled;
   id: Id17;
   messages: Messages1;
@@ -3861,7 +3866,7 @@ export interface ExperimentOut {
  */
 export interface TargetSummary {
   completed: Completed;
-  cost_usd: CostUsd;
+  cost_usd: CostUsd1;
   errors: Errors;
   evaluators: Evaluators1;
   examples: Examples4;
@@ -3892,7 +3897,7 @@ export interface Overrides1 {
  * via the `definition` "ExperimentResultOut".
  */
 export interface ExperimentResultOut {
-  cost_usd: CostUsd1;
+  cost_usd: CostUsd2;
   error: Error2;
   example_id: ExampleId;
   id: Id30;
@@ -4998,7 +5003,7 @@ export interface Value4 {
  * via the `definition` "RunOut".
  */
 export interface RunOut {
-  cost_usd?: CostUsd2;
+  cost_usd?: CostUsd3;
   ended_at: EndedAt1;
   error: Error6;
   id: Id48;
@@ -5406,7 +5411,7 @@ export interface TextIn {
  * via the `definition` "ThreadOut".
  */
 export interface ThreadOut {
-  cost_usd?: CostUsd3;
+  cost_usd?: CostUsd4;
   created_at: CreatedAt28;
   deployment_id?: DeploymentId3;
   id: Id51;
