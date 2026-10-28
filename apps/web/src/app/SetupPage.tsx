@@ -132,7 +132,8 @@ export function SetupPage() {
               {test.isPending ? "Testing…" : "Test connection"}
             </button>
             <button type="submit" className="primary" disabled={!model.trim() || save.isPending}>Save</button>
-            {!setup.data?.done && <button type="button" className="link" onClick={() => skip.mutate()}>Skip for now</button>}
+            {!setup.data?.done && <button type="button" className="link" title="Stop showing “Set up your model” on Workflows; templates keep their own models"
+              onClick={() => skip.mutate()}>Not now, hide the reminder</button>}
           </div>
           {test.data?.ok && <p className="ok-text" data-testid="setup-test">Connected. The model replied: “{test.data.reply}”</p>}
           {test.data && !test.data.ok && <p className="error-text" data-testid="setup-test">Could not reach the model: {test.data.error}</p>}
