@@ -1,5 +1,5 @@
 /** Events as code (FR-X-22): the Event Map (events → handlers → workflows), test/replay with dry run, event log. */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
@@ -29,12 +29,27 @@ interface EventResult {
 
 // read per request: the project is chosen after sign-in, and may change
 const base = () => `/projects/${PROJECT_ID}/events`;
+const PAGE = 50;
 
 export function EventsPage() {
   const qc = useQueryClient();
   const canBuild = useCan("builder");
   const catalog = useWorkspaceCatalog();
-  const log = useQuery({ queryKey: ["events", PROJECT_ID], queryFn: () => apiFetch<LoggedEvent[]>(`${base()}?limit=50`), refetchInterval: 5000 });
+  const [only, setOnly] = useState("");
+  const log = useInfiniteQuery({
+    queryKey: ["events", PROJECT_ID, only],
+    initialPageParam: "",
+    queryFn: ({ pageParam }) => {
+      const q = new URLSearchParams({ limit: String(PAGE) });
+      if (only) q.set("type", only);
+      if (pageParam) q.set("before", pageParam);
+      return apiFetch<LoggedEvent[]>(`${base()}?${q}`);
+    },
+    getNextPageParam: (last) => (Array.isArray(last) && last.length === PAGE ? last[last.length - 1].id : undefined),
+    refetchInterval: 5000,
+  });
+  // a page of another shape (a server of another version) shows as nothing, not a crash
+  const logged = log.data?.pages.flatMap((p) => (Array.isArray(p) ? p : [])) ?? [];
   const [type, setType] = useState("");
   const [data, setData] = useState("{}");
   const [result, setResult] = useState<EventResult | null>(null);
@@ -50,6 +65,10 @@ export function EventsPage() {
   });
   const handlers = catalog.data?.handlers ?? [];
   const types = [...new Set([...handlers.map((h) => h.type), ...(catalog.data?.schemas ?? [])])].sort();
+  // the filter also offers what has been logged (unfiltered pages are kept while a filter is on)
+  const unfiltered = qc.getQueryData<{ pages: unknown[] }>(["events", PROJECT_ID, ""])?.pages ?? [];
+  const loggedTypes = unfiltered.flatMap((p) => (Array.isArray(p) ? (p as LoggedEvent[]).map((e) => e.type) : []));
+  const filterTypes = [...new Set([...types, ...loggedTypes, ...(only ? [only] : [])])].sort();
 
   return (
     <div className="page events-page">
@@ -90,14 +109,21 @@ export function EventsPage() {
       {result && <ResultView result={result} />}
       </>}
 
-      <h3>Event log</h3>
+      <div className="row gap wrap">
+        <h3>Event log</h3>
+        <select aria-label="filter events by type" value={only} onChange={(e) => setOnly(e.target.value)}>
+          <option value="">Every type</option>
+          {filterTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
       <table className="table" data-testid="event-log">
         <thead><tr><th>Type</th><th>Source</th><th>Status</th><th>When</th><th /></tr></thead>
         <tbody>
-          {(log.isLoading || log.isError || log.data?.length === 0) && (
-            <tr><td colSpan={5}><QueryStatus q={log} what="the event log" empty="No events yet. Send a test event above." /></td></tr>
+          {(log.isLoading || log.isError) && <tr><td colSpan={5}><QueryStatus q={log} what="the event log" /></td></tr>}
+          {log.isSuccess && logged.length === 0 && (
+            <tr><td colSpan={5}><div className="empty-state">{only ? `No ${only} events.` : "No events yet. Send a test event above."}</div></td></tr>
           )}
-          {log.data?.map((e) => (
+          {logged.map((e) => (
             <tr key={e.id}>
               <td><code>{e.type}</code></td>
               <td>{e.source}</td>
@@ -112,6 +138,11 @@ export function EventsPage() {
           ))}
         </tbody>
       </table>
+      {log.hasNextPage && (
+        <button type="button" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
+          {log.isFetchingNextPage ? "Loading…" : "Load older"}
+        </button>
+      )}
     </div>
   );
 }

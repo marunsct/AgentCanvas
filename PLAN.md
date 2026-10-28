@@ -18,7 +18,7 @@ Sections 2–5 are the product plan. Section 6 is the hardening backlog carried 
 | §4.2 Runs | Runs page (status, source, duration, cost, errors, filters, paging); Inbox with names, run links, filter | — (the editor's History tab lists runs) |
 | §4.3 Evaluation | Evaluator forms per kind (edit, delete); dataset examples field by field; experiment variants as rows; annotation rubric editor and run picker | "Evaluate" in the editor's bar |
 | §4.4 Workspace | Unsaved-changes guard; folder tree; delete errors shown; Secrets moved to Settings | — |
-| §4.5 Other pages | Playground streams with Stop and keeps the chat; Audit (headers, dates, CSV, details); Members (headers, cancel invitation); Events (headers, role gating); Memory (confirm, expand, role gating); Knowledge (confirm on remove); Search block picks a knowledge base from a list | Events paging |
+| §4.5 Other pages | Playground streams with Stop and keeps the chat; Audit (headers, dates, CSV, details); Members (headers, cancel invitation); Events (headers, role gating, older pages, filter by type); Memory (confirm, expand, role gating); Knowledge (confirm on remove); Search block picks a knowledge base from a list | — |
 | §4.6 Dialogs | All native confirm/prompt replaced; toasts; workflow list rename/duplicate/delete/search/sort | — |
 | §4.7 Labels | Planning ids out of the API docs; beta blocks marked; "stub" wording | — |
 | §4.8 Docs | README and HANDOVER current; user-guide page for the shell and Settings | — |

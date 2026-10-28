@@ -27,6 +27,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **The event log pages back and filters**: Events shows the newest 50, then "Load older"; a type filter offers the
+  map's types and any logged. `GET /projects/{id}/events` takes `before` (an event id), `type` and `status`.
 - **One top bar on every page** (`app/AppShell.tsx`): the project (switch, or create a new one), Workflows, Playground,
   Inbox with its count, Knowledge, Memory, Workspace, Events, Settings, and a person menu (who, role, organisation,
   theme, sign out). Moving between pages no longer goes through Home. The editor keeps its own bar and gets the same

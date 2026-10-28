@@ -256,3 +256,24 @@ async def test_resume_continues_a_published_conversation_on_its_version(app, api
     assert h.status == "success" and h.deployment_id == dep and h.version_id
     assert PROJECT_OF[signer] == "prj_default"
     assert (await api_client.get(f"/v1/threads/{thread}")).json()["values"]["ok"] is True
+
+
+async def test_the_event_log_pages_back_through_older_events_and_filters_by_type(app, api_client):
+    await setup(api_client)
+    for i in range(5):
+        kind = "crm.lead.created" if i % 2 else "crm.lead.lost"
+        assert (await api_client.post(f"{P}/events", json={"type": kind, "data": {"id": f"P{i}"}})).status_code == 200
+    everything = [e["id"] for e in (await api_client.get(f"{P}/events")).json()]
+    walked, before = [], None
+    for _ in range(5):
+        page = (
+            await api_client.get(f"{P}/events", params={"limit": 2, **({"before": before} if before else {})})
+        ).json()
+        walked += [e["id"] for e in page]
+        if len(page) < 2:
+            break
+        before = page[-1]["id"]
+    assert walked == everything and len(everything) == 5
+    lost = (await api_client.get(f"{P}/events", params={"type": "crm.lead.lost"})).json()
+    assert len(lost) == 3 and {e["type"] for e in lost} == {"crm.lead.lost"}
+    assert (await api_client.get(f"{P}/events", params={"before": "evt_nope"})).status_code == 422

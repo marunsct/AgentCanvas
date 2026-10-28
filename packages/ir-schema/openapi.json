@@ -18078,6 +18078,7 @@
     },
     "/v1/projects/{project_id}/events": {
       "get": {
+        "description": "The project's events, newest first, a page at a time.",
         "operationId": "event_log_v1_projects__project_id__events_get",
         "parameters": [
           {
@@ -18099,6 +18100,58 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "the id of the last event of the previous page: older ones follow",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the id of the last event of the previous page: older ones follow",
+              "title": "Before"
+            }
+          },
+          {
+            "description": "only events of this type",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only events of this type",
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
             }
           },
           {

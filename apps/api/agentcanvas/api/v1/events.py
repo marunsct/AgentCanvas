@@ -8,12 +8,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import EventLog
 from agentcanvas.db.repositories import ProjectRepo
+from agentcanvas.errors import InvalidInput
 
 router = APIRouter(prefix="/projects/{project_id}/events", tags=["events"])
 
@@ -67,13 +68,26 @@ async def dry_run(
 
 @router.get("", response_model=list[EventLogOut])
 async def event_log(
-    project_id: str, limit: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_session)
+    project_id: str,
+    limit: int = Query(50, ge=1, le=500),
+    before: str | None = Query(None, description="the id of the last event of the previous page: older ones follow"),
+    type: str | None = Query(None, description="only events of this type"),
+    status: str | None = None,
+    session: AsyncSession = Depends(get_session),
 ) -> list[EventLogOut]:
-    q = (
-        select(EventLog)
-        .where(EventLog.project_id == project_id)
-        .order_by(EventLog.created_at.desc(), EventLog.id.desc())
-    )
+    """The project's events, newest first, a page at a time."""
+    q = select(EventLog).where(EventLog.project_id == project_id)
+    if type:
+        q = q.where(EventLog.type == type)
+    if status:
+        q = q.where(EventLog.status == status)
+    if before:
+        if (await session.get(EventLog, before)) is None:
+            raise InvalidInput(f"unknown event '{before}'")
+        # compared in SQL: SQLite keeps CURRENT_TIMESTAMP as text a bound datetime never equals
+        at = select(EventLog.created_at).where(EventLog.id == before).scalar_subquery()
+        q = q.where(or_(EventLog.created_at < at, and_(EventLog.created_at == at, EventLog.id < before)))
+    q = q.order_by(EventLog.created_at.desc(), EventLog.id.desc())
     rows = (await session.scalars(q.limit(limit))).all()
     return [
         EventLogOut(
