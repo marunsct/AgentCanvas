@@ -7,6 +7,8 @@ import { PROJECT_ID, useWorkspaceCatalog } from "../api/queries";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { EventLogOut as LoggedEvent } from "../api/generated";
 import { PageHeader } from "../ui/PageHeader";
+import { useCan } from "../api/session";
+import { ago, exact } from "../ui/time";
 
 interface HandlerResult {
   handler: string;
@@ -30,6 +32,7 @@ const base = () => `/projects/${PROJECT_ID}/events`;
 
 export function EventsPage() {
   const qc = useQueryClient();
+  const canBuild = useCan("builder");
   const catalog = useWorkspaceCatalog();
   const log = useQuery({ queryKey: ["events", PROJECT_ID], queryFn: () => apiFetch<LoggedEvent[]>(`${base()}?limit=50`), refetchInterval: 5000 });
   const [type, setType] = useState("");
@@ -53,7 +56,8 @@ export function EventsPage() {
       <PageHeader title="Events" description={<>Generated from <code>events/*.py</code> in the <Link to="/workspace">workspace</Link>:
         which events start or resume which workflows.</>} />
       {handlers.length === 0 && <p className="muted" data-testid="no-handlers">No handlers yet — add <code>@on("type")</code> functions in <code>events/</code>.</p>}
-      <table className="event-map" data-testid="event-map">
+      <table className="table event-map" data-testid="event-map">
+        {handlers.length > 0 && <thead><tr><th>Event</th><th aria-hidden /><th>Handler</th><th aria-hidden /><th>Starts</th></tr></thead>}
         <tbody>
           {handlers.map((h) => (
             <tr key={h.import_path}>
@@ -70,6 +74,8 @@ export function EventsPage() {
         <p key={i} className="warn-text small">⚠ {(p as { code?: string }).code ?? ""} {p.path}: {p.message}</p>
       ))}
 
+      {!canBuild && <p className="muted small">Your role can see the event map and log; a builder or admin can send test events.</p>}
+      {canBuild && <>
       <h3>Send a test event</h3>
       <div className="event-form">
         <input list="event-types" placeholder="crm.lead.created" value={type} onChange={(e) => setType(e.target.value)} aria-label="event type" />
@@ -82,9 +88,10 @@ export function EventsPage() {
         {send.error && <p className="error-text">{(send.error as Error).message}</p>}
       </div>
       {result && <ResultView result={result} />}
+      </>}
 
       <h3>Event log</h3>
-      <table className="memory-table" data-testid="event-log">
+      <table className="table" data-testid="event-log">
         <thead><tr><th>Type</th><th>Source</th><th>Status</th><th>When</th><th /></tr></thead>
         <tbody>
           {(log.isLoading || log.isError || log.data?.length === 0) && (
@@ -95,12 +102,12 @@ export function EventsPage() {
               <td><code>{e.type}</code></td>
               <td>{e.source}</td>
               <td className={`status-${e.status}`}>{e.status}</td>
-              <td className="muted small">{e.created_at.replace("T", " ").slice(0, 19)}</td>
-              <td>
+              <td className="muted small" title={exact(e.created_at)}>{ago(e.created_at)}</td>
+              <td>{canBuild && (
                 <button type="button" className="link" onClick={() => { setType(e.type); setData(JSON.stringify(e.data, null, 2)); setResult(null); }}>
                   replay
                 </button>
-              </td>
+              )}</td>
             </tr>
           ))}
         </tbody>

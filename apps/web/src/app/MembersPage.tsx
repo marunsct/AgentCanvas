@@ -56,12 +56,15 @@ export function MembersPage() {
       )}
       {error && <p className="error-text" role="alert">{error.message}</p>}
       <QueryStatus q={members} what="members" />
-      <table className="members" data-testid="members">
+      <table className="table members" data-testid="members">
+        <thead><tr><th>Member</th><th>Status</th><th>Role</th><th aria-label="actions" /></tr></thead>
         <tbody>
           {(members.data ?? []).map((m) => (
             <tr key={m.user_id}>
               <td>{m.display_name ?? m.email}{m.display_name && <span className="muted small"> {m.email}</span>}</td>
-              <td>{m.invited || !m.accepted ? <span className="muted small">{m.invited ? "invited" : "awaiting acceptance"}</span> : null}</td>
+              <td>{m.invited || !m.accepted
+                ? <span className="badge warn" title="It takes effect when they next sign in">{m.invited ? "invited" : "awaiting acceptance"}</span>
+                : <span className="badge ok">member</span>}</td>
               <td>
                 {admin && m.user_id !== me.id
                   ? <select value={m.role} aria-label={`role of ${m.email}`} onChange={(e) => set.mutate({ email: m.email, role: e.target.value as Role })}>
@@ -70,7 +73,9 @@ export function MembersPage() {
                   : m.role}
               </td>
               <td>{admin && m.user_id !== me.id && (
-                <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Remove ${m.email}?`, body: "They lose access to this organisation at once.", confirm: "Remove", danger: true })) remove.mutate(m.user_id); }}>Remove</button>
+                m.invited
+                  ? <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Cancel the invitation to ${m.email}?`, confirm: "Cancel invitation", cancel: "Keep it", danger: true })) remove.mutate(m.user_id); }}>Cancel invitation</button>
+                  : <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Remove ${m.email}?`, body: "They lose access to this organisation at once.", confirm: "Remove", danger: true })) remove.mutate(m.user_id); }}>Remove</button>
               )}</td>
             </tr>
           ))}

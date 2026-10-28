@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 5 acceptance: map-reduce research with a Deep Agent, and the structured-output designer.
 
@@ -38,6 +38,7 @@ test("research template: map fans out per topic and the Deep Agent saves finding
   const item = page.getByTestId("memory-item").filter({ hasText: "/findings.md" });
   await expect(item).toContainText("Hot drinks");
   await item.getByRole("button", { name: "delete /findings.md" }).click();
+  await answerDialog(page);
   await expect(page.getByTestId("memory-item").filter({ hasText: "/findings.md" })).toHaveCount(0);
 });
 

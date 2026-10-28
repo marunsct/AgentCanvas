@@ -1,6 +1,6 @@
 /** Home's list of the project's workflows: search, sort, and per workflow open, rename, duplicate or delete. */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
+import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
@@ -10,6 +10,7 @@ import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 import { Menu } from "../ui/Menu";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
+import { EmptyState } from "../ui/EmptyState";
 
 type Sort = "updated" | "name";
 
@@ -45,8 +46,6 @@ export function WorkflowList() {
   return (
     <section aria-label="Workflows">
       <div className="row gap list-tools">
-        <h2>Workflows</h2>
-        <span className="spacer" />
         <input type="search" placeholder="Search workflows" aria-label="search workflows" value={q} onChange={(e) => setQ(e.target.value)} />
         <select aria-label="sort workflows" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
           <option value="updated">Last changed</option>
@@ -55,7 +54,7 @@ export function WorkflowList() {
       </div>
       <QueryStatus q={workflows} what="workflows" />
       {workflows.data?.items.length === 0 && (
-        <div className="empty-state">No workflows yet. Name one above and click <b>Create empty</b>, or start from a template.</div>
+        <EmptyState icon={LayoutGrid} title="No workflows yet">Start from a template below, or with an empty canvas.</EmptyState>
       )}
       {workflows.data && workflows.data.items.length > 0 && items.length === 0 && (
         <div className="empty-state">No workflow matches “{q}”.</div>

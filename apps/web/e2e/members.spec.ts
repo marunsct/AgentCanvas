@@ -14,7 +14,7 @@ test("invite a member, change their role, remove them", async ({ page }) => {
   await expect(row).toContainText("invited");
   await row.getByLabel(`role of ${email}`).selectOption("reviewer");
   await expect(row.getByLabel(`role of ${email}`)).toHaveValue("reviewer");
-  await row.getByRole("button", { name: "Remove" }).click();
+  await row.getByRole("button", { name: "Cancel invitation" }).click();
   await answerDialog(page);
   await expect(row).toHaveCount(0);
 });

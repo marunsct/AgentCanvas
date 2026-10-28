@@ -10,6 +10,8 @@ import { PageHeader } from "../ui/PageHeader";
 import { toast } from "../ui/dialog";
 import { ago, exact } from "../ui/time";
 import { useState } from "react";
+import { EmptyState } from "../ui/EmptyState";
+import { Inbox } from "lucide-react";
 
 export function InboxPage() {
   const inbox = useInbox();
@@ -29,7 +31,11 @@ export function InboxPage() {
     <div className="page">
       <PageHeader title="Inbox" description="Runs waiting for a person: an approval, an edit or an answer. Deciding resumes the run." />
       <QueryStatus q={inbox} what="the inbox" />
-      {inbox.data?.length === 0 && <p className="muted" data-testid="inbox-empty">Nothing is waiting for you.</p>}
+      {inbox.data?.length === 0 && (
+        <EmptyState icon={Inbox} title="Nothing is waiting for you" testId="inbox-empty">
+          When a run pauses for an approval or an answer, it shows here for anyone with the reviewer role.
+        </EmptyState>
+      )}
       {names.length > 1 && (
         <div className="row gap list-tools">
           <select aria-label="filter by workflow" value={only} onChange={(e) => setOnly(e.target.value)}>

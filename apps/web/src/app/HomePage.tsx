@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
-import { PROJECT_ID, PROJECT_NAME, useSetup, useTemplates } from "../api/queries";
+import { PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows } from "../api/queries";
 import { useCan, useMe } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
@@ -16,6 +16,7 @@ import type { InvitationOut as Invitation } from "../api/generated";
 export function HomePage() {
   const me = useMe((s) => s.me);
   const canBuild = useCan("builder");
+  const workflows = useWorkflows();
   const templates = useTemplates();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -47,23 +48,32 @@ export function HomePage() {
 
   return (
     <div className="page home">
-      <PageHeader title="Workflows" description={`Everything built in ${PROJECT_NAME}.`} />
+      <PageHeader title="Workflows" description={`Everything built in ${PROJECT_NAME}.`}
+        actions={canBuild ? <>
+          <a className="button" href="#new-workflow">+ New workflow</a>
+          <button type="button" data-testid="start-tour" onClick={() => tour.mutate()} title="Build a real workflow in six short steps">Guided build</button>
+        </> : undefined} />
       <Invitations />
       {!canBuild && (
         <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({me.role}) cannot create or edit them.</p>
       )}
       {canBuild && <>
       <SetupBanner />
-      <section className="guided">
-        <h2>New here?</h2>
-        <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
-        <div className="row gap">
-          <button type="button" className="primary" data-testid="start-tour" onClick={() => tour.mutate()}>Start the guided build</button>
-          <Link to="/playground" className="button" data-testid="try-playground">Try a model in the playground</Link>
-        </div>
-        {tour.error && <p className="error-text">{(tour.error as Error).message}</p>}
-      </section>
-      <section>
+      {(workflows.data?.items.length ?? 0) < 3 && workflows.data && (
+        <section className="guided">
+          <h2>New here?</h2>
+          <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
+          <div className="row gap">
+            <button type="button" className="primary" onClick={() => tour.mutate()}>Start the guided build</button>
+            <Link to="/playground" className="button" data-testid="try-playground">Try a model in the playground</Link>
+          </div>
+        </section>
+      )}
+      {tour.error && <p className="error-text">{(tour.error as Error).message}</p>}
+      </>}
+      <WorkflowList />
+      {canBuild && <>
+      <section id="new-workflow">
         <h2>New workflow</h2>
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); create.mutate({ name: name.trim() || "Untitled workflow" }); }}>
           <input placeholder="Workflow name" value={name} onChange={(e) => setName(e.target.value)} aria-label="workflow name" />
@@ -88,7 +98,6 @@ export function HomePage() {
         )}
       </section>
       </>}
-      <WorkflowList />
     </div>
   );
 }

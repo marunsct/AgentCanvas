@@ -204,7 +204,9 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         <tbody>
           {docs.data?.map((d) => (
             <DocumentRow key={d.id} doc={d} base={base} open={open === d.id} builder={builder}
-              onToggle={() => setOpen(open === d.id ? null : d.id)} onRemove={() => remove.mutate(d.id)} />
+              onToggle={() => setOpen(open === d.id ? null : d.id)} onRemove={async () => {
+                if (await confirmDialog({ title: `Remove ${d.name}?`, body: "Its passages are taken out of the search index.", confirm: "Remove", danger: true })) remove.mutate(d.id);
+              }} />
           ))}
         </tbody>
       </table>
