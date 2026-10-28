@@ -16,7 +16,7 @@ COPY apps/api/examples/ /repo/apps/api/examples/
 COPY apps/web/ ./
 RUN pnpm build
 
-FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
+FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e AS runtime
 # OS security fixes newer than the base image (M8-T6); the image's nginx user (101) runs the server
 USER root
 RUN apk upgrade --no-cache

@@ -10,7 +10,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 |---|---|---|
 | Deep-review fixes: run correctness across replicas, server hardening | v0.28.1, v0.29.0 | #52, #53 |
 | Echo engine pauses survive restarts; a run always uses its own project's workspace (`PROJECT_OF` from the database) | v0.29.1 | |
-| Share links choose which sites may frame their chat page (`frame_origins`, nginx `auth_request`) | v0.30.0 | |
+| Share links choose which sites may frame their chat page (`frame_origins`, nginx `auth_request`) | v0.30.0 (it did not reach the API behind nginx until the third pass, below) | |
 | A production server warns when workspace code is not isolated (`sandbox.not_isolated`) | v0.30.1 | |
 | Real sandbox: workspace code runs in a separate service (`script_execution=remote`), default in the prod compose file and Helm chart | v0.31.0 | |
 | The local Docker app uses the sandbox service too | v0.31.1 | |
@@ -28,6 +28,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 | Mastra npm set locked (`package-lock.json`, `npm ci` in `make mastra` and the image; a test checks it matches `package.json`) | unreleased | |
 | API image on Python 3.14 (#45), verified with every framework and Mastra built in and the API suite on 3.14 | unreleased | #45 |
 | Export plan lists knowledge bases and whether the project has them; worker temp folders of dead servers are swept; nine hand-written web response types replaced by generated ones; oxlint in `make lint`; Mastra runtime type-checked (`mastra-types`); inspector controls checked for names and tab order | unreleased | |
+| `images` stage: both images built and Trivy-scanned (fixes: certifi, filelock, pypdf, pip removed), production and local stacks probed through nginx; found and fixed share-link framing never reaching the API; access-control sweeps over every route; concurrency tests; finished-run memory limit; a race that gave concurrent steps a model bridge that was not listening yet (found as a flaky experiment test); Python ceiling (<3.15) in everything we write; rendered Helm manifests schema-checked (kubeconform); authlib and dnspython advisories fixed in the lock; global banner for unhandled web failures; the export stage deploys two exports for real | unreleased | |
 | Sandbox: a warning when `sandbox.json` lists egress/inject that the mode in use cannot give | unreleased | |
 
 ## Verified 2026-10-20 (no change needed)
@@ -54,8 +55,8 @@ version and PR, and add anything new you find to *Open*. One PR per item.
   queueing other queries; run it in a quiet moment on a large installation).
 - **Code:** duplicated engine, worker and packager code (about 1,000-1,300 lines); `Resources` is still LangChain's object for
   every adapter.
-- **CI:** local CI lacks the Trivy scan and the prod-compose probes of `images`, and has no framework-environment cache.
+- **CI:** no framework-environment cache; the Kubernetes (kind) deploy of an export is not in local CI (the compose deploys are).
 - **Sandbox:** egress allow-lists in `sandbox.json` still work with LangSmith only (now warned about, not enforced).
-- **Unverified here (owner runs):** nginx `auth_request` config, the conformance kit's remaining frameworks beyond those
+- **Unverified here (owner runs):** the conformance kit's remaining frameworks beyond those
   installed in `apps/api/.frameworks`, `lint-imports` beyond `make lint`, Trivy, Kubernetes (kind) and compose deploys of exports.
 - **Owner:** release tags v0.1.0–v0.32.x not pushed; delete the merged branches still on GitHub (`claude/project-thread-*` ×5, `claude/sprint-11…13-*`, `claude/trusting-curie-n0i720`, `claude/sandbox-warning`); revoke the token pasted earlier. #48 is closed, #45 and #36 are merged. Commit or discard `.sitepkgs.tgz` (80 MB, untracked in the repository root).

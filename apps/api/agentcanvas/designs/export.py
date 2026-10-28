@@ -257,7 +257,7 @@ def export_files(
         f'name = "{name}"',
         'version = "0.1.0"',
         f'description = {json.dumps(f"{design.name}: {article(fw.label)} {fw.label} agent designed on AgentCanvas")}',
-        'requires-python = ">=3.11"',
+        'requires-python = ">=3.11,<3.15"',
         "dependencies = [",
         *[f'    "{d}",' for d in deps],
         "]",

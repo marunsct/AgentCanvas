@@ -246,7 +246,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str] | None = N
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
 description = {json.dumps(f"{wf.name} — exported from AgentCanvas")}
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
 
