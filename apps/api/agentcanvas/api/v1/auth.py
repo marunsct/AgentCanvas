@@ -35,7 +35,7 @@ class Preferences(BaseModel):
     """What follows a person from browser to browser. Fields left out of a PUT keep their value."""
 
     theme: Literal["system", "light", "medium", "dark"] | None = None
-    simple_mode: bool | None = Field(None, description="the editor opens in Simple mode")
+    simple_mode: bool | None = Field(default=None, description="the editor opens in Simple mode")
 
 
 class MeOut(BaseModel):

@@ -306,7 +306,8 @@ async def run_test(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(args.get("input"), dict):
         return {"ok": False, "error": 'input must be an object of channel values, e.g. {"question": "..."}'}
     expect = args.get("expect") if isinstance(args.get("expect"), dict) else None
-    mocks = args.get("mocks") if isinstance(args.get("mocks"), dict) else {}
+    given = args.get("mocks")
+    mocks: dict[str, Any] = given if isinstance(given, dict) else {}
     if not ctx.allow_real_runs and (real := real_models(ctx.workflow, mocks)):
         # a run that calls real models costs money and time: the person allows it once per conversation
         ctx.events.append({"type": "permission", "kind": "real_runs", "models": real})
