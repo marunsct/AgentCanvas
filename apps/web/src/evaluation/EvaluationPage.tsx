@@ -10,11 +10,12 @@ import type {
 import { useFrameworks } from "../api/queries";
 import { can } from "../api/session";
 import { QueryStatus, errorText } from "../ui/QueryStatus";
-import { KIND_CONFIG, compare, fmt, frameworksToCompare, grid, passed, pct } from "./compare";
+import { compare, fmt, frameworksToCompare, grid, passed, pct } from "./compare";
 import { Production } from "./Production";
 import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
-import { confirmDialog } from "../ui/dialog";
+import { confirmDialog, toast } from "../ui/dialog";
+import { EvaluatorForm, useEvaluatorKinds } from "./EvaluatorForm";
 import { PageHeader } from "../ui/PageHeader";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
@@ -202,50 +203,36 @@ function Evaluators({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
   const key = ["evaluators", wfId];
   const list = useQuery({ queryKey: key, queryFn: () => apiFetch<EvaluatorOut[]>(`/workflows/${wfId}/evaluators`) });
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState("exact");
-  const [config, setConfig] = useState("{}");
-  const [threshold, setThreshold] = useState("");
-  const create = useMutation({
-    mutationFn: () => apiFetch<EvaluatorOut>(`/workflows/${wfId}/evaluators`, {
-      method: "POST",
-      json: { name, kind, config: parseJson(config, "config"), threshold: threshold ? Number(threshold) : null },
-    }),
-    onSuccess: () => { setName(""); void qc.invalidateQueries({ queryKey: key }); },
+  const kinds = useEvaluatorKinds();
+  const label = (k: string) => kinds.data?.find((x) => x.kind === k)?.label ?? k;
+  const [form, setForm] = useState<"new" | EvaluatorOut | null>(null);
+  const remove = useMutation({
+    mutationFn: (eid: string) => apiFetch(`/evaluators/${eid}`, { method: "DELETE" }),
+    onSuccess: () => { toast("Deleted the evaluator"); void qc.invalidateQueries({ queryKey: key }); },
   });
-  const remove = useMutation({ mutationFn: (eid: string) => apiFetch(`/evaluators/${eid}`, { method: "DELETE" }), onSuccess: () => void qc.invalidateQueries({ queryKey: key }) });
   const [trying, setTrying] = useState<string | null>(null);
   const builder = can("builder");
   return (
     <section className="pad">
-      {builder && (
-        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <div className="row gap">
-            <input required placeholder="Evaluator name" aria-label="evaluator name" value={name} onChange={(e) => setName(e.target.value)} />
-            <select aria-label="evaluator kind" value={kind} onChange={(e) => { setKind(e.target.value); setConfig(JSON.stringify(KIND_CONFIG[e.target.value])); }}>
-              <option value="exact">exact match</option><option value="regex">regex</option><option value="json_schema">JSON Schema</option>
-              <option value="llm_judge">LLM judge</option><option value="trajectory">tool trajectory</option><option value="code">workspace code</option>
-              <option value="composite">composite</option><option value="pairwise">pairwise judge</option>
-              <option value="retrieval">retrieval (found the right documents)</option>
-            </select>
-            <input aria-label="threshold" placeholder="pass at (default)" value={threshold} onChange={(e) => setThreshold(e.target.value)} style={{ width: 120 }} />
-            <button type="submit" disabled={create.isPending}>Add evaluator</button>
-          </div>
-          <textarea aria-label="evaluator config" rows={3} value={config} onChange={(e) => setConfig(e.target.value)} />
-          {create.error && <p role="alert" className="error-text">{errorText(create.error)}</p>}
-        </form>
+      {builder && !form && <button type="button" className="primary" onClick={() => setForm("new")}>+ New evaluator</button>}
+      {builder && form && (
+        <EvaluatorForm key={form === "new" ? "new" : form.id} wfId={wfId} editing={form === "new" ? undefined : form}
+          onDone={() => setForm(null)} />
       )}
       <QueryStatus q={list} what="evaluators" empty={<p className="muted">No evaluators yet.</p>} />
       {list.data && list.data.length > 0 && (
         <table className="table" data-testid="evaluators">
-          <thead><tr><th>Name</th><th>Kind</th><th>Config</th><th>Passes at</th><th /></tr></thead>
+          <thead><tr><th>Name</th><th>Kind</th><th>Settings</th><th>Passes at</th><th /></tr></thead>
           <tbody>
             {list.data.map((e) => (
               <tr key={e.id}>
-                <td>{e.name}</td><td>{e.kind}</td><td><code>{short(e.config ?? {})}</code></td><td>{e.effective_threshold}</td>
+                <td>{e.name}</td><td>{label(e.kind)}</td><td><code>{short(e.config ?? {})}</code></td><td>{e.effective_threshold}</td>
                 <td className="row gap">
                   <button type="button" className="link small" onClick={() => setTrying(trying === e.id ? null : e.id)}>Try</button>
-                  {builder && <button type="button" className="link small" onClick={() => remove.mutate(e.id)}>Delete</button>}
+                  {builder && <button type="button" className="link small" onClick={() => setForm(e)}>Edit</button>}
+                  {builder && <button type="button" className="link small" onClick={async () => {
+                    if (await confirmDialog({ title: `Delete the evaluator ${e.name}?`, body: "Experiments that used it keep their scores.", confirm: "Delete", danger: true })) remove.mutate(e.id);
+                  }}>Delete</button>}
                 </td>
               </tr>
             ))}

@@ -15,7 +15,18 @@ from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Evaluator, WorkflowRow
 from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
-from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, check_config, score, spec_of
+from agentcanvas.evaluation import (
+    DEFAULT_THRESHOLD,
+    KINDS,
+    ONLY_IN_EXPERIMENTS,
+    Kind,
+    Observation,
+    Score,
+    check_config,
+    kind_schema,
+    score,
+    spec_of,
+)
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services import gates, model_defaults
@@ -103,6 +114,31 @@ async def _commit(session: AsyncSession, name: str) -> None:
     except IntegrityError:
         await session.rollback()
         raise Conflict(f"this workflow already has an evaluator named '{name}'") from None
+
+
+class EvaluatorKindOut(BaseModel):
+    kind: str
+    label: str
+    description: str
+    config_schema: dict[str, Any] = Field(description="JSON Schema of the kind's config, for a form")
+    default_threshold: float
+    experiments_only: bool
+
+
+@router.get("/evaluator-kinds", response_model=list[EvaluatorKindOut])
+async def evaluator_kinds() -> list[EvaluatorKindOut]:
+    """Every kind of evaluator with its form: label, what it checks, the schema of its config, its pass mark."""
+    return [
+        EvaluatorKindOut(
+            kind=k,
+            label=label,
+            description=what,
+            config_schema=kind_schema(k),
+            default_threshold=DEFAULT_THRESHOLD.get(k, 1.0),
+            experiments_only=k in ONLY_IN_EXPERIMENTS,
+        )
+        for k, (label, what) in KINDS.items()
+    ]
 
 
 @router.get("/workflows/{wf_id}/evaluators", response_model=list[EvaluatorOut])

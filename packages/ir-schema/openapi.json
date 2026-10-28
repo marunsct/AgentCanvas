@@ -3057,6 +3057,46 @@
         "title": "EvaluatorIn",
         "type": "object"
       },
+      "EvaluatorKindOut": {
+        "properties": {
+          "config_schema": {
+            "additionalProperties": true,
+            "description": "JSON Schema of the kind's config, for a form",
+            "title": "Config Schema",
+            "type": "object"
+          },
+          "default_threshold": {
+            "title": "Default Threshold",
+            "type": "number"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "experiments_only": {
+            "title": "Experiments Only",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "description",
+          "config_schema",
+          "default_threshold",
+          "experiments_only"
+        ],
+        "title": "EvaluatorKindOut",
+        "type": "object"
+      },
       "EvaluatorOut": {
         "properties": {
           "config": {
@@ -13927,6 +13967,67 @@
         "summary": "Api Resume",
         "tags": [
           "deployments"
+        ]
+      }
+    },
+    "/v1/evaluator-kinds": {
+      "get": {
+        "description": "Every kind of evaluator with its form: label, what it checks, the schema of its config, its pass mark.",
+        "operationId": "evaluator_kinds_v1_evaluator_kinds_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluatorKindOut"
+                  },
+                  "title": "Response Evaluator Kinds V1 Evaluator Kinds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Evaluator Kinds",
+        "tags": [
+          "evaluators"
         ]
       }
     },

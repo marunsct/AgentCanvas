@@ -69,20 +69,6 @@ export function compare(
 export const fmt = (v: number | null | undefined, digits = 2) => (v == null ? "—" : v.toFixed(digits));
 export const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
-/** Starting configs for each evaluator kind. Judges name no model: the server gives them the project's judge model
- * (Settings › Models); add "model" to choose another. */
-export const KIND_CONFIG: Record<string, unknown> = {
-  exact: {},
-  regex: { channel: "out", pattern: "" },
-  json_schema: { channel: "out", schema: { type: "object" } },
-  llm_judge: { rubric: "Is the answer correct and polite?" },
-  trajectory: { mode: "strict" },
-  code: { function: "scripts.evals:check" },
-  composite: { evaluators: [], mode: "weighted", weights: {} },
-  pairwise: { rubric: "Which answer is more helpful and correct?" },
-  retrieval: { channel: "passages", k: 3, metric: "recall", match_by: "source" },
-};
-
 /** Convert and compare (S25): one target per installed framework the experiment does not run on yet. */
 export function frameworksToCompare<T extends { framework: string; version: string; overrides: string; label: string }>(
   frameworks: { id: string }[], own: string, targets: T[],

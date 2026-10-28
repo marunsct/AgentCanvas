@@ -109,6 +109,35 @@ class RetrievalConfig(BaseModel):
     )
 
 
+# kind -> (label, what it checks), for the Evaluation page's form
+KINDS: dict[str, tuple[str, str]] = {
+    "exact": ("Exact match", "The output equals the example's reference, field by field."),
+    "regex": ("Pattern", "A field's text contains a regular-expression pattern."),
+    "json_schema": ("JSON Schema", "A field's value fits a JSON Schema."),
+    "llm_judge": ("LLM judge", "A model grades the output against a rubric (0 to 1), with its reasoning."),
+    "trajectory": ("Tool trajectory", "The run called the same tools as the example, in order or not."),
+    "code": ("Your code", "A function in the workspace scores the run."),
+    "composite": ("Composite", "Combines other evaluators: a weighted mean, or all / any must pass."),
+    "pairwise": ("Pairwise judge", "Experiments only: a model says which of two targets answered better."),
+    "retrieval": ("Retrieval", "A Search knowledge block found the documents the example lists as relevant."),
+}
+SERVER_SET = {"pinned", "parts"}  # config fields the server fills in; not for the form
+
+
+def kind_schema(kind: str) -> dict[str, Any]:
+    """The JSON Schema of a kind's config as the form shows it: server-set fields left out, and a judge's model
+    optional (the project's judge model is used when it is left empty)."""
+    schema = CONFIGS[kind].model_json_schema(by_alias=True)
+    props = {k: v for k, v in schema.get("properties", {}).items() if k not in SERVER_SET}
+    required = [
+        r for r in schema.get("required", []) if r in props and not (kind in ("llm_judge", "pairwise") and r == "model")
+    ]
+    out = {**schema, "properties": props, "required": required}
+    if kind in ("llm_judge", "pairwise") and "model" in props:
+        props["model"] = {**props["model"], "description": "provider:model; empty: the project's judge model"}
+    return out
+
+
 CONFIGS: dict[str, type[BaseModel]] = {
     "exact": ExactConfig,
     "regex": RegexConfig,

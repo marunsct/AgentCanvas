@@ -30,10 +30,25 @@ test("dataset, evaluator, experiment with a variant, results grid and comparison
   }
 
   await page.getByRole("tab", { name: "Evaluators" }).click();
+  await page.getByRole("button", { name: "+ New evaluator" }).click();
   await page.getByLabel("evaluator name").fill("exact");
   await page.getByRole("button", { name: "Add evaluator" }).click();
   await expect(page.getByTestId("evaluators")).toContainText("exact");
-  await page.getByRole("button", { name: "Try" }).click();
+  // a kind with settings: a form from its schema, not JSON; then edited in place
+  await page.getByRole("button", { name: "+ New evaluator" }).click();
+  await page.getByLabel("evaluator name").fill("says hello");
+  await page.getByLabel("evaluator kind").selectOption("regex");
+  const form = page.getByRole("form", { name: "New evaluator" });
+  await form.getByLabel("Channel", { exact: false }).first().fill("out");
+  await form.getByLabel("Pattern", { exact: false }).first().fill("^Hello");
+  await page.getByRole("button", { name: "Add evaluator" }).click();
+  const row = page.getByTestId("evaluators").locator("tr", { hasText: "says hello" });
+  await expect(row).toContainText("Pattern");
+  await row.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("form", { name: "Edit evaluator" }).getByLabel("Pattern", { exact: false }).first().fill("Hello");
+  await page.getByRole("button", { name: "Save evaluator" }).click();
+  await expect(row).toContainText('"pattern":"Hello"');
+  await page.getByTestId("evaluators").locator("tr", { hasText: "Exact match" }).getByRole("button", { name: "Try" }).click();
   await page.getByLabel("sample").fill('{"output": {"out": "Hi"}, "reference": {"out": "Hi"}}');
   await page.getByRole("button", { name: "Score this sample" }).click();
   await expect(page.getByTestId("try-evaluator")).toContainText("exact 1.00");

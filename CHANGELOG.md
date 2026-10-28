@@ -71,6 +71,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **The Inbox** names the waiting block (the API returns `node_label`) instead of showing node and thread ids,
   says how long it has waited, links to the run, filters by workflow, and confirms a decision with a notice. Its
   response type is the generated one.
+- **Evaluators are a form, not JSON**: each kind's settings are a form built from its schema
+  (`GET /evaluator-kinds`, with a label and what it checks), and evaluators can be edited and deleted (with a
+  confirmation) from the list, which shows each kind by name.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 
