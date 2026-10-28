@@ -17,6 +17,7 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   replicas did not share: the turn now holds a lease on the conversation row (`busy_until`, 15 minutes at most).
 - The Workspace dropped unsaved edits when another file was opened: it now asks (Discard changes / Keep editing),
   and the browser warns before the tab closes; a failed delete says why.
+- The Runs page could crash when the API answered with something of another shape (found by the chaos sweep).
 - Deleting a workflow that had been published and called failed on Postgres (references to its versions and
   deployments had no delete rule). A migration adds the rules.
 
@@ -93,6 +94,15 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - Honest labels: the API documentation no longer shows the plan's work-item ids ("(S17)", "(M7-T3)"; a test keeps
   it so); beta blocks are marked in the palette; "stub risky tools" reads "tools that change things are only
   recorded".
+- **Copilot**: skills it reads when they apply (debugging, a person in the loop, answering from documents, tests,
+  dependable model calls); an investigator and a researcher sub-agent with read-only tools; the conversation's cost
+  in the panel; test runs that call real models need the person's yes once per conversation; the command palette
+  opens the Copilot or sends it what was typed.
+- **Playground** streams answers (`POST /playground/chat/stream`) with Stop and Markdown, and keeps the chat while
+  the tab is open.
+- Home leads with the workflow list; empty states say what goes there; policies are edited in place; the Search
+  knowledge block picks its base from a list; Members, Events and Memory get headers, confirmations and role gating;
+  Settings > You lists the keyboard shortcuts; CI caches uv downloads.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 
