@@ -12,6 +12,29 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### The Copilot work so far, and the calls in it
+- **Deep Agents is built, not yet the default.** `AGENTCANVAS_COPILOT_ENGINE=deepagents` runs it; every Copilot test
+  runs on both engines and passes. I left the loop as the default because neither engine has been measured on a
+  real model. Switch the default when the nightly evaluation (below) shows Deep Agents at least as good; reverse by
+  leaving the variable unset.
+- **The nightly evaluation needs a key from you**: add `ANTHROPIC_API_KEY` as a repository secret (Settings →
+  Secrets → Actions). Until then the job says it was skipped. It uses `anthropic:claude-haiku-4-5` unless you set
+  the repository variable `COPILOT_EVAL_MODEL` (about 40 cases per engine per night).
+- **AG-UI: the event names and shapes, not the `ag-ui-langgraph` bridge.** The bridge expects its own agent
+  wrapper and input contract, which do not fit our sign-in, proposals and saved conversations; the panel reads our
+  stream, which now carries `text_delta` and `todos` beside the events it had. A CopilotKit client could be added
+  later by mapping these events one to one.
+- **Markdown: a small renderer of our own (about 120 lines), not react-markdown.** The Copilot's answers need a
+  safe subset (headings, lists, code, links); ours turns everything into React elements, so no HTML or
+  `javascript:` link from a reply reaches the page, and it adds nothing to the bundle.
+- **Partial accept is decided in the browser.** The editor applies the ticked commands through the normal edit
+  path (so Undo works as before) and the server records which were kept; a change that needs another (a wire and
+  its step) is ticked and unticked with it.
+- **New chat archives instead of deleting.** Conversations are kept until deleted from History; the retention job
+  does not touch them yet (they are small). Say if you want them to follow the organisation's retention.
+- **A turn's lease is 15 minutes.** A server that dies mid-turn leaves the conversation busy for at most that long;
+  a person can also start a New chat meanwhile.
+
 ### Egress: how it is enforced, and the one place it is not
 The proxy is our own (about 250 lines of standard library) rather than Squid or Envoy: it has to check a list that
 differs per call and per project, which those would need a plugin or a control plane for; ours checks an HMAC-signed
