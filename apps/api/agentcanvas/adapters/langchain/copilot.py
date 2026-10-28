@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -26,9 +27,11 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, Too
 from langchain_core.tools import StructuredTool
 from langgraph.errors import GraphRecursionError
 
+from agentcanvas import copilot as copilot_package
 from agentcanvas.copilot.service import MAX_ERROR, MAX_STEPS, ROLE, CopilotTurn, Mode, _now
 from agentcanvas.copilot.tools import READ_ONLY, TOOLS, compact_workflow, result_text, run_tool
 
+SKILLS = Path(copilot_package.__file__).with_name("skills")  # one folder per skill, each with a SKILL.md
 SHELL = "execute"  # the harness's shell tool: the Copilot has no shell
 STEPS_PER_TURN = MAX_STEPS * 8  # graph steps (model, tools and middleware nodes): a backstop behind the call limit
 LIMIT = "ModelCallLimitMiddleware"
@@ -91,9 +94,16 @@ class DeepAgentTurn(CopilotTurn):
         return out
 
     def _files(self) -> dict[str, Any]:
-        """The scratch filesystem the agent starts with: the full workflow (the prompt's copy may be cut)."""
-        doc = json.dumps(compact_workflow(self.before), indent=1)
-        return {"/workflow.json": {"content": doc.splitlines(), "created_at": _now(), "modified_at": _now()}}
+        """The scratch filesystem the agent starts with: the full workflow (the prompt's copy may be cut) and the
+        skills, which the harness lists by name and description and the agent reads when one applies."""
+
+        def file(text: str) -> dict[str, Any]:
+            return {"content": text.splitlines(), "created_at": _now(), "modified_at": _now()}
+
+        files = {"/workflow.json": file(json.dumps(compact_workflow(self.before), indent=1))}
+        for skill in sorted(SKILLS.glob("*/SKILL.md")):
+            files[f"/skills/{skill.parent.name}/SKILL.md"] = file(skill.read_text())
+        return files
 
     async def run(self, text: str, mode: Mode) -> AsyncIterator[dict[str, Any]]:
         allowed = list(TOOLS) if mode == "build" else READ_ONLY
@@ -113,6 +123,7 @@ class DeepAgentTurn(CopilotTurn):
             tools=self._tools(allowed, events),
             system_prompt=system,
             middleware=middleware,
+            skills=["/skills/"],
         )
         messages = [*self._history(), HumanMessage(content=text)]
         self.history.append({"role": "user", "content": text, "at": _now(), "mode": mode})

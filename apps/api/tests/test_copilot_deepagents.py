@@ -140,3 +140,16 @@ async def test_stop_keeps_what_was_said(engine):
     assert history[0]["role"] == "user"
     assert history[-1]["role"] == "assistant" and history[-1]["stopped"] is True
     assert history[-1]["content"] == "Looking at it now."
+
+
+async def test_skills_are_offered_and_read_on_demand(app, api_client):
+    """The harness lists the skills (name and when to use them) in the prompt; the agent reads one's SKILL.md."""
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    model = use(app, tool("read_file", file_path="/skills/debug-a-run/SKILL.md"), "Done.")
+    await ask(api_client, wf, "why did my last run fail?", mode="ask")
+    system = next(m for m in model.received[0] if m.type == "system").content
+    text = system if isinstance(system, str) else " ".join(b.get("text", "") for b in system if isinstance(b, dict))
+    for name in ("debug-a-run", "human-approval", "answer-from-documents", "write-tests", "model-reliability"):
+        assert name in text, name
+    read = [m for m in model.received[-1] if m.type == "tool"]
+    assert read and "reproduce_run" in read[0].content
