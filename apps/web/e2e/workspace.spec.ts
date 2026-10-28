@@ -124,7 +124,7 @@ test("secrets are write-only, and live in Settings", async ({ page }) => {
 test("the sandbox policy is scaffolded and checked", async ({ page }) => {
   await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json"); // fresh
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Sandbox policy (file)" }).click();
+  await page.getByRole("button", { name: "Open the sandbox policy as a file" }).click();
   await expect(page.getByTestId("code-editor")).toContainText('"egress": []');
   await expect(page.getByTestId("lint")).toContainText("no problems");
   const policy = { egress: [], inject: [{ name: "crm", hosts: ["api.crm.example.com"], headers: { Authorization: "Bearer {{ secret.NOPE_E2E }}" } }] };

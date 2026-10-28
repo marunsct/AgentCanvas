@@ -141,7 +141,6 @@ export function WorkspacePage() {
             ))}
           </div>
           {create.error && <p className="error-text small">{(create.error as Error).message}</p>}
-          <button type="button" className="link" onClick={() => void openPolicy()} title="sandbox.json as a file; Settings › Sandbox edits it as a form">Sandbox policy (file)</button>
           <QueryStatus q={files} what="workspace files" />
           {folder && (
             <>
@@ -151,7 +150,9 @@ export function WorkspacePage() {
             </>
           )}
           <FileTree label={folder ? "shared files" : "workspace files"} files={shared} selected={selected} onOpen={(path) => void open(path)} />
-          <p className="muted small secrets-moved">API keys and passwords for this code are under <Link to="/settings/secrets" data-testid="secrets-link">Settings › Secrets</Link>.</p>
+          <p className="muted small secrets-moved">API keys and passwords for this code are under <Link to="/settings/secrets" data-testid="secrets-link">Settings › Secrets</Link>.
+            What it may reach is the sandbox policy: <Link to="/settings/sandbox">Settings › Sandbox</Link>, or
+            {" "}<button type="button" className="link" onClick={() => void openPolicy()} aria-label="Open the sandbox policy as a file">sandbox.json</button> as a file.</p>
         </aside>
         <section aria-label="editor">
           {selected && !file.data && <QueryStatus q={file} what={selected} />}
