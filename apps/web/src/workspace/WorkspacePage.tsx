@@ -13,7 +13,7 @@ import { FileTree } from "./FileTree";
 import { KIND_LABEL, starter } from "./starters";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { FileOut, FileContent, FilesOut } from "../api/generated";
-import { confirmDialog } from "../ui/dialog";
+import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 import { PageHeader } from "../ui/PageHeader";
 
 
@@ -83,6 +83,25 @@ export function WorkspacePage() {
     if (files.data?.files.some((f) => f.path === POLICY)) setParams({ file: POLICY });
     else create.mutate({ path: POLICY, content: POLICY_TEMPLATE });
   };
+  const move = useMutation({
+    mutationFn: ({ path, to }: { path: string; to: string }) =>
+      apiFetch<FileOut>(`${base()}/files-move`, { method: "POST", json: { path, to } }),
+    onSuccess: (out) => {
+      toast(`Moved to ${out.path}`);
+      setParams({ file: out.path });
+      void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
+      void qc.invalidateQueries({ queryKey: ["workspace-catalog"] });
+    },
+  });
+  const askMove = async () => {
+    if (!selected || !(await leave())) return;
+    const to = (await promptDialog({
+      title: "Rename or move the file", confirm: "Move",
+      body: "Steps and tools that use it by its old path stop finding it until you update them.",
+      input: { label: "New path", value: selected, required: true },
+    }))?.trim();
+    if (to && to !== selected) move.mutate({ path: selected, to });
+  };
   const remove = useMutation({
     mutationFn: (path: string) => apiFetch(`${base()}/files/${enc(path)}`, { method: "DELETE" }),
     onSuccess: () => { setParams({}); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); },
@@ -142,6 +161,7 @@ export function WorkspacePage() {
                 <code>{selected}</code>{dirty && <span className="badge warn">unsaved</span>}
                 <span className="spacer" />
                 <button type="button" className="primary" onClick={doSave} disabled={!dirty || save.isPending}>Save</button>
+                <button type="button" onClick={() => void askMove()} disabled={move.isPending}>Rename / move…</button>
                 <button type="button" className="danger" onClick={async () => { if (await confirmDialog({ title: `Delete ${selected}?`, confirm: "Delete", danger: true })) remove.mutate(selected); }}>
                   Delete
                 </button>
@@ -153,6 +173,7 @@ export function WorkspacePage() {
               </ul>
               {save.error && <p className="error-text">{(save.error as Error).message}</p>}
               {remove.error && <p className="error-text" role="alert">Could not delete {selected}: {(remove.error as Error).message}</p>}
+              {move.error && <p className="error-text" role="alert">Could not move {selected}: {(move.error as Error).message}</p>}
               {selected.endsWith(".py") && (
                 <CodeHelp workflowId={workflowId} path={selected} content={draft ?? file.data.content} diagnostics={diagnostics}
                   selection={() => editorApi.current?.selection() ?? ""} onAccept={(code) => editorApi.current?.setText(code)} />

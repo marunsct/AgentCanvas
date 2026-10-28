@@ -206,3 +206,17 @@ async def test_sandboxed_script_node_in_a_run(app, api_client):
     wf2 = await make_wf(api_client, script_workflow("scripts.boom:run"))
     evs = events((await api_client.post(f"/v1/workflows/{wf2}/runs/stream", json={"input": {"text": "x"}})).text)
     assert evs[-1]["type"] == "RUN_ERROR" and "ValueError: nope" in evs[-1]["message"]
+
+
+async def test_files_are_renamed_and_moved_inside_the_workspace(api_client):
+    await api_client.put(f"{P}/files/scripts/old_name.py", json={"content": "x = 1\n"})
+    r = await api_client.post(f"{P}/files-move", json={"path": "scripts/old_name.py", "to": "scripts/lib/new_name.py"})
+    assert r.status_code == 200 and r.json()["path"] == "scripts/lib/new_name.py"
+    assert (await api_client.get(f"{P}/files/scripts/lib/new_name.py")).json()["content"] == "x = 1\n"
+    assert (await api_client.get(f"{P}/files/scripts/old_name.py")).status_code == 404
+    await api_client.put(f"{P}/files/scripts/other.py", json={"content": "y = 2\n"})
+    for bad in ({"path": "scripts/lib/new_name.py", "to": "scripts/other.py"},  # never over another file
+                {"path": "scripts/lib/new_name.py", "to": "../escape.py"},
+                {"path": "scripts/lib/new_name.py", "to": "scripts/x.exe"}):  # fmt: skip
+        assert (await api_client.post(f"{P}/files-move", json=bad)).status_code == 422, bad
+    assert (await api_client.post(f"{P}/files-move", json={"path": "nope.py", "to": "x.py"})).status_code == 404

@@ -4059,6 +4059,30 @@
         "title": "FileContent",
         "type": "object"
       },
+      "FileMove": {
+        "properties": {
+          "path": {
+            "description": "the file to move",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "to": {
+            "description": "its new path (a new name, or another folder)",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "to"
+        ],
+        "title": "FileMove",
+        "type": "object"
+      },
       "FileOut": {
         "properties": {
           "modified": {
@@ -18245,6 +18269,82 @@
           }
         ],
         "summary": "List Files",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/files-move": {
+      "post": {
+        "description": "Rename or move a file. Blocks and workflows that name it by its old import path stop finding it.",
+        "operationId": "move_file_v1_projects__project_id__files_move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move File",
         "tags": [
           "workspace"
         ]

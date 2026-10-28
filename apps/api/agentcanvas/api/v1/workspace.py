@@ -154,6 +154,18 @@ async def save_file(
     return SavedFile(path=info.path, size=info.size, modified=info.modified, diagnostics=diagnostics)
 
 
+class FileMove(BaseModel):
+    path: str = Field(min_length=1, max_length=500, description="the file to move")
+    to: str = Field(min_length=1, max_length=500, description="its new path (a new name, or another folder)")
+
+
+@router.post("/files-move", response_model=FileOut)
+async def move_file(body: FileMove, ws: Workspace = Depends(workspace)) -> FileOut:
+    """Rename or move a file. Blocks and workflows that name it by its old import path stop finding it."""
+    info = await _off_loop(ws, lambda: _guard(lambda: ws.move(body.path, body.to)))
+    return FileOut(path=info.path, size=info.size, modified=info.modified)
+
+
 @router.delete("/files/{path:path}", status_code=204)
 async def delete_file(path: str, ws: Workspace = Depends(workspace)) -> Response:
     await _off_loop(ws, lambda: ws.delete(path))

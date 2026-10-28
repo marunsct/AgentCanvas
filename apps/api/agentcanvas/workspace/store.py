@@ -153,6 +153,21 @@ class Workspace:
         p.unlink()
         self._commit(f"delete {p.relative_to(self.root).as_posix()}", p)
 
+    def move(self, rel: str, to: str) -> FileInfo:
+        """Rename or move a file inside the workspace (never over another file)."""
+        src, dst = self.resolve(rel), self.resolve(to)
+        if not src.is_file():
+            raise FileNotFoundError(rel)
+        if dst.exists():
+            raise WorkspaceError(f"'{to}' already exists")
+        if dst.suffix not in TEXT_SUFFIXES and dst.name not in TEXT_SUFFIXES:
+            raise WorkspaceError(f"'{dst.suffix or dst.name}' files cannot be edited here")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        self._commit(f"move {src.relative_to(self.root).as_posix()} to {dst.relative_to(self.root).as_posix()}")
+        st = dst.stat()
+        return FileInfo(dst.relative_to(self.root).as_posix(), st.st_size, st.st_mtime)
+
     def revision(self) -> str:
         """Changes whenever workspace code changes (graphs built from old code are rebuilt)."""
         h = hashlib.sha256()

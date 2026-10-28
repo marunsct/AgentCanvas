@@ -742,8 +742,16 @@ export type Line = number;
 export type Message7 = string;
 export type Diagnostics2 = LintItem[];
 export type Path3 = string;
-export type Modified = number;
+/**
+ * the file to move
+ */
 export type Path4 = string;
+/**
+ * its new path (a new name, or another folder)
+ */
+export type To = string;
+export type Modified = number;
+export type Path5 = string;
 export type Size1 = number;
 export type Content3 = string;
 export type Files1 = FileOut[];
@@ -1904,7 +1912,7 @@ export type Problems3 = LintItem[];
 export type RefusesEgress = boolean;
 export type Diagnostics4 = LintItem[];
 export type Modified1 = number;
-export type Path5 = string;
+export type Path6 = string;
 export type Size2 = number;
 export type RunId8 = string;
 export type Scores4 = ScoreOut[];
@@ -2014,7 +2022,7 @@ export type InputField = string | null;
 /**
  * the chat page, relative to the web app (/s/<token>)
  */
-export type Path6 = string;
+export type Path7 = string;
 export type Suggestions1 = string[];
 export type Title4 = string;
 export type Token = string;
@@ -2310,6 +2318,7 @@ export interface ApiSchemas {
   FeedbackIn?: FeedbackIn;
   FieldChange?: FieldChange;
   FileContent?: FileContent;
+  FileMove?: FileMove;
   FileOut?: FileOut;
   FileSave?: FileSave;
   FilesOut?: FilesOut;
@@ -3941,11 +3950,19 @@ export interface LintItem {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FileMove".
+ */
+export interface FileMove {
+  path: Path4;
+  to: To;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "FileOut".
  */
 export interface FileOut {
   modified: Modified;
-  path: Path4;
+  path: Path5;
   size: Size1;
 }
 /**
@@ -4997,7 +5014,7 @@ export interface SandboxPolicy {
 export interface SavedFile {
   diagnostics?: Diagnostics4;
   modified: Modified1;
-  path: Path5;
+  path: Path6;
   size: Size2;
 }
 /**
@@ -5151,7 +5168,7 @@ export interface ShareOut {
   greeting: Greeting1;
   input: InputShape;
   input_field: InputField;
-  path: Path6;
+  path: Path7;
   suggestions: Suggestions1;
   title: Title4;
   token: Token;

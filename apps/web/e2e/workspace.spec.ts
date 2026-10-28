@@ -152,3 +152,13 @@ test("switching files with unsaved changes asks first, and Keep editing keeps th
   await dialog.getByRole("button", { name: "Discard changes" }).click();
   await expect(page).toHaveURL(new RegExp(`guard_${stamp}_b\\.py`));
 });
+
+test("a workspace file is renamed in place", async ({ page }) => {
+  const stamp = Date.now();
+  await page.request.put(`/api/v1/projects/prj_default/files/scripts/mv_${stamp}.py`, { data: { content: "x = 1\n" } });
+  await page.goto(`/workspace?file=scripts/mv_${stamp}.py`);
+  await page.getByRole("button", { name: "Rename / move…" }).click();
+  await answerDialog(page, `scripts/moved/mv_${stamp}.py`);
+  await expect(page).toHaveURL(new RegExp(`moved(/|%2F)mv_${stamp}\\.py`));
+  await expect(page.getByRole("button", { name: `scripts/moved/mv_${stamp}.py` })).toBeVisible();
+});

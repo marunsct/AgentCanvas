@@ -1124,3 +1124,4 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .empty > a, .empty > button { margin-top: 6px; }
 .table.compact th, .table.compact td { padding: 5px 8px; }
 .table tr.selected td { background: var(--accent-soft); }
+.row > button.danger, .row > button.danger-solid { margin-top: 0; }
