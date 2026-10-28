@@ -1055,3 +1055,27 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .radio-list input[type=radio] { width: auto; margin: 0; }
 .server-table td:first-child { width: 40%; }
 .server-table td:last-child { width: 1%; white-space: nowrap; }
+
+/* Copilot: plan, streamed text, Markdown answers, error card */
+.copilot-plan { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; margin-bottom: 6px; background: var(--panel); }
+.copilot-plan ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.copilot-plan li { display: flex; gap: 6px; }
+.copilot-plan li.completed { color: var(--muted); text-decoration: line-through; }
+.copilot-plan li.in_progress { color: var(--accent); font-weight: 600; }
+.copilot-msg .md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 6px 0; }
+.md h4, .md h5 { margin: 10px 0 4px; font-size: 13.5px; }
+.md ul, .md ol { margin: 4px 0; padding-left: 20px; }
+.md li { margin: 2px 0; }
+.md blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border-strong); color: var(--text-2); }
+.md-code { margin: 6px 0; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.md-code-bar { display: flex; justify-content: space-between; align-items: center; padding: 2px 8px; font-size: 11px; color: var(--muted); background: var(--bg-subtle); }
+.md-code pre { margin: 0; padding: 8px 10px; background: var(--code-bg); color: var(--code-fg); overflow-x: auto; font-size: 12px; white-space: pre; }
+.copilot-msg.user .md, .copilot-msg.user { white-space: pre-wrap; }
+.streaming::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.copilot-error { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--tint-err); color: var(--err); font-size: 12.5px; }
+.copilot-error button { flex: none; }
+.copilot-msg .badge { margin-left: 6px; }

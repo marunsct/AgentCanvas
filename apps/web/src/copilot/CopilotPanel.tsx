@@ -3,7 +3,8 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { can, useCan, useMe } from "../api/session";
 import { useEditor } from "../editor/store";
-import { type Brief, type Mode, toolLabel, useCopilot } from "./copilot";
+import { Markdown } from "../ui/Markdown";
+import { type Brief, type Mode, type Todo, toolLabel, useCopilot } from "./copilot";
 
 const STARTERS = [
   "Build a workflow that classifies support emails and drafts a reply",
@@ -29,9 +30,26 @@ function BriefCard({ brief }: { brief: Brief }) {
   );
 }
 
+function Plan({ todos }: { todos: Todo[] }) {
+  const done = todos.filter((t) => t.status === "completed").length;
+  return (
+    <div className="copilot-plan" data-testid="copilot-plan" aria-label="The Copilot's plan">
+      <div className="small muted">Plan · {done} of {todos.length} done</div>
+      <ul>
+        {todos.map((t, i) => (
+          <li key={i} className={t.status}>
+            <span aria-hidden="true">{t.status === "completed" ? "✓" : t.status === "in_progress" ? "▸" : "○"}</span>
+            <span>{t.content}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function CopilotPanel() {
   const workflowId = useEditor((s) => s.workflowId);
-  const { conversation, busy, live, error } = useCopilot();
+  const { conversation, busy, live, error, last } = useCopilot();
   const [text, setText] = useState("");
   const canBuild = useCan("builder");
   const email = useMe((s) => s.me.email);
@@ -50,7 +68,7 @@ export function CopilotPanel() {
   }, [request, conversation, busy]);
   useEffect(() => { // newer browsers return a promise here: an effect must not return it as its cleanup
     end.current?.scrollIntoView?.({ block: "end" });
-  }, [conversation?.messages.length, live?.text.length, live?.activity.length]);
+  }, [conversation?.messages.length, live?.text.length, live?.activity.length, live?.streaming.length, live?.todos.length]);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
@@ -77,7 +95,7 @@ export function CopilotPanel() {
       </div>
       {conversation.model.problem && (
         <p className="error-text small" data-testid="copilot-model-problem">
-          {conversation.model.problem} <Link to="/setup">Settings</Link>
+          {conversation.model.problem} <Link to="/settings/copilot">Copilot settings</Link>
         </p>
       )}
       {conversation.brief && <BriefCard brief={conversation.brief} />}
@@ -98,7 +116,12 @@ export function CopilotPanel() {
         {conversation.messages.map((m, i) => (
           <div key={i} className={`copilot-turn ${m.role}`}>
             <span className="copilot-avatar" aria-hidden="true">{m.role === "user" ? (email?.[0] ?? "Y").toUpperCase() : "✦"}</span>
-            <div className={`copilot-msg ${m.role}`}>{m.content || (m.proposal_id ? "Proposed changes." : "")}</div>
+            <div className={`copilot-msg ${m.role}`}>
+              {m.role === "assistant"
+                ? <Markdown text={m.content || (m.proposal_id ? "Proposed changes." : "")} />
+                : m.content}
+              {m.stopped && <span className="badge small" title="You stopped this answer">stopped</span>}
+            </div>
           </div>
         ))}
         {live && (
@@ -114,8 +137,10 @@ export function CopilotPanel() {
                   ))}
                 </div>
               )}
-              {live.text.map((t, i) => <p key={i}>{t}</p>)}
-              <span className="typing" aria-label="Thinking"><i /><i /><i /> Thinking…</span>
+              {live.todos.length > 0 && <Plan todos={live.todos} />}
+              {live.text.map((t, i) => <Markdown key={i} text={t} />)}
+              {live.streaming && <div className="streaming"><Markdown text={live.streaming} /></div>}
+              {!live.streaming && <span className="typing" aria-label="Thinking"><i /><i /><i /> Thinking…</span>}
             </div>
           </div>
         )}
@@ -146,7 +171,12 @@ export function CopilotPanel() {
           <p className="small muted">After accepting, Undo (Ctrl/⌘+Z) takes it back in one step.</p>
         </section>
       )}
-      {error && <p className="error-text small" role="alert">{error}</p>}
+      {error && (
+        <div className="copilot-error" role="alert" data-testid="copilot-error">
+          <span>{error}</span>
+          {last && !busy && <button type="button" className="small" onClick={() => void useCopilot.getState().retry()}>Try again</button>}
+        </div>
+      )}
 
       <form className="copilot-input" onSubmit={submit}>
         <textarea aria-label="Message the Copilot" rows={2} value={text} disabled={busy}
@@ -165,7 +195,9 @@ export function CopilotPanel() {
           </div>
           <span className="spacer" />
           <span className="small muted" title="tokens used in this conversation">{Math.round((used / conversation.token_cap) * 100)}% used</span>
-          <button type="submit" className="primary" disabled={busy || !text.trim()}>{busy ? "…" : <>Send <span aria-hidden="true">↑</span></>}</button>
+          {busy
+            ? <button type="button" data-testid="copilot-stop" onClick={() => useCopilot.getState().stop()} title="Stop this answer; what is said so far is kept">■ Stop</button>
+            : <button type="submit" className="primary" disabled={!text.trim()}>Send <span aria-hidden="true">↑</span></button>}
         </div>
       </form>
     </div>
