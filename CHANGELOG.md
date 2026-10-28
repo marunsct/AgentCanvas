@@ -53,7 +53,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   OpenAI Agents SDK (and every framework that talks to the bridge) failed with "'tuple' object has no attribute 'choices'"
   on some runs of an experiment. Callers now wait for the bridge's port.
 - Fixable high and critical vulnerabilities in the API image (certifi, filelock, pypdf upgraded; pip, whose vendored
-  libraries were the rest, removed from the runtime image).
+  libraries were the rest, removed from the runtime image). Advisories published since (authlib 1.8.0, a critical
+  signature bypass, and dnspython 2.8.0, both reached only through the optional MCP extra) are fixed by locking authlib
+  1.9.1 and dnspython 2.9.0.
 
 ### Added
 - A banner for failures nobody handled (a rejected promise from a fire-and-forget call used to vanish silently).

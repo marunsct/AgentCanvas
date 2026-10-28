@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Dependabot #73 (nginx-unprivileged 1.29 to 1.31): safe to merge; and a scan that found new advisories
+Built the web image on 1.31 and ran the whole `images` stage: Trivy 0/0, every probe through nginx passes, including the
+share-link framing check. Run on the same day, the scan also started failing for the API image: authlib 1.8.0 (a
+critical signature-verification bypass, two high) and dnspython 2.8.0, both pulled in only by `fastmcp` (the `mcp`
+extra). I raised just those two in `uv.lock` (1.9.1, 2.9.0) instead of ignoring them, and the MCP tests pass. *Why:* the
+scan is a gate because advisories keep arriving, and it did its job. *Reverse:* none needed; a new advisory with no
+fix goes in `infra/.trivyignore` with a reason and an expiry.
+
 ### Python is capped at 3.14 for the server and every project we write
 Found while testing Dependabot #69: with Python 3.15 on the machine, `uv` picked it for an export and the install failed
 (`google-re2`, via `cel-python`, has no 3.15 wheel and needs a C++ toolchain). `requires-python = ">=3.12"` had no
