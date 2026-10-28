@@ -1,4 +1,4 @@
-import { answerDialog, expect, test } from "./fixtures";
+import { answerDialog, expect, runnableWorkflow, test } from "./fixtures";
 
 // The app shell and Settings: make a project from the top bar's project menu, rename it in Settings › General,
 // then delete it (typing its name) and land in another project. Uses a project of its own.
@@ -93,7 +93,7 @@ test("the workflow list renames, duplicates and deletes, and finds by name", asy
 });
 
 test("Runs lists a workflow's conversations and opens one in the editor", async ({ page }) => {
-  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Ran ${Date.now()}` } })).json();
+  const wf = await runnableWorkflow(page.request, `Ran ${Date.now()}`);
   const ran = await page.request.post(`/api/v1/workflows/${wf.id}/runs/stream`, { data: { input: {} } });
   expect(ran.ok()).toBeTruthy();
   await page.goto("/runs");
@@ -106,7 +106,7 @@ test("Runs lists a workflow's conversations and opens one in the editor", async 
 });
 
 test("the editor's History tab lists this workflow's runs and opens one in the Timeline", async ({ page }) => {
-  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `History ${Date.now()}` } })).json();
+  const wf = await runnableWorkflow(page.request, `History ${Date.now()}`);
   const ran = await page.request.post(`/api/v1/workflows/${wf.id}/runs/stream`, { data: { input: {} } });
   const thread = ran.headers()["x-thread-id"];
   await page.goto(`/workflows/${wf.id}`);

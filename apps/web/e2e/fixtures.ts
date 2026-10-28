@@ -31,3 +31,18 @@ export async function answerDialog(page: import("@playwright/test").Page, text?:
 
 /** Every section of the Settings page (settings/SettingsPage.tsx), for sweeps that visit every page. */
 export const SETTINGS = ["general", "models", "copilot", "secrets", "sandbox", "observability", "organisation", "members", "policies", "audit", "server", "appearance", "shortcuts"].map((s) => `/settings/${s}`);
+
+/** A workflow with one step (`out = "Hello {{ state.who }}"`), so it can be run; a new workflow has no steps and is refused. */
+export async function runnableWorkflow(api: import("@playwright/test").APIRequestContext, name: string): Promise<{ id: string; name: string }> {
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name } })).json();
+  const ir = {
+    ...wf.ir, state: { channels: [{ name: "who" }, { name: "out" }] },
+    nodes: [{ id: "n_g", type: "core.set", name: "greet", config: { values: { out: "Hello {{ state.who }}" } } }],
+    edges: [
+      { id: "e1", kind: "flow", source: { node: "START" }, target: { node: "n_g" } },
+      { id: "e2", kind: "flow", source: { node: "n_g" }, target: { node: "END" } },
+    ],
+  };
+  expect((await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir }, headers: { "If-Match": "1" } })).ok()).toBeTruthy();
+  return wf;
+}

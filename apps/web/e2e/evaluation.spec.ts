@@ -1,4 +1,4 @@
-import { answerDialog, expect, test } from "./fixtures";
+import { answerDialog, expect, runnableWorkflow, test } from "./fixtures";
 
 // Sprint 12 (FR-EVAL-02..04): build a dataset and an evaluator, run an experiment on the draft and a variant,
 // read the grid, open a run's timeline, and compare two experiments.
@@ -116,7 +116,7 @@ test("a release gate refuses a regression; an admin publishes over it with a rea
 
 test("an annotation queue: a rubric as rows, runs picked from a list, a review", async ({ page }) => {
   const api = page.request;
-  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Queue ${Date.now()}` } })).json();
+  const wf = await runnableWorkflow(api, `Queue ${Date.now()}`);
   expect((await api.post(`/api/v1/workflows/${wf.id}/runs/stream`, { data: { input: {} } })).ok()).toBeTruthy();
   await page.goto(`/workflows/${wf.id}/evaluation`);
   await page.getByRole("tab", { name: "Annotation queues" }).click();

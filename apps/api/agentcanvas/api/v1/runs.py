@@ -231,6 +231,9 @@ async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:
     errors = [d.model_dump() for d in view.diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
     if errors:
         raise WorkflowHasErrors(f"workflow has {len(errors)} error(s); fix them before running", errors=errors)
+    if not view.workflow.nodes:
+        # a new workflow is not "wrong" (no red on an empty canvas), but there is nothing to run
+        raise InvalidInput("this workflow has no steps yet: add one from the palette and connect it from START to END")
     return view.workflow
 
 

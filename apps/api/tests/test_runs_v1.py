@@ -599,3 +599,9 @@ async def test_the_runs_page_orders_conversations_by_when_they_began_not_by_id(a
     assert [t["id"] for t in seen] == ["th_d", "aa-support", "th_b", "zz-support"]
     assert (await api_client.get("/v1/threads", params={"cursor": "th_nope"})).status_code == 422
 
+
+async def test_running_a_workflow_with_no_steps_says_so_instead_of_failing_in_the_engine(app, api_client):
+    wf = (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "Empty"})).json()["id"]
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {}})
+    assert r.status_code == 422 and "no steps yet" in r.text
+    assert (await api_client.get("/v1/threads", params={"workflow_id": wf})).json()["items"] == []
