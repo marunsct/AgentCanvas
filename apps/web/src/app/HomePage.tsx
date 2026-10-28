@@ -3,19 +3,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
-import { PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows } from "../api/queries";
+import { PROJECT_ID, PROJECT_NAME, useSetup, useTemplates } from "../api/queries";
 import { useCan, useMe } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 import { PageHeader } from "../ui/PageHeader";
 import { TemplateGallery } from "./TemplateGallery";
+import { WorkflowList } from "./WorkflowList";
 import type { InvitationOut as Invitation } from "../api/generated";
 
 export function HomePage() {
   const me = useMe((s) => s.me);
   const canBuild = useCan("builder");
-  const workflows = useWorkflows();
   const templates = useTemplates();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -88,21 +88,7 @@ export function HomePage() {
         )}
       </section>
       </>}
-      <section>
-        <h2>Workflows</h2>
-        <QueryStatus q={workflows} what="workflows" />
-        {workflows.data?.items.length === 0 && (
-          <div className="empty-state">No workflows yet. Name one above and click <b>Create empty</b>, or start from a template.</div>
-        )}
-        <ul className="wf-list">
-          {workflows.data?.items.map((w) => (
-            <li key={w.id}>
-              <Link to={`/workflows/${w.id}`}>{w.name}</Link>{" "}
-              <small className="muted">v{w.version} · {new Date(w.updated_at).toLocaleString()}</small>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <WorkflowList />
     </div>
   );
 }

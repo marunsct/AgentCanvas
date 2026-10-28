@@ -2799,6 +2799,26 @@
         "title": "DocumentOut",
         "type": "object"
       },
+      "DuplicateIn": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "default: '<name> (copy)'",
+            "title": "Name"
+          }
+        },
+        "title": "DuplicateIn",
+        "type": "object"
+      },
       "Edge": {
         "additionalProperties": false,
         "properties": {
@@ -10851,6 +10871,21 @@
           "next_cursor"
         ],
         "title": "WorkflowPage",
+        "type": "object"
+      },
+      "WorkflowPatch": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "WorkflowPatch",
         "type": "object"
       },
       "WorkflowSummary": {
@@ -22095,6 +22130,80 @@
           "workflows"
         ]
       },
+      "patch": {
+        "description": "Rename the workflow (a new draft version; the editor of another tab is told it changed).",
+        "operationId": "rename_workflow_v1_workflows__wf_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Workflow",
+        "tags": [
+          "workflows"
+        ]
+      },
       "put": {
         "operationId": "replace_workflow_v1_workflows__wf_id__put",
         "parameters": [
@@ -24068,6 +24177,82 @@
         "summary": "List Deployments",
         "tags": [
           "deployments"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/duplicate": {
+      "post": {
+        "description": "A copy of the draft and its layout in the same project (not its versions, runs or deployments).",
+        "operationId": "duplicate_workflow_v1_workflows__wf_id__duplicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Duplicate Workflow",
+        "tags": [
+          "workflows"
         ]
       }
     },

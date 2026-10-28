@@ -156,6 +156,38 @@ async def set_layout(wf_id: str, body: LayoutUpdate, svc: WorkflowService = Depe
     return {"layout": await svc.set_layout(wf_id, body.positions, body.replace)}
 
 
+class WorkflowPatch(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.patch("/workflows/{wf_id}", response_model=WorkflowOut)
+async def rename_workflow(
+    wf_id: str, body: WorkflowPatch, response: Response, svc: WorkflowService = Depends(service)
+) -> WorkflowOut:
+    """Rename the workflow (a new draft version; the editor of another tab is told it changed)."""
+    if not body.name.strip():
+        raise InvalidInput("a workflow needs a name")
+    return _out(await svc.rename(wf_id, body.name.strip()), response)
+
+
+class DuplicateIn(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200, description="default: '<name> (copy)'")
+
+
+@router.post("/workflows/{wf_id}/duplicate", response_model=WorkflowOut, status_code=201)
+async def duplicate_workflow(
+    wf_id: str,
+    body: DuplicateIn,
+    response: Response,
+    svc: WorkflowService = Depends(service),
+    user: CurrentUser = Depends(current_user),
+) -> WorkflowOut:
+    """A copy of the draft and its layout in the same project (not its versions, runs or deployments)."""
+    view = await svc.duplicate(wf_id, body.name.strip() if body.name else None, user.id)
+    response.headers["Location"] = f"/v1/workflows/{view.row.id}"
+    return _out(view, response)
+
+
 @router.delete("/workflows/{wf_id}", status_code=204)
 async def delete_workflow(wf_id: str, svc: WorkflowService = Depends(service)) -> Response:
     await svc.delete(wf_id)

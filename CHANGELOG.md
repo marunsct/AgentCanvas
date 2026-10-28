@@ -61,6 +61,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - The inspector asks the Copilot about the selected block (and, for a builder, to fix its errors); `get_problems`
   gives the Copilot best-practice suggestions (a router without a default, a model without a backup, thin
   instructions) apart from the validator's problems (FR-COP-04).
+- **The workflow list** on Home: search, sort by last change or name, and per workflow Rename, Duplicate (the
+  draft and its layout; `POST /workflows/{id}/duplicate`) and Delete with a confirmation (`PATCH /workflows/{id}`
+  renames). Dates read "3 min ago", with the exact time on hover.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

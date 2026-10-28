@@ -1090,3 +1090,9 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .thread-row > button[role=menuitem]:hover { background: var(--accent-soft); }
 .thread-title { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .copilot-head .menu > button { font-size: 12px; padding: 3px 6px; }
+.list-tools { margin-top: 28px; flex-wrap: wrap; }
+.list-tools h2 { margin: 0; }
+.list-tools input[type=search] { width: 220px; }
+.list-tools select { width: auto; }
+.wf-list .row-menu > button { padding: 2px 6px; }
+.menu-list > button.danger-item { color: var(--err); }

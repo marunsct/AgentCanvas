@@ -210,6 +210,20 @@ class WorkflowService:
         await self.repo.save_layout(wf_id, layout)
         return layout
 
+    async def rename(self, wf_id: str, name: str) -> WorkflowView:
+        """A new name for the workflow (its IR and its row), as one more version of the draft."""
+        row = await self.repo.require(wf_id)
+        wf = Workflow.model_validate(row.draft_ir).model_copy(update={"name": name})
+        return await self._save(wf_id, wf, row.version)
+
+    async def duplicate(self, wf_id: str, name: str | None, created_by: str | None) -> WorkflowView:
+        """A copy of the draft in the same project, with its layout; versions, runs and deployments stay with the
+        original. Code in the original's own workspace folder is shared, not copied (imports name that folder)."""
+        row = await self.repo.require(wf_id)
+        copy_id = new_id("wf")
+        ir = {**row.draft_ir, "id": copy_id, "name": name or f"{row.name} (copy)"}
+        return await self.create_from_ir(row.project_id, ir, dict(row.layout or {}), created_by)
+
     async def delete(self, wf_id: str) -> None:
         await self.repo.delete(wf_id)
 

@@ -64,3 +64,30 @@ test("default models by purpose: set the judges' model and see what each purpose
   await expect(card).toContainText("the project's default for judge evaluators");
   await page.request.delete(`/api/v1/projects/${project.id}`);
 });
+
+test("the workflow list renames, duplicates and deletes, and finds by name", async ({ page }) => {
+  const stamp = Date.now();
+  await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Listed ${stamp}` } });
+  await page.goto("/");
+  await page.getByLabel("search workflows").fill(`Listed ${stamp}`);
+  const list = page.getByTestId("workflow-list");
+  await expect(list.locator("li")).toHaveCount(1);
+
+  await page.getByTestId(`workflow-menu-Listed ${stamp}`).click();
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await answerDialog(page, `Renamed ${stamp}`);
+  await page.getByLabel("search workflows").fill(`${stamp}`);
+  await expect(list).toContainText(`Renamed ${stamp}`);
+
+  await page.getByTestId(`workflow-menu-Renamed ${stamp}`).click();
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+  await expect(page).toHaveURL(/\/workflows\/wf_/);
+  await page.goto("/");
+  await page.getByLabel("search workflows").fill(`${stamp}`);
+  await expect(list.locator("li")).toHaveCount(2);
+
+  await page.getByTestId(`workflow-menu-Renamed ${stamp} (copy)`).click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await answerDialog(page);
+  await expect(list.locator("li")).toHaveCount(1);
+});
