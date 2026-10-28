@@ -153,7 +153,7 @@ function ProposalCard({ pending, busy, canBuild }: { pending: Proposal; busy: bo
 
 export function CopilotPanel() {
   const workflowId = useEditor((s) => s.workflowId);
-  const { conversation, busy, live, error, last } = useCopilot();
+  const { conversation, busy, live, error, last, cost } = useCopilot();
   const [text, setText] = useState("");
   const canBuild = useCan("builder");
   const email = useMe((s) => s.me.email);
@@ -277,7 +277,8 @@ export function CopilotPanel() {
             ))}
           </div>
           <span className="spacer" />
-          <span className="small muted" title="tokens used in this conversation">{Math.round((used / conversation.token_cap) * 100)}% used</span>
+          <span className="small muted" title={`${used.toLocaleString()} tokens of ${conversation.token_cap.toLocaleString()} in this conversation`}>
+            {cost != null && cost > 0 ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)} · ` : ""}{Math.round((used / conversation.token_cap) * 100)}% used</span>
           {busy
             ? <button type="button" data-testid="copilot-stop" onClick={() => useCopilot.getState().stop()} title="Stop this answer; what is said so far is kept">■ Stop</button>
             : <button type="submit" className="primary" disabled={!text.trim()}>Send <span aria-hidden="true">↑</span></button>}

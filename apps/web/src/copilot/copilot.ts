@@ -70,7 +70,7 @@ type Event =
   | { type: "todos"; todos: Todo[] }
   | { type: "tool"; name: string; ok: boolean; error?: string | null; summary?: string | null }
   | { type: "brief"; brief: Brief }
-  | { type: "usage" | "done"; usage: Conversation["usage"]; cap: number }
+  | { type: "usage" | "done"; usage: Conversation["usage"]; cap: number; cost_usd?: number | null }
   | { type: "proposal"; proposal: Proposal }
   | { type: "error"; message: string };
 
@@ -87,6 +87,7 @@ interface CopilotState {
   live: Live | null; // the answer being streamed
   error: string | null;
   last: { text: string; mode: Mode } | null; // the last message sent, for Retry
+  cost: number | null; // what this conversation has cost, when the model's price is known (from this session's turns)
   ghost: Ghost | null;
   selection: Selection | null;
   toggleChange: (i: number) => void;
@@ -155,6 +156,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   live: null,
   error: null,
   last: null,
+  cost: null,
   ghost: null,
   selection: null,
   request: null,
@@ -182,7 +184,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   load: async (workflowId) => {
     const open = useEditor.getState().workflowId;
     if (open && open !== workflowId) return; // a late answer about a workflow the editor has left
-    set({ workflowId, error: null });
+    set({ workflowId, error: null, ...(get().workflowId !== workflowId ? { cost: null } : {}) });
     const conversation = await apiFetch<Conversation>(`/workflows/${workflowId}/copilot`);
     if (get().workflowId !== workflowId) return;
     const selection = allOf(conversation.pending);
@@ -209,7 +211,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
         case "todos": set({ live: { ...live, todos: e.todos } }); break;
         case "tool": set({ live: { ...live, activity: [...live.activity, e] } }); break;
         case "brief": if (c) set({ conversation: { ...c, brief: e.brief } }); break;
-        case "usage": case "done": if (c) set({ conversation: { ...c, usage: e.usage } }); break;
+        case "usage": case "done": if (c) set({ conversation: { ...c, usage: e.usage }, cost: e.cost_usd ?? get().cost }); break;
         case "proposal": { const selection = allOf(e.proposal); set({ selection, ghost: ghostOf(e.proposal, selection) }); break; }
         case "error": set({ error: e.message }); break;
       }
@@ -281,7 +283,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const { workflowId } = get();
     if (!workflowId) return;
     await apiFetch(`/workflows/${workflowId}/copilot/threads/${id}/open`, { method: "POST" });
-    set({ ghost: null, selection: null, error: null });
+    set({ ghost: null, selection: null, error: null, cost: null });
     await get().load(workflowId);
   },
 
@@ -296,7 +298,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const { workflowId } = get();
     if (!workflowId) return;
     await apiFetch(`/workflows/${workflowId}/copilot`, { method: "DELETE" });
-    set({ ghost: null, error: null });
+    set({ ghost: null, error: null, cost: null });
     await get().load(workflowId);
   },
 }));

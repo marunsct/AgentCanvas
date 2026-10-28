@@ -37,6 +37,7 @@ from agentcanvas.ir.commands import CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.registry import Registry, default_registry
+from agentcanvas.runtime.runner import price
 from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
@@ -309,7 +310,12 @@ async def _start_turn(
 
     async def stream() -> AsyncIterator[str]:
         try:
-            async for event in turn.run(body.text.strip(), body.mode):
+            async for raw in turn.run(body.text.strip(), body.mode):
+                event = raw
+                if event["type"] in ("usage", "done"):  # what the conversation has cost so far, when the price is known
+                    used = event["usage"]
+                    spent = price(model.model, used.get("input_tokens", 0), used.get("output_tokens", 0))
+                    event = {**event, "cost_usd": spent}
                 if event["type"] == "proposal":  # older open proposals are replaced by the new one
                     for p in turn.proposals[:-1]:
                         if p.get("status") == "pending":

@@ -395,3 +395,12 @@ async def test_another_persons_conversation_is_not_found(app, api_client):
         assert (await api_client.get(f"/v1/workflows/{wf}/copilot/threads")).json() == []
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+async def test_usage_events_say_what_the_conversation_cost(app, api_client):
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]  # its model, claude-haiku, has a price
+    script(app, "Hi.")
+    events = await ask(api_client, wf, "hi", mode="ask")
+    done = events[-1]
+    assert done["type"] == "done" and "cost_usd" in done  # 0 tokens from the scripted model: a cost of 0
+    assert done["cost_usd"] is None or done["cost_usd"] >= 0
