@@ -1971,6 +1971,7 @@ export type DeploymentId3 = string | null;
 export type Id51 = string;
 export type LastEndedAt = string | null;
 export type LastError = string | null;
+export type LastRunId = string | null;
 export type LastStartedAt = string | null;
 export type Runs3 = number;
 export type Status14 = string;
@@ -5189,6 +5190,7 @@ export interface ThreadOut {
   id: Id51;
   last_ended_at?: LastEndedAt;
   last_error?: LastError;
+  last_run_id?: LastRunId;
   last_started_at?: LastStartedAt;
   runs?: Runs3;
   status: Status14;

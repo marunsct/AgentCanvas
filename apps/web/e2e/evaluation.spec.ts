@@ -109,3 +109,29 @@ test("a release gate refuses a regression; an admin publishes over it with a rea
   await expect(page.getByTestId("publish-checklist")).toContainText("overridden by");
   await expect(page.getByTestId("deployment-prod")).toBeVisible();
 });
+
+test("an annotation queue: a rubric as rows, runs picked from a list, a review", async ({ page }) => {
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Queue ${Date.now()}` } })).json();
+  expect((await api.post(`/api/v1/workflows/${wf.id}/runs/stream`, { data: { input: {} } })).ok()).toBeTruthy();
+  await page.goto(`/workflows/${wf.id}/evaluation`);
+  await page.getByRole("tab", { name: "Annotation queues" }).click();
+  const form = page.getByTestId("queue-form");
+  await form.getByLabel("queue name").fill("Weekly review");
+  await form.getByLabel("criterion 2 name").fill("accurate");
+  await form.getByRole("button", { name: "+ Add a criterion" }).click();
+  await form.getByLabel("criterion 3 name").fill("tone");
+  await form.getByLabel("criterion 3 scale").selectOption("3");
+  await form.getByRole("button", { name: "Create queue" }).click();
+
+  const review = page.getByTestId("queue-review");
+  await review.getByText("Add runs by hand").click();
+  await review.locator(".run-picker input[type=checkbox]").first().check();
+  await review.getByRole("button", { name: /^Add 1 run$/ }).click();
+  await expect(page.getByTestId("toasts")).toContainText("Added 1 run");
+  for (const [name, choice] of [["helpful", "4"], ["accurate", "yes"], ["tone", "3"]]) {
+    await review.getByRole("radiogroup", { name }).getByLabel(choice, { exact: true }).check();
+  }
+  await review.getByRole("button", { name: "Submit review" }).click();
+  await expect(page.getByTestId("queues")).toContainText("1 of 1");
+});

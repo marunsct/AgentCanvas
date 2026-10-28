@@ -10082,6 +10082,17 @@
             ],
             "title": "Last Error"
           },
+          "last_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Id"
+          },
           "last_started_at": {
             "anyOf": [
               {

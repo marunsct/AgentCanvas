@@ -566,5 +566,6 @@ async def test_the_runs_page_lists_a_projects_conversations_with_their_runs(app,
     mine = [t for t in page if t["workflow_id"] == wf]
     assert len(mine) == 1 and mine[0]["workflow_name"] == "Greeter" and mine[0]["runs"] == 1
     assert mine[0]["last_started_at"] and mine[0]["last_ended_at"] and mine[0]["last_error"] is None
+    assert mine[0]["last_run_id"].startswith("run_")
     assert (await api_client.get("/v1/threads", params={"project_id": other})).json()["items"] == []
     assert (await api_client.get("/v1/threads", params={"project_id": "prj_nope"})).status_code == 404

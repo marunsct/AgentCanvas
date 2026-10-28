@@ -1100,3 +1100,6 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .example-fields fieldset { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 12px 10px; margin: 0; }
 .example-fields legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
 .example-fields label { margin: 6px 0; }
+.rubric-editor { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px 8px; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.run-picker summary { cursor: pointer; margin: 4px 0; }
+.run-picker ul.plain { max-height: 200px; }

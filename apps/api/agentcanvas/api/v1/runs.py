@@ -143,6 +143,7 @@ class ThreadOut(BaseModel):
     last_started_at: datetime | None = None
     last_ended_at: datetime | None = None
     last_error: str | None = None
+    last_run_id: str | None = None
 
 
 class ThreadPage(BaseModel):
@@ -406,6 +407,7 @@ async def list_threads(
                 last_started_at=last.started_at if last else None,
                 last_ended_at=last.ended_at if last else None,
                 last_error=last.error if last else None,
+                last_run_id=last.id if last else None,
             )
         )
     return ThreadPage(items=items, next_cursor=items[-1].id if len(rows) > limit else None)

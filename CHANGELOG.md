@@ -77,6 +77,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **Dataset examples are fields, not JSON**: one field per workflow input and expected output (numbers, true/false,
   lists and objects are read as JSON, everything else as text), with "As JSON" for nested values; removing an
   example asks first.
+- **Annotation queues**: the rubric is rows (name, a scale from yes/no to 1-10, what a good score means) instead
+  of "helpful:5, correct:2"; runs are added from a list of the workflow's recent runs instead of typed ids; items
+  show when and why they were added. `GET /threads` returns each thread's `last_run_id`.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

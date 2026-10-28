@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
-import type { DatasetOut, ItemDetail, ItemOut, QueueOut } from "../api/generated";
+import type { DatasetOut, ItemDetail, ItemOut, QueueOut, ThreadPage } from "../api/generated";
 import { can } from "../api/session";
 import { QueryStatus, errorText } from "../ui/QueryStatus";
+import { toast } from "../ui/dialog";
+import { ago } from "../ui/time";
 import { pct } from "./compare";
 import { ScoreBadge } from "./ScoreBadge";
 
@@ -20,14 +22,11 @@ export function Queues({ wfId }: { wfId: string }) {
   const list = useQuery({ queryKey: key, queryFn: () => apiFetch<QueueOut[]>(`/workflows/${wfId}/annotation-queues`) });
   const [open, setOpen] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [criteria, setCriteria] = useState("helpful:5, correct:2");
+  const [criteria, setCriteria] = useState<Criterion[]>([{ name: "helpful", scale: 5, description: "" }, { name: "correct", scale: 2, description: "" }]);
   const [rules, setRules] = useState({ failed: true, thumbs_down: true, below: "" });
   const create = useMutation({
     mutationFn: () => {
-      const rubric = criteria.split(",").map((c) => c.trim()).filter(Boolean).map((c) => {
-        const [n, scale] = c.split(":").map((s) => s.trim());
-        return { name: n, scale: Number(scale || 5) };
-      });
+      const rubric = criteria.filter((c) => c.name.trim()).map((c) => ({ ...c, name: c.name.trim() }));
       const scores_below = Object.fromEntries(rules.below.split(",").map((p) => p.split("<").map((s) => s.trim())).filter((p) => p.length === 2 && p[0]).map(([k, v]) => [k, Number(v)]));
       return apiFetch<QueueOut>(`/workflows/${wfId}/annotation-queues`, { method: "POST", json: { name, rubric, rules: { failed: rules.failed, thumbs_down: rules.thumbs_down, scores_below } } });
     },
@@ -61,17 +60,74 @@ export function Queues({ wfId }: { wfId: string }) {
         <form className="policy-form" onSubmit={(e) => { e.preventDefault(); create.mutate(); }} data-testid="queue-form">
           <div className="row gap">
             <input aria-label="queue name" placeholder="queue name" value={name} onChange={(e) => setName(e.target.value)} />
-            <input aria-label="rubric" title="criterion:points, comma separated (2 points is yes/no)" value={criteria} onChange={(e) => setCriteria(e.target.value)} style={{ width: 200 }} />
             <label className="row small"><input type="checkbox" checked={rules.failed} onChange={(e) => setRules((r) => ({ ...r, failed: e.target.checked }))} />failed runs</label>
             <label className="row small"><input type="checkbox" checked={rules.thumbs_down} onChange={(e) => setRules((r) => ({ ...r, thumbs_down: e.target.checked }))} />thumbs-down</label>
             <input aria-label="low score rule" placeholder="e.g. polite < 0.7" value={rules.below} onChange={(e) => setRules((r) => ({ ...r, below: e.target.value }))} style={{ width: 140 }} />
             <button type="submit" disabled={create.isPending || !name.trim()}>Create queue</button>
           </div>
+          <RubricEditor rubric={criteria} onChange={setCriteria} />
           {create.error && <p role="alert" className="error-text">{errorText(create.error)}</p>}
         </form>
       )}
       {open && <QueueReview wfId={wfId} queueId={open} />}
     </section>
+  );
+}
+
+interface Criterion { name: string; scale: number; description: string }
+
+const SCALES: [number, string][] = [[2, "yes / no"], [3, "1 to 3"], [5, "1 to 5"], [10, "1 to 10"]];
+
+/** The rubric as rows: what reviewers score each run on, on which scale. */
+function RubricEditor({ rubric, onChange }: { rubric: Criterion[]; onChange: (r: Criterion[]) => void }) {
+  const set = (i: number, patch: Partial<Criterion>) => onChange(rubric.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  return (
+    <fieldset className="rubric-editor" aria-label="rubric">
+      <legend className="small">Rubric: what reviewers score each run on</legend>
+      {rubric.map((c, i) => (
+        <div key={i} className="row gap">
+          <input aria-label={`criterion ${i + 1} name`} placeholder="e.g. helpful" value={c.name} onChange={(e) => set(i, { name: e.target.value })} style={{ width: 160 }} />
+          <select aria-label={`criterion ${i + 1} scale`} value={c.scale} onChange={(e) => set(i, { scale: Number(e.target.value) })} style={{ width: 110 }}>
+            {SCALES.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
+          </select>
+          <input aria-label={`criterion ${i + 1} meaning`} placeholder="what a good score means (optional)" value={c.description} onChange={(e) => set(i, { description: e.target.value })} />
+          {rubric.length > 1 && <button type="button" className="link small" aria-label={`remove criterion ${i + 1}`} onClick={() => onChange(rubric.filter((_, j) => j !== i))}>×</button>}
+        </div>
+      ))}
+      {rubric.length < 20 && <button type="button" className="link small" onClick={() => onChange([...rubric, { name: "", scale: 5, description: "" }])}>+ Add a criterion</button>}
+    </fieldset>
+  );
+}
+
+/** Recent runs of the workflow to add to a queue by hand, instead of typing run ids. */
+function RunPicker({ wfId, onAdd, busy }: { wfId: string; onAdd: (runIds: string[]) => void; busy: boolean }) {
+  const threads = useQuery({ queryKey: ["threads", "picker", wfId], queryFn: () => apiFetch<ThreadPage>(`/threads?workflow_id=${wfId}&limit=30`) });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const runs = (threads.data?.items ?? []).filter((t) => t.last_run_id);
+  return (
+    <details className="run-picker">
+      <summary className="small">Add runs by hand</summary>
+      <QueryStatus q={threads} what="recent runs" empty={<p className="muted small">No runs yet.</p>} />
+      <ul className="plain">
+        {runs.map((t) => (
+          <li key={t.id}>
+            <label className="row small">
+              <input type="checkbox" checked={picked.has(t.last_run_id!)} onChange={() => {
+                const next = new Set(picked);
+                if (next.has(t.last_run_id!)) next.delete(t.last_run_id!); else next.add(t.last_run_id!);
+                setPicked(next);
+              }} />
+              <span className={`badge ${t.status === "error" ? "err" : t.status === "idle" ? "ok" : "warn"}`}>{t.status === "idle" ? "done" : t.status}</span>
+              <span>{t.title ?? (t.deployment_id ? "API call" : "Editor run")}</span>
+              <span className="muted">{t.last_started_at ? ago(t.last_started_at) : ""}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <button type="button" disabled={busy || picked.size === 0} onClick={() => { onAdd([...picked]); setPicked(new Set()); }}>
+        Add {picked.size || ""} run{picked.size === 1 ? "" : "s"}
+      </button>
+    </details>
   );
 }
 
@@ -84,10 +140,13 @@ function QueueReview({ wfId, queueId }: { wfId: string; queueId: string }) {
   const active = current ?? firstOpen;
   const q = queue.data;
   const qc = useQueryClient();
-  const [runIds, setRunIds] = useState("");
   const add = useMutation({
-    mutationFn: () => apiFetch<ItemOut[]>(`/annotation-queues/${queueId}/items`, { method: "POST", json: { run_ids: runIds.split(/[\s,]+/).filter(Boolean) } }),
-    onSuccess: () => { setRunIds(""); void qc.invalidateQueries({ queryKey: ["queue-items", queueId] }); void qc.invalidateQueries({ queryKey: ["queue", queueId] }); },
+    mutationFn: (runIds: string[]) => apiFetch<ItemOut[]>(`/annotation-queues/${queueId}/items`, { method: "POST", json: { run_ids: runIds } }),
+    onSuccess: (added) => {
+      toast(`Added ${added.length} run${added.length === 1 ? "" : "s"}`);
+      void qc.invalidateQueries({ queryKey: ["queue-items", queueId] });
+      void qc.invalidateQueries({ queryKey: ["queue", queueId] });
+    },
   });
   return (
     <div className="queue-review" data-testid="queue-review">
@@ -104,16 +163,15 @@ function QueueReview({ wfId, queueId }: { wfId: string; queueId: string }) {
         </select>
         {items.data?.map((i) => (
           <button type="button" key={i.id} className={`link small${i.id === active ? " active" : ""}`} onClick={() => setCurrent(i.id)} title={reason(i.reason)}>
-            {i.run_id.slice(-6)}{i.reviewed_by_me ? " ✓" : ""}
+            {ago(i.created_at)} · {reason(i.reason)}{i.reviewed_by_me ? " ✓" : ""}
           </button>
         ))}
       </div>
       {can("reviewer") && (
-        <form className="row gap small" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-          <input aria-label="run ids" placeholder="add runs by id" value={runIds} onChange={(e) => setRunIds(e.target.value)} style={{ width: 260 }} />
-          <button type="submit" disabled={add.isPending || !runIds.trim()}>Add</button>
+        <>
+          <RunPicker wfId={wfId} busy={add.isPending} onAdd={(ids) => add.mutate(ids)} />
           {add.error && <span role="alert" className="error-text">{errorText(add.error)}</span>}
-        </form>
+        </>
       )}
       <QueryStatus q={items} what="items" empty={<p className="muted">Nothing to review.</p>} />
       {active && q && <ItemReview wfId={wfId} queue={q} itemId={active} onDone={() => setCurrent(null)} />}
