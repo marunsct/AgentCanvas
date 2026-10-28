@@ -1,26 +1,12 @@
 /** Inbox (M4-T4 UI): every pending approval/input across workflows; deciding resumes the run in the background. */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
+import { useInbox } from "../api/queries";
 import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
-
-export interface InboxItem {
-  id: string;
-  workflow_id: string | null;
-  workflow_name: string | null;
-  thread_id: string;
-  canvas_node_id: string;
-  kind: string;
-  payload: Record<string, unknown>;
-  created_at: string;
-}
-
-export function useInbox() {
-  return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });
-}
+import { PageHeader } from "../ui/PageHeader";
 
 export function InboxPage() {
   const inbox = useInbox();
@@ -32,8 +18,7 @@ export function InboxPage() {
   });
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Inbox</span><span className="spacer" /><ThemeSwitcher /></header>
-      <h2>Pending decisions</h2>
+      <PageHeader title="Inbox" description="Runs waiting for a person: an approval, an edit or an answer. Deciding resumes the run." />
       <QueryStatus q={inbox} what="the inbox" />
       {inbox.data?.length === 0 && <p className="muted" data-testid="inbox-empty">Nothing is waiting for you.</p>}
       <div className="inbox-list">

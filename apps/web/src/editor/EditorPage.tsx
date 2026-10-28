@@ -2,14 +2,13 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { useNodeTypes } from "../api/queries";
+import { useInbox, useNodeTypes } from "../api/queries";
 import { Canvas } from "../canvas/Canvas";
 import { Palette } from "../canvas/Palette";
 import { CodePanel } from "../code/CodePanel";
 import { CopilotPanel } from "../copilot/CopilotPanel";
 import { stopCopilotStream, useCopilot } from "../copilot/copilot";
 import { Inspector } from "../inspector/Inspector";
-import { useInbox } from "../inbox/InboxPage";
 import { ProblemsPanel } from "../problems/ProblemsPanel";
 import { TestsPanel } from "../release/TestsPanel";
 import { VersionsPanel } from "../release/VersionsPanel";
@@ -31,7 +30,7 @@ import { recallView } from "./viewMemory";
 import { useCan, useMe } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 import { SIMPLE_DOCK, SIMPLE_TABS } from "./simple";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { PersonMenu } from "../app/AppShell";
 
 type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
 
@@ -151,7 +150,7 @@ export function EditorPage() {
         <button type="button" onClick={() => setTab("copilot")} data-testid="copilot-button"
           title="Chat with the AI Copilot: describe a workflow, ask questions, get changes to review">✦ Copilot</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
-        <ThemeSwitcher />
+        <PersonMenu />
       </header>
       {notice && (
         <div className={`toast ${notice.kind}`} role="status">

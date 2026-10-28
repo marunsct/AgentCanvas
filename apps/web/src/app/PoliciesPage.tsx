@@ -2,12 +2,10 @@
  * publishing refuses them. Everyone can read them; admins add, switch off and delete. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { maturaMode } from "../api/auth";
 import { can, orgPortalUrl } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { confirmDialog } from "../ui/dialog";
 
 type Scope = "node" | "resource" | "workflow";
@@ -55,8 +53,9 @@ export function PoliciesPage() {
   const edit = (patch: Partial<PolicyIn>) => setDraft((d) => ({ ...d, ...patch }));
   const portal = orgPortalUrl();
   return (
-    <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Policies</span><span className="spacer" /><ThemeSwitcher /></header>
+    <section className="settings-card policies">
+      <h2>Policies</h2>
+      <p className="muted small">Rules every workflow in this organisation is checked against before it runs or is published.</p>
       {maturaMode() && (
         <p className="muted" data-testid="org-settings-in-matura">
           Sign-in, single sign-on, security and member settings of this organisation are in Matura
@@ -118,6 +117,6 @@ export function PoliciesPage() {
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }

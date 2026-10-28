@@ -7,7 +7,8 @@ test("add a policy, see it in the editor, switch it off and delete it", async ({
   const name = `Policy demo ${Date.now()}`;
   const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name } })).json();
   await page.goto("/");
-  await page.getByTestId("policies-link").click();
+  await page.getByTestId("settings-link").click();
+  await page.getByTestId("settings-policies").click();
   await page.getByLabel("policy name").fill(`Needs a person ${name}`);
   await page.getByLabel("scope").selectOption("workflow");
   await page.getByLabel("match").fill(`workflow.name == "${name}"`);

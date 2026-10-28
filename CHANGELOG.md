@@ -2,6 +2,26 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
+## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
+
+### Added
+- **One top bar on every page** (`app/AppShell.tsx`): the project (switch, or create a new one), Workflows, Playground,
+  Inbox with its count, Knowledge, Memory, Workspace, Events, Settings, and a person menu (who, role, organisation,
+  theme, sign out). Moving between pages no longer goes through Home. The editor keeps its own bar and gets the same
+  person menu.
+- **Settings** at `/settings`, with a rail by scope: Project (Models, Copilot, Secrets, Observability), Organisation
+  (Members, Policies, Audit log for admins) and You (Appearance). `/setup`, `/members`, `/audit` and `/policies` lead
+  there. Secrets moved out of the Workspace sidebar into a table with a confirmation before delete.
+- **The app's own dialogs and notices** (`ui/dialog.tsx`): every `window.confirm`/`window.prompt` (17 places) is a
+  dialog with a title, an explanation and a named button (red for destructive ones), focus kept inside, Escape to
+  cancel; `toast()` for short success notices.
+- Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
+  (pinned at 1.52.0).
+
+### Changed
+- Saving the project's model from Settings stays in Settings with a notice; only the first choice, from the Home
+  banner, goes back to Home.
+
 ## Unreleased — Hardening pass: chat, exports, migrations, keyboard, local CI
 
 ### Fixed

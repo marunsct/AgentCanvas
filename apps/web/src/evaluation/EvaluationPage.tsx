@@ -14,8 +14,8 @@ import { KIND_CONFIG, compare, fmt, frameworksToCompare, grid, passed, pct } fro
 import { Production } from "./Production";
 import { Queues } from "./Queues";
 import { ScoreBadge } from "./ScoreBadge";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { confirmDialog } from "../ui/dialog";
+import { PageHeader } from "../ui/PageHeader";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
 
@@ -41,12 +41,8 @@ export function EvaluationPage() {
   });
   return (
     <div className="page evaluation">
-      <header className="topbar">
-        <Link to="/" className="brand">AgentCanvas</Link>
-        <span className="crumb">/ <Link to={`/workflows/${id}`}>{wf.data?.name ?? id}</Link> / Evaluation</span>
-        <span className="spacer" />
-        <ThemeSwitcher />
-      </header>
+      <PageHeader title="Evaluation" crumbs={[{ to: "/", label: "Workflows" }, { to: `/workflows/${id}`, label: wf.data?.name ?? "Workflow", testId: "back-to-workflow" }]}
+        description="Datasets, evaluators and experiments for this workflow; release gates that keep a regression from being published." />
       <nav className="tabs" role="tablist">
         {(["datasets", "evaluators", "experiments", "gates", "production", "queues"] as Tab[]).map((t) => (
           <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}

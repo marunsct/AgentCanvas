@@ -210,7 +210,6 @@ table { color: inherit; }
   position: sticky; top: 0; z-index: 30; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
 }
 .topbar::-webkit-scrollbar { display: none; }
-.page > .topbar, .home .topbar { margin: 0 calc(50% - 50vw) 8px; padding: 0 max(20px, calc(50vw - 50% + 32px)); }
 html { overflow-x: clip; }
 .topbar > a:not(.brand), .topbar .inbox-link {
   color: var(--text-2); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; white-space: nowrap;
@@ -300,10 +299,6 @@ html { overflow-x: clip; }
 .guided p { margin: 0 0 14px; max-width: 70ch; }
 .home section > h2 { margin-top: 32px; }
 .home form.row input { max-width: 420px; }
-.me-chip {
-  font-size: 12px; color: var(--muted); padding: 4px 10px; border: 1px solid var(--border); border-radius: 99px; white-space: nowrap;
-  background: var(--panel);
-}
 
 /* theme switcher */
 .theme-switch {
@@ -972,3 +967,78 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
   inset 3px 0 0 var(--ok); max-width: min(560px, 92vw); animation: fade .15s ease-out;
 }
 .toast-item.info { box-shadow: var(--shadow-lg), inset 3px 0 0 var(--run); }
+
+/* ---------- the app shell (app/AppShell.tsx): one bar for every page but the editor ---------- */
+.app-bar { padding: 0 max(16px, calc(50vw - 590px + 16px)); gap: 4px; }
+.nav-links { display: flex; align-items: center; gap: 2px; margin-left: 6px; }
+.nav-link {
+  display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500; white-space: nowrap; transition: background .15s, color .15s;
+}
+.nav-link:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+.nav-link.active { color: var(--accent); background: var(--accent-soft); }
+.nav-link .badge { margin-left: 2px; }
+.menu { position: relative; flex: none; }
+.menu > button {
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; font-size: 13px; white-space: nowrap; box-shadow: none;
+  background: transparent; border-color: transparent; color: var(--text-2);
+}
+.menu > button:hover, .menu > button[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.menu-list {
+  position: fixed; z-index: 45; min-width: 220px; max-width: min(320px, 92vw); max-height: 70vh; overflow: auto; display: flex;
+  flex-direction: column; padding: 6px; background: var(--raised); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-lg); animation: fade .1s ease-out;
+}
+.menu-list > a, .menu-list > button {
+  display: flex; align-items: center; gap: 8px; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px;
+  color: var(--text); background: transparent; border: 0; box-shadow: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.menu-list > a:hover, .menu-list > button:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+.menu-list > button.active { color: var(--accent); font-weight: 600; }
+.menu-list > button.active::after { content: "✓"; margin-left: auto; }
+.menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 6px 0; }
+.menu-list select { margin: 0 4px 4px; width: auto; }
+.menu-list .theme-switch { margin: 0 6px 4px; align-self: flex-start; }
+.menu-heading { margin: 4px 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.menu-person { display: flex; flex-direction: column; padding: 6px 10px; gap: 2px; overflow: hidden; }
+.menu-person b { overflow: hidden; text-overflow: ellipsis; }
+.project-switcher > button .crumb { color: var(--text); max-width: 220px; }
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: var(--gradient); color: var(--accent-fg);
+}
+.person-menu > button { padding: 2px; border-radius: 50%; }
+
+/* page header (ui/PageHeader.tsx) */
+.page-header { margin: 24px 0 16px; }
+.page-header h1 { margin: 0; font-size: 22px; letter-spacing: -0.015em; }
+.page-header-row { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
+.page-description { margin: 4px 0 0; max-width: 75ch; }
+.page-actions { display: flex; gap: 8px; flex: none; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 12.5px; margin-bottom: 6px; }
+.crumbs span { display: inline-flex; align-items: center; gap: 2px; color: var(--muted); }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--accent); }
+
+/* settings (settings/SettingsPage.tsx) */
+.settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+.settings-rail { position: sticky; top: calc(var(--topbar-h) + 16px); display: flex; flex-direction: column; gap: 14px; }
+.rail-group { display: flex; flex-direction: column; gap: 1px; }
+.rail-heading { margin: 0 0 4px 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); display: flex; flex-direction: column; }
+.rail-heading small { text-transform: none; letter-spacing: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-rail a { padding: 6px 10px; border-radius: var(--radius-sm); color: var(--text-2); font-size: 13.5px; }
+.settings-rail a:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+.settings-rail a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.settings-content { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.settings-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 22px 20px; box-shadow: var(--shadow-sm); }
+.settings-card > h2 { margin: 0 0 4px; font-size: 17px; }
+.settings-card > h2 + p { margin-top: 0; }
+.row.wrap { flex-wrap: wrap; }
+.table td.actions { text-align: right; white-space: nowrap; }
+@media (max-width: 760px) {
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-rail { position: static; flex-direction: row; flex-wrap: wrap; }
+  .nav-link span { display: none; }
+}
+.settings-card form.row > input, .settings-card form.row > select { flex: 1 1 200px; width: auto; margin: 0; }
+.settings-card form.row > button { flex: none; width: auto; }

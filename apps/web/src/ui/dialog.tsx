@@ -52,8 +52,9 @@ export function DialogHost() {
   return (
     <>
       {open.length > 0 && <DialogView key={open[0].id} d={open[0]} />}
-      <div className="toasts" role="status" aria-live="polite" data-testid="toasts">
-        {toasts.map((t) => <div key={t.id} className={`toast-item ${t.kind}`}>{t.text}</div>)}
+      {/* the live region is always there (a screen reader only announces into one that exists); each notice is a status */}
+      <div className="toasts" aria-live="polite" data-testid="toasts">
+        {toasts.map((t) => <div key={t.id} role="status" className={`toast-item ${t.kind}`}>{t.text}</div>)}
       </div>
     </>
   );

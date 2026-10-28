@@ -28,3 +28,6 @@ export async function answerDialog(page: import("@playwright/test").Page, text?:
   await dialog.locator("button.confirm").click();
   await expect(dialog).toHaveCount(0);
 }
+
+/** Every section of the Settings page (settings/SettingsPage.tsx), for sweeps that visit every page. */
+export const SETTINGS = ["models", "copilot", "secrets", "observability", "members", "policies", "audit", "appearance"].map((s) => `/settings/${s}`);

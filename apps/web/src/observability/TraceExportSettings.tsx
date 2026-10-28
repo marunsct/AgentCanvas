@@ -56,8 +56,9 @@ export function TraceExportSettings() {
   const pickKind = (k: Kind | "") => { setKind(k); save.reset(); test.reset(); };
 
   return (
-    <section className="setup-form" aria-label="Trace export" data-testid="trace-export">
-      <h3>Send traces to your observability tool</h3>
+    <section className="settings-card setup-form" aria-label="Trace export" data-testid="trace-export">
+      <h2>Observability</h2>
+      <p className="muted small">Send traces to your observability tool.</p>
       <p className="small muted">
         Every run of this project's workflows is sent as an OpenTelemetry trace: the run, each step, every model call
         (model, tokens, reply) and every tool call. Secrets are masked, and fields a workflow lists under "never in

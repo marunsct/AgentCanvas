@@ -2,12 +2,10 @@
  * With Matura (TS9a) the list is read-only here: members and roles are managed in Matura's portal. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { maturaMode } from "../api/auth";
 import { apiFetch } from "../api/client";
 import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { MemberOut as Member } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
 
@@ -38,8 +36,9 @@ export function MembersPage() {
   const portal = orgPortalUrl("members");
   const error = (set.error ?? remove.error) as Error | null;
   return (
-    <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Members</span><span className="spacer" /><ThemeSwitcher /></header>
+    <section className="settings-card members">
+      <h2>Members</h2>
+      <p className="muted small">Who belongs to this organisation, and what each role may do.</p>
       <ul className="small muted">{ROLES.map((r) => <li key={r.role}><b>{r.role}</b> {r.what}</li>)}</ul>
       {maturaMode() && (
         <p className="muted" data-testid="managed-in-matura">
@@ -77,6 +76,6 @@ export function MembersPage() {
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }

@@ -45,8 +45,8 @@ export function CopilotSettings() {
   if (!q.data) return null;
 
   return (
-    <section className="setup-form" aria-label="Copilot settings" data-testid="copilot-settings">
-      <h3>AI Copilot</h3>
+    <section className="settings-card setup-form" aria-label="Copilot settings" data-testid="copilot-settings">
+      <h2>Copilot</h2>
       <p className="small muted">
         The Copilot chats with you in the editor and proposes changes you accept or reject. It can use the same model as
         your workflows, or a separate one (for example a stronger model for building, or a local one for privacy).

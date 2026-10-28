@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 7 acceptance (J3 part 1): a Script node backed by a workspace file, edited in the browser, runs.
 
@@ -106,15 +106,18 @@ test("custom node from the workspace appears in the palette and runs", async ({ 
   await expect(page.getByTestId("run-output")).toContainText("Hi, Ada!", { timeout: 10_000 });
 });
 
-test("secrets are write-only in the workspace", async ({ page }) => {
+test("secrets are write-only, and live in Settings", async ({ page }) => {
   const name = `E2E_TOKEN_${Date.now()}`;
   await page.goto("/workspace");
+  await page.getByTestId("secrets-link").click();
+  await expect(page).toHaveURL(/\/settings\/secrets$/);
   await page.getByLabel("secret name").fill(name);
   await page.getByLabel("secret value").fill("s3cr3t-value-e2e");
   await page.getByRole("button", { name: "Save secret" }).click();
   await expect(page.getByRole("region", { name: "secrets" })).toContainText(name);
   await expect(page.locator("body")).not.toContainText("s3cr3t-value-e2e");
   await page.getByRole("button", { name: `delete secret ${name}` }).click();
+  await answerDialog(page);
   await expect(page.getByRole("region", { name: "secrets" })).not.toContainText(name);
 });
 

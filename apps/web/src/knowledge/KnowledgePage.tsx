@@ -2,18 +2,17 @@
  * (files, web pages, text), see how they were split, and try searches before wiring them into a workflow. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import type { ChunkOut, DocumentOut, KnowledgeBaseOut, SearchOut } from "../api/generated";
 import { PROJECT_ID } from "../api/queries";
 import { can } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import {
   ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, embeddingLabel, MODES, type Mode, NAME_PATTERN, STRATEGIES,
   suggestName,
 } from "./knowledge";
 import { confirmDialog } from "../ui/dialog";
+import { PageHeader } from "../ui/PageHeader";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -43,8 +42,7 @@ export function KnowledgePage() {
 
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Knowledge</span><span className="spacer" /><ThemeSwitcher /></header>
-      <h2>Knowledge</h2>
+      <PageHeader title="Knowledge" />
       <p className="muted">
         Documents your workflows can search. Add files, web pages or text, then use a <strong>Search knowledge</strong> block
         to find the passages that answer a question, with citations.

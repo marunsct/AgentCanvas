@@ -5,7 +5,8 @@ import { answerDialog, expect, test } from "./fixtures";
 test("invite a member, change their role, remove them", async ({ page }) => {
   const email = `pat-${Date.now()}@example.com`;
   await page.goto("/");
-  await page.getByTestId("members-link").click();
+  await page.getByTestId("settings-link").click();
+  await page.getByTestId("settings-members").click();
   await page.getByLabel("email").fill(email);
   await page.getByLabel("role", { exact: true }).selectOption("viewer");
   await page.getByRole("button", { name: "Invite" }).click();
@@ -22,7 +23,8 @@ test("the audit log shows who changed a member", async ({ page }) => {
   const email = `audit-${Date.now()}@example.com`;
   await page.request.put("/api/v1/org/members", { data: { email, role: "viewer" } });
   await page.goto("/");
-  await page.getByTestId("audit-link").click();
+  await page.getByTestId("settings-link").click();
+  await page.getByTestId("settings-audit").click();
   await page.getByLabel("action").fill("set_member");
   await expect(page.getByTestId("audit").locator("tr").first()).toContainText("dev@localhost");
   await expect(page.getByTestId("audit").locator("tr").first()).toContainText("set_member");

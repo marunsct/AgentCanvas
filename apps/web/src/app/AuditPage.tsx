@@ -1,10 +1,8 @@
 /** Audit log (M7-T4): who changed what and when, newest first. Admins only. */
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { AuditOut as Entry } from "../api/generated";
 
 
@@ -27,8 +25,9 @@ export function AuditPage() {
   });
   const rows = log.data?.pages.flat() ?? [];
   return (
-    <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Audit log</span><span className="spacer" /><ThemeSwitcher /></header>
+    <section className="settings-card audit">
+      <h2>Audit log</h2>
+      <p className="muted small">Who changed what in this organisation, newest first.</p>
       <div className="row gap">
         <input placeholder="action, e.g. publish" value={action} onChange={(e) => setAction(e.target.value)} aria-label="action" />
         <input placeholder="target contains, e.g. a workflow id" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="target" />
@@ -49,6 +48,6 @@ export function AuditPage() {
         </tbody>
       </table>
       {log.hasNextPage && <button type="button" onClick={() => void log.fetchNextPage()} disabled={log.isFetchingNextPage}>Load older</button>}
-    </div>
+    </section>
   );
 }

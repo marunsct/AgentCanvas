@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, SETTINGS, test } from "./fixtures";
 
 // Sprint 17: a workspace per workflow with a way back, Copilot help with code, and every button labelled.
 
@@ -98,7 +98,7 @@ test("no page has an unlabelled button", async ({ page }) => {
     await page.getByRole("tab", { name: dock, exact: true }).click();
     await expectAllLabelled(page, `the editor's ${dock} panel`);
   }
-  for (const path of ["/", "/workspace", "/setup", "/inbox", "/memory", "/events", "/members", "/audit", "/policies",
+  for (const path of ["/", "/workspace", "/inbox", "/memory", "/events", "/playground", "/knowledge", ...SETTINGS,
     `${new URL(editorUrl).pathname}/evaluation`, `${new URL(editorUrl).pathname}/workspace`]) {
     await page.goto(path);
     await expectAllLabelled(page, path);

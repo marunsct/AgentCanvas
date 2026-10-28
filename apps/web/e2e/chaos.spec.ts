@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, SETTINGS, test } from "./fixtures";
 
 // When the API misbehaves the app says so: no page goes blank, none throws an uncaught error, none crashes into the
 // error boundary. The failures are the ones a deployment really produces: the server's own 500, a proxy's HTML error
@@ -17,8 +17,8 @@ const MODES: Record<string, (route: import("@playwright/test").Route) => Promise
 };
 
 const PAGES = (wf: string) => [
-  "/", `/workflows/${wf}`, `/workflows/${wf}/evaluation`, `/workflows/${wf}/workspace`, "/setup", "/playground", "/inbox",
-  "/memory", "/knowledge", "/workspace", "/events", "/members", "/audit", "/policies",
+  "/", `/workflows/${wf}`, `/workflows/${wf}/evaluation`, `/workflows/${wf}/workspace`, "/playground", "/inbox",
+  "/memory", "/knowledge", "/workspace", "/events", ...SETTINGS,
 ];
 
 const BOUNDARY_IS_FINE = new Set(["unexpected object"]);

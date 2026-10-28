@@ -1,12 +1,11 @@
 /** Memory inspector (M4-T12, FR-MEM-04): browse namespaces, search and delete memories, erase a namespace. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { NamespaceOut as Namespace, MemoryItem } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
+import { PageHeader } from "../ui/PageHeader";
 
 
 
@@ -35,8 +34,7 @@ export function MemoryPage() {
 
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Memory</span><span className="spacer" /><ThemeSwitcher /></header>
-      <h2>Long-term memory</h2>
+      <PageHeader title="Memory" />
       <p className="muted">What agents and memory nodes remember across conversations, per space and owner.</p>
       <QueryStatus q={spaces} what="memory spaces" />
       {spaces.data?.length === 0 && <p className="muted" data-testid="memory-empty">Nothing has been remembered yet.</p>}

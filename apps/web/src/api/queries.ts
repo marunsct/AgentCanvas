@@ -53,6 +53,13 @@ export async function chooseProject(): Promise<string> {
   return PROJECT_ID;
 }
 
+/** Work in another project: remembered for next time, and the app starts over in it (pages read the project chosen
+ * at start-up). */
+export function switchProject(id: string): void {
+  store(PROJECT_KEY, id);
+  location.assign("/");
+}
+
 /** Matura mode: work in another workspace (null = all), moving to one of its projects. Restores the previous
  * workspace when the new one cannot be used (no project in it and no right to make one). */
 export async function chooseWorkspace(id: string | null): Promise<string> {
@@ -150,4 +157,20 @@ export function useWorkflows() {
     queryKey: ["workflows", PROJECT_ID],
     queryFn: () => apiFetch<WorkflowPage>(`/projects/${PROJECT_ID}/workflows?limit=200`),
   });
+}
+
+/** A run waiting for a person (an approval or an answer), in any workflow of the organisation. */
+export interface InboxItem {
+  id: string;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  thread_id: string;
+  canvas_node_id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export function useInbox() {
+  return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });
 }

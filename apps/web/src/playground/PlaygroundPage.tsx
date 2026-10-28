@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import type { ChatOut } from "../api/generated";
 import { PROJECT_ID, useModels, useSetup } from "../api/queries";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { PageHeader } from "../ui/PageHeader";
 
 interface Turn { role: "user" | "assistant"; content: string }
 
@@ -52,11 +52,7 @@ export function PlaygroundPage() {
 
   return (
     <div className="page playground" data-testid="playground">
-      <header className="topbar">
-        <Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Playground</span><span className="spacer" />
-        <ThemeSwitcher />
-      </header>
-      <h2>Playground</h2>
+      <PageHeader title="Playground" />
       <p className="muted">
         Try a model and its instructions in a chat. When the answers look right, make it a workflow: you get one AI agent
         with these instructions and this model, ready to add tools, approvals and more steps.

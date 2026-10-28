@@ -10,11 +10,10 @@ import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type EditorApi, type LintItem } from "./CodeEditor";
 import { CodeHelp } from "./CodeHelp";
 import { KIND_LABEL, starter } from "./starters";
-import { SecretsPanel } from "./SecretsPanel";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { FileOut, FileContent, FilesOut } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
+import { PageHeader } from "../ui/PageHeader";
 
 
 
@@ -100,20 +99,9 @@ export function WorkspacePage() {
 
   return (
     <div className="page workspace-page">
-      <header className="topbar">
-        <Link to="/" className="brand">AgentCanvas</Link>
-        {workflowId ? (
-          <>
-            <span className="crumb">/ <Link to={`/workflows/${workflowId}`}>{workflow.data?.name ?? "workflow"}</Link> / Workspace</span>
-            <Link to={`/workflows/${workflowId}`} className="back-link" data-testid="back-to-workflow">
-              ← Back to {workflow.data?.name ?? "the workflow"}
-            </Link>
-          </>
-        ) : (
-          <><span className="crumb">/ Workspace</span><Link to="/" className="back-link" data-testid="back-home">← Back to workflows</Link></>
-        )}
-        <span className="spacer" /><ThemeSwitcher />
-      </header>
+      <PageHeader title="Workspace"
+        crumbs={workflowId ? [{ to: "/", label: "Workflows" }, { to: `/workflows/${workflowId}`, label: workflow.data?.name ?? "Workflow", testId: "back-to-workflow" }] : undefined}
+        description={workflowId ? "This workflow's own code (scripts, tools, custom blocks), next to the project's shared code." : "The project's code: scripts, tools, custom blocks and event handlers that workflows use."} />
       <div className="workspace-layout">
         <aside aria-label="workspace files">
           <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) newFile(newPath.trim()); }}>
@@ -137,7 +125,7 @@ export function WorkspacePage() {
             </>
           )}
           <ul className="file-tree" aria-label={folder ? "shared files" : "workspace files"}>{shared.map(fileButton)}</ul>
-          <SecretsPanel />
+          <p className="muted small secrets-moved">API keys and passwords for this code are under <Link to="/settings/secrets" data-testid="secrets-link">Settings › Secrets</Link>.</p>
         </aside>
         <section aria-label="editor">
           {selected && !file.data && <QueryStatus q={file} what={selected} />}
