@@ -53,7 +53,7 @@ Ask "explain" to get only an explanation; ask "fix" to get a proposal. In Ask mo
 
 ## Project notes
 
-Notes on the Setup page under **AI Copilot** are read on every message: conventions ("drafts use
+Notes in **Settings › Copilot** are read on every message: conventions ("drafts use
 ollama:llama3.3", "anything that emails customers needs an approval step"). The Copilot can propose a note too; it
 is added when you accept.
 
@@ -66,7 +66,7 @@ the chat.
 
 ## Which model it uses
 
-Set this on the **Setup** page under **AI Copilot**:
+Set this in **Settings › Copilot**:
 
 - **Use the workflow's model** (default): the project's default model from first-run setup, or, without one, the
   first AI model in the workflow.
@@ -78,6 +78,9 @@ The model must support tool calling. Your organisation's model [policies](accoun
 Copilot too: a policy that allows only some models in workflows also limits the Copilot.
 
 **Model for questions** (optional) answers Ask-mode questions with a different, usually cheaper, model.
+
+To try another model in one conversation, click the model's name at the top of the panel and pick one. The same
+policies and privacy setting apply; **New chat** goes back to the project's choice.
 **Private** limits the Copilot to models running on your own machines (Ollama, LM Studio, vLLM, llama.cpp), so
 your workflows never leave them.
 

@@ -41,6 +41,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **A conversation can switch the Copilot's model**: the model's name at the top of the panel opens a list; the
+  choice holds for that chat (within the project's model policies and privacy setting) and New chat goes back to
+  the project's. `PUT /workflows/{id}/copilot/model`; the conversation reports `chosen_model`.
 - **The user guide inside the app** (`/guide`, from the person menu): the pages the Copilot searches, with tables,
   section anchors and links between pages; `GET /guide` and `GET /guide/{page}` serve them to anyone signed in.
 - **Copilot answers cite the guide**: an answer that searched it ends with "From: Guide › Models › Local models"
@@ -147,6 +150,7 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   (pinned at 1.52.0).
 
 ### Upgrading
+- Migration `d8f2b6c0e4a9` adds `copilot_conversation.model` (empty: the project's model).
 - Migration `c6e0a4b8d2f7` adds `workflow_version.copilot_changes` (an empty list for existing versions); it runs with
   the others at start-up.
 - Production compose needs `AGENTCANVAS_EGRESS_SECRET` (32+ random characters) in `infra/.env.prod`; a Helm install

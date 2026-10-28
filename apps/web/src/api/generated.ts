@@ -178,7 +178,11 @@ export type Role = "user" | "assistant";
 export type Model = string | null;
 export type SystemPrompt = string;
 export type Temperature = number | null;
-export type Model1 = string;
+/**
+ * provider:model for this conversation; null: the project's
+ */
+export type Model1 = string | null;
+export type Model2 = string;
 export type Reply = string;
 export type Detail1 = string;
 export type Items = string[];
@@ -222,7 +226,7 @@ export type Selection = string | null;
  * the whole proposed file, to show as a diff; never saved here
  */
 export type Code2 = string | null;
-export type Model2 = string;
+export type Model3 = string;
 /**
  * the Copilot's explanation, in plain words
  */
@@ -349,6 +353,10 @@ export type Brief = {
   [k: string]: unknown;
 } | null;
 /**
+ * the model chosen for this conversation; null: the project's
+ */
+export type ChosenModel = string | null;
+/**
  * what the conversation's answers cost, where the model's price is known (each answer's own `usage` and `cost_usd` are on its message)
  */
 export type CostUsd = number | null;
@@ -357,7 +365,7 @@ export type Id17 = string | null;
 export type Messages1 = {
   [k: string]: unknown;
 }[];
-export type Model3 = string | null;
+export type Model4 = string | null;
 export type Origin = string | null;
 /**
  * why the Copilot cannot answer yet, in plain words
@@ -397,7 +405,7 @@ export type Enabled1 = boolean;
 /**
  * provider:model when separate
  */
-export type Model4 = string | null;
+export type Model5 = string | null;
 /**
  * project conventions the Copilot always reads
  */
@@ -504,7 +512,7 @@ export type ApiKey1 = {
   [k: string]: string;
 } | null;
 export type BaseUrl1 = string | null;
-export type Model5 = string;
+export type Model6 = string;
 export type Active = boolean;
 export type CreatedAt10 = string;
 export type Endpoint1 = string;
@@ -548,7 +556,7 @@ export type BaseUrl2 = string | null;
 /**
  * 'builtin' (offline) or '<provider>:<model>'
  */
-export type Model6 = string;
+export type Model7 = string;
 export type Enabled2 = boolean;
 export type Kind3 =
   "exact" | "regex" | "json_schema" | "llm_judge" | "trajectory" | "code" | "composite" | "pairwise" | "retrieval";
@@ -641,7 +649,7 @@ export type MaxTurns = number;
 /**
  * catalog model that plays the user (default: the project's, Settings > Models)
  */
-export type Model7 = string | null;
+export type Model8 = string | null;
 /**
  * who the user is and how they write
  */
@@ -1075,7 +1083,7 @@ export type SimulatedUser = string | null;
 /**
  * provider:model, or null when nothing is chosen
  */
-export type Model8 = string | null;
+export type Model9 = string | null;
 /**
  * where the choice comes from, in the person's words
  */
@@ -1997,7 +2005,7 @@ export type Enabled5 = boolean;
 /**
  * provider:model when separate
  */
-export type Model9 = string | null;
+export type Model10 = string | null;
 /**
  * project conventions the Copilot always reads
  */
@@ -2019,7 +2027,7 @@ export type BaseUrl6 = string | null;
 /**
  * provider:model, e.g. ollama:llama3.3
  */
-export type Model10 = string;
+export type Model11 = string;
 export type Done1 = boolean;
 /**
  * the project secret the default model's key is read from
@@ -2235,7 +2243,7 @@ export type IrHash5 = string;
 export type Message14 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
-export type Model11 = string | null;
+export type Model12 = string | null;
 export type Name55 = string;
 export type SystemPrompt1 = string;
 export type Temperature1 = number | null;
@@ -2292,6 +2300,7 @@ export interface ApiSchemas {
   CatalogOut?: CatalogOut;
   Channel?: Channel;
   ChatIn?: ChatIn;
+  ChatModelIn?: ChatModelIn;
   ChatOut?: ChatOut;
   Check?: Check;
   ChunkOut?: ChunkOut;
@@ -2990,10 +2999,17 @@ export interface Message2 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ChatModelIn".
+ */
+export interface ChatModelIn {
+  model?: Model1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ChatOut".
  */
 export interface ChatOut {
-  model: Model1;
+  model: Model2;
   reply: Reply;
   usage?: Usage;
 }
@@ -3048,7 +3064,7 @@ export interface CodeHelpIn {
  */
 export interface CodeHelpOut {
   code?: Code2;
-  model: Model2;
+  model: Model3;
   text: Text2;
   usage?: Usage1;
 }
@@ -3324,6 +3340,7 @@ export interface Surface {
  */
 export interface ConversationOut {
   brief: Brief;
+  chosen_model?: ChosenModel;
   cost_usd?: CostUsd;
   enabled: Enabled;
   id: Id17;
@@ -3340,7 +3357,7 @@ export interface ConversationOut {
  * via the `definition` "ModelInfoOut".
  */
 export interface ModelInfoOut {
-  model?: Model3;
+  model?: Model4;
   origin?: Origin;
   problem?: Problem;
 }
@@ -3367,7 +3384,7 @@ export interface CopilotSettings {
   ask_model?: AskModel;
   base_url?: BaseUrl;
   enabled?: Enabled1;
-  model?: Model4;
+  model?: Model5;
   notes?: Notes;
   privacy?: Privacy;
   source?: Source2;
@@ -3570,7 +3587,7 @@ export interface Value2 {
 export interface DefaultModel {
   api_key?: ApiKey1;
   base_url?: BaseUrl1;
-  model: Model5;
+  model: Model6;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3660,7 +3677,7 @@ export interface DuplicateIn {
 export interface Embedding {
   api_key?: ApiKey2;
   base_url?: BaseUrl2;
-  model?: Model6;
+  model?: Model7;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3823,7 +3840,7 @@ export interface ExperimentIn {
 export interface Simulation {
   goal?: Goal;
   max_turns?: MaxTurns;
-  model?: Model7;
+  model?: Model8;
   persona: Persona;
   stop_phrase?: StopPhrase;
 }
@@ -4609,7 +4626,7 @@ export interface Defaults {
  * via the `definition` "Resolved".
  */
 export interface Resolved1 {
-  model: Model8;
+  model: Model9;
   origin: Origin1;
   problem?: Problem1;
   purpose: Purpose;
@@ -5193,7 +5210,7 @@ export interface SettingsOut {
   ask_model?: AskModel1;
   base_url?: BaseUrl5;
   enabled?: Enabled5;
-  model?: Model9;
+  model?: Model10;
   notes?: Notes4;
   privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
@@ -5207,7 +5224,7 @@ export interface SettingsOut {
 export interface SetupIn {
   api_key?: ApiKey7;
   base_url?: BaseUrl6;
-  model: Model10;
+  model: Model11;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5602,7 +5619,7 @@ export interface VersionOut {
  * via the `definition` "WorkflowIn".
  */
 export interface WorkflowIn {
-  model?: Model11;
+  model?: Model12;
   name?: Name55;
   system_prompt?: SystemPrompt1;
   temperature?: Temperature1;

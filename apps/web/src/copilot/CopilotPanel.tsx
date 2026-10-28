@@ -6,11 +6,12 @@ import { useEditor } from "../editor/store";
 import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { apiFetch } from "../api/client";
+import { useModels } from "../api/queries";
 import type { CopilotThreadOut, GuidePageRef } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
 import { Markdown, slug } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
-import { type Brief, type ChatMessage, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
+import { type Brief, type ChatMessage, type Conversation, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
 import { describe, preview } from "./review";
 
 const STARTERS = [
@@ -191,9 +192,7 @@ export function CopilotPanel() {
     <div className="panel copilot" data-testid="copilot-panel">
       <div className="copilot-head row">
         <span className="copilot-title"><span className="copilot-mark" aria-hidden="true">✦</span>Copilot</span>
-        <span className="model-chip" title={conversation.model.origin ? `${conversation.model.model} (${conversation.model.origin})` : undefined}>
-          {conversation.model.model ?? "No model yet"}
-        </span>
+        <ModelSwitcher workflowId={workflowId ?? ""} model={conversation.model} chosen={conversation.chosen_model ?? null} busy={busy} />
         <span className="spacer" />
         <Threads workflowId={workflowId} current={conversation.id} busy={busy} />
         <button type="button" className="link small" onClick={() => void useCopilot.getState().newChat()} disabled={busy}
@@ -328,5 +327,41 @@ function Sources({ sources }: { sources: { page: string; section: string }[] }) 
         );
       })}
     </div>
+  );
+}
+
+/** The model of this conversation: the project's choice, or another one for this chat (the server checks the
+ * project's policies and privacy setting). "New chat" goes back to the project's. */
+function ModelSwitcher({ workflowId, model, chosen, busy }: {
+  workflowId: string; model: Conversation["model"]; chosen: string | null; busy: boolean;
+}) {
+  const models = useModels();
+  const label = (models.data ?? []).find((m) => m.id === model.model)?.label ?? model.model ?? "No model yet";
+  const title = model.origin ? `${model.model} (${model.origin})` : undefined;
+  if (!can("builder")) return <span className="model-chip" title={title}>{label}</span>;
+  const pick = async (id: string | null) => {
+    try {
+      await apiFetch(`/workflows/${workflowId}/copilot/model`, { method: "PUT", json: { model: id } });
+      await useCopilot.getState().load(workflowId);
+    } catch (e) {
+      useCopilot.setState({ error: `Could not switch the model: ${(e as Error).message}` });
+    }
+  };
+  const offered = (models.data ?? []).filter((m) => m.provider !== "fake");
+  return (
+    <Menu testId="copilot-model" className="model-switch" align="left" title={title ? `${title}: switch for this chat` : "Choose a model for this chat"}
+      label={<span className="model-chip">{label}{chosen ? " · this chat" : ""} ▾</span>}>
+      {(close) => (
+        <>
+          <p className="menu-heading">Model for this chat</p>
+          <button type="button" role="menuitemradio" aria-checked={!chosen} disabled={busy}
+            onClick={() => { close(); void pick(null); }}>The project's choice</button>
+          {offered.map((m) => (
+            <button type="button" role="menuitemradio" key={m.id} aria-checked={chosen === m.id} disabled={busy}
+              onClick={() => { close(); void pick(m.id); }}>{m.label}</button>
+          ))}
+        </>
+      )}
+    </Menu>
   );
 }

@@ -64,6 +64,7 @@ export interface Conversation {
   pending: Proposal | null;
   usage: { input_tokens?: number; output_tokens?: number };
   cost_usd?: number | null; // the answers' costs, summed (where the model's price is known)
+  chosen_model?: string | null; // a model chosen for this conversation; null: the project's
   token_cap: number;
   model: { model?: string | null; origin?: string | null; problem?: string | null };
 }

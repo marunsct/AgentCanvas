@@ -449,3 +449,30 @@ async def test_an_answer_from_the_guide_cites_the_sections_it_read(app, api_clie
     script(app, "Hello.")  # an answer that read nothing cites nothing
     await ask(api_client, wf, "hi", mode="ask")
     assert "sources" not in (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["messages"][-1]
+
+
+async def test_a_conversation_switches_its_model_within_policy(app, api_client):
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    url = f"/v1/workflows/{wf}/copilot/model"
+    chosen = await api_client.put(url, json={"model": "anthropic:claude-opus-5-5"})
+    assert chosen.status_code == 200 and chosen.json() == {
+        "model": "anthropic:claude-opus-5-5", "origin": "chosen for this chat", "problem": None}  # fmt: skip
+    convo = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()
+    assert (
+        convo["chosen_model"] == "anthropic:claude-opus-5-5" and convo["model"]["model"] == "anthropic:claude-opus-5-5"
+    )
+    script(app, "Hi.")
+    events = await ask(api_client, wf, "hi", mode="ask")
+    assert events[0]["model"] == "anthropic:claude-opus-5-5"  # the turn uses it
+
+    # the project's privacy setting still applies: a hosted model is refused when only local ones are allowed
+    s = (await api_client.get("/v1/projects/prj_default/copilot-settings")).json()
+    await api_client.put("/v1/projects/prj_default/copilot-settings", json={**s, "privacy": "local_only"})
+    try:
+        assert (await api_client.put(url, json={"model": "openai:gpt-5.5"})).status_code == 422
+    finally:
+        await api_client.put("/v1/projects/prj_default/copilot-settings", json={**s, "privacy": "standard"})
+
+    assert (await api_client.put(url, json={"model": None})).json()["origin"] != "chosen for this chat"
+    await api_client.delete(f"/v1/workflows/{wf}/copilot")  # "New chat" starts on the project's model
+    assert (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["chosen_model"] is None

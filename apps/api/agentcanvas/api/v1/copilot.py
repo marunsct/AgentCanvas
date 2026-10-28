@@ -77,6 +77,7 @@ class ConversationOut(BaseModel):
     proposals: list[dict[str, Any]]
     pending: dict[str, Any] | None = Field(default=None, description="the open proposal with its diff and preview")
     usage: dict[str, int]
+    chosen_model: str | None = Field(None, description="the model chosen for this conversation; null: the project's")
     cost_usd: float | None = Field(
         None,
         description="what the conversation's answers cost, where the model's price is known (each answer's own "
@@ -128,11 +129,16 @@ def _aware(t: datetime | None) -> datetime | None:
 
 
 async def _model(
-    svc: WorkflowService, view: WorkflowView, project_settings: dict[str, Any], cs: CopilotSettings, mode: str = "build"
+    svc: WorkflowService,
+    view: WorkflowView,
+    project_settings: dict[str, Any],
+    cs: CopilotSettings,
+    mode: str = "build",
+    override: str | None = None,
 ) -> ResolvedModel:
     registry = svc.registry(view.row.project_id) or default_registry()
     policies = await svc.policies(view.row.project_id)
-    return copilot_settings.resolve(cs, project_settings, view.workflow, registry, policies, mode)
+    return copilot_settings.resolve(cs, project_settings, view.workflow, registry, policies, mode, override)
 
 
 def _pending(conv: CopilotConversation | None, view: WorkflowView) -> dict[str, Any] | None:
@@ -162,7 +168,7 @@ async def get_conversation(
     cs = copilot_settings.load(project.settings)
     conv = await _conversation(session, wf_id, user.id)
     try:
-        m = await _model(svc, view, project.settings or {}, cs)
+        m = await _model(svc, view, project.settings or {}, cs, override=conv.model if conv else None)
         model = ModelInfoOut(model=m.model, origin=m.origin)
     except InvalidInput as exc:
         model = ModelInfoOut(problem=str(exc))
@@ -175,6 +181,7 @@ async def get_conversation(
         proposals=[{k: v for k, v in p.items() if k != "commands"} for p in (conv.proposals if conv else [])],
         pending=_pending(conv, view),
         usage=conv.usage if conv else {},
+        chosen_model=conv.model if conv else None,
         cost_usd=_spent(conv.messages if conv else []),
         token_cap=cs.token_cap,
         model=model,
@@ -251,9 +258,9 @@ async def _start_turn(
     cs = copilot_settings.load(project.settings)
     if not cs.enabled:
         raise Forbidden("the Copilot is switched off for this project")
-    model = await _model(svc, view, project.settings or {}, cs, body.mode)
     now = datetime.now(UTC)
     conv = await _conversation(session, wf_id, user.id, lock=True)  # the lease: one turn at a time, on any replica
+    model = await _model(svc, view, project.settings or {}, cs, body.mode, conv.model if conv else None)
     if conv is None:
         conv = CopilotConversation(id=new_id("cpc"), workflow_id=wf_id, user_id=user.id, messages=[], proposals=[])
         conv.usage = {}
@@ -474,6 +481,38 @@ async def open_thread(
     target.archived_at = None
     await session.commit()
     return Response(status_code=204)
+
+
+class ChatModelIn(BaseModel):
+    model: str | None = Field(
+        None, pattern=r"^[a-z0-9_\-]+:.+$", description="provider:model for this conversation; null: the project's"
+    )
+
+
+@router.put("/workflows/{wf_id}/copilot/model", response_model=ModelInfoOut)
+async def choose_chat_model(
+    wf_id: str,
+    body: ChatModelIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    user: CurrentUser = Depends(current_user),
+) -> ModelInfoOut:
+    """Switch the model of the open conversation (PLAN §2.3). It must pass the project's model policies and privacy
+    setting; "New chat" goes back to the project's."""
+    svc = _service(request, session, settings)
+    view = await svc.get(wf_id)
+    project = await ProjectRepo(session).require(view.row.project_id)
+    cs = copilot_settings.load(project.settings)
+    chosen = await _model(svc, view, project.settings or {}, cs, override=body.model)  # 422 when not allowed
+    conv = await _conversation(session, wf_id, user.id, lock=True)
+    if conv is None:
+        conv = CopilotConversation(id=new_id("cpc"), workflow_id=wf_id, user_id=user.id, messages=[], proposals=[])
+        conv.usage = {}
+        session.add(conv)
+    conv.model = body.model
+    await session.commit()
+    return ModelInfoOut(model=chosen.model, origin=chosen.origin)
 
 
 class CopilotThreadPatch(BaseModel):

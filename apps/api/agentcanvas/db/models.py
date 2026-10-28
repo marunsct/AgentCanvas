@@ -716,6 +716,7 @@ class CopilotConversation(Base):
     proposals: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     usage: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     title: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)  # chosen for this conversation (within policy); null: the project's
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     busy_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now()

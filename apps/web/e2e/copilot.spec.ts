@@ -12,7 +12,7 @@ test("the Copilot builds a workflow the person accepts, and undo takes it back",
   await page.getByRole("button", { name: "Create empty" }).click();
 
   await page.getByTestId("copilot-button").click();
-  await expect(page.getByTestId("copilot-panel")).toContainText("claude-haiku-4-5");
+  await expect(page.getByTestId("copilot-panel")).toContainText("Claude Haiku 4.5");
   await page.getByLabel("Message the Copilot").fill("Build a workflow that greets people");
   await page.getByRole("button", { name: "Send" }).click();
 
@@ -116,4 +116,24 @@ test("the inspector asks the Copilot about the selected block", async ({ page })
   await page.getByTestId("ask-copilot-block").getByRole("button", { name: /Ask the Copilot about this block/ }).click();
   await expect(page.getByTestId("copilot-panel")).toContainText("Explain the block");
   await expect(page.getByTestId("copilot-panel")).toContainText("demo Copilot");
+});
+
+test("a conversation can switch its model, and New chat goes back to the project's", async ({ page }) => {
+  await page.request.put("/api/v1/projects/prj_default/copilot-settings", {
+    data: { source: "separate", model: "anthropic:claude-haiku-4-5" },
+  });
+  const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Switch ${Date.now()}` } })).json();
+  await page.goto(`/workflows/${wf.id}`);
+  await page.getByTestId("copilot-button").click();
+  const panel = page.getByTestId("copilot-panel");
+  await expect(panel.getByTestId("copilot-model")).toContainText("Claude Haiku 4.5");
+  await panel.getByTestId("copilot-model").click();
+  await page.getByRole("menuitemradio", { name: "Claude Opus 5.5" }).click();
+  await expect(panel.getByTestId("copilot-model")).toContainText("Claude Opus 5.5 · this chat");
+  await page.getByLabel("Message the Copilot").fill("What can you do?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(panel).toContainText("demo Copilot");
+  await panel.getByRole("button", { name: "New chat" }).click();
+  await expect(panel.getByTestId("copilot-model")).toContainText("Claude Haiku 4.5");
+  await expect(panel.getByTestId("copilot-model")).not.toContainText("this chat");
 });

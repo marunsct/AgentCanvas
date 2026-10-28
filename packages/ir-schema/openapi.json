@@ -1191,6 +1191,25 @@
         "title": "ChatIn",
         "type": "object"
       },
+      "ChatModelIn": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_\\-]+:.+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "provider:model for this conversation; null: the project's",
+            "title": "Model"
+          }
+        },
+        "title": "ChatModelIn",
+        "type": "object"
+      },
       "ChatOut": {
         "properties": {
           "model": {
@@ -1856,6 +1875,18 @@
               }
             ],
             "title": "Brief"
+          },
+          "chosen_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the model chosen for this conversation; null: the project's",
+            "title": "Chosen Model"
           },
           "cost_usd": {
             "anyOf": [
@@ -24488,6 +24519,82 @@
           }
         ],
         "summary": "Send Message",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot/model": {
+      "put": {
+        "description": "Switch the model of the open conversation (PLAN \u00a72.3). It must pass the project's model policies and privacy\nsetting; \"New chat\" goes back to the project's.",
+        "operationId": "choose_chat_model_v1_workflows__wf_id__copilot_model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatModelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInfoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Choose Chat Model",
         "tags": [
           "copilot"
         ]

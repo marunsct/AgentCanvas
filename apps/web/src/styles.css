@@ -1002,7 +1002,7 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
   box-shadow: var(--shadow-lg); animation: fade .1s ease-out;
 }
 .menu-list > a, .menu-list > button {
-  display: flex; align-items: center; gap: 8px; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px;
   color: var(--text); background: transparent; border: 0; box-shadow: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .menu-list > a:hover, .menu-list > button:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
@@ -1156,3 +1156,8 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .md-page p, .md-page li { line-height: 1.6; }
 .md-table { overflow-x: auto; margin: 10px 0; }
 .md-table td, .md-table th { vertical-align: top; font-size: 13px; }
+.model-switch > button { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.model-switch .model-chip { font-family: inherit; max-width: 170px; cursor: pointer; }
+.copilot-head .link { white-space: nowrap; }
+.menu-list > button[role="menuitemradio"]::before { content: ""; width: 1em; flex: none; }
+.menu-list > button[role="menuitemradio"][aria-checked="true"]::before { content: "✓"; color: var(--accent); }

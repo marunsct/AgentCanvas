@@ -64,9 +64,15 @@ def resolve(
     registry: Registry,
     policies: list[Policy],
     mode: str = "build",
+    override: str | None = None,
 ) -> ResolvedModel:
-    """The Copilot's model for this workflow (and mode), or InvalidInput saying what to change."""
-    if mode == "ask" and settings.ask_model:
+    """The Copilot's model for this workflow (and mode), or InvalidInput saying what to change. `override` is the
+    model the person chose for this conversation; it passes the same checks (policies, local-only)."""
+    if override:
+        chosen = ResolvedModel(
+            model=override, config=_endpoint_for(override, settings, project_settings), origin="chosen for this chat"
+        )
+    elif mode == "ask" and settings.ask_model:
         chosen = ResolvedModel(
             model=settings.ask_model,
             config=_endpoint_for(settings.ask_model, settings, project_settings),
