@@ -33,6 +33,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 | Sandbox egress lists enforced by a signed-list proxy (docker, remote), refused where they cannot be; missing delete rules on version and deployment references (found: deleting a called workflow failed on Postgres) | unreleased | |
 | GitHub CI caches uv downloads (keyed on `uv.lock` and the Makefile's framework pins) | unreleased | |
 | SQLite enforces the schema's cascades (found: a deleted workflow's published endpoint kept answering); MCP `Origin` and `MCP-Protocol-Version` checks; Copilot settings PUT merges | unreleased | |
+| End-to-end product pass 2026-10-29: model prices (none were set, so USD budgets and cost alerts counted nothing; a malformed `AGENTCANVAS_MODEL_PRICES` stops the start); Deep Agents token metering missed replies without a model name; thread paging by time (caller-named threads sorted anywhere; SQLite text timestamps compared in SQL); empty workflows refused before the engine; another project's workflow opens in its project; laptop-width bars kept Test and Settings in sight; two full-project pyright errors | unreleased | |
 
 ## Verified 2026-10-20 (no change needed)
 
