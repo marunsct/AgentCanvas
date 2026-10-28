@@ -12,6 +12,18 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Opening another project's workflow switches the app to that project
+The Inbox spans the organisation (documented, and reviewers want one queue), but every page reads the project chosen
+at start-up, so a workflow reached from it could open with the wrong project's blocks and models. I made the editor
+follow the workflow (remember its project, load the page again) rather than narrow the Inbox to one project. A
+once-per-page marker stops a reload loop when the project cannot be chosen (Matura workspaces, blocked storage).
+Inbox items from another project show its name. *Reverse:* drop `followProject` in `editor/store.ts`.
+
+### A workflow with no steps is refused at run time, not flagged as an error
+An empty canvas shows no red (a new workflow is not "wrong"), but running it reached LangGraph and failed with a
+stack-trace message. `/runs` now answers 422 "no steps yet" before anything is recorded. *Reverse:* remove the check
+in `_runnable_workflow`.
+
 ### Preferences: the theme follows the person, Simple mode stays with the browser
 The plan had both follow the person. Simple mode decides which blocks and panels the editor shows; syncing it made
 every browser of the person flip when one did, and the browser tests (one shared dev user) depend on each other's

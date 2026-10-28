@@ -53,6 +53,24 @@ export async function chooseProject(): Promise<string> {
   return PROJECT_ID;
 }
 
+/** Open a page of another project (a workflow reached from the Inbox, Runs or a link) in that project: remember it
+ * and load the page again. False when that cannot work (storage blocked, or already tried for this page because the
+ * project is not one this session may pick), so the caller says so instead of reloading forever. */
+export function followProject(id: string): boolean {
+  if (id === PROJECT_ID) return false;
+  const marker = `${id} ${location.pathname}`;
+  try {
+    if (sessionStorage.getItem("agentcanvas.followed") === marker) return false;
+    sessionStorage.setItem("agentcanvas.followed", marker);
+  } catch {
+    return false;
+  }
+  store(PROJECT_KEY, id);
+  if (stored(PROJECT_KEY) !== id) return false;
+  location.reload();
+  return true;
+}
+
 /** Work in another project: remembered for next time, and the app starts over in it (pages read the project chosen
  * at start-up). */
 export function switchProject(id: string): void {

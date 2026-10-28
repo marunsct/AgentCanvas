@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { ApiError, apiFetch } from "../api/client";
 import { can, ME } from "../api/session";
+import { followProject, PROJECT_ID } from "../api/queries";
 import type { Diagnostic, Layout, Position } from "../api/types";
 import { applyAll, applyLocal, type Command, CommandError, composePatches } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
@@ -22,6 +23,7 @@ export interface Notice {
 interface WorkflowOut {
   id: string;
   name: string;
+  project_id: string;
   version: number;
   ir_hash: string;
   ir: G.Workflow;
@@ -229,6 +231,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   load: async (id) => {
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
+    // the editor reads blocks, models and settings of the app's project: open another project's workflow in it
+    if (out.project_id !== PROJECT_ID && followProject(out.project_id)) return;
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
       diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),

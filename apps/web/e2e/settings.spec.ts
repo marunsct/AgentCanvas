@@ -129,3 +129,17 @@ test("on a 1024-px laptop the top bar keeps Settings and the person menu in sigh
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings/);
 });
+
+test("a workflow of another project (from the Inbox, Runs or a link) opens in its own project", async ({ page }) => {
+  const stamp = Date.now();
+  const project = await (await page.request.post("/api/v1/projects", { data: { name: `Elsewhere ${stamp}` } })).json();
+  const wf = await (await page.request.post(`/api/v1/projects/${project.id}/workflows`, { data: { name: `Away ${stamp}` } })).json();
+  await page.goto("/");
+  await expect(page.getByTestId("project-name")).not.toHaveText(`Elsewhere ${stamp}`);
+  await page.goto(`/workflows/${wf.id}`);
+  await expect(page).toHaveURL(new RegExp(`/workflows/${wf.id}$`));
+  await expect(page.locator(".crumb")).toContainText(`Away ${stamp}`);
+  await page.getByRole("link", { name: "AgentCanvas" }).first().click();
+  await expect(page.getByTestId("project-name")).toHaveText(`Elsewhere ${stamp}`);
+  expect((await page.request.delete(`/api/v1/projects/${project.id}`)).ok()).toBeTruthy();
+});

@@ -83,6 +83,7 @@ async def test_run_pauses_for_tool_approval_and_inbox_resumes(triage_api):
     inbox = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
     assert len(inbox) == 1 and inbox[0]["payload"]["action_requests"][0]["name"] == "send_reply"
     assert inbox[0]["workflow_id"] == wf and inbox[0]["workflow_name"] == "Support triage"
+    assert inbox[0]["project_id"] == "prj_default" and inbox[0]["project_name"]  # it spans the organisation
     node = next(n for n in (await api.get(f"/v1/workflows/{wf}")).json()["ir"]["nodes"] if n["id"] == "n_ag")
     assert inbox[0]["node_label"] == (node.get("label") or node["name"].replace("_", " ").capitalize())  # not ids
     assert (await api.get("/v1/threads/th_low")).json()["status"] == "interrupted"

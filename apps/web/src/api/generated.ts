@@ -911,6 +911,11 @@ export type Kind7 = string;
  * the waiting block's label (or name) in the workflow's draft
  */
 export type NodeLabel = string | null;
+/**
+ * the workflow's project: the Inbox spans the organisation
+ */
+export type ProjectId3 = string | null;
+export type ProjectName = string | null;
 export type RunId4 = string;
 export type Status7 = string;
 export type ThreadId4 = string;
@@ -983,7 +988,7 @@ export type Description11 = string;
 export type Documents = number;
 export type Id39 = string;
 export type Name33 = string;
-export type ProjectId3 = string;
+export type ProjectId4 = string;
 /**
  * settings changed since the documents were indexed: reindex
  */
@@ -2214,7 +2219,7 @@ export type Diagnostics5 = Diagnostic[];
 export type Id56 = string;
 export type IrHash6 = string;
 export type Name56 = string;
-export type ProjectId4 = string;
+export type ProjectId5 = string;
 export type UpdatedAt11 = string;
 export type Version13 = number;
 export type Id57 = string;
@@ -4258,6 +4263,8 @@ export interface InterruptOut {
   kind: Kind7;
   node_label?: NodeLabel;
   payload: Payload;
+  project_id?: ProjectId3;
+  project_name?: ProjectName;
   run_id: RunId4;
   status: Status7;
   thread_id: ThreadId4;
@@ -4368,7 +4375,7 @@ export interface KnowledgeBaseOut {
   embedding: Embedding1;
   id: Id39;
   name: Name33;
-  project_id: ProjectId3;
+  project_id: ProjectId4;
   stale: Stale;
   updated_at: UpdatedAt7;
   version: Version9;
@@ -5553,7 +5560,7 @@ export interface WorkflowOut {
   ir_hash: IrHash6;
   layout: Layout4;
   name: Name56;
-  project_id: ProjectId4;
+  project_id: ProjectId5;
   updated_at: UpdatedAt11;
   version: Version13;
 }

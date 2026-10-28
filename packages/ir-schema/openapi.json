@@ -4952,6 +4952,29 @@
             "title": "Payload",
             "type": "object"
           },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the workflow's project: the Inbox spans the organisation",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
           "run_id": {
             "title": "Run Id",
             "type": "string"

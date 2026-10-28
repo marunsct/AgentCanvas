@@ -155,6 +155,8 @@ class InterruptOut(BaseModel):
     id: str
     workflow_id: str | None = None
     workflow_name: str | None = None
+    project_id: str | None = Field(None, description="the workflow's project: the Inbox spans the organisation")
+    project_name: str | None = None
     thread_id: str
     run_id: str
     canvas_node_id: str
@@ -632,7 +634,11 @@ async def delete_thread(
 
 # ------------------------------------------------------------------- inbox ----
 def _intr(
-    x: InterruptTask, workflow_id: str | None = None, workflow_name: str | None = None, ir: dict | None = None
+    x: InterruptTask,
+    workflow_id: str | None = None,
+    workflow_name: str | None = None,
+    ir: dict | None = None,
+    project: Project | None = None,
 ) -> InterruptOut:
     node = next((n for n in (ir or {}).get("nodes", []) if n.get("id") == x.canvas_node_id), None)
     return InterruptOut(
@@ -642,6 +648,8 @@ def _intr(
         id=x.id,
         workflow_id=workflow_id,
         workflow_name=workflow_name,
+        project_id=project.id if project else None,
+        project_name=project.name if project else None,
         thread_id=x.thread_id,
         run_id=x.run_id,
         canvas_node_id=x.canvas_node_id,
@@ -663,7 +671,7 @@ async def inbox(
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
     q = (
-        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, WorkflowRow.draft_ir)
+        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, WorkflowRow.draft_ir, Project)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
@@ -673,7 +681,7 @@ async def inbox(
         q = q.where(Thread.workflow_id == workflow_id)
     # newest first: a long backlog must not hide what is waiting right now
     rows = (await session.execute(q.order_by(InterruptTask.created_at.desc()).limit(limit))).all()
-    return [_intr(x, wid, name, ir) for x, wid, name, ir in rows]
+    return [_intr(x, wid, name, ir, project) for x, wid, name, ir, project in rows]
 
 
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])

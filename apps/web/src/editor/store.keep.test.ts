@@ -7,7 +7,7 @@ const requests: { path: string; method: string; commands?: Command[]; version?: 
 let conflictNext = false;
 
 const wfOut = (version: number, name: string) => ({
-  id: "wf_1", version, ir_hash: "h", diagnostics: [], inverse: [], layout: {},
+  id: "wf_1", project_id: "prj_default", version, ir_hash: "h", diagnostics: [], inverse: [], layout: {},
   ir: { id: "wf_1", name, state: { channels: [] }, nodes: [], edges: [] },
 });
 

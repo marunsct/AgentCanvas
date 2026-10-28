@@ -2,7 +2,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
-import { useInbox } from "../api/queries";
+import { PROJECT_ID, useInbox } from "../api/queries";
 import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -29,7 +29,7 @@ export function InboxPage() {
   });
   return (
     <div className="page">
-      <PageHeader title="Inbox" description="Runs waiting for a person: an approval, an edit or an answer. Deciding resumes the run." />
+      <PageHeader title="Inbox" description="Runs waiting for a person, in every project: an approval, an edit or an answer. Deciding resumes the run." />
       <QueryStatus q={inbox} what="the inbox" />
       {inbox.data?.length === 0 && (
         <EmptyState icon={Inbox} title="Nothing is waiting for you" testId="inbox-empty">
@@ -49,6 +49,10 @@ export function InboxPage() {
           <article key={item.id} className="inbox-item" data-testid="inbox-item">
             <header className="row gap">
               {item.workflow_id ? <Link to={`/workflows/${item.workflow_id}`}>{item.workflow_name}</Link> : <span>A deleted workflow</span>}
+              {item.project_id && item.project_id !== PROJECT_ID && (
+                <span className="badge" data-testid="inbox-project" title="The Inbox shows every project; opening it switches to this one">
+                  {item.project_name}</span>
+              )}
               <small className="muted">
                 at <b>{item.node_label ?? "a step"}</b> · <span title={exact(item.created_at)}>{ago(item.created_at)}</span>
                 {item.workflow_id && <> · <Link to={`/workflows/${item.workflow_id}?thread=${item.thread_id}`}>see the run</Link></>}

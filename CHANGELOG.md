@@ -5,6 +5,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **A workflow of another project opened with this project's blocks, models and settings**: the Inbox is
+  organisation-wide, so "see the run" (or a pasted link) could open a workflow the app's current project does not
+  hold, and its custom blocks showed as unknown. The editor now switches to the workflow's project and loads again
+  (once; when the project cannot be chosen, it stays as before).
 - On a laptop window (under ~1320 px) the top bar hid Events, Settings and the person menu past its right edge. The
   page links now become icons there (the open page keeps its name; names show on hover and stay for screen readers).
 - On a 1024-px laptop window the editor's bar pushed ▶ Test, Copilot and the person menu out of sight (the bar
