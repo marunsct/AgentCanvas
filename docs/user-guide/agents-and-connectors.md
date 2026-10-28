@@ -147,7 +147,7 @@ what it needs.
 
 ## Send traces to your observability tool
 
-Under **Setup** → **Send traces to your observability tool**, an admin picks a destination:
+Under **Settings › Observability**, an admin picks where traces go:
 
 | Destination | Address | Keys |
 |---|---|---|
