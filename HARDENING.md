@@ -31,6 +31,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 | `images` stage: both images built and Trivy-scanned (fixes: certifi, filelock, pypdf, pip removed), production and local stacks probed through nginx; found and fixed share-link framing never reaching the API; access-control sweeps over every route; concurrency tests; finished-run memory limit; a race that gave concurrent steps a model bridge that was not listening yet (found as a flaky experiment test); Python ceiling (<3.15) in everything we write; rendered Helm manifests schema-checked (kubeconform); hostile names, descriptions and labels in every export (found: emoji broke `pyproject.toml`); importer mutation fuzz and hostile run input (nothing found); forged-token tests (found: a blank `sub` was accepted); a cross-organisation sweep over 54 id routes and a stored-secret sweep over every readable route (nothing found); chaos run of every page against a failing API (found: HTML with a 200 crashed every page); hostile query parameters (found: two 500s, overflow and NUL); authlib and dnspython advisories fixed in the lock; global banner for unhandled web failures; the export stage deploys two exports for real | unreleased | |
 | Sandbox: a warning when `sandbox.json` lists egress/inject that the mode in use cannot give | unreleased | |
 | Sandbox egress lists enforced by a signed-list proxy (docker, remote), refused where they cannot be; missing delete rules on version and deployment references (found: deleting a called workflow failed on Postgres) | unreleased | |
+| GitHub CI caches uv downloads (keyed on `uv.lock` and the Makefile's framework pins) | unreleased | |
 | SQLite enforces the schema's cascades (found: a deleted workflow's published endpoint kept answering); MCP `Origin` and `MCP-Protocol-Version` checks; Copilot settings PUT merges | unreleased | |
 
 ## Verified 2026-10-20 (no change needed)
@@ -65,7 +66,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
   queueing other queries; run it in a quiet moment on a large installation).
 - **Code:** duplicated engine, worker and packager code (about 1,000-1,300 lines); `Resources` is still LangChain's object for
   every adapter.
-- **CI:** no framework-environment cache; the Kubernetes (kind) deploy of an export is not in local CI (the compose deploys are).
+- **CI:** the Kubernetes (kind) deploy of an export is not in local CI (the compose deploys are).
 - **Unverified here (owner runs):** the conformance kit's remaining frameworks beyond those
   installed in `apps/api/.frameworks`, `lint-imports` beyond `make lint`, Trivy, Kubernetes (kind) and compose deploys of exports.
 - **Owner:** release tags v0.1.0–v0.32.x not pushed; delete the merged branches still on GitHub (`claude/project-thread-*` ×5, `claude/sprint-11…13-*`, `claude/trusting-curie-n0i720`, `claude/sandbox-warning`); revoke the token pasted earlier. #48 is closed, #45 and #36 are merged. Commit or discard `.sitepkgs.tgz` (80 MB, untracked in the repository root).
