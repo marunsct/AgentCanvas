@@ -226,8 +226,10 @@ jobs:
       - uses: azure/setup-helm@v5
       - name: Lint and render the Helm chart
         run: |
+          set -o pipefail
           helm lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict
-          helm template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml > /dev/null
+          # the rendered manifests against the Kubernetes API schemas (a wrong field passes lint and template)
+          helm template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml | docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7-alpine -strict -summary -kubernetes-version 1.31.0 -
 
   export:
     # S16: every template exports to every target; the deploy files lint; each export passes its own tests with its
@@ -246,10 +248,12 @@ jobs:
       - run: cd apps/api && uv sync --frozen && uv run python scripts/export_templates.py "$EXPORTS"
       - name: Lint the deploy files
         run: |
+          set -o pipefail
           for s in "$EXPORTS"/*/*/*/deploy/*/deploy.sh; do bash -n "$s"; done
           for c in "$EXPORTS"/kubernetes/*/*/deploy/kubernetes/chart; do
             helm lint "$c" --set image.repository=example/app
-            helm template x "$c" --set image.repository=example/app --set ingress.enabled=true --set ingress.host=a.example.com >/dev/null
+            helm template x "$c" --set image.repository=example/app --set ingress.enabled=true --set ingress.host=a.example.com \
+              --set autoscaling.enabled=true | docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7-alpine -strict -summary -kubernetes-version 1.31.0 - >/dev/null
           done
           for d in "$EXPORTS"/local/*/* "$EXPORTS"/server/*/*; do
             touch "$d/.env"

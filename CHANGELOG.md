@@ -58,6 +58,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Rendered Helm manifests (the platform chart, and every exported chart with autoscaling and ingress on) are checked
+  against the Kubernetes 1.31 API schemas with kubeconform, in `make ci-full` and in GitHub CI. `helm lint` and
+  `helm template` accept a field of the wrong type or name.
 - A banner for failures nobody handled (a rejected promise from a fire-and-forget call used to vanish silently).
 - `make ci-full`'s `export` stage deploys two exports with Docker Compose and smoke-tests them.
 - `scripts/ci-images.sh` (the `images` stage of `make ci-full`): builds both images, scans them with Trivy, starts the

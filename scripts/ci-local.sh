@@ -17,6 +17,11 @@ helm_run() {   # helm, from the machine or (no install needed) from its official
     docker run --rm -v "$ROOT:$ROOT" -w "$PWD" "$HELM_IMAGE" "$@"   # only the repository is shared with Docker
   fi
 }
+KUBECONFORM_IMAGE=ghcr.io/yannh/kubeconform:v0.6.7-alpine
+kubeconform_run() {   # the Kubernetes API schemas check on rendered manifests (stdin); `helm lint` does not know a field is wrong
+  if need kubeconform; then kubeconform -strict -summary -kubernetes-version 1.31.0 -
+  else docker run --rm -i "$KUBECONFORM_IMAGE" -strict -summary -kubernetes-version 1.31.0 -; fi
+}
 stage() {  # stage <name> <command...>: run, record, keep going so one report shows every failure
   local name=$1; shift
   printf '\n\033[1m== %s ==\033[0m\n' "$name"
@@ -90,7 +95,8 @@ s_export() {   # every template exports to every target; the deploy files lint; 
   if have_helm; then
     for c in "$ex"/kubernetes/*/*/deploy/kubernetes/chart; do
       helm_run lint "$c" --set image.repository=example/app >/dev/null \
-        && helm_run template x "$c" --set image.repository=example/app --set ingress.enabled=true --set ingress.host=a.example.com >/dev/null \
+        && helm_run template x "$c" --set image.repository=example/app --set ingress.enabled=true --set ingress.host=a.example.com \
+             --set autoscaling.enabled=true | kubeconform_run >/dev/null \
         || return 1
     done
   else echo "export: neither helm nor docker is here, the Kubernetes charts are not linted"; fi
@@ -146,7 +152,7 @@ s_audit() {
 }
 s_helm() {
   helm_run lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict
-  helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml >/dev/null
+  helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml | kubeconform_run
 }
 s_images() {   # build and scan both images, probe the production and local compose stacks (own projects and ports)
   scripts/ci-images.sh

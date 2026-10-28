@@ -12,6 +12,18 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Kubernetes: schema-check the manifests, no kind cluster on this machine
+GitHub CI already deploys an export to a kind cluster. Locally I did not add one: it needs privileged containers and a
+~1 GB node image beside your running apps, which crosses the rule that your Docker stays untouched. Instead the rendered
+Helm output (platform chart; each export's chart with autoscaling and ingress on) goes through kubeconform against the
+1.31 schemas, which needs no cluster and catches what `helm lint` does not (I checked: `replicas: "many"` is rejected).
+*Reverse:* delete `kubeconform_run` from `scripts/ci-local.sh` and the two piped steps in `ci.yml`.
+
+### The hand-written web response types stay
+Looked at the remaining `apiFetch<{ id: string }>`-style types: they are one-field reads (`{ id }`, `{ url }`,
+`{ api_key }`). Replacing them with generated types would add imports and change nothing the type checker can catch,
+because `apiFetch` does not tie a path to a type. `HARDENING.md` already says so; it stays an accepted state, not a TODO.
+
 ### Dependabot #73 (nginx-unprivileged 1.29 to 1.31): safe to merge; and a scan that found new advisories
 Built the web image on 1.31 and ran the whole `images` stage: Trivy 0/0, every probe through nginx passes, including the
 share-link framing check. Run on the same day, the scan also started failing for the API image: authlib 1.8.0 (a
