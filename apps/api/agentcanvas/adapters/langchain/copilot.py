@@ -22,8 +22,9 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from langchain.agents.middleware import AgentMiddleware, ModelCallLimitMiddleware, TodoListMiddleware
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.outputs import LLMResult
 from langchain_core.tools import StructuredTool
 from langgraph.errors import GraphRecursionError
 
@@ -155,7 +156,7 @@ class DeepAgentTurn(CopilotTurn):
         )
         messages = [*self._history(), HumanMessage(content=text)]
         self.history.append({"role": "user", "content": text, "at": _now(), "mode": mode})
-        meter = UsageMetadataCallbackHandler()
+        meter = _Meter()
         counted = dict(self.usage)
         said: list[str] = []
         streamed = ""
@@ -228,13 +229,9 @@ class DeepAgentTurn(CopilotTurn):
         self.history.append(entry)
         yield {"type": "done", "usage": dict(self.usage), "cap": self.token_cap}
 
-    def _count(self, meter: UsageMetadataCallbackHandler, before: dict[str, int]) -> None:
+    def _count(self, meter: _Meter, before: dict[str, int]) -> None:
         """This turn's tokens (every model call, sub-agents' too) on top of what the conversation had used."""
-        totals = {"input_tokens": 0, "output_tokens": 0}
-        for usage in meter.usage_metadata.values():
-            for k in totals:
-                totals[k] += int(usage.get(k, 0) or 0)
-        for k, v in totals.items():
+        for k, v in meter.totals.items():
             self.usage[k] = before.get(k, 0) + v
 
 
@@ -244,3 +241,20 @@ def _text(content: Any) -> str:
     if isinstance(content, list):  # content blocks: keep the text ones
         return "".join(b.get("text", "") if isinstance(b, dict) and b.get("type") == "text" else "" for b in content)
     return str(content or "")
+
+
+class _Meter(BaseCallbackHandler):
+    """Tokens of every model reply in a turn. LangChain's UsageMetadataCallbackHandler counts only replies that name
+    their model in `response_metadata["model_name"]`, which some providers (Ollama, OpenAI-compatible servers) and
+    test models leave out: their tokens went uncounted, so the token cap and the cost under-read."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.totals = {"input_tokens": 0, "output_tokens": 0}
+
+    def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        for generations in response.generations:
+            for g in generations:
+                usage = getattr(getattr(g, "message", None), "usage_metadata", None) or {}
+                for k in self.totals:
+                    self.totals[k] += int(usage.get(k, 0) or 0)
