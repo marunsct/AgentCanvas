@@ -8,6 +8,22 @@ built.
 
 Sections 2–5 are the product plan. Section 6 is the hardening backlog carried over. Section 7 is the order of work.
 
+## Progress (updated 2026-10-28, branch `claude/hardening-3`)
+
+| Area | Done | Still to do |
+|---|---|---|
+| §4.1 Shell | One top bar on every page (project switcher with create, page links with active state, Inbox count, Settings, person menu with theme and sign-out); breadcrumbs on a workflow's pages | Role-aware hiding is done for Playground; "Simple mode hides blocks, not pages" |
+| §3 Settings | `/settings` with Project (General: rename/delete; Models + defaults by purpose; Copilot; Secrets; Sandbox; Observability), Organisation (General: name, retention; Members; Policies; Audit; Server read-only), You (Appearance, Keyboard shortcuts); one model rule with `models/resolve`; Copilot PUT merges | Environments list; policy edit in place; per-user preferences saved server-side |
+| §2 Copilot | Deep Agents engine behind `AGENTCANVAS_COPILOT_ENGINE` passing the same suite as the loop; token streaming, plan checklist, Stop (keeps what was said), Markdown, error card with Retry, history (New chat archives), multi-replica lease, partial accept with removed blocks drawn, best-practice suggestions, skills, investigator/researcher sub-agents, "Ask about this block", nightly real-model evaluation (needs a key) | Interrupts for real runs and workspace files (needs a persistent checkpointer per conversation); attributed commits in version history; per-turn cost; making Deep Agents the default after the evaluation |
+| §4.2 Runs | Runs page (status, source, duration, cost, errors, filters, paging); Inbox with names, run links, filter | A Runs tab inside the editor |
+| §4.3 Evaluation | Evaluator forms per kind (edit, delete); dataset examples field by field; experiment variants as rows; annotation rubric editor and run picker | "Evaluate" in the editor's bar |
+| §4.4 Workspace | Unsaved-changes guard; folder tree; delete errors shown; Secrets moved to Settings | Rename and move files |
+| §4.5 Other pages | Playground streams with Stop and keeps the chat; Audit (headers, dates, CSV, details); Members (headers, cancel invitation); Events (headers, role gating); Memory (confirm, expand, role gating); Knowledge (confirm on remove); Search block picks a knowledge base from a list | Events paging |
+| §4.6 Dialogs | All native confirm/prompt replaced; toasts; workflow list rename/duplicate/delete/search/sort | — |
+| §4.7 Labels | Planning ids out of the API docs; beta blocks marked; "stub" wording | — |
+| §4.8 Docs | README and HANDOVER current; user-guide page for the shell and Settings | — |
+| §6 Hardening | Egress enforced (proxy) or refused; MCP Origin/version checks; SQLite cascades; delete rules on Postgres | RLS migration split; CI framework cache |
+
 ## 1. What the survey found, in one paragraph each
 
 **Copilot.** A hand-written tool-calling loop (`copilot/service.py`) over `bind_tools`, not an agent harness. Fifteen
