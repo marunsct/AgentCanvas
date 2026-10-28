@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import KnowledgeBase, KnowledgeDocument
+from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput
+from agentcanvas.services import model_defaults
 from agentcanvas.services.knowledge import (
     MAX_FILE_BYTES,
     Chunking,
@@ -137,6 +139,10 @@ async def list_knowledge_bases(project_id: str, s: KnowledgeService = Depends(sv
     return [_out(kb, n, c) for kb, n, c in await s.list(project_id)]
 
 
+async def _project_settings(s: KnowledgeService, project_id: str) -> dict:
+    return (await ProjectRepo(s.s).require(project_id)).settings or {}
+
+
 @router.post("/projects/{project_id}/knowledge", response_model=KnowledgeBaseOut, status_code=201)
 async def create_knowledge_base(
     project_id: str,
@@ -149,8 +155,13 @@ async def create_knowledge_base(
     if body.sample:
         kb = await s.sample(project_id, body.sample, user.id)
     else:
+        embedding = body.embedding
+        if embedding is None and (
+            own := model_defaults.stored(await _project_settings(s, project_id)).get("embedding")
+        ):
+            embedding = Embedding(model=own)  # the project's embedding model (Settings > Models)
         kb = await s.create(
-            project_id, body.name, description=body.description, embedding=body.embedding, chunking=body.chunking,
+            project_id, body.name, description=body.description, embedding=embedding, chunking=body.chunking,
             user_id=user.id,
         )  # fmt: skip
     note(request, knowledge_base=kb.name)

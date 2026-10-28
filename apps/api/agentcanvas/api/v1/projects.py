@@ -15,7 +15,8 @@ from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_set
 from agentcanvas.db.models import Project
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput
-from agentcanvas.services import matura
+from agentcanvas.registry import default_registry
+from agentcanvas.services import matura, model_defaults
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["projects"])
@@ -152,3 +153,54 @@ async def delete_project(
         await projects.forget(project_id)
     shutil.rmtree(Path(settings.workspaces_dir) / project_id, ignore_errors=True)
     return Response(status_code=204)
+
+
+# ------------------------------------------------------------------ model defaults (Settings > Models) ----
+class ModelDefaultsIn(BaseModel):
+    """Leave a purpose out to keep its default; null clears it (the project's model, or built-in embeddings)."""
+
+    judge: str | None = Field(None, pattern=r"^[a-z0-9_\-]+:.+$", max_length=200)
+    simulated_user: str | None = Field(None, pattern=r"^[a-z0-9_\-]+:.+$", max_length=200)
+    embedding: str | None = Field(None, pattern=r"^([a-z0-9_\-]+:.+|builtin)$", max_length=200)
+
+
+class ModelDefaultsOut(BaseModel):
+    defaults: dict[str, str] = Field(description="the purposes with a default of their own")
+    resolved: list[model_defaults.Resolved] = Field(description="every purpose: its model and where it comes from")
+
+
+def _defaults_out(p: Project) -> ModelDefaultsOut:
+    return ModelDefaultsOut(
+        defaults=model_defaults.stored(p.settings),
+        resolved=[model_defaults.resolve(p.settings, purpose) for purpose in model_defaults.PURPOSES],
+    )
+
+
+@router.get("/projects/{project_id}/model-defaults", response_model=ModelDefaultsOut)
+async def get_model_defaults(project_id: str, session: AsyncSession = Depends(get_session)) -> ModelDefaultsOut:
+    """The project's models by purpose: chat, judges, simulated users, embeddings, and why each is what it is."""
+    return _defaults_out(await ProjectRepo(session).require(project_id))
+
+
+@router.put("/projects/{project_id}/model-defaults", response_model=ModelDefaultsOut)
+async def put_model_defaults(
+    project_id: str, body: ModelDefaultsIn, session: AsyncSession = Depends(get_session)
+) -> ModelDefaultsOut:
+    p = await ProjectRepo(session).require(project_id)
+    merged = {**model_defaults.stored(p.settings), **body.model_dump(include=body.model_fields_set)}
+    for purpose, model in merged.items():
+        if model and model != model_defaults.BUILTIN_EMBEDDING and not default_registry().usable_model(model):
+            raise InvalidInput(f"{purpose}: '{model}' is not a catalog model or a known provider's model")
+    p.settings = {**(p.settings or {}), model_defaults.KEY: {k: v for k, v in merged.items() if v}}
+    await session.commit()
+    return _defaults_out(p)
+
+
+@router.get("/projects/{project_id}/models/resolve", response_model=model_defaults.Resolved)
+async def resolve_model(
+    project_id: str,
+    purpose: model_defaults.Purpose = Query(description="chat, judge, simulated_user or embedding"),
+    session: AsyncSession = Depends(get_session),
+) -> model_defaults.Resolved:
+    """Which model the project uses for `purpose` when nothing names one, and why."""
+    return model_defaults.resolve((await ProjectRepo(session).require(project_id)).settings, purpose)

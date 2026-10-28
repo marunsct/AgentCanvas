@@ -83,7 +83,7 @@ models** add-on block (`mw.model_fallback`) still works for agents on LangGraph.
 
 ## The first-run screen
 
-Open it from **Choose a model** on Home (until setup is done) or **Model** in the top bar.
+Open it from **Choose a model** on Home (until setup is done) or **Settings › Models**.
 
 1. Pick a provider and a model. For a local server or an OpenAI-compatible API, **Find models on the server** lists
    the models it offers (LM Studio lists the models you downloaded; Ollama the ones you pulled) so you can pick one
@@ -113,3 +113,11 @@ Under the Model field, a hint names the provider, where its key comes from, and 
 Evaluators that use a model (LLM judge, pairwise judge) and simulated users accept any catalog model or any
 `provider:model` of a known provider, local ones included, so you can evaluate with a model on your own machine.
 They use the project's keys the same way.
+
+## Which model is used, when nothing names one
+
+**Settings › Models › By purpose** has one rule for every place a model is chosen: what names its model uses it;
+otherwise the project's default for that purpose (judge evaluators, simulated users, knowledge embeddings); otherwise
+the project's model; otherwise nothing, and the page or the error says what to choose. The table shows, for each
+purpose, the model it comes to and why. A default is applied when something is saved, so a judge evaluator created
+without a model keeps the model it got even if the default changes later; edit the evaluator to change it.

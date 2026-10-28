@@ -36,6 +36,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   compose files and the Helm chart run the proxy (set `AGENTCANVAS_EGRESS_SECRET`); the `docker` mode starts its
   own. Modes that cannot limit the network refuse a list in staging and production. Settings › Sandbox edits the
   limits and the list, which it offers only where it is enforced.
+- **Default models by purpose** (Settings › Models › By purpose): judge evaluators, simulated users and knowledge
+  embeddings saved without a model get the project's default for that purpose, else the project's model, else a
+  422 that says what to choose (`GET/PUT /projects/{id}/model-defaults`, `GET /projects/{id}/models/resolve`). The
+  Evaluation page no longer pre-fills `anthropic:claude-haiku-4-5`.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

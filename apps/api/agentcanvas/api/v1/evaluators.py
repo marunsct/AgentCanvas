@@ -13,11 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Evaluator, WorkflowRow
+from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, check_config, score, spec_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
-from agentcanvas.services import gates
+from agentcanvas.services import gates, model_defaults
 from agentcanvas.services.experiments import scorers
 from agentcanvas.services.projects import PROJECT_OF
 
@@ -79,6 +80,16 @@ async def _check_parts(session: AsyncSession, wf_id: str, name: str, kind: str, 
             raise InvalidInput(f"composite evaluator: '{part}' is a {e.kind} evaluator; combine plain ones")
 
 
+async def _with_judge(session: AsyncSession, wf_id: str, kind: str, config: dict[str, Any]) -> dict[str, Any]:
+    """A judge saved without a model gets the project's judge model now (Settings > Models), so its scores keep
+    saying which model gave them."""
+    if kind not in ("llm_judge", "pairwise") or config.get("model"):
+        return config
+    row = await WorkflowRepo(session).require(wf_id)
+    project = await ProjectRepo(session).require(row.project_id)
+    return {**config, "model": model_defaults.require(project.settings, "judge")}
+
+
 async def _get(session: AsyncSession, evaluator_id: str) -> Evaluator:
     e = await session.get(Evaluator, evaluator_id)
     if e is None:
@@ -106,7 +117,7 @@ async def create_evaluator(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> EvaluatorOut:
-    config = check_config(body.kind, body.config)
+    config = check_config(body.kind, await _with_judge(session, wf_id, body.kind, body.config))
     await _check_parts(session, wf_id, body.name, body.kind, config)
     e = Evaluator(
         id=new_id("evl"), workflow_id=wf_id, name=body.name, kind=body.kind, config=config,
@@ -125,7 +136,7 @@ async def update_evaluator(
     if body.name is not None:
         e.name = body.name
     if body.config is not None:
-        config = check_config(e.kind, body.config)
+        config = check_config(e.kind, await _with_judge(session, e.workflow_id, e.kind, body.config))
         await _check_parts(session, e.workflow_id, e.name, e.kind, config)
         e.config = config
     if "threshold" in body.model_fields_set:

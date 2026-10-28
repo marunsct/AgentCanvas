@@ -51,3 +51,16 @@ test("the sandbox limits are a form, and the network list is offered only where 
   expect(JSON.parse(file.content).timeout_s).toBe(45);
   await page.request.put("/api/v1/projects/prj_default/sandbox", { data: {} }); // back to the defaults for other journeys
 });
+
+test("default models by purpose: set the judges' model and see what each purpose uses", async ({ page }) => {
+  const project = await (await page.request.post("/api/v1/projects", { data: { name: `Models ${Date.now()}` } })).json();
+  await page.addInitScript((id) => localStorage.setItem("agentcanvas.project", id), project.id);
+  await page.goto("/settings/models");
+  const card = page.getByRole("region", { name: "Models by purpose" });
+  await expect(card).toContainText("choose a model for judge evaluators");
+  await card.getByLabel("default model for Judge evaluators").fill("anthropic:claude-haiku-4-5");
+  await card.getByRole("button", { name: "Save default models" }).click();
+  await expect(page.getByTestId("toasts")).toContainText("Saved the default models");
+  await expect(card).toContainText("the project's default for judge evaluators");
+  await page.request.delete(`/api/v1/projects/${project.id}`);
+});

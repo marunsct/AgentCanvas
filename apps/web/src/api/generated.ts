@@ -608,9 +608,9 @@ export type Goal = string;
  */
 export type MaxTurns = number;
 /**
- * catalog model that plays the user
+ * catalog model that plays the user (default: the project's, Settings > Models)
  */
-export type Model7 = string;
+export type Model7 = string | null;
 /**
  * who the user is and how they write
  */
@@ -1007,6 +1007,26 @@ export type Namespace = string[];
 export type UpdatedAt7 = string | null;
 export type Mode2 = "build" | "ask";
 export type Text3 = string;
+export type Embedding2 = string | null;
+export type Judge = string | null;
+export type SimulatedUser = string | null;
+/**
+ * provider:model, or null when nothing is chosen
+ */
+export type Model8 = string | null;
+/**
+ * where the choice comes from, in the person's words
+ */
+export type Origin1 = string;
+/**
+ * what to choose when there is no model
+ */
+export type Problem1 = string | null;
+export type Purpose = string;
+/**
+ * every purpose: its model and where it comes from
+ */
+export type Resolved = Resolved1[];
 export type ContextWindow = number | null;
 export type Id41 = string;
 export type Label12 = string;
@@ -1737,7 +1757,7 @@ export type Enabled5 = boolean;
 /**
  * provider:model when separate
  */
-export type Model8 = string | null;
+export type Model9 = string | null;
 /**
  * project conventions the Copilot always reads
  */
@@ -1759,7 +1779,7 @@ export type BaseUrl6 = string | null;
 /**
  * provider:model, e.g. ollama:llama3.3
  */
-export type Model9 = string;
+export type Model10 = string;
 export type Done1 = boolean;
 /**
  * the project secret the default model's key is read from
@@ -1955,7 +1975,7 @@ export type IrHash5 = string;
 export type Message14 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
-export type Model10 = string | null;
+export type Model11 = string | null;
 export type Name52 = string;
 export type SystemPrompt1 = string;
 export type Temperature1 = number | null;
@@ -2111,6 +2131,8 @@ export interface ApiSchemas {
   MemoryItem?: MemoryItem;
   Message?: Message2;
   MessageIn?: MessageIn;
+  ModelDefaultsIn?: ModelDefaultsIn;
+  ModelDefaultsOut?: ModelDefaultsOut;
   ModelInfo?: ModelInfo;
   ModelInfoOut?: ModelInfoOut;
   NamespaceOut?: NamespaceOut;
@@ -2151,6 +2173,7 @@ export interface ApiSchemas {
   ReplaceNode?: ReplaceNode;
   ReplaceResource?: ReplaceResource;
   ReplaceSettings?: ReplaceSettings;
+  Resolved?: Resolved1;
   Resource?: Resource;
   ResumeRequest?: ResumeRequest;
   RetryPolicySpec?: RetryPolicySpec;
@@ -3472,7 +3495,7 @@ export interface ExperimentIn {
 export interface Simulation {
   goal?: Goal;
   max_turns?: MaxTurns;
-  model: Model7;
+  model?: Model7;
   persona: Persona;
   stop_phrase?: StopPhrase;
 }
@@ -4189,6 +4212,41 @@ export interface MessageIn {
   text: Text3;
 }
 /**
+ * Leave a purpose out to keep its default; null clears it (the project's model, or built-in embeddings).
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ModelDefaultsIn".
+ */
+export interface ModelDefaultsIn {
+  embedding?: Embedding2;
+  judge?: Judge;
+  simulated_user?: SimulatedUser;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ModelDefaultsOut".
+ */
+export interface ModelDefaultsOut {
+  defaults: Defaults;
+  resolved: Resolved;
+}
+/**
+ * the purposes with a default of their own
+ */
+export interface Defaults {
+  [k: string]: string;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Resolved".
+ */
+export interface Resolved1 {
+  model: Model8;
+  origin: Origin1;
+  problem?: Problem1;
+  purpose: Purpose;
+}
+/**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ModelInfo".
  */
@@ -4744,7 +4802,7 @@ export interface SettingsOut {
   ask_model?: AskModel1;
   base_url?: BaseUrl5;
   enabled?: Enabled5;
-  model?: Model8;
+  model?: Model9;
   notes?: Notes3;
   privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
@@ -4758,7 +4816,7 @@ export interface SettingsOut {
 export interface SetupIn {
   api_key?: ApiKey7;
   base_url?: BaseUrl6;
-  model: Model9;
+  model: Model10;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5033,11 +5091,11 @@ export interface Headers1 {
  */
 export interface TraceExportOut {
   config: TraceExport | null;
-  defaults: Defaults;
+  defaults: Defaults1;
   guides: Guides;
   missing_secrets: MissingSecrets;
 }
-export interface Defaults {
+export interface Defaults1 {
   [k: string]: string;
 }
 export interface Guides {
@@ -5142,7 +5200,7 @@ export interface VersionOut {
  * via the `definition` "WorkflowIn".
  */
 export interface WorkflowIn {
-  model?: Model10;
+  model?: Model11;
   name?: Name52;
   system_prompt?: SystemPrompt1;
   temperature?: Temperature1;

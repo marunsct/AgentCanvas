@@ -14,10 +14,12 @@ from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult
+from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
 from agentcanvas.evaluation import Score, spec_of
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import adapters, default_registry
+from agentcanvas.services import model_defaults
 from agentcanvas.services.datasets import DatasetService
 from agentcanvas.services.experiments import (
     MAX_CONCURRENCY,
@@ -174,6 +176,9 @@ async def start_experiment(
         evaluators = [known[i] for i in body.evaluator_ids]
     targets = [await _target(session, svc, wf_id, view.row.project_id, t, i) for i, t in enumerate(body.targets)]
     if body.simulation is not None:
+        if not body.simulation.model:  # the project's simulated-user model, fixed in the experiment from now on
+            project = await ProjectRepo(session).require(view.row.project_id)
+            body.simulation.model = model_defaults.require(project.settings, "simulated_user")
         if not default_registry().usable_model(body.simulation.model):
             raise InvalidInput(
                 f"simulated user: '{body.simulation.model}' is not a catalog model or a known provider's model"

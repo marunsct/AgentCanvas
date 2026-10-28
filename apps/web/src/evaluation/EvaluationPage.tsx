@@ -295,7 +295,7 @@ function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string 
   const { data: frameworks = [] } = useFrameworks();
   const [open, setOpen] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<string>("");
-  const [sim, setSim] = useState({ on: false, model: "anthropic:claude-haiku-4-5", persona: "", goal: "", max_turns: "5" });
+  const [sim, setSim] = useState({ on: false, model: "", persona: "", goal: "", max_turns: "5" });
   const start = useMutation({
     mutationFn: () => apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
       method: "POST",
@@ -305,7 +305,7 @@ function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string 
           version: t.version || null, label: t.label || null, framework: t.framework || null,
           overrides: t.overrides.trim() ? parseJson(t.overrides, "overrides") : {},
         })),
-        simulation: sim.on ? { model: sim.model, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
+        simulation: sim.on ? { model: sim.model.trim() || null, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
       },
     }),
     onSuccess: (e) => { setOpen(e.id); void qc.invalidateQueries({ queryKey: key }); },
@@ -359,7 +359,7 @@ function Experiments({ wfId, wfFramework }: { wfId: string; wfFramework: string 
           </label>
           {sim.on && (
             <div className="row gap small" data-testid="simulation">
-              <input aria-label="simulated user model" value={sim.model} onChange={(e) => setSim((x) => ({ ...x, model: e.target.value }))} style={{ width: 200 }} />
+              <input aria-label="simulated user model" placeholder="the project's (Settings › Models)" value={sim.model} onChange={(e) => setSim((x) => ({ ...x, model: e.target.value }))} style={{ width: 200 }} />
               <input aria-label="persona" placeholder="persona: who the user is, how they write" value={sim.persona} onChange={(e) => setSim((x) => ({ ...x, persona: e.target.value }))} style={{ width: 260 }} />
               <input aria-label="goal" placeholder="goal (an example's metadata.goal wins)" value={sim.goal} onChange={(e) => setSim((x) => ({ ...x, goal: e.target.value }))} style={{ width: 240 }} />
               <label className="row">max turns<input aria-label="max turns" value={sim.max_turns} onChange={(e) => setSim((x) => ({ ...x, max_turns: e.target.value }))} style={{ width: 40 }} /></label>

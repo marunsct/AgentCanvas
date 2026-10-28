@@ -9,6 +9,7 @@ import { CopilotSettings } from "../copilot/CopilotSettings";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
+import { ModelDefaults } from "./ModelDefaults";
 import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettings } from "./SandboxSettings";
 import { SecretsSettings } from "./SecretsSettings";
@@ -22,7 +23,7 @@ interface Section { id: string; group: "Project" | "Organisation" | "You"; label
 
 export const SECTIONS: Section[] = [
   { id: "general", group: "Project", label: "General", render: () => <ProjectSettings /> },
-  { id: "models", group: "Project", label: "Models", render: () => <ModelSettings /> },
+  { id: "models", group: "Project", label: "Models", render: () => <><ModelSettings /><ModelDefaults /></> },
   { id: "copilot", group: "Project", label: "Copilot", render: () => <CopilotSettings /> },
   { id: "secrets", group: "Project", label: "Secrets", render: () => <SecretsSettings /> },
   { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
