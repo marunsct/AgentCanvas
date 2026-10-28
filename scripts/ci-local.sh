@@ -17,6 +17,11 @@ helm_run() {   # helm, from the machine or (no install needed) from its official
     docker run --rm -v "$ROOT:$ROOT" -w "$PWD" "$HELM_IMAGE" "$@"   # only the repository is shared with Docker
   fi
 }
+KUBECONFORM_IMAGE=ghcr.io/yannh/kubeconform:v0.6.7-alpine
+kubeconform_run() {   # the Kubernetes API schemas check on rendered manifests (stdin); `helm lint` does not know a field is wrong
+  if need kubeconform; then kubeconform -strict -summary -kubernetes-version 1.31.0 -
+  else docker run --rm -i "$KUBECONFORM_IMAGE" -strict -summary -kubernetes-version 1.31.0 -; fi
+}
 stage() {  # stage <name> <command...>: run, record, keep going so one report shows every failure
   local name=$1; shift
   printf '\n\033[1m== %s ==\033[0m\n' "$name"
@@ -74,6 +79,14 @@ s_frameworks() {   # real agents from each framework, wrapped and drawn on the c
       || { echo "frameworks: $check failed"; return 1; }
   done
 }
+deploy_export() {   # deploy one export with Docker Compose on a free port, call it once (make smoke), take it down again
+  local d=$1 port rc=0
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  ( cd "$d" && make -s setup >/dev/null && sed -i "s/^DEMO_MODE=false/DEMO_MODE=true/; s/^PORT=.*/PORT=$port/" .env \
+      && PORT=$port make -s doctor >/dev/null && PORT=$port make -s deploy >/dev/null && make -s smoke URL="http://localhost:$port" ) || rc=$?
+  ( cd "$d" && PORT=$port docker compose --env-file .env -f deploy/local/docker-compose.yml down -v >/dev/null 2>&1 ) || true
+  return $rc
+}
 s_export() {   # every template exports to every target; the deploy files lint; each export passes its own tests (ci.yml `export`)
   local ex d c t rc
   mkdir -p "$ROOT/.ci-tmp"; ex=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$ex"' RETURN   # inside the repo: Docker shares it
@@ -82,7 +95,8 @@ s_export() {   # every template exports to every target; the deploy files lint; 
   if have_helm; then
     for c in "$ex"/kubernetes/*/*/deploy/kubernetes/chart; do
       helm_run lint "$c" --set image.repository=example/app >/dev/null \
-        && helm_run template x "$c" --set image.repository=example/app --set ingress.enabled=true --set ingress.host=a.example.com >/dev/null \
+        && helm_run template x "$c" --set image.repository=example/app --set ingress.enabled=true --set ingress.host=a.example.com \
+             --set autoscaling.enabled=true | kubeconform_run >/dev/null \
         || return 1
     done
   else echo "export: neither helm nor docker is here, the Kubernetes charts are not linted"; fi
@@ -100,6 +114,11 @@ s_export() {   # every template exports to every target; the deploy files lint; 
     ( cd "$d" && make -s test ); rc=$?; rm -rf "$d/.venv" "$d"/*/.venv
     [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
   done
+  if need docker; then   # two exports deployed for real, as the workflow does (a plain service, and a mixed-framework flow)
+    for d in "$ex"/local/ticket_triage/support-triage "$ex"/local/mixed_team/mixed-framework-team; do
+      deploy_export "$d" || { echo "export deploy failed in $d"; return 1; }
+    done
+  fi
   for d in "$ex"/openai_agents/*/* "$ex"/crewai/*/* "$ex"/google_adk/*/* "$ex"/pydantic_ai/*/* "$ex"/agno/*/* \
            "$ex"/microsoft_agent_framework/*/* "$ex"/strands/*/* "$ex"/llamaindex/*/*; do
     ( cd "$d" && uv sync -q && uv run pytest -q ); rc=$?; rm -rf "$d/.venv"
@@ -133,13 +152,10 @@ s_audit() {
 }
 s_helm() {
   helm_run lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict
-  helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml >/dev/null
+  helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml | kubeconform_run
 }
-s_images() {   # build both images and start the production compose stack; see ci.yml job `images` for the full probes
-  docker compose -f infra/compose.local.yml build
-  docker compose -f infra/compose.local.yml up -d --wait --wait-timeout 180
-  trap 'docker compose -f infra/compose.local.yml down' RETURN
-  curl -fsS "http://localhost:${WEB_PORT:-7777}/healthz" >/dev/null || curl -fsS "http://localhost:${WEB_PORT:-7777}/" >/dev/null
+s_images() {   # build and scan both images, probe the production and local compose stacks (own projects and ports)
+  scripts/ci-images.sh
 }
 s_e2e() { make -C "$ROOT" e2e; }
 

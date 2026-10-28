@@ -287,3 +287,24 @@ def test_worker_folders_of_dead_servers_are_swept_and_live_ones_kept(tmp_path, m
     assert sweep_stale_worker_dirs() == 1
     assert not dead.exists()
     assert all(d.exists() for d in (mine, live, old_format, unrelated))
+
+
+async def test_finished_runs_are_forgotten_by_the_size_of_their_events_not_only_their_number(app, api_client):
+    """500 finished runs with big outputs must not fill the server's memory: the oldest go once their events add up
+    to more than the limit, and the newest stay."""
+    from test_frameworks import greeter
+
+    from agentcanvas.ir.models import Workflow
+
+    runner = app.state.runner
+    wf = Workflow.model_validate((await greeter(api_client))["ir"])
+    runner._keep_bytes = 3000  # a few runs' worth
+    handles = []
+    for i in range(8):
+        h = await runner.start(wf, input={"who": f"Ada {i}"})
+        await asyncio.wait_for(h.done.wait(), 10)
+        handles.append(h)
+    kept = [h for h in handles if h.run_id in runner.handles]
+    assert 1 <= len(kept) < len(handles), (len(kept), [h.size for h in handles])
+    assert handles[-1].run_id in runner.handles and handles[0].run_id not in runner.handles
+    assert sum(h.size for h in kept) <= 3000 + max(h.size for h in kept)

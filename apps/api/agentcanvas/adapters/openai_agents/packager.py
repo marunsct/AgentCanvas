@@ -63,7 +63,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str]) -> str:
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
 description = {json.dumps(f"{wf.name} — an OpenAI Agents SDK flow exported from AgentCanvas")}
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
 

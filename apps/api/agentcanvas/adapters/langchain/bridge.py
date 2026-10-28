@@ -39,6 +39,7 @@ class ModelBridge:
         self._models: dict[str, _Entry] = {}
         self._server: asyncio.Server | None = None
         self.port = 0
+        self.ready = asyncio.Event()  # set once the bridge listens: until then `port` is 0 and `root` points nowhere
 
     @property
     def root(self) -> str:
@@ -54,6 +55,7 @@ class ModelBridge:
     async def start(self) -> None:
         self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
         self.port = self._server.sockets[0].getsockname()[1]
+        self.ready.set()
 
     @contextlib.contextmanager
     def serving(self, model: Any, config: Any = None):
@@ -224,7 +226,12 @@ async def model_bridge() -> ModelBridge:
     bridge = _BRIDGES.get(loop)
     if bridge is None:
         bridge = _BRIDGES[loop] = ModelBridge()
-        await bridge.start()
+        try:
+            await bridge.start()
+        except BaseException:
+            _BRIDGES.pop(loop, None)  # a failed start must not leave a bridge that never listens
+            raise
+    await bridge.ready.wait()  # a second caller, while the first is still starting it, waits for the port
     return bridge
 
 

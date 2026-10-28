@@ -313,7 +313,7 @@ def _pyproject(wf: Workflow, t: Target, pkg: str, version: str, extra: list[str]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
 description = {json.dumps(f"{wf.name} — a {t.label} flow exported from AgentCanvas")}
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
 
