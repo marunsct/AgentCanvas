@@ -153,3 +153,23 @@ async def test_skills_are_offered_and_read_on_demand(app, api_client):
         assert name in text, name
     read = [m for m in model.received[-1] if m.type == "tool"]
     assert read and "reproduce_run" in read[0].content
+
+
+async def test_a_side_question_goes_to_a_read_only_specialist(app, api_client):
+    """`task` hands the question to the investigator, which has only read tools; its report comes back."""
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    # the main agent delegates; the investigator (same scripted model) looks at the problems and reports
+    model = use(
+        app,
+        tool("task", subagent_type="investigator", description="why does the last run fail?"),
+        tool("get_problems", "c2"),
+        "The router has no failing case.",
+        "The investigator found nothing wrong.",
+    )
+    events = await ask(api_client, wf, "why does it fail?", mode="ask")
+    assert any(e["type"] == "tool" and e["name"] == "get_problems" for e in events)
+    assert any(e["type"] == "tool" and e["name"] == "task" for e in events)
+    offered_to_investigator = [
+        o for o in model.offered if "get_run" in o and "propose_changes" not in o and "task" not in o
+    ]
+    assert offered_to_investigator, model.offered

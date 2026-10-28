@@ -37,6 +37,30 @@ STEPS_PER_TURN = MAX_STEPS * 8  # graph steps (model, tools and middleware nodes
 LIMIT = "ModelCallLimitMiddleware"
 
 
+# specialists the agent hands a side question to (`task`), each with read-only tools: they look and report; only
+# the main agent proposes changes, so a proposal is always one, reviewable, in the person's conversation
+SUBAGENTS: list[dict[str, Any]] = [
+    {
+        "name": "investigator",
+        "description": "Finds why a run failed or gave a wrong answer: reads the problems, the recent runs and one run "
+        "step by step, and reports the cause with the step and the evidence. Give it the run or the symptom.",
+        "system_prompt": "You investigate one AgentCanvas workflow problem. Use get_problems, list_runs and get_run; "
+        "report in a few sentences which step is at fault, what went wrong and the evidence (a value, an error). "
+        "Do not suggest unrelated changes.",
+        "tools": ["get_problems", "list_runs", "get_run", "get_workflow", "get_block"],
+    },
+    {
+        "name": "researcher",
+        "description": "Answers how AgentCanvas or a block works, which block or template fits a need, or which models "
+        "are available, from the guide and the block catalog. Give it the question.",
+        "system_prompt": "You answer one question about AgentCanvas from its guide (search_guide), its blocks "
+        "(find_blocks, get_block), its templates (get_template) and models (list_models). Answer briefly and name "
+        "the guide page or the block you used.",
+        "tools": ["search_guide", "find_blocks", "get_block", "get_template", "list_models"],
+    },
+]
+
+
 class _HideTools(AgentMiddleware):
     """Leaves tools out of every model call: the shell, and in Ask mode the ones that change things. A model that
     calls one anyway gets the tool's own refusal, as with the loop."""
@@ -113,6 +137,9 @@ class DeepAgentTurn(CopilotTurn):
             + "\n\nThe full workflow is also in your files as /workflow.json (the copy above may be cut short). "
             "For a task of several steps, keep a short plan with write_todos and tick items off as you go."
         )  # fmt: skip
+        tools = self._tools(allowed, events)
+        by_name = {t.name: t for t in tools}
+        subagents: list[Any] = [{**spec, "tools": [by_name[n] for n in spec["tools"]]} for spec in SUBAGENTS]
         middleware: list[Any] = [
             TodoListMiddleware(),
             ModelCallLimitMiddleware(run_limit=MAX_STEPS, exit_behavior="end"),
@@ -120,7 +147,8 @@ class DeepAgentTurn(CopilotTurn):
         ]
         agent = create_deep_agent(
             model=self.resources.model("copilot", {**self.model.config, "model": self.model.model}),
-            tools=self._tools(allowed, events),
+            tools=tools,
+            subagents=subagents,
             system_prompt=system,
             middleware=middleware,
             skills=["/skills/"],
