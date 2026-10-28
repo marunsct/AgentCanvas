@@ -1,7 +1,7 @@
 /** The frame around every page except the editor (which has its own bar and borrows `PersonMenu`): one top bar with
  * the project, the product's pages, Settings and the person's menu, so moving between pages never goes through Home. */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Activity, BookOpen, Brain, ChevronDown, FolderCode, Inbox, LayoutGrid, LogOut, Plus, Radio, Settings, Sparkles, User } from "lucide-react";
+import { Activity, BookOpen, Brain, ChevronDown, FolderCode, Inbox, LayoutGrid, LifeBuoy, LogOut, Plus, Radio, Settings, Sparkles, User } from "lucide-react";
 import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router";
 import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
@@ -113,7 +113,7 @@ export function PersonMenu() {
   return (
     <Menu testId="me" className="person-menu" title={me.email || "you"}
       label={<span className="avatar" aria-label={`${me.email || "you"}, ${me.role}`}>{initial}</span>}>
-      {() => (
+      {(close) => (
         <>
           <div className="menu-person">
             <b>{me.email || "Local developer"}</b>
@@ -132,6 +132,8 @@ export function PersonMenu() {
           <hr />
           <p className="menu-heading">Theme</p>
           <ThemeSwitcher />
+          <hr />
+          <NavLink to="/guide" role="menuitem" data-testid="guide-link" onClick={close}><LifeBuoy {...ICON} /> User guide</NavLink>
           {signInEnabled() && (
             <>
               <hr />

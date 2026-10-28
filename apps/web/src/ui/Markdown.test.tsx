@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { Markdown, parseBlocks } from "./Markdown";
+import { Markdown, parseBlocks, slug } from "./Markdown";
 
 afterEach(cleanup);
 
@@ -37,5 +37,26 @@ describe("Markdown", () => {
   it("gives code blocks a Copy button", () => {
     const { getByRole } = render(<Markdown text={"```json\n{}\n```"} />);
     expect(getByRole("button", { name: "Copy" })).toBeTruthy();
+  });
+});
+
+describe("guide pages", () => {
+  it("reads pipe tables, with escaped bars kept in a cell", () => {
+    expect(parseBlocks("| Variable | Does |\n|---|:---:|\n| `A` | one \\| two |\n| B | three |")).toEqual([
+      { kind: "table", head: ["Variable", "Does"], rows: [["`A`", "one | two"], ["B", "three"]] },
+    ]);
+  });
+  it("gives headings anchors and resolves the guide's links", () => {
+    const { container } = render(
+      <Markdown page text={"# Deploy it\n\nSee [models](models.md#local-models) and ![a diagram](x.png)."}
+        link={(href) => href.replace(/^([a-z-]+)\.md/, "/guide/$1")} />,
+    );
+    expect(container.querySelector("h1")?.id).toBe("deploy-it");
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("/guide/models#local-models");
+    expect(container.querySelector("em")?.textContent).toBe("a diagram"); // images show their description
+    expect(slug("Run it **locally** (Docker)!")).toBe("run-it-locally-docker");
+    const wrapped = render(<Markdown page text={"one\ntwo  \nthree"} />).container;
+    expect(wrapped.querySelectorAll("br")).toHaveLength(1); // wrapped source joins; two trailing spaces break
+    expect(wrapped.textContent).toBe("one twothree");
   });
 });

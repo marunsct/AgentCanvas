@@ -775,6 +775,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .copilot-msg.user { align-self: flex-end; background: var(--gradient); color: var(--accent-fg); border-bottom-right-radius: 5px; box-shadow: var(--shadow-sm); }
 .copilot-msg.assistant { align-self: flex-start; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
 .copilot-cost { margin-top: 4px; font-size: 11px; white-space: normal; }
+.copilot-sources { margin-top: 6px; white-space: normal; color: var(--muted); }
 .copilot-msg.live p { margin: 4px 0; }
 .copilot-activity { display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; }
 .copilot-activity > div { display: flex; gap: 6px; align-items: baseline; }
@@ -1146,3 +1147,12 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .table.compact th, .table.compact td { padding: 5px 8px; }
 .table tr.selected td { background: var(--accent-soft); }
 .row > button.danger, .row > button.danger-solid { margin-top: 0; }
+
+/* the user guide in the app */
+.md-page h1 { font-size: 24px; margin: 4px 0 12px; }
+.md-page h2 { font-size: 18px; margin: 26px 0 8px; scroll-margin-top: calc(var(--topbar-h) + 12px); }
+.md-page h3 { font-size: 15px; margin: 20px 0 6px; scroll-margin-top: calc(var(--topbar-h) + 12px); }
+.md-page h4 { font-size: 14px; margin: 16px 0 4px; }
+.md-page p, .md-page li { line-height: 1.6; }
+.md-table { overflow-x: auto; margin: 10px 0; }
+.md-table td, .md-table th { vertical-align: top; font-size: 13px; }

@@ -117,6 +117,7 @@ CHILD_PARAMS = {
     "conv_id": "a Copilot conversation looked up within {wf_id} and the caller's own conversations",
     "doc_id": "a knowledge document looked up within {kb_id}",
     "token": "a share link's token: public visitor routes, the token is the capability (S23)",
+    "page": "a page of the user guide shipped with the server, the same for every organisation",
 }
 
 

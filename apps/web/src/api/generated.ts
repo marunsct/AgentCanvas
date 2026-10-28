@@ -863,6 +863,11 @@ export type Commit = string;
 export type CreatedBranch = boolean;
 export type Files2 = number;
 export type Url2 = string;
+export type Markdown = string;
+export type Page1 = string;
+export type Title2 = string;
+export type Page2 = string;
+export type Title3 = string;
 export type Location = (string | number)[];
 export type Message9 = string;
 export type ErrorType = string;
@@ -1949,11 +1954,11 @@ export type ChunkId = string;
 export type Cite = number;
 export type DocId = string | null;
 export type Heading1 = string | null;
-export type Page1 = number | null;
+export type Page3 = number | null;
 export type Score3 = number;
 export type Source8 = string | null;
 export type Text4 = string;
-export type Title2 = string | null;
+export type Title4 = string | null;
 export type Results1 = SearchResult[];
 export type Value5 = string;
 export type CreatedAt26 = string;
@@ -2032,7 +2037,7 @@ export type Rating1 = "up" | "down";
 export type Visitor = string;
 export type Greeting = string;
 export type Suggestions = string[];
-export type Title3 = string;
+export type Title5 = string;
 export type DeploymentId2 = string;
 export type Enabled6 = boolean;
 /**
@@ -2046,7 +2051,7 @@ export type InputField = string | null;
  */
 export type Path7 = string;
 export type Suggestions1 = string[];
-export type Title4 = string;
+export type Title6 = string;
 export type Token = string;
 export type UpdatedAt9 = string | null;
 /**
@@ -2090,7 +2095,7 @@ export type Suggestions2 =
   | [string, string, string, string, string]
   | [string, string, string, string, string, string]
   | null;
-export type Title5 = string | null;
+export type Title7 = string | null;
 export type Alerts = CostAlertOut[];
 export type CacheHits = number;
 export type Fallbacks = number;
@@ -2140,7 +2145,7 @@ export type Failed1 = number;
 export type Passed3 = number;
 export type Results2 = CaseResult[];
 export type Text6 = string;
-export type Title6 = string;
+export type Title8 = string;
 export type CostUsd4 = number;
 export type CreatedAt28 = string;
 /**
@@ -2154,7 +2159,7 @@ export type LastRunId = string | null;
 export type LastStartedAt = string | null;
 export type Runs3 = number;
 export type Status14 = string;
-export type Title7 = string | null;
+export type Title9 = string | null;
 export type Tokens2 = number;
 export type UpdatedAt10 = string;
 export type WorkflowId8 = string;
@@ -2364,6 +2369,8 @@ export interface ApiSchemas {
   GateOut?: GateOut;
   GitHubPushIn?: GitHubPushIn;
   GitHubPushOut?: GitHubPushOut;
+  GuidePage?: GuidePage;
+  GuidePageRef?: GuidePageRef;
   HTTPValidationError?: HTTPValidationError;
   HeaderRule?: HeaderRule;
   ImportFile?: ImportFile;
@@ -4157,6 +4164,23 @@ export interface GitHubPushOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "GuidePage".
+ */
+export interface GuidePage {
+  markdown: Markdown;
+  page: Page1;
+  title: Title2;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "GuidePageRef".
+ */
+export interface GuidePageRef {
+  page: Page2;
+  title: Title3;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "HTTPValidationError".
  */
 export interface HTTPValidationError {
@@ -5111,11 +5135,11 @@ export interface SearchResult {
   cite: Cite;
   doc_id: DocId;
   heading: Heading1;
-  page: Page1;
+  page: Page3;
   score: Score3;
   source: Source8;
   text: Text4;
-  title: Title2;
+  title: Title4;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5212,7 +5236,7 @@ export interface ShareInfo {
   greeting: Greeting;
   input: InputShape;
   suggestions: Suggestions;
-  title: Title3;
+  title: Title5;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5227,7 +5251,7 @@ export interface ShareOut {
   input_field: InputField;
   path: Path7;
   suggestions: Suggestions1;
-  title: Title4;
+  title: Title6;
   token: Token;
   updated_at?: UpdatedAt9;
 }
@@ -5260,7 +5284,7 @@ export interface ShareSettingsIn {
   greeting?: Greeting2;
   input_field?: InputField1;
   suggestions?: Suggestions2;
-  title?: Title5;
+  title?: Title7;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5404,7 +5428,7 @@ export interface TestRunOut {
  */
 export interface TextIn {
   text: Text6;
-  title: Title6;
+  title: Title8;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5421,7 +5445,7 @@ export interface ThreadOut {
   last_started_at?: LastStartedAt;
   runs?: Runs3;
   status: Status14;
-  title: Title7;
+  title: Title9;
   tokens?: Tokens2;
   updated_at: UpdatedAt10;
   workflow_id: WorkflowId8;

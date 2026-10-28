@@ -17,6 +17,7 @@ const MemoryPage = lazy(() => import("../memory/MemoryPage").then((m) => ({ defa
 const KnowledgePage = lazy(() => import("../knowledge/KnowledgePage").then((m) => ({ default: m.KnowledgePage })));
 const EvaluationPage = lazy(() => import("../evaluation/EvaluationPage").then((m) => ({ default: m.EvaluationPage })));
 const RunsPage = lazy(() => import("../runs/RunsPage").then((m) => ({ default: m.RunsPage })));
+const GuidePage = lazy(() => import("../guide/GuidePage").then((m) => ({ default: m.GuidePage })));
 const SettingsPage = lazy(() => import("../settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const SharePage = lazy(() => import("../share/SharePage").then((m) => ({ default: m.SharePage })));
 const PlaygroundPage = lazy(() => import("../playground/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })));
@@ -61,6 +62,7 @@ export function App() {
             <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/workspace" element={<WorkspacePage />} />
             <Route path="/events" element={<EventsPage />} />
+            <Route path="/guide/:page?" element={<GuidePage />} />
             {/* the addresses these had before Settings existed */}
             <Route path="/setup" element={<Navigate to="/settings/models" replace />} />
             <Route path="/members" element={<Navigate to="/settings/members" replace />} />

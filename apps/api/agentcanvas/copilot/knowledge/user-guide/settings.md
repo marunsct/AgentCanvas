@@ -6,7 +6,7 @@ Every page has the same bar: the project you are working in (click it to switch 
 build, make a new one), the pages (**Workflows**, **Playground**, **Inbox** with the number of decisions waiting,
 **Knowledge**, **Memory**, **Workspace**, **Events**), **Settings**, and your initial. Your initial opens a menu with
 your email and role, the organisation (and, with Matura, a switch to your other organisations), the colour theme,
-and **Sign out**. The workflow editor keeps its own bar of canvas tools and has the same menu at its right.
+**User guide** (this guide, inside the app) and **Sign out**. The workflow editor keeps its own bar of canvas tools and has the same menu at its right.
 
 Links your role cannot use are not shown: viewers see no Playground, for example.
 

@@ -22,6 +22,7 @@ from agentcanvas.api.v1 import (
     events,
     experiments,
     gates,
+    guide,
     knowledge,
     matura,
     memory,
@@ -73,6 +74,7 @@ signed_in.include_router(deployments.router)
 signed_in.include_router(share.router)
 signed_in.include_router(triggers.router)
 signed_in.include_router(server.router)
+signed_in.include_router(guide.router)
 
 router = APIRouter(prefix="/v1")
 router.include_router(signed_in)
