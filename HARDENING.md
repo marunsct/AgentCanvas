@@ -28,7 +28,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 | Mastra npm set locked (`package-lock.json`, `npm ci` in `make mastra` and the image; a test checks it matches `package.json`) | unreleased | |
 | API image on Python 3.14 (#45), verified with every framework and Mastra built in and the API suite on 3.14 | unreleased | #45 |
 | Export plan lists knowledge bases and whether the project has them; worker temp folders of dead servers are swept; nine hand-written web response types replaced by generated ones; oxlint in `make lint`; Mastra runtime type-checked (`mastra-types`); inspector controls checked for names and tab order | unreleased | |
-| `images` stage: both images built and Trivy-scanned (fixes: certifi, filelock, pypdf, pip removed), production and local stacks probed through nginx; found and fixed share-link framing never reaching the API; access-control sweeps over every route; concurrency tests; finished-run memory limit; a race that gave concurrent steps a model bridge that was not listening yet (found as a flaky experiment test); Python ceiling (<3.15) in everything we write; rendered Helm manifests schema-checked (kubeconform); hostile names, descriptions and labels in every export (found: emoji broke `pyproject.toml`); importer mutation fuzz and hostile run input (nothing found); forged-token tests (found: a blank `sub` was accepted); a cross-organisation sweep over 54 id routes and a stored-secret sweep over every readable route (nothing found); authlib and dnspython advisories fixed in the lock; global banner for unhandled web failures; the export stage deploys two exports for real | unreleased | |
+| `images` stage: both images built and Trivy-scanned (fixes: certifi, filelock, pypdf, pip removed), production and local stacks probed through nginx; found and fixed share-link framing never reaching the API; access-control sweeps over every route; concurrency tests; finished-run memory limit; a race that gave concurrent steps a model bridge that was not listening yet (found as a flaky experiment test); Python ceiling (<3.15) in everything we write; rendered Helm manifests schema-checked (kubeconform); hostile names, descriptions and labels in every export (found: emoji broke `pyproject.toml`); importer mutation fuzz and hostile run input (nothing found); forged-token tests (found: a blank `sub` was accepted); a cross-organisation sweep over 54 id routes and a stored-secret sweep over every readable route (nothing found); chaos run of every page against a failing API (found: HTML with a 200 crashed every page); authlib and dnspython advisories fixed in the lock; global banner for unhandled web failures; the export stage deploys two exports for real | unreleased | |
 | Sandbox: a warning when `sandbox.json` lists egress/inject that the mode in use cannot give | unreleased | |
 
 ## Verified 2026-10-20 (no change needed)
@@ -45,6 +45,10 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 - **Browser journeys**: 72 pass on the production build under the strict CSP (Chromium 1243, `E2E_PROD=1`).
 
 ## Open
+
+- **Web, wrong-shaped answers:** a page that gets JSON of another shape than it expects (version skew) ends in the crash
+  notice with a Reload hint, not in a per-screen message; validating every response against the generated schema would
+  fix that and costs a runtime schema library in the bundle. Not done: the notice is the accepted behaviour.
 
 - **Cross-organisation sweep coverage:** 7 of 61 id routes are not reached by its seed (annotation items need a flagged
   run; run traces need tracing set up; the MCP route needs a deployment key; agent code and bridge exports need a model

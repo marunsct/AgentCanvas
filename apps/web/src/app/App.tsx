@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router";
 import { GlobalErrors } from "../ui/GlobalErrors";
+import { shouldRetry } from "../api/retry";
 import { ErrorBoundary } from "../ui/QueryStatus";
 import { AuthGate } from "./AuthGate";
 import { HomePage } from "./HomePage";
@@ -22,7 +23,7 @@ const PlaygroundPage = lazy(() => import("../playground/PlaygroundPage").then((m
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 
 // one retry: an unreachable API shows its error (with a Retry button) in seconds, not after three back-offs
-const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } } });
+const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: shouldRetry } } });
 
 function NotFound() {
   return <div className="page"><h2>Page not found</h2><Link to="/">Go home</Link></div>;

@@ -12,6 +12,13 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-28
 
+### Wrong-shaped answers: a notice, not a validator
+When the API answers JSON of another shape than a page expects (a stale cached app against an upgraded server), the page
+ends in the error boundary. I added a hint to the notice (reload; the page and server may differ) and did not add runtime
+validation of every response: it would add a schema library to the bundle and a second place where the shapes are
+written, for a situation that Reload fixes. HTML with a 200 (a misrouted `/api`) is different, common and cheap to
+detect, so the client now refuses it with a message that names the likely cause. *Reverse:* none needed.
+
 ### Working on one branch, no new PRs
 You asked for this on 2026-10-28: I keep committing to `claude/hardening-3` (fast-forwarded to `main` after #72) and push it,
 and I open no pull request until you say so. Anything I fix is in the branch's commits and in this file.

@@ -44,6 +44,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Hardening, third pass
 
 ### Fixed
+- **A misrouted `/api` crashed every page** when a proxy answered an API path with the app's own page (HTTP 200, HTML): the
+  client handed the HTML to components as data ("`data.map is not a function`"). It is now an error that says so ("the server
+  answered with a web page instead of data. Is /api forwarded to the AgentCanvas API?"). A page that still receives data
+  of an unexpected shape (an old page against a newer server) shows its crash notice with a hint to reload.
+- **Failed requests waited a second for nothing**: a 404, 403 or 422 was retried once; now only a dropped connection or a
+  server error is.
 - **A sign-in token with an empty or blank `sub` was accepted** (PyJWT only checks that the claim exists), so every such token
   would have shared one account. It is refused with a 401.
 - **An export of a workflow with an emoji in its name or description could not be installed**: the description was
@@ -64,6 +70,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- `e2e/chaos.spec.ts`: every page against an API that answers 500, a proxy's 502 page, HTML with a 200, a dropped
+  connection, `null` or an unexpected object: no page goes blank or throws an uncaught error, and none but the last
+  (a different version) ends in the crash notice.
 - `test_cross_org_every_route.py`: fills one organisation with one of everything, crawls the API as that organisation to
   find a working URL for 54 of the 61 routes that take an id, and sends each of them (and every other method the same
   path accepts) as a user of another organisation, who must be told 403 or 404. Found nothing; with scoping removed for

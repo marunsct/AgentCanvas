@@ -61,6 +61,12 @@ export async function apiFetch<T>(
     if (!res.ok) throw await failed(res);
     if (res.status === 204) return undefined as T;
     const type = res.headers.get("content-type") ?? "";
+    if (type.includes("html")) {  // nginx or a proxy answering an API path with the app's own page: never data
+      throw new ApiError(res.status, {
+        title: "Not the API",
+        detail: "The server answered with a web page instead of data. Is /api forwarded to the AgentCanvas API?",
+      });
+    }
     return (type.includes("json") ? await res.json() : await res.text()) as T;
   } catch (e) {
     if (timeout.aborted && !rest.signal?.aborted && !(e instanceof ApiError)) {

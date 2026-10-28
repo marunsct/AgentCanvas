@@ -31,6 +31,15 @@ describe("apiFetch", () => {
     expect(await apiFetch<string>("/code")).toBe("print(1)");
   });
 
+  it("does not hand a web page to a component as if it were data", async () => {
+    // a proxy that answers /api with the app's own index.html (200) is the commonest deployment mistake
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<!doctype html><html></html>", { headers: { "content-type": "text/html; charset=utf-8" } })));
+    await expect(apiFetch("/projects/p/workflows")).rejects.toMatchObject({
+      status: 200,
+      message: expect.stringContaining("web page instead of data"),
+    });
+  });
+
   it("explains an HTML error page from a proxy by its status", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>Bad gateway</html>", { status: 502 })));
     await expect(apiFetch("/x")).rejects.toMatchObject({ status: 502, message: "HTTP 502" });

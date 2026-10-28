@@ -48,6 +48,11 @@ export class ErrorBoundary extends Component<{ children: ReactNode; label?: stri
     return (
       <div className="error-box" role="alert">
         <b>{this.props.label ?? "This view"} crashed:</b> {this.state.error.message}{" "}
+        {this.state.error instanceof TypeError && (
+          <span className="muted">
+            The data it received was not what it expects: this page and the server may be different versions. Reload to get the matching page.{" "}
+          </span>
+        )}
         <button type="button" className="small" onClick={() => this.setState({ error: null })}>Try again</button>{" "}
         <button type="button" className="small" onClick={() => location.reload()}>Reload</button>
       </div>
