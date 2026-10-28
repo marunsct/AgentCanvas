@@ -47,8 +47,8 @@ test("a workflow's own code: starter file, Copilot help, and the way back to the
   // the file lives in this workflow's own folder, next to the shared code
   await page.getByTestId("open-script").click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${wfId}/workspace`));
-  await expect(page.getByRole("list", { name: "this workflow's files" })).toContainText(`scripts/count_${stamp}.py`);
-  await expect(page.getByRole("list", { name: "shared files" })).toContainText("scripts/example.py");
+  await expect(page.getByRole("navigation", { name: "this workflow's files" }).getByRole("button", { name: `scripts/count_${stamp}.py` })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "shared files" }).getByRole("button", { name: "scripts/example.py" })).toBeVisible();
   await expect(page.getByTestId("code-editor")).toContainText("def run(state: dict) -> dict:");
 
   // the Copilot proposes code as a diff; accepting puts it in the editor, unsaved

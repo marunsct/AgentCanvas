@@ -88,6 +88,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   opens to its details, and Export CSV.
 - Inbox cards say what is asked ("An agent wants to use a tool") instead of the raw kind; unlabelled blocks are named
   from their name ("Manager approval"). Page descriptions sit in the page header on every page.
+- **Workspace files as a folder tree** (folders open and close; the open file's folder starts open), and the New
+  file box no longer wraps its button.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 

@@ -9,6 +9,7 @@ import { apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type EditorApi, type LintItem } from "./CodeEditor";
 import { CodeHelp } from "./CodeHelp";
+import { FileTree } from "./FileTree";
 import { KIND_LABEL, starter } from "./starters";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { FileOut, FileContent, FilesOut } from "../api/generated";
@@ -102,13 +103,6 @@ export function WorkspacePage() {
   const doSave = () => { if (selected && draft !== null) save.mutate({ path: selected, content: draft }); };
   const newFile = async (path: string) => { if (await leave()) create.mutate({ path, content: starter(path) }); };
   const prefix = folder ? `${folder}/` : "";
-  const fileButton = (f: FileOut) => (
-    <li key={f.path}>
-      <button type="button" className={f.path === selected ? "active" : ""} onClick={() => void open(f.path)} title={f.path}>
-        {prefix && f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path}
-      </button>
-    </li>
-  );
 
   return (
     <div className="page workspace-page">
@@ -117,7 +111,7 @@ export function WorkspacePage() {
         description={workflowId ? "This workflow's own code (scripts, tools, custom blocks), next to the project's shared code." : "The project's code: scripts, tools, custom blocks and event handlers that workflows use."} />
       <div className="workspace-layout">
         <aside aria-label="workspace files">
-          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) newFile(newPath.trim()); }}>
+          <form className="row gap new-file" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) void newFile(newPath.trim()); }}>
             <input placeholder={`${prefix}scripts/new_step.py`} value={newPath} onChange={(e) => setNewPath(e.target.value)} aria-label="new file path" />
             <button type="submit">New file</button>
           </form>
@@ -133,11 +127,11 @@ export function WorkspacePage() {
           {folder && (
             <>
               <h4 className="tree-head">This workflow's code <span className="muted small">{folder}/</span></h4>
-              <ul className="file-tree" aria-label="this workflow's files">{own.map(fileButton)}</ul>
+              <FileTree label="this workflow's files" files={own} strip={prefix} selected={selected} onOpen={(path) => void open(path)} />
               <h4 className="tree-head">Shared code <span className="muted small">every workflow can use it</span></h4>
             </>
           )}
-          <ul className="file-tree" aria-label={folder ? "shared files" : "workspace files"}>{shared.map(fileButton)}</ul>
+          <FileTree label={folder ? "shared files" : "workspace files"} files={shared} selected={selected} onOpen={(path) => void open(path)} />
           <p className="muted small secrets-moved">API keys and passwords for this code are under <Link to="/settings/secrets" data-testid="secrets-link">Settings › Secrets</Link>.</p>
         </aside>
         <section aria-label="editor">
