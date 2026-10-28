@@ -4,6 +4,16 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
+### Fixed
+- **SQLite did not enforce the schema's cascades**: a deleted workflow's published endpoint kept answering with its
+  old key, and its versions, deployments, threads and runs stayed in the database. App connections now turn on
+  `PRAGMA foreign_keys`; migrations keep their own engine, where a batch table rebuild must not cascade.
+- Saving the Copilot form erased a separate model's server address and key set through the API: the settings PUT
+  now merges (an explicit null clears), and the form has fields for both. "Use the workflow's model" is now "Use
+  the project's model", which is what it did.
+- The MCP endpoint refuses a browser `Origin` other than its own or a configured CORS origin (403) and an
+  `MCP-Protocol-Version` it does not speak (400), as the Streamable HTTP transport requires.
+
 ### Added
 - **One top bar on every page** (`app/AppShell.tsx`): the project (switch, or create a new one), Workflows, Playground,
   Inbox with its count, Knowledge, Memory, Workspace, Events, Settings, and a person menu (who, role, organisation,
@@ -15,6 +25,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - **The app's own dialogs and notices** (`ui/dialog.tsx`): every `window.confirm`/`window.prompt` (17 places) is a
   dialog with a title, an explanation and a named button (red for destructive ones), focus kept inside, Escape to
   cancel; `toast()` for short success notices.
+- Projects can be renamed (`PATCH /projects/{id}`) and deleted with everything in them (`DELETE /projects/{id}`,
+  which also removes the workspace folder and the cached sandbox); admins only, and an organisation keeps its last
+  project. Settings › Project › General does both; deleting asks for the project's name.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
 
