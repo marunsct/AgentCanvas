@@ -720,6 +720,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- The server uses the Anthropic SDK 2.3 and LangChain's Anthropic package 1.7.7, the current major versions.
 - No change for users: the end-to-end tests for the editor, debugging and Google ADK now pass with a real model as
   well as the demo one. (HARDENING section 5).
 - Faster Copilot and evaluation: the Copilot keeps the knowledge pack of each project shape (two projects with their
