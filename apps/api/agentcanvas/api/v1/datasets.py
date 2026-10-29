@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
-from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.deps import CurrentUser, attachment, current_user, get_session
 from agentcanvas.db.models import Dataset, DatasetVersion
 from agentcanvas.errors import InvalidInput
 from agentcanvas.services import gates, langsmith_sync
@@ -175,7 +175,7 @@ async def export_dataset(ds_id: str, version: int | None = None, s: DatasetServi
     return Response(
         to_jsonl(v.examples),
         media_type="application/x-ndjson",
-        headers={"Content-Disposition": f'attachment; filename="{ds.name}-v{v.number}.jsonl"'},
+        headers=attachment(f"{ds.name}-v{v.number}.jsonl"),
     )
 
 

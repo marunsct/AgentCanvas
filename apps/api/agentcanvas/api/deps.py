@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -210,3 +213,13 @@ def if_match(if_match: str | None = Header(default=None, alias="If-Match")) -> i
         return int(if_match.strip().removeprefix("W/").strip('"'))
     except ValueError as exc:
         raise InvalidInput(f"If-Match must be a version number, got '{if_match}'") from exc
+
+
+def attachment(filename: str) -> dict[str, str]:
+    """The `Content-Disposition` of a download: an ASCII `filename` for every client and, when the name has other
+    characters, the real one as `filename*` (RFC 6266/5987). A header is Latin-1 only: a raw "日本" would be a 500."""
+    plain = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode()
+    plain = re.sub(r"\s+", " ", re.sub(r'["\\\x00-\x1f\x7f]', "_", plain)).strip() or "download"
+    if plain == filename:
+        return {"Content-Disposition": f'attachment; filename="{plain}"'}
+    return {"Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(filename, safe='')}"}

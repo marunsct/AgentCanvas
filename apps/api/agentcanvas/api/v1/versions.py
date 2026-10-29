@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.adapters import framework_adapter
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, if_match
+from agentcanvas.api.deps import CurrentUser, attachment, current_user, get_session, if_match
 from agentcanvas.api.v1.runs import _context
 from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
 from agentcanvas.db.models import Run, TestCase, Thread, WorkflowVersion
@@ -199,9 +199,7 @@ async def export_zip(
     """The workflow (draft, or `?version=`) as a deployable project of its framework (or `?framework=`), with the
     deploy kit for `target` when it is a LangGraph service (M6-T2/T3, S16)."""
     _, name, data = await _export(request, session, svc, wf_id, version, target, framework)
-    return Response(
-        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
-    )
+    return Response(data, media_type="application/zip", headers=attachment(name))
 
 
 async def _export(

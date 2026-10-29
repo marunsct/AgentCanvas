@@ -114,6 +114,16 @@ async def test_import_and_export(api_client):
     assert broken.status_code == 422 and broken.json()["detail"].startswith("line 2:")
 
 
+async def test_a_dataset_named_outside_latin1_exports_under_its_name(api_client):
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf, 'Tickets 日本 "q"')
+    exported = await api_client.get(f"/v1/datasets/{ds['id']}/export")
+    assert exported.status_code == 200, exported.text
+    disposition = exported.headers["content-disposition"]
+    assert disposition.startswith('attachment; filename="Tickets _q_-v1.jsonl"'), disposition
+    assert "filename*=UTF-8''Tickets%20%E6%97%A5%E6%9C%AC%20%22q%22-v1.jsonl" in disposition
+
+
 async def test_examples_from_test_cases_and_runs(app, api_client):
     wf = await make_greeter(api_client)
     case = await api_client.post(

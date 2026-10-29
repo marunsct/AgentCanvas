@@ -7,6 +7,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from agentcanvas import designs
+from agentcanvas.api.deps import attachment
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.designs.export import export_zip
 from agentcanvas.errors import InvalidInput, NotFound
@@ -101,6 +102,4 @@ async def agent_export(
         fw,
         workspace=request.app.state.projects.workspace(view.row.project_id).root,
     )
-    return Response(
-        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
-    )
+    return Response(data, media_type="application/zip", headers=attachment(name))
