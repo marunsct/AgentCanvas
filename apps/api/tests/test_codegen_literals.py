@@ -1,8 +1,8 @@
-"""Every Python code generator writes the texts of a workflow so that they read back unchanged (X-2).
+"""Every Python code generator writes the texts of a workflow so that they read back unchanged (X-2, X-5).
 
 A corpus of awkward texts (quotes, backslashes, CRLF, leading indentation, unicode, braces) goes through every block
-setting that ends up as a string literal, in every generator; `ast.parse` of the generated module must find each
-text as one of its string constants, exactly as it was typed.
+setting that ends up as a string literal, in every generator (flows, and agents designed for another framework);
+`ast.parse` of the generated module must find each text as one of its string constants, exactly as it was typed.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from agentcanvas import designs
 from agentcanvas.adapters.agno import codegen as agno
 from agentcanvas.adapters.crewai import codegen as crewai
 from agentcanvas.adapters.google_adk import codegen as google_adk
@@ -104,3 +105,23 @@ def test_texts_read_back_unchanged(framework: str, kind: str) -> None:
     for text in CORPUS:
         source = GENERATORS[framework](_workflow(kind, text))
         assert text in _strings(source), f"{framework} changed {text!r} in a {kind} block"
+
+
+@pytest.mark.parametrize("framework", list(designs.AGENT_FRAMEWORKS))
+def test_designed_agents_keep_their_texts(framework: str) -> None:
+    structured = designs.AGENT_FRAMEWORKS[framework].structured_output
+    for text in CORPUS:
+        schema = {
+            "type": "object",
+            "description": text,
+            "required": ["answer"],
+            "properties": {
+                "answer": {"type": "string", "description": text},
+                "note": {"type": "string", "description": text},
+            },
+        }
+        design = designs.AgentDesign(name="helper", workflow="Literals", instructions=text,
+                                     model=designs.ModelChoice("model", "openai", "gpt-5.5"),
+                                     output_schema=schema if structured else None)  # fmt: skip
+        found = _strings(designs.generate(framework, design)).count(text)
+        assert found == (4 if structured else 1), f"{framework} changed {text!r}"

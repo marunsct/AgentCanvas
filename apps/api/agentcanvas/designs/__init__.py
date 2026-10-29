@@ -263,13 +263,6 @@ def literal(text: str) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def _string(text: str) -> str:
-    """A readable Python literal for `text` (triple quotes for multi-line text)."""
-    if "\n" in text and '"""' not in text and "\\" not in text and not text.endswith('"'):
-        return '"""' + text + '"""'
-    return json.dumps(text, ensure_ascii=False)
-
-
 # field names that would hide a name the generated classes' annotations refer to
 _TAKEN = frozenset({"str", "int", "float", "bool", "list", "dict", "None", "Any", "Literal", "Field", "BaseModel"})
 _JSON_TYPES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}
@@ -333,16 +326,16 @@ def output_models(schema: dict[str, Any], name: str = "Answer") -> str:
         required = set(obj.get("required") or [])
         lines = [f"class {cls}(BaseModel):"]
         if obj.get("description"):
-            lines.append(f"    {_string(str(obj['description']))}")
+            lines.append(f"    {literal(str(obj['description']))}")
             lines.append("")
         for fname, prop in obj["properties"].items():
             hint = type_of(prop, cls, fname)
             desc = prop.get("description")
             if fname in required:
-                value = f" = Field(description={_string(str(desc))})" if desc else ""
+                value = f" = Field(description={literal(str(desc))})" if desc else ""
             else:
                 hint += " | None"
-                value = f" = Field(default=None, description={_string(str(desc))})" if desc else " = None"
+                value = f" = Field(default=None, description={literal(str(desc))})" if desc else " = None"
             lines.append(f"    {fname}: {hint}{value}")
         if len(lines) == 1:
             lines.append("    pass")
@@ -388,7 +381,7 @@ def generate(framework: str, design: AgentDesign) -> str:
         *(["", *code.after_imports] if code.after_imports else []),
         "",
         f"NAME = {json.dumps(design.name)}",
-        f"INSTRUCTIONS = {_string(design.instructions)}",
+        f"INSTRUCTIONS = {literal(design.instructions)}",
         f"MODEL = {json.dumps(m.name)}",
         f"BASE_URL = {json.dumps(base_url)}",
         f"API_KEY_ENV = {json.dumps(m.key_env)}",

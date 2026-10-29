@@ -24,7 +24,7 @@ _NS = uuid.UUID("6b1f3c0e-6a0e-4f5e-9a51-6167656e7473")
 _STATE_VAR = re.compile(r"\{\{\s*state\.([a-z][a-z0-9_]*)\s*\}\}")
 _STATE_REF = re.compile(r"\bstate\.([a-z][a-z0-9_]*)")  # any use: filters, fields of fields, loops
 _SPEC_VAR = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
-_EQUALS = re.compile(r'^\s*state\.([a-z][a-z0-9_]*)\s*==\s*"([^"\\]*)"\s*$')
+_EQUALS = re.compile(r'^\s*state\.([a-z][a-z0-9_]*)\s*==\s*("(?:[^"\\]|\\.)*")\s*$')
 _LOCAL = {
     "ollama": "http://localhost:11434",
     "lmstudio": "http://localhost:1234/v1",
@@ -180,11 +180,11 @@ class _Exporter:
             cases = (
                 [c for c in cfg.get("cases") or [] if isinstance(c, dict)] if isinstance(cfg.get("cases"), list) else []
             )
-            matches = [_EQUALS.match(str(c.get("when", ""))) for c in cases]
-            keys = {m.group(1) for m in matches if m}
+            matches = [_equals(str(c.get("when", ""))) for c in cases]
+            keys = {m[0] for m in matches if m}
             if all(matches) and len(keys) <= 1:
                 key = next(iter(keys), None)
-                mapping = {m.group(2): str(c.get("route", "")) for m, c in zip(matches, cases, strict=True) if m}
+                mapping = {m[1]: str(c.get("route", "")) for m, c in zip(matches, cases, strict=True) if m}
                 branches = sorted({"default", *mapping.values()})
                 return self.comp(
                     "BranchingNode", n.id, n.name, metadata={**meta, "branching_key": key},
@@ -323,6 +323,17 @@ def _empty(schema: dict[str, Any]) -> Any:
     return {"string": "", "array": [], "object": {}, "boolean": False, "integer": 0, "number": 0}.get(
         str(schema.get("type"))
     )
+
+
+def _equals(when: str) -> tuple[str, str] | None:
+    """(field, value) of a rule `state.field == "value"`, its quotes and backslashes unescaped (None: another rule)."""
+    m = _EQUALS.match(when)
+    if not m:
+        return None
+    try:
+        return m.group(1), json.loads(m.group(2))
+    except json.JSONDecodeError:  # an escape CEL has and JSON lacks (\x41, \'): leave the rule as it is
+        return None
 
 
 def _reads(n: Any) -> list[str]:
@@ -599,7 +610,7 @@ class _Importer:
             out["config"] = {"values": {self.channel("message"): template(n.get("message") or "")}}
         elif kind == "BranchingNode":
             key = channel_for("branching_mapping_key")
-            cases = [{"when": f'state.{key} == "{v}"', "route": self.route(b)}
+            cases = [{"when": f"state.{key} == {json.dumps(v, ensure_ascii=False)}", "route": self.route(b)}
                      for v, b in (n.get("mapping") or {}).items()]  # fmt: skip
             out.update(type="core.router", config={"cases": cases, "default": "default"})
         else:

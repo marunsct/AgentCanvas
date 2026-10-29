@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 
 from agentcanvas.agentspec import AgentSpecError, export_flow, ident, import_flow
+from agentcanvas.expr import eval_condition
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.workflows import TEMPLATES
+from agentcanvas.validation import validate
 
 P = "/v1/projects/prj_default"
 SAMPLE = json.loads((Path(__file__).parent / "agentspec_sample.json").read_text())  # written by pyagentspec
@@ -160,6 +162,19 @@ def test_import_a_flow_written_by_pyagentspec():
     io = {c.name: c.io for c in wf.state.channels}
     assert io["request"] == "in" and io["category"] == "out" and io["messages"] == "inout"
     assert any("works on the chat" in r for r in report)
+
+
+@pytest.mark.parametrize("value", ['he said "hi"', "C:\\temp\\new", "two\nlines", "café ✓"])
+def test_branch_values_with_quotes_come_in_and_go_out_unchanged(value):
+    doc = json.loads(json.dumps(SAMPLE))
+    route = next(c for c in _components(doc).values() if c["component_type"] == "BranchingNode")
+    route["mapping"] = {value: "question", "billing": "billing"}
+    wf = Workflow.model_validate(import_flow(doc, wf_id="wf_new")[0])
+    assert [d.code for d in validate(wf) if d.severity == "error"] == []
+    when = next(n for n in wf.nodes if n.type == "core.router").config["cases"][0]["when"]
+    assert eval_condition(when, {"category": value}) and not eval_condition(when, {"category": "other"})
+    out = next(c for c in _components(_strip(export_flow(wf)[0])).values() if c["component_type"] == "BranchingNode")
+    assert out["mapping"] == {value: "question", "billing": "billing"}
 
 
 def test_import_a_single_agent():
