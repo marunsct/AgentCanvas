@@ -93,3 +93,20 @@ async def test_a_kit_that_is_not_valid_creates_nothing(app, api_client, kit_temp
     assert r.status_code == 422 and "invalid pattern" in r.json()["detail"]
     assert len((await api_client.get(f"{P}/workflows")).json()["items"]) == before
     assert not (app.state.projects.workspace("prj_default").root / "nodes/kitdemo.py").exists()
+
+
+async def test_a_kit_that_fails_halfway_leaves_no_workflow_and_no_half_kit(app, api_client, kit_template, tmp_path):
+    """C-12: the workflow and the kit's dataset were committed before an example the workflow cannot take was
+    refused, leaving a workflow with half its kit."""
+    from sqlalchemy import func, select
+
+    from agentcanvas.db.models import Dataset, WorkflowRow
+
+    kit_template["metadata"]["kit"]["dataset"]["examples"] = [{"input": {"nope": "x"}, "reference": {}}]
+    (tmp_path / "kit_demo.ir.json").write_text(json.dumps(kit_template))
+    r = await api_client.post(f"{P}/workflows", json={"name": "Kit", "template": "kit_demo"})
+    assert r.status_code == 422 and "'nope' is not an input" in r.json()["detail"], r.text
+    async with app.state.db.sessionmaker() as s:
+        assert await s.scalar(select(func.count()).select_from(WorkflowRow).where(WorkflowRow.name == "Kit")) == 0
+        assert await s.scalar(select(func.count()).select_from(Dataset)) == 0
+    assert not (app.state.projects.workspace("prj_default").root / "nodes/kitdemo.py").exists()

@@ -16,7 +16,7 @@ from agentcanvas import agentspec, importers
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
 from agentcanvas.api.v1.workspace import _off_loop
-from agentcanvas.db.models import CostAlert, Run, Thread
+from agentcanvas.db.models import CostAlert, Run, Thread, WorkflowRow
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
@@ -123,9 +123,18 @@ async def create_workflow(
         await svc.projects.require(project_id)
         ws = request.app.state.projects.workspace(project_id)
         added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, str(body.template)))
-    view = await svc.create(project_id, body.name, body.template, user.id, wf_id=wf_id)
-    if kit.dataset or kit.evaluators or kit.tests or kit.triggers:
-        added = await template_kit.add_records(svc.repo.s, kit, wf_id, user.id, added)
+    try:
+        view = await svc.create(project_id, body.name, body.template, user.id, wf_id=wf_id)
+        if kit.dataset or kit.evaluators or kit.tests or kit.triggers:
+            added = await template_kit.add_records(svc.repo.s, kit, wf_id, user.id, added)
+    except Exception:  # the kit's services commit as they go: undo all of it, never a workflow with half a kit
+        await svc.repo.s.rollback()
+        if await svc.repo.s.get(WorkflowRow, wf_id) is not None:
+            await svc.delete(wf_id)  # its dataset, evaluators, tests and schedule go with it
+        if written := added.files_written:
+            here = request.app.state.projects.workspace(project_id)
+            await _off_loop(here, lambda: [here.delete(rel) for rel in written])
+        raise
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     out = _out(view, response)
     return out.model_copy(update={"kit": added}) if kit != template_kit.Kit() else out

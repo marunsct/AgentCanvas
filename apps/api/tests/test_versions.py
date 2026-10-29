@@ -134,6 +134,35 @@ async def test_saved_test_cases_turn_red_when_the_router_changes(app, api_client
     assert len((await api_client.get(base)).json()) == 1
 
 
+async def test_a_restore_writes_the_ir_and_the_layout_together(api_client, monkeypatch):
+    """C-12: the IR was committed, then the layout; a failure between them left the version's IR on the canvas
+    with the draft's positions."""
+    from agentcanvas.db.repositories import WorkflowRepo
+
+    wf = await new_triage(api_client)
+    base = f"/v1/workflows/{wf['id']}"
+    await api_client.put(f"{base}/layout", json={"positions": {"n_esc": {"x": 1, "y": 1}}})
+    assert (await api_client.post(f"{base}/versions", json={})).status_code == 201
+    await edit_node(api_client, wf["id"], "n_esc", values={"summary": "URGENT"})
+    await api_client.put(f"{base}/layout", json={"positions": {"n_esc": {"x": 500, "y": 500}}})
+
+    async def broken(*_args, **_kwargs):
+        raise RuntimeError("the database went away")
+
+    monkeypatch.setattr(WorkflowRepo, "save_layout", broken)
+    cur = (await api_client.get(base)).json()
+    try:
+        await api_client.post(f"{base}/versions/1.0.0/restore", headers={"If-Match": str(cur["version"])})
+    except RuntimeError:
+        pass  # the test client raises what the app raised
+    after = (await api_client.get(base)).json()
+    summary = next(n for n in after["ir"]["nodes"] if n["id"] == "n_esc")["config"]["values"]["summary"]
+    assert (summary.startswith("ESCALATED"), after["layout"]["n_esc"]) in [
+        (True, {"x": 1, "y": 1}),  # restored: both
+        (False, {"x": 500, "y": 500}),  # or neither
+    ]
+
+
 async def test_test_case_runs_and_publish_hold_no_database_connection_meanwhile(app, api_client, monkeypatch):
     """C-5: a case can run for minutes; the request's connection goes back to the pool while it does."""
     from agentcanvas.services import testcases

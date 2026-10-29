@@ -200,7 +200,9 @@ class WorkflowService:
         await self.projects.require(project_id)
         return await self.repo.list(project_id, limit, cursor)
 
-    async def replace(self, wf_id: str, raw_ir: dict[str, Any], expected_version: int) -> WorkflowView:
+    async def replace(
+        self, wf_id: str, raw_ir: dict[str, Any], expected_version: int, layout: dict[str, Any] | None = None
+    ) -> WorkflowView:
         await self.repo.require(wf_id)
         try:
             wf = Workflow.model_validate(raw_ir)
@@ -208,7 +210,7 @@ class WorkflowService:
             raise InvalidInput("the IR document is not valid", errors=_pydantic_errors(exc)) from exc
         if wf.id != wf_id:
             raise InvalidInput(f"IR id '{wf.id}' does not match workflow '{wf_id}'")
-        return await self._save(wf_id, wf, expected_version)
+        return await self._save(wf_id, wf, expected_version, layout)
 
     async def apply_commands(
         self, wf_id: str, commands: list[Command], expected_version: int
@@ -220,9 +222,11 @@ class WorkflowService:
             raise InvalidInput(str(exc)) from exc
         return await self._save(wf_id, new, expected_version), inverse
 
-    async def _save(self, wf_id: str, wf: Workflow, expected_version: int) -> WorkflowView:
+    async def _save(
+        self, wf_id: str, wf: Workflow, expected_version: int, layout: dict[str, Any] | None = None
+    ) -> WorkflowView:
         ir = wf.model_dump(mode="json")
-        await self.repo.save_ir(wf_id, ir, ir_hash(ir), wf.name, expected_version)
+        await self.repo.save_ir(wf_id, ir, ir_hash(ir), wf.name, expected_version, layout)
         row = await self.repo.require(wf_id)
         await self.repo.s.refresh(row)
         return await self._view(row)

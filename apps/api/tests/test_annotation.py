@@ -141,6 +141,35 @@ async def test_runs_are_added_by_hand(app, api_client, reviewers):
     assert (await api_client.get(f"/v1/workflows/{wf}/annotation-queues")).json() == []
 
 
+async def test_a_correction_the_dataset_refuses_saves_no_review_either(app, api_client, reviewers):
+    """C-12: the review was committed before the example was checked; a 422 then left a review the reviewer was
+    told had failed."""
+    wf, dep, key, _ = await deployed(api_client)
+    aq = await queue(api_client, wf)
+    run = await call(app, api_client, dep, key)
+    [item] = (
+        await api_client.post(f"/v1/annotation-queues/{aq['id']}/items", json={"run_ids": [run["run_id"]]})
+    ).json()
+    ds = await new_dataset(api_client, wf)
+    cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    ir = cur["ir"]
+    ir["state"]["channels"][0]["name"] = "person"  # the run's input `who` is no longer an input of the workflow
+    ir["nodes"][0]["config"]["values"]["out"] = "Hello {{ state.person }}"
+    r = await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
+    assert r.status_code == 200, r.text
+    act_as(app, "usr_rev1")
+    try:
+        url = f"/v1/annotation-items/{item['id']}/annotations"
+        fix = {"dataset_id": ds["id"], "reference": {"out": "Hello Ada"}}
+        refused = await api_client.post(url, json={"scores": {"helpful": 2, "on topic": 2}, "add_to_dataset": fix})
+        assert refused.status_code == 422 and "'who' is not an input" in refused.json()["detail"], refused.text
+        detail = (await api_client.get(f"/v1/annotation-items/{item['id']}")).json()
+        assert detail["annotations"] == [] and not detail["reviewed_by_me"]
+    finally:
+        app.dependency_overrides.pop(current_user)
+    assert (await api_client.get(f"/v1/datasets/{ds['id']}")).json()["items"] == []
+
+
 async def test_queues_are_org_scoped(app, api_client, org_b):  # noqa: F811
     wf, dep, key, _ = await deployed(api_client)
     aq = await queue(api_client, wf)

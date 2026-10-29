@@ -436,12 +436,24 @@ class WorkflowRepo:
         await self.s.refresh(row)
         return row
 
-    async def save_ir(self, wf_id: str, ir: dict[str, Any], ir_hash: str, name: str, expected_version: int) -> int:
-        """Optimistic locking: only the writer that saw `expected_version` wins (HTTP 409 otherwise)."""
+    async def save_ir(
+        self,
+        wf_id: str,
+        ir: dict[str, Any],
+        ir_hash: str,
+        name: str,
+        expected_version: int,
+        layout: dict[str, Any] | None = None,
+    ) -> int:
+        """Optimistic locking: only the writer that saw `expected_version` wins (HTTP 409 otherwise). `layout`, when
+        given, is written in the same statement (a restored version: never its IR without its layout)."""
+        values: dict[str, Any] = {"draft_ir": ir, "ir_hash": ir_hash, "name": name, "version": WorkflowRow.version + 1}
+        if layout is not None:
+            values["layout"] = layout
         result = await self.s.execute(
             update(WorkflowRow)
             .where(WorkflowRow.id == wf_id, WorkflowRow.version == expected_version)
-            .values(draft_ir=ir, ir_hash=ir_hash, name=name, version=WorkflowRow.version + 1)
+            .values(**values)
             .returning(WorkflowRow.version)
         )
         new_version = result.scalar_one_or_none()

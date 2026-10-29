@@ -349,6 +349,7 @@ async def annotate(
             raise InvalidInput("this run has no recorded input to turn into an example")
         meta = {"run_id": item.run_id, "annotation_queue": queue.name, "reviewer": user.id}
         corrected = Example(input=run.recording["input"], reference=body.add_to_dataset.reference, metadata=meta)
+        await DatasetService(s).check_new(ds.id, [corrected])  # refused before the review is saved, not after
         example = (ds.id, corrected, f"corrected run {item.run_id} ({queue.name})")
     thread = await s.get(Thread, item.thread_id)
     await annotation.submit(

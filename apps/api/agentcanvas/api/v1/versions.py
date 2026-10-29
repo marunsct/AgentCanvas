@@ -124,8 +124,7 @@ async def restore_version(
 ) -> WorkflowOut:
     """Replace the draft by a version (an ordinary edit: the version itself never changes)."""
     v = await VersionService(session).get(wf_id, ref)
-    await svc.replace(wf_id, {**v.ir, "id": wf_id}, version)
-    await svc.repo.save_layout(wf_id, v.layout or {})
+    await svc.replace(wf_id, {**v.ir, "id": wf_id}, version, layout=v.layout or {})  # one write: both or neither
     return _out(await svc.get(wf_id), response)
 
 

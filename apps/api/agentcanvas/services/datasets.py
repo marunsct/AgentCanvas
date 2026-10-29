@@ -263,6 +263,13 @@ class DatasetService:
             seen.add(ex.id)
         return await self.change(ds_id, lambda _: examples, message, user_id)
 
+    async def check_new(self, ds_id: str, examples: list[Example]) -> None:
+        """What `add` would refuse (422), without adding: for a caller that saves something else first."""
+        ds, latest = await self.get(ds_id), await self.version(ds_id)
+        check(await self._workflow(ds.workflow_id), examples, first=len(latest.examples) + 1)
+        if len(latest.examples) + len(examples) > MAX_EXAMPLES:
+            raise InvalidInput(f"a dataset holds at most {MAX_EXAMPLES} examples")
+
     async def add(self, ds_id: str, examples: list[Example], message: str, user_id: str | None) -> DatasetVersion:
         if not examples:
             raise InvalidInput("no examples to add")

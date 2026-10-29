@@ -68,6 +68,19 @@ async def test_the_last_project_stays(api_client):
     assert last.status_code == 409 and "only project" in last.json()["detail"]
 
 
+async def test_two_deletes_at_once_still_leave_one_project(api_client):
+    """C-12: two admins deleting the organisation's last two projects at the same moment both passed the check."""
+    import asyncio
+
+    for round_ in range(5):
+        ids = [p["id"] for p in (await api_client.get("/v1/projects")).json()]
+        while len(ids) < 2:
+            ids.append(await _project(api_client, f"Spare {round_}"))
+        first, second = await asyncio.gather(*(api_client.delete(f"/v1/projects/{pid}") for pid in ids[:2]))
+        assert sorted([first.status_code, second.status_code]) == [204, 409], (first.text, second.text)
+        assert len((await api_client.get("/v1/projects")).json()) == 1
+
+
 async def test_only_admins_rename_or_delete(app, api_client):
     pid = await _project(api_client, "Guarded")
     try:

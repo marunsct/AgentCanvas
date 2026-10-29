@@ -8,11 +8,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import Project
+from agentcanvas.db.models import Organization, Project
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.registry import default_registry
@@ -142,11 +143,15 @@ async def delete_project(
     """Delete a project with everything in it: workflows and their versions, deployments (their endpoints stop
     answering), runs, datasets, knowledge, secrets and the workspace's code. An organisation keeps at least one
     project (409 for the last one). Admins only."""
-    repo = ProjectRepo(session)
-    p = await repo.require(project_id)
-    if len(await repo.list(user.org_id)) <= 1:
-        raise Conflict("this is the organisation's only project: create another one before deleting it")
+    p = await ProjectRepo(session).require(project_id)
+    # one delete at a time per organisation (a row lock on Postgres) and the count after the write (on SQLite the
+    # write lock makes a parallel delete wait, then see this one): two at once cannot remove the last two projects
+    await session.execute(select(Organization.id).where(Organization.id == user.org_id).with_for_update())
     await session.delete(p)
+    await session.flush()
+    if not await session.scalar(select(func.count()).select_from(Project).where(Project.org_id == user.org_id)):
+        await session.rollback()
+        raise Conflict("this is the organisation's only project: create another one before deleting it")
     await session.commit()
     projects = getattr(request.app.state, "projects", None)
     if projects is not None:
