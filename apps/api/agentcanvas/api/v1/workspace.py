@@ -102,7 +102,7 @@ async def _own_folder(session: AsyncSession, project_id: str, ws: Workspace, wf_
     row = await WorkflowRepo(session).require(wf_id)
     if row.project_id != project_id:
         raise NotFound(f"workflow '{wf_id}' not found")
-    return _guard(lambda: ws.ensure_workflow(wf_id))
+    return await _off_loop(ws, lambda: ws.ensure_workflow(wf_id))  # a first use commits the new folder
 
 
 @router.get("/files", response_model=list[FileOut])

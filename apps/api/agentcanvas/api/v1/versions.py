@@ -14,6 +14,7 @@ from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, attachment, current_user, get_session, if_match
 from agentcanvas.api.v1.runs import _context
 from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
+from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.db.models import Run, TestCase, Thread, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, WorkflowHasErrors
@@ -75,7 +76,8 @@ def _version(v: WorkflowVersion) -> VersionOut:
 
 async def workspace_commit(request: Request, session: AsyncSession, wf_id: str) -> str | None:
     row = await WorkflowRepo(session).require(wf_id)
-    return request.app.state.projects.workspace(row.project_id).head()
+    ws = request.app.state.projects.workspace(row.project_id)
+    return await _off_loop(ws, ws.head)  # in turn with saves: never a commit half made
 
 
 @router.post("/workflows/{wf_id}/versions", response_model=VersionOut, status_code=201)

@@ -217,3 +217,38 @@ async def test_shared_imports_work_in_process_and_in_the_sandbox(tmp_path):
     assert load_attr("flows.wf_imp.scripts.rel:run", ws.root)({"text": "yo"}) == {"text": "YO!"}
     out = await run_in_sandbox("subprocess", ws.root, path, {"text": "hey"}, image="unused")
     assert out == {"text": "HEY!"}
+
+
+async def test_every_git_call_runs_off_the_event_loop_one_at_a_time(app, api_client, monkeypatch):
+    """C-9: a workflow's first code folder and a version's workspace commit ran git on the event loop and outside
+    the workspace's lock; a save at the same moment could find git's index locked and stay uncommitted."""
+    import asyncio
+    import threading
+    import time
+
+    wfs = [(await api_client.post(f"{P}/workflows", json={"name": f"W{i}"})).json()["id"] for i in range(3)]
+    ws = app.state.projects.workspace("prj_default")
+    git, seen, inside = Workspace._git, [], [0]
+    guard = threading.Lock()
+
+    def watched(self, *args):
+        with guard:
+            inside[0] += 1
+            seen.append((args[0], threading.current_thread() is threading.main_thread(), inside[0]))
+        try:
+            time.sleep(0.01)  # widen the window two git processes need to collide
+            return git(self, *args)
+        finally:
+            with guard:
+                inside[0] -= 1
+
+    monkeypatch.setattr(Workspace, "_git", watched)
+    saves = [api_client.put(f"{P}/files/scripts/s{i}.py", json={"content": f"X = {i}\n"}) for i in range(4)]
+    folders = [api_client.get(f"{P}/workflow-files/{wf}") for wf in wfs]
+    versions = [api_client.post(f"/v1/workflows/{wf}/versions", json={}) for wf in wfs]
+    replies = await asyncio.gather(*saves, *folders, *versions)
+    assert all(r.status_code < 300 for r in replies), [r.text[:100] for r in replies if r.status_code >= 300]
+    assert seen and not [s for s in seen if s[1]], f"git on the event loop: {[s[0] for s in seen if s[1]]}"
+    assert max(s[2] for s in seen) == 1, "two git commands ran at once in one workspace"
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=ws.root, capture_output=True, text=True, check=True)
+    assert status.stdout == "", status.stdout  # every save was committed
