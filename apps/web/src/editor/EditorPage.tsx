@@ -68,6 +68,8 @@ export function EditorPage() {
 /* oxlint-disable react-hooks/exhaustive-deps -- runs when the workflow id changes, not on every search-param change */
   useEffect(() => {
     if (!id) return;
+    let current = true; // false once another workflow is opened: its load error or selection is not this one's
+    setError(null); // one failed open used to show "Could not load workflow" for every workflow after it
     stopStreaming(); // the last workflow's run and Copilot streams
     stopCopilotStream();
     useEditor.getState().reset();
@@ -77,15 +79,17 @@ export function EditorPage() {
     const sel = recallView(id)?.selected; // back from the Workspace: the block you had selected (S17)
     useEditor.getState().load(id)
       .then(() => {
+        if (!current) return;
         const st = useEditor.getState();
         if (sel && (st.wf?.nodes.some((n) => n.id === sel) || st.wf?.resources.some((r) => r.id === sel))) st.select(sel);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => { if (current) setError(e.message); });
     const thread = params.get("thread");  // "open this run's timeline", e.g. from an experiment's results
     if (thread) {
       useRun.getState().setThread(thread);
       useUi.getState().setDock("timeline");
     }
+    return () => { current = false; };
   }, [id]);
 /* oxlint-enable react-hooks/exhaustive-deps */
 

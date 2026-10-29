@@ -85,6 +85,7 @@ let layoutTimer: ReturnType<typeof setTimeout> | null = null;
 let layoutDirty: Layout = {};
 const historyMode: { next: "push" | "undo" | "redo" } = { next: "push" };
 const savedVersion = new Map<string, number>(); // workflow id -> version after its last saved batch
+let loadSeq = 0; // the latest load(): an earlier one that answers later (A -> B, A slower) is ignored
 
 /** Edits not yet on the server (queued, waiting for the debounce, or in flight). */
 export function hasUnsavedEdits(): boolean {
@@ -248,11 +249,14 @@ export const useEditor = create<EditorState>((set, get) => ({
       void saveLeftBehind(workflowId, pending, version, layoutDirty); // queued edits are saved, not dropped
     }
     layoutDirty = {};
+    loadSeq++; // a load still on its way is for the workflow left behind
     set({ ...initial });
   },
 
   load: async (id) => {
+    const seq = ++loadSeq;
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
+    if (seq !== loadSeq) return;
     // the editor reads blocks, models and settings of the app's project: open another project's workflow in it
     if (out.project_id !== PROJECT_ID && followProject(out.project_id)) return;
     const { workflowId, version, undoStack, redoStack } = get();
