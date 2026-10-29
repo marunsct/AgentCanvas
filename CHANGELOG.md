@@ -5,6 +5,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **A damaged group of steps broke the editor's blast-radius overlay** (a server error) instead of being skipped:
+  validation already reports it (E018) and nothing runs it; the overlay and the dry run now leave it out, as the
+  other readers do. Found by the workflow fuzz test on the new Parallel code review template.
 - **Workspace code that emitted an event failed in the sandbox**, the default for Docker and servers:
   `agentcanvas.sdk.emit` looked for the run in the sandbox's own process, found none, and failed the step
   ("Called get_config outside of a runnable context"). The sandboxed code now records its events, they come back

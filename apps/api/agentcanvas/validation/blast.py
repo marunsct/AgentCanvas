@@ -9,10 +9,11 @@ an approval / human-input step.
 
 from __future__ import annotations
 
+import contextlib
 from collections import deque
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from agentcanvas.ir.models import Node, Resource, Workflow
 from agentcanvas.registry import Registry, default_registry
@@ -106,7 +107,10 @@ def blast_radius(wf: Workflow, registry: Registry | None = None) -> BlastRadius:
             continue
         nb = analyse(n)
         if n.type == "core.subgraph":  # inner steps count for the subgraph step on this canvas
-            inner = blast_radius(wf.subworkflow(n), registry)
+            try:
+                inner = blast_radius(wf.subworkflow(n), registry)
+            except ValidationError:  # reported by the subgraph rule (E018); it never runs
+                inner = BlastRadius()
             for inb in inner.nodes:
                 nb.capabilities += [
                     c.model_copy(update={"source": f"{inb.name}/{c.source}", "gated": c.gated or n.id in behind_gate})
@@ -132,5 +136,6 @@ def dry_run_tools(wf: Workflow, registry: Registry | None = None) -> set[str]:
                 out.add(tool)
     for n in wf.nodes:
         if n.type == "core.subgraph":
-            out |= dry_run_tools(wf.subworkflow(n), registry)
+            with contextlib.suppress(ValidationError):  # an invalid subgraph never runs (E018)
+                out |= dry_run_tools(wf.subworkflow(n), registry)
     return out

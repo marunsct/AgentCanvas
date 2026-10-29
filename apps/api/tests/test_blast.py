@@ -125,3 +125,14 @@ def test_dry_run_stubs_mcp_tools_that_announce_destructive_hint():
     resources._mcp[("crm", _config_key(config))] = [wipe, lookup]
     stubbed = resources.with_dry_run(set()).tool("crm", config, "mcp.server")
     assert stubbed[0] is not wipe and stubbed[0].name == "wipe" and stubbed[1] is lookup
+
+
+def test_a_damaged_group_of_steps_does_not_break_the_blast_radius():
+    """Its inner workflow is not valid (validation says so, E018): the overlay and the dry run skip it."""
+    from agentcanvas.validation import validate
+
+    group = {"id": "n_g", "type": "core.subgraph", "name": "group",
+             "config": {"workflow": {"nodes": [], "edges": [{"source": 0}]}}}  # fmt: skip
+    wf = Workflow.model_validate({"id": "wf_x", "name": "x", "nodes": [group], "edges": []})
+    assert "E018" in {d.code for d in validate(wf)}
+    assert blast_radius(wf).nodes == [] and dry_run_tools(wf) == set()
