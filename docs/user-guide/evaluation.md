@@ -46,7 +46,8 @@ and compare: pick *on OpenAI Agents SDK* for a target, or click **+ Compare on t
 be cancelled and survives a server restart.
 
 The results grid shows mean scores, pass rates, latency, tokens and cost per target, and each example's output
-with its run timeline one click away. **Compare** two experiments to see which examples improved or regressed.
+with its run timeline one click away. The AI judges' own cost (LLM and pairwise judges) is shown apart from the
+runs' cost; a judge model without a catalog price is named instead of being counted as free. **Compare** two experiments to see which examples improved or regressed.
 
 **Simulated users:** for chat workflows, an experiment can hold a whole conversation per example with a simulated
 user (a model given a persona, a goal and a turn limit). Evaluators see the full transcript.
@@ -64,10 +65,11 @@ and evaluator settings it was saved with.
 Attach evaluators to a **deployment** with a sampling rate (0-100 %) and a filter (run status, metadata the
 caller sent, e.g. `tier=gold`). Sampled runs are scored in the background after the response is sent, so callers
 never wait. Scores appear on runs and as hourly or daily averages on the **Production** tab; the judge's own cost is
-counted separately.
+counted separately (when the judge model has no catalog price, the score's comment says its cost is not counted).
 
 **Drift alerts** fire when an evaluator's recent mean falls below a value (*alert below*) or drops more than a set
-amount under its 7-day average (*alert drop*).
+amount under its 7-day average (*alert drop*). An alert resolves when the rule holds again, or when the window has
+fewer scores than the minimum (traffic stopped: nothing is known to be wrong any more).
 
 ## Annotation queues
 

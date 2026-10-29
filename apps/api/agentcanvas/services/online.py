@@ -75,6 +75,11 @@ def judge_cost(usage: dict[str, dict[str, int]]) -> tuple[int, float]:
     return tokens, round(cost, 6)
 
 
+def unpriced(usage: dict[str, dict[str, int]]) -> list[str]:
+    """The judge models that were called but have no catalog price (`judge_cost` counts them as free)."""
+    return sorted(m for m, u in usage.items() if any(u.values()) and price(m, 1_000_000, 1_000_000) is None)
+
+
 async def resolve(s: Any, deployment_id: str, evaluator: str, kinds: tuple[str, ...] = ("below", "drop")) -> None:
     """Resolve the open alerts of these rules (their online evaluator was removed, or the rule turned off)."""
     await s.execute(
@@ -126,6 +131,7 @@ class OnlineScorer:
 
         async with self.db.sessionmaker() as s:
             await self._resolve_orphans(s)
+            await self._recheck_open(s)
             q = select(EvalAlert.deployment_id, EvalAlert.evaluator, EvalAlert.kind).where(
                 EvalAlert.resolved_at.is_(None)
             )
@@ -136,6 +142,21 @@ class OnlineScorer:
             )
         self._reported |= open_now
         return open_now
+
+    async def _recheck_open(self, s: Any) -> None:
+        """Check the rules of open alerts again: a scored run checks them, so with no traffic they never would."""
+        q = (
+            select(OnlineEvaluator, Evaluator.name, EvalAlert.workflow_id)
+            .join(Evaluator, Evaluator.id == OnlineEvaluator.evaluator_id)
+            .join(
+                EvalAlert,
+                (EvalAlert.deployment_id == OnlineEvaluator.deployment_id) & (EvalAlert.evaluator == Evaluator.name),
+            )
+            .where(EvalAlert.resolved_at.is_(None))
+        )
+        for online, name, workflow_id in {(o, n, w) for o, n, w in (await s.execute(q)).all()}:
+            await self.check_drift(s, online, name, workflow_id)
+        await s.commit()
 
     async def _resolve_orphans(self, s: Any) -> None:
         """Resolve open alerts no online evaluator watches any more (its evaluator was renamed or deleted)."""
@@ -227,6 +248,9 @@ class OnlineScorer:
             usage: dict[str, dict[str, int]] = {}
             sc = await score(spec_of(e, siblings), obs, **scorers(self.runner, wf, usage))
             tokens, cost = judge_cost(usage)
+            if missing := unpriced(usage):
+                note = f"(judge cost not counted: no price for {', '.join(missing)})"
+                sc = sc.model_copy(update={"comment": f"{sc.comment} {note}".strip()})
             out.append(
                 RunScore(
                     id=new_id("rsc"),
@@ -273,7 +297,8 @@ class OnlineScorer:
                 select(func.count(), func.avg(RunScore.score)).where(*base, RunScore.created_at >= window_start)
             )
         ).one()
-        if not n or n < online.min_samples:
+        if not n or n < online.min_samples:  # too few to tell: nothing is known to be broken (traffic stopped)
+            await resolve(s, online.deployment_id, evaluator)
             return
         mean = float(mean)
         observability.ONLINE_SCORE.labels(deployment=online.deployment_id, evaluator=evaluator).set(mean)

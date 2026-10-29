@@ -419,6 +419,8 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
             {exp.summary.map((s) => (
               <td key={s.target}>
                 <b>{pct(s.pass_rate)}</b> · {s.latency_p50_ms ?? "—"}/{s.latency_p95_ms ?? "—"} ms · ${s.cost_usd.toFixed(4)}
+                {(s.judge_cost_usd ?? 0) > 0 && <span title="what the AI judges cost, apart from the runs"> + judges ${(s.judge_cost_usd ?? 0).toFixed(4)}</span>}
+                {Boolean(s.judge_unpriced?.length) && <span className="warn-text" title="no catalog price: these judge calls are not in the cost"> (unpriced judge: {s.judge_unpriced!.join(", ")})</span>}
                 <div>{s.evaluators.map((e) => pairwise.has(e.evaluator)
                   ? <span key={e.evaluator} className="badge" title={`win rate vs ${exp.summary[0]?.label} (ties count half), 95% interval`} data-testid="win-rate">
                       {e.evaluator} {s.target === 0 ? "baseline" : `wins ${pct(e.mean)}`}{e.ci && ` (${pct(e.ci[0])}–${pct(e.ci[1])})`}

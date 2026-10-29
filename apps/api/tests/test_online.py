@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from test_evaluators import new
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
@@ -104,6 +104,28 @@ async def test_drift_opens_and_resolves_an_alert(app, api_client):
     assert await app.state.online.report() == set()
 
 
+async def test_an_alert_resolves_once_traffic_stops(app, api_client):
+    """E-11: with too few scores in the window the check returned before resolving, and only a scored run checked,
+    so an alert stayed open for good once traffic stopped."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import RunScore
+
+    wf, dep, key, ev = await deployed(api_client)
+    body = {"evaluator_id": ev["id"], "alert_below": 0.5, "min_samples": 2}
+    assert (await api_client.post(f"/v1/deployments/{dep}/online-evaluators", json=body)).status_code == 201
+    await set_greeting(api_client, wf, "Hey")
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    for who in ("Ada", "Bob"):
+        await call(app, api_client, dep, key, who)
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+    async with app.state.db.sessionmaker() as s:  # two hours pass without a run
+        await s.execute(update(RunScore).values(created_at=datetime.now(UTC) - timedelta(hours=2)))
+        await s.commit()
+    assert await app.state.online.report() == set()
+    assert (await api_client.get(f"/v1/workflows/{wf}/alerts")).json() == []
+
+
 async def test_one_open_alert_per_rule(app, api_client):
     """Several scoring tasks (or pods) seeing the same rule break at once open one alert between them."""
     import asyncio
@@ -163,6 +185,10 @@ def test_sampling_filters_costs_and_buckets(monkeypatch):
     tokens, cost = judge_cost({"anthropic:claude-haiku-4-5": {"input_tokens": 1000, "output_tokens": 100}})
     assert (tokens, cost) == (1100, 0.0015)
     assert judge_cost({"nobody:nothing": {"input_tokens": 5}}) == (5, 0.0)
+    # E-11: a judge without a price counted as free with nothing saying so
+    assert online.unpriced({"nobody:nothing": {"input_tokens": 5}, "anthropic:claude-haiku-4-5": {"input_tokens": 1}})
+    assert online.unpriced({"nobody:nothing": {"input_tokens": 5}}) == ["nobody:nothing"]
+    assert online.unpriced({"nobody:nothing": {}}) == []  # never called
 
     t = datetime(2026, 10, 6, 13, 30, tzinfo=UTC)
     rows = [(t, "a", 1.0, True, 0.01), (t.replace(hour=14), "a", 0.0, False, 0.0), (t, "a", None, False, 0.0)]

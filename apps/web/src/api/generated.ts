@@ -715,6 +715,14 @@ export type CostUsd1 = number;
 export type Errors = number;
 export type Evaluators2 = EvaluatorSummary[];
 export type Examples4 = number;
+/**
+ * what the AI judges cost scoring this target (not in cost_usd)
+ */
+export type JudgeCostUsd1 = number;
+/**
+ * judge models without a price: their calls are not in judge_cost_usd
+ */
+export type JudgeUnpriced = string[];
 export type Label9 = string;
 export type LatencyP50Ms = number | null;
 export type LatencyP95Ms = number | null;
@@ -989,7 +997,7 @@ export type CreatedAt18 = string;
 export type CreatedBy1 = string | null;
 export type Evaluator4 = string;
 export type Id37 = string;
-export type JudgeCostUsd1 = number;
+export type JudgeCostUsd2 = number;
 export type JudgeTokens = number;
 export type Passed2 = boolean;
 export type RunId6 = string;
@@ -3962,6 +3970,8 @@ export interface TargetSummary {
   errors: Errors;
   evaluators: Evaluators2;
   examples: Examples4;
+  judge_cost_usd?: JudgeCostUsd1;
+  judge_unpriced?: JudgeUnpriced;
   label: Label9;
   latency_p50_ms: LatencyP50Ms;
   latency_p95_ms: LatencyP95Ms;
@@ -4455,7 +4465,7 @@ export interface ScoreOut {
   created_by: CreatedBy1;
   evaluator: Evaluator4;
   id: Id37;
-  judge_cost_usd: JudgeCostUsd1;
+  judge_cost_usd: JudgeCostUsd2;
   judge_tokens: JudgeTokens;
   passed: Passed2;
   run_id: RunId6;

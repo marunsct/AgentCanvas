@@ -10125,6 +10125,20 @@
             "title": "Examples",
             "type": "integer"
           },
+          "judge_cost_usd": {
+            "default": 0.0,
+            "description": "what the AI judges cost scoring this target (not in cost_usd)",
+            "title": "Judge Cost Usd",
+            "type": "number"
+          },
+          "judge_unpriced": {
+            "description": "judge models without a price: their calls are not in judge_cost_usd",
+            "items": {
+              "type": "string"
+            },
+            "title": "Judge Unpriced",
+            "type": "array"
+          },
           "label": {
             "title": "Label",
             "type": "string"

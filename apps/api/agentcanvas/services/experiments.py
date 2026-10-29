@@ -113,6 +113,20 @@ def scorers(runner: Any, wf: Workflow, usage: dict[str, Any] | None = None) -> d
     }
 
 
+def judged(sc: Score, spent: dict[str, dict[str, int]]) -> dict[str, Any]:
+    """A score as stored on an experiment result, with what its AI judge cost (never added to the run's cost) and the
+    judge models without a price, whose calls that cost leaves out."""
+    from agentcanvas.services.online import judge_cost, unpriced
+
+    out = sc.model_dump()
+    tokens, cost = judge_cost(spent)
+    if tokens:
+        out.update(judge_tokens=tokens, judge_cost_usd=cost)
+    if missing := unpriced(spent):
+        out["judge_unpriced"] = missing
+    return out
+
+
 def _percentile(values: list[int], q: float) -> int | None:
     if not values:
         return None
@@ -153,6 +167,10 @@ class TargetSummary(BaseModel):
     latency_p95_ms: int | None
     tokens: int
     cost_usd: float
+    judge_cost_usd: float = Field(0.0, description="what the AI judges cost scoring this target (not in cost_usd)")
+    judge_unpriced: list[str] = Field(
+        default_factory=list, description="judge models without a price: their calls are not in judge_cost_usd"
+    )
 
 
 def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSummary]:
@@ -190,6 +208,8 @@ def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSumm
                 latency_p95_ms=_percentile(latencies, 0.95),
                 tokens=sum(r.tokens_in + r.tokens_out for r in done),
                 cost_usd=round(sum(r.cost_usd for r in done), 6),
+                judge_cost_usd=round(sum(float(x.get("judge_cost_usd") or 0) for r in mine for x in r.scores or []), 6),
+                judge_unpriced=sorted({m for r in mine for x in r.scores or [] for m in x.get("judge_unpriced") or []}),
             )
         )
     return out
@@ -425,7 +445,12 @@ class ExperimentJob:
             concurrency, sim = exp.concurrency, exp.simulation
         if row is not None:
             PROJECT_OF[exp.workflow_id] = row.project_id
-        workflows = [Workflow.model_validate(t["ir"]) for t in targets]
+        try:  # a target that no longer parses ends the experiment, else every instance would retry it forever
+            workflows = [Workflow.model_validate(t["ir"]) for t in targets]
+        except (ValueError, KeyError, TypeError) as exc:  # pydantic.ValidationError is a ValueError
+            log.warning("experiment.bad_target", experiment_id=exp_id)
+            await self._finish(exp_id, "error", f"a target's workflow is not valid: {exc}"[:500])
+            return
         gate = asyncio.Semaphore(concurrency)
 
         async def one(result_id: str, target: int, example_id: str) -> None:
@@ -474,7 +499,6 @@ class ExperimentJob:
         for r in rows:
             by_example.setdefault(r.example_id, {})[r.target] = r
         added: dict[str, list[dict[str, Any]]] = {r.id: [] for r in rows}
-        complete = scorers(self.runner, wf)["complete"]
 
         def observed(r: ExperimentResult) -> Observation:
             status = r.run_status if r.status == "done" else "error"
@@ -483,8 +507,10 @@ class ExperimentJob:
         async def judge(spec: Spec, ex_id: str, base: ExperimentResult, other: ExperimentResult) -> None:
             async with gate:
                 example = examples.get(ex_id) or {}
+                spent: dict[str, dict[str, int]] = {}  # two judge calls (both orders): counted on the target's result
+                complete = scorers(self.runner, wf, spent)["complete"]
                 sc = await pairwise(spec, example.get("input") or {}, observed(base), observed(other), complete)
-            added[other.id].append(sc.model_dump())
+            added[other.id].append(judged(sc, spent))
             mirrored = None if sc.score is None else 1 - sc.score
             added[base.id].append(
                 Score(evaluator=spec.name, score=mirrored, passed=mirrored is not None and mirrored >= 0.5,
@@ -618,10 +644,11 @@ class ExperimentJob:
             status=run_status,
             error=error,
         )
-        tools = scorers(self.runner, wf)
-        scores: list[Score] = [
-            await score(spec, obs, **tools) for spec in specs if spec.kind not in ONLY_IN_EXPERIMENTS
-        ]
+        scores: list[dict[str, Any]] = []
+        for spec in specs:
+            if spec.kind not in ONLY_IN_EXPERIMENTS:
+                spent: dict[str, dict[str, int]] = {}
+                scores.append(judged(await score(spec, obs, **scorers(self.runner, wf, spent)), spent))
         await self._save(
             result_id,
             status="done",
@@ -629,7 +656,7 @@ class ExperimentJob:
             error=error,
             output=output,
             trajectory=trajectory,
-            scores=[s.model_dump() for s in scores],
+            scores=scores,
             tokens_in=usage[0],
             tokens_out=usage[1],
             cost_usd=usage[2],
