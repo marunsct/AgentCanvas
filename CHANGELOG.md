@@ -8,6 +8,9 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- An error raised before a framework adapter could handle it (building the graph, reaching an MCP server, setting up
+  a model client) went into the run's error event and the server log with any key in its text; it is masked now, as
+  the adapter's own errors are (HARDENING R-7).
 - A secret that a provider's error echoed base64- or URL-encoded (or JSON-escaped) was not masked, and a secret
   under 6 characters was never masked at all. Every encoded form is masked now, in run events, traces and error
   messages, and a secret needs at least 6 characters (HARDENING S-9).

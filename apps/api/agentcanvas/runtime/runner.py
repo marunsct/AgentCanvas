@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -30,6 +31,7 @@ from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
+from agentcanvas.runtime import masking
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 
@@ -136,6 +138,12 @@ def rubric_scores(h: Any) -> list[RunScore]:
             )
         )
     return out
+
+
+def _without_secrets(text: str) -> str:
+    """`text` with every project secret masked (the values traces are masked with)."""
+    values = sorted({v for v in masking.provider() if len(v) >= 6}, key=len, reverse=True)
+    return masking.mask_strings(text, values) if values else text
 
 
 def price(
@@ -612,9 +620,10 @@ class Runner:
                     "threadId": h.thread_id,
                 },
             )
-        except Exception as exc:
-            status, error = "error", f"{type(exc).__name__}: {exc}"
-            log.exception("run.crashed", run_id=h.run_id)
+        except Exception as exc:  # noqa: BLE001 - raised before the adapter could redact it (graph build, MCP): R-7
+            status, error = "error", _without_secrets(f"{type(exc).__name__}: {exc}")
+            trace = _without_secrets("".join(traceback.format_exception(exc)))
+            log.error("run.crashed", run_id=h.run_id, error=error, traceback=trace)
             await emit(
                 {"type": "RUN_ERROR", "code": "internal", "message": error, "runId": h.run_id, "threadId": h.thread_id},
             )

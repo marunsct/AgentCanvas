@@ -143,3 +143,25 @@ async def test_a_new_thread_another_server_created_a_moment_ago_is_a_409(app, ap
     except Conflict:
         pass
     assert "th_race" not in app.state.runner.active_by_thread
+
+
+async def test_an_error_before_the_adapter_runs_does_not_show_a_secret(app, api_client, monkeypatch):
+    """R-7: errors raised outside the adapter's own handling (building the graph, an MCP server, a model client)
+    reached the run's error event and the log with any key in their text."""
+    from agentcanvas.runtime import masking
+
+    wf = Workflow.model_validate((await greeter(api_client))["ir"])
+    runner = app.state.runner
+    real = runner.adapters["langchain"]
+
+    class Breaks(_Hangs):
+        async def execute(self, spec, resources):
+            raise RuntimeError("401 from https://llm.example.com with key sk-live-0123456789")
+            yield  # pragma: no cover
+
+    monkeypatch.setitem(runner.adapters, "langchain", Breaks(real))
+    monkeypatch.setattr(masking, "provider", lambda: ["sk-live-0123456789"])
+    h = await runner.start(wf, input={"who": "x"})
+    await asyncio.wait_for(h.done.wait(), 10)
+    [err] = [e for e in h.events if e["type"] == "RUN_ERROR"]
+    assert "sk-live-0123456789" not in err["message"] and "401 from" in err["message"]
