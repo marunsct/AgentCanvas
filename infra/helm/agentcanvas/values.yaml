@@ -57,6 +57,10 @@ api:
 sandbox:
   enabled: true
   replicas: 4  # each pod runs one call at a time (calls of different projects never share a pod at once)
+  # run workspace code on nodes of its own (e.g. a tainted pool), away from the API and other tenants' data
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }

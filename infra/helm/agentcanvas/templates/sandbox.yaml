@@ -58,6 +58,15 @@ spec:
       volumes:
         - name: tmp
           emptyDir: { sizeLimit: 512Mi }
+      {{- with .Values.sandbox.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

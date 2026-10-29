@@ -57,6 +57,7 @@ nav:
       - Competitive roadmap: agent-canvas-spec/16-competitive-roadmap.md
       - Framework coverage review: agent-canvas-spec/17-framework-coverage-review.md
       - Identity and tenancy plan: agent-canvas-spec/18-identity-and-tenancy-plan.md
+      - Threat model: agent-canvas-spec/19-threat-model.md
       - Deep review v0.6: agent-canvas-spec/14-deep-review-v0.6.md
       - History:
           - Improvement plan: agent-canvas-spec/10-improvement-plan.md
