@@ -9,9 +9,11 @@ import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
 import { PageHeader } from "../ui/PageHeader";
+import { kitNote } from "./gallery";
 import { TemplateGallery } from "./TemplateGallery";
 import { WorkflowList } from "./WorkflowList";
-import type { InvitationOut as Invitation } from "../api/generated";
+import type { InvitationOut as Invitation, KitOut } from "../api/generated";
+import { toast } from "../ui/dialog";
 
 export function HomePage() {
   const me = useMe((s) => s.me);
@@ -30,9 +32,11 @@ export function HomePage() {
   };
   const create = useMutation({
     mutationFn: (body: { name: string; template?: string }) =>
-      apiFetch<{ id: string }>(`/projects/${PROJECT_ID}/workflows`, { method: "POST", json: body }),
+      apiFetch<{ id: string; kit?: KitOut | null }>(`/projects/${PROJECT_ID}/workflows`, { method: "POST", json: body }),
     onSuccess: (wf) => {
       void qc.invalidateQueries({ queryKey: ["workflows"] });
+      const note = kitNote(wf.kit);
+      if (note) toast(note);
       navigate(`/workflows/${wf.id}`);
     },
   });

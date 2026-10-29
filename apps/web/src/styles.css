@@ -275,6 +275,9 @@ html { overflow-x: clip; }
 .card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
 .card-meta small { margin-top: 0; }
 .card-meta small.level.beginner { color: var(--ok); background: var(--tint-ok); }
+.card-meta small.level.advanced { color: var(--accent); background: var(--accent-soft); }
+.card-kit { color: var(--text-2); }
+.gallery-tools .row select { width: auto; }
 @media (max-width: 700px) { .cards.gallery-cards { grid-template-columns: 1fr; } }
 .wf-list {
   list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px;
