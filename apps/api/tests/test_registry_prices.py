@@ -90,3 +90,35 @@ async def test_the_copilot_counts_what_came_from_the_prompt_cache():
     await LangChainModels().chat(Res(), "anthropic:claude-sonnet-5-5", [{"role": "user", "content": "hi"}], [], usage)
     assert usage == {"input_tokens": 15_000, "output_tokens": 200, "cache_read_tokens": 14_000,
                      "cache_write_tokens": 500}  # fmt: skip
+
+
+def test_models_that_refuse_sampling_settings_are_not_sent_them():
+    """Current Claude models answer 400 to a non-default temperature, and GPT-5 takes only the default: every template
+    set temperature 0, so with a Claude or GPT-5 key the first model call failed."""
+    from agentcanvas.adapters.langchain.nodes import chat_model_args
+    from agentcanvas.registry import without_sampling
+    from agentcanvas.services.workflows import with_default_model
+
+    _, args = chat_model_args("anthropic:claude-sonnet-5-5", {"temperature": 0, "max_tokens": 900}, {})
+    assert "temperature" not in args and args["max_tokens"] == 900
+    _, args = chat_model_args("anthropic:claude-haiku-4-5", {"temperature": 0}, {})
+    assert args["temperature"] == 0  # a model that takes it keeps it
+    _, args = chat_model_args("ollama:llama3.3", {"temperature": 0.3}, {})
+    assert args["temperature"] == 0.3
+    assert without_sampling("openai:gpt-5-mini", {"top_p": 0.5, "x": 1}) == ({"x": 1}, ["top_p"])
+    doc = {"type": "model.chat", "config": {"model": "lmstudio:m", "temperature": 0, "max_tokens": 5}}
+    swapped = with_default_model(doc, {"model": "anthropic:claude-sonnet-5-5"})
+    assert swapped["config"] == {"max_tokens": 5, "model": "anthropic:claude-sonnet-5-5"}
+
+
+def test_w020_names_a_sampling_setting_a_model_ignores():
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.validation import validate
+
+    model = {"id": "r", "type": "model.chat", "name": "m",
+             "config": {"model": "anthropic:claude-sonnet-5-5", "temperature": 0}}  # fmt: skip
+    wf = Workflow.model_validate({"id": "wf_s", "name": "s", **GREETER, "resources": [model]})
+    found = [d for d in validate(wf) if d.code == "W020"]
+    assert len(found) == 1 and "temperature" in found[0].message

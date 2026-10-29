@@ -38,6 +38,10 @@ first-run screen stores it for you. Set **Base URL** only when the server is not
 port 8000 is also the AgentCanvas API's in development, so run vLLM on another port and set the Base URL). Start the
 server and load or pull the model before running a workflow.
 
+Current Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1) and reasoning models such as GPT-5 do not take
+a **Temperature** (or top_p, top_k): the provider refuses a request that sets one, so a run leaves it out and the
+editor says so (W020). To make answers more varied or more exact, say so in the prompt.
+
 A stored key goes only where it was stored for: a provider's key to that provider, a server's key to the address saved
 with it. A model whose **Base URL** points anywhere else gets a key only when its own **API key** setting names one
 (a secret, chosen on purpose), so a workflow cannot send the project's keys to a server of its choosing. Local models vary in how well they call tools and

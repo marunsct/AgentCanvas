@@ -22,6 +22,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- **Templates failed on their first model call with a Claude or GPT-5 key**: every template set `temperature: 0`,
+  kept when your project's model is swapped in, and current Claude models (Opus 5.5, Sonnet 5.5) refuse a non-
+  default temperature with a 400, while GPT-5 takes only the default. The catalog now says which models take
+  sampling settings; runs leave temperature, top_p and top_k out for those that do not, templates no longer set
+  them, and the editor warns (W020) where one is set. Local models were never affected, which is why it went
+  unnoticed.
 - **The Copilot charged prompt-cache reads at full price**, so its token limit ended a chat after one or two builds
   and the cost it showed was five to ten times the bill: it re-sends its knowledge pack on every call, and Anthropic
   serves that from the cache at a tenth of the price. Costs now price cache reads and writes at their own rates (the

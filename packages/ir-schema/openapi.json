@@ -6250,6 +6250,28 @@
             "title": "Label",
             "type": "string"
           },
+          "price_cache_read_per_mtok": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Cache Read Per Mtok"
+          },
+          "price_cache_write_per_mtok": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Cache Write Per Mtok"
+          },
           "price_in_per_mtok": {
             "anyOf": [
               {
@@ -6279,6 +6301,11 @@
           "reasoning": {
             "default": false,
             "title": "Reasoning",
+            "type": "boolean"
+          },
+          "sampling": {
+            "default": true,
+            "title": "Sampling",
             "type": "boolean"
           },
           "structured_output": {

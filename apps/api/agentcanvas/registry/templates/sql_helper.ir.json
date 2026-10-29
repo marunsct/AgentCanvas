@@ -35,8 +35,7 @@
       "type": "model.chat",
       "name": "smart_model",
       "config": {
-        "model": "anthropic:claude-sonnet-5-5",
-        "temperature": 0
+        "model": "anthropic:claude-sonnet-5-5"
       }
     },
     {

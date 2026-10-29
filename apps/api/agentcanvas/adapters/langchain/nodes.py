@@ -59,6 +59,7 @@ from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.registry import without_sampling
 from agentcanvas.workspace.loader import load_attr
 
 MODEL_CACHE_SIZE = 64  # model clients kept per Resources
@@ -362,7 +363,7 @@ def _local(url: str) -> str:
 def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str]) -> tuple[str, dict[str, Any]]:
     """The `init_chat_model` id and keyword arguments for a model id and its resolved config."""
     provider, _, name = model.partition(":")
-    params = dict(params)
+    params, _ = without_sampling(model, dict(params))  # W020: the provider would refuse them with a 400
     if provider == "ollama" and not params.get("base_url") and os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST"):
         params["base_url"] = _local(OLLAMA_URL)
     if provider in OPENAI_COMPATIBLE:

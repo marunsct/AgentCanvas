@@ -240,6 +240,10 @@
       "what": "A safety check is set to only flag problems, but its verdict is not saved anywhere, so no later step can act on it.",
       "fix": "Select the safety block and pick a field in \u201cSave yes/no in\u201d, then branch on it with a \u201cChoose a path\u201d step (e.g. state.flagged == true). Or set \u201cWhen it fails\u201d to stop."
     },
+    "W020": {
+      "what": "This model does not take a temperature (or top_p, top_k), so the setting is left out.",
+      "fix": "Clear the setting. To make answers more varied or more exact, say so in the prompt."
+    },
     "W095": {
       "what": "This goes against a recommended organisation rule.",
       "fix": "Read the rule in the message; consider changing the workflow."

@@ -1109,10 +1109,13 @@ export type Resolved = Resolved1[];
 export type ContextWindow = number | null;
 export type Id42 = string;
 export type Label13 = string;
+export type PriceCacheReadPerMtok = number | null;
+export type PriceCacheWritePerMtok = number | null;
 export type PriceInPerMtok = number | null;
 export type PriceOutPerMtok = number | null;
 export type Provider = string;
 export type Reasoning = boolean;
+export type Sampling = boolean;
 export type StructuredOutput1 = boolean;
 export type Tools1 = boolean;
 export type Vision = boolean;
@@ -1190,7 +1193,7 @@ export type MinSamples = number;
 /**
  * share of matching runs scored
  */
-export type Sampling = number;
+export type Sampling1 = number;
 export type WindowMinutes = number;
 /**
  * alert when the window mean is below
@@ -1212,12 +1215,12 @@ export type MinSamples1 = number;
 /**
  * share of matching runs scored
  */
-export type Sampling1 = number;
+export type Sampling2 = number;
 export type WindowMinutes1 = number;
 export type AlertBelow2 = number | null;
 export type AlertDrop2 = number | null;
 export type MinSamples2 = number | null;
-export type Sampling2 = number | null;
+export type Sampling3 = number | null;
 export type WindowMinutes2 = number | null;
 /**
  * where workflows are published; null: any name (dev, staging, prod offered)
@@ -4694,10 +4697,13 @@ export interface ModelInfo {
   context_window?: ContextWindow;
   id: Id42;
   label: Label13;
+  price_cache_read_per_mtok?: PriceCacheReadPerMtok;
+  price_cache_write_per_mtok?: PriceCacheWritePerMtok;
   price_in_per_mtok?: PriceInPerMtok;
   price_out_per_mtok?: PriceOutPerMtok;
   provider: Provider;
   reasoning?: Reasoning;
+  sampling?: Sampling;
   structured_output?: StructuredOutput1;
   tools?: Tools1;
   vision?: Vision;
@@ -4818,7 +4824,7 @@ export interface OnlineIn {
   evaluator_id: EvaluatorId;
   filter?: FilterIn;
   min_samples?: MinSamples;
-  sampling?: Sampling;
+  sampling?: Sampling1;
   window_minutes?: WindowMinutes;
 }
 /**
@@ -4835,7 +4841,7 @@ export interface OnlineOut {
   filter?: FilterIn;
   id: Id44;
   min_samples?: MinSamples1;
-  sampling?: Sampling1;
+  sampling?: Sampling2;
   window_minutes?: WindowMinutes1;
 }
 /**
@@ -4847,7 +4853,7 @@ export interface OnlinePatch {
   alert_drop?: AlertDrop2;
   filter?: FilterIn | null;
   min_samples?: MinSamples2;
-  sampling?: Sampling2;
+  sampling?: Sampling3;
   window_minutes?: WindowMinutes2;
 }
 /**

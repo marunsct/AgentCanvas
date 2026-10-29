@@ -18,7 +18,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.commands import Command, CommandError, apply_batch
 from agentcanvas.ir.models import Workflow
-from agentcanvas.registry import Registry
+from agentcanvas.registry import Registry, without_sampling
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic, validate
@@ -45,7 +45,7 @@ def with_default_model(doc: Any, default: dict[str, Any]) -> Any:
     out = {k: with_default_model(v, default) for k, v in doc.items()}
     if out.get("type") == "model.chat" and isinstance(out.get("config"), dict):
         kept = {k: v for k, v in out["config"].items() if k not in ("model", "base_url", "api_key")}
-        out["config"] = {**kept, **default}
+        out["config"], _ = without_sampling(str(default.get("model", "")), {**kept, **default})  # W020
     return out
 
 

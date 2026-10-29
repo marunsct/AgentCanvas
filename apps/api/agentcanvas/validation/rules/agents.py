@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Iterator
 
 from agentcanvas.ir.models import Node, Resource
-from agentcanvas.registry import provider_installed
+from agentcanvas.registry import SAMPLING, provider_installed
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
 
 
@@ -238,6 +238,25 @@ def cost_budget_prices(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     node_id=r.id,
                     hint="an operator sets its price with AGENTCANVAS_MODEL_PRICES, or use a token budget",
                 )
+
+
+@rule
+def sampling_refused(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W020: temperature, top_p or top_k on a model that refuses them (current Claude models, reasoning models such as
+    GPT-5): a run leaves them out, since the provider would answer 400."""
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        info = ctx.registry.model(str(r.config.get("model", "")))
+        set_here = [k for k in SAMPLING if r.config.get(k) is not None]
+        if info is not None and not info.sampling and set_here:
+            yield warning(
+                "W020",
+                f"'{r.name}': {info.label} does not take {', '.join(set_here)}, so it is not sent",
+                node_id=r.id,
+                path=f"config.{set_here[0]}",
+                hint="clear it; to steer the answers, say in the prompt how varied or exact they should be",
+            )
 
 
 @rule

@@ -88,6 +88,21 @@ class ModelInfo(BaseModel):
     # prompt caching: reading cached input, and writing it (5-minute cache); None = charged as ordinary input
     price_cache_read_per_mtok: float | None = None
     price_cache_write_per_mtok: float | None = None
+    # takes temperature / top_p / top_k: current Claude models refuse non-default values (400) and reasoning models
+    # such as GPT-5 take the default only, so a run leaves them out for a model marked False
+    sampling: bool = True
+
+
+SAMPLING = ("temperature", "top_p", "top_k")
+
+
+def without_sampling(model_id: str, params: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """`params` without the sampling settings the catalog says `model_id` refuses, and the names left out."""
+    info = default_registry().model(model_id)
+    if info is None or info.sampling:
+        return params, []
+    dropped = [k for k in SAMPLING if k in params]
+    return {k: v for k, v in params.items() if k not in SAMPLING}, dropped
 
 
 def token_counts(meta: Any) -> dict[str, int]:
