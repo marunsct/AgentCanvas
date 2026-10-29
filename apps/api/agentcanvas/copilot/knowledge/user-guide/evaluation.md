@@ -1,8 +1,8 @@
 # Evaluation Studio
 
 Evaluation answers "is this version better than the last one?" with numbers instead of impressions. Open it from
-the editor's **Evaluate** link. It has six tabs: **Datasets**, **Evaluators**, **Experiments**, **Release gates**,
-**Production** and **Annotation queues**.
+the editor's **Evaluate** link. It has seven tabs: **Datasets**, **Evaluators**, **Experiments**, **Release gates**,
+**Production**, **Annotation queues** and **Fine-tuning**.
 
 ![Evaluation page](img/evaluation.png)
 
@@ -107,3 +107,27 @@ timeline, score each rubric criterion, comment, and can add the run to a dataset
 step (**Submit review**). The tab shows progress and agreement between reviewers.
 
 API callers send thumbs up or down with `POST /v1/deployments/{id}/runs/{run_id}/feedback`.
+
+## Fine-tuning export
+
+The **Fine-tuning** tab turns good conversations into a JSONL file (one training example per line) for fine-tuning a
+model on your own best answers. Pick a source:
+
+- **Accepted runs.** A run is accepted when people scored it at least *scored at least* on average (reviewers in an
+  annotation queue, thumbs up or down from API callers and share links; *online scores too* adds the production
+  evaluators') and nobody gave it a thumbs-down. The example is the conversation as the model saw it: the system
+  prompt, the user's message, the tool calls the agent made with their results, and its answer. Only successful
+  runs with a recorded input qualify, and a Planning Agent's helpers' own turns are left out.
+- **A dataset.** Each example's input becomes the user message and its reference answer the assistant's; pick a
+  split to export only that part. Examples without a reference are left out.
+
+**Preview** counts the examples and says why others were left out; **Download JSONL** saves the file. Two formats:
+
+| Format | Shape |
+|---|---|
+| **OpenAI chat fine-tuning** | `{"messages": [...], "tools": [...]}`; assistant tool calls as `tool_calls` with JSON-string `arguments`, tool results as `tool` messages with the matching `tool_call_id`. The `tools` list is inferred from the calls seen (names and argument names), so check it before uploading |
+| **Plain messages** | `{"messages": [...], "metadata": {...}}`; tool calls as `{name, arguments}` objects; the run, scores and workflow in `metadata` |
+
+The system message defaults to the first prompt written on the workflow's agents; type another one, or `-` for none.
+The file holds run content (secrets are already masked in what runs keep): only builders can export, and every
+export is in the audit log.

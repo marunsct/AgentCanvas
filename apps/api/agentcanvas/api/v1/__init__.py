@@ -23,6 +23,7 @@ from agentcanvas.api.v1 import (
     events,
     experiments,
     files,
+    finetune,
     gates,
     gitsync,
     guide,
@@ -76,6 +77,7 @@ signed_in.include_router(gitsync.router)
 signed_in.include_router(datasets.router)
 signed_in.include_router(evaluators.router)
 signed_in.include_router(experiments.router)
+signed_in.include_router(finetune.router)
 signed_in.include_router(gates.router)
 signed_in.include_router(online.router)
 signed_in.include_router(traces.router)

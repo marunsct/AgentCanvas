@@ -1029,6 +1029,47 @@ export type Folder = string | null;
  * only runs that ended so (default: any)
  */
 export type Status7 = ("success" | "interrupted" | "error" | "cancelled")[] | null;
+/**
+ * dataset: which one
+ */
+export type DatasetId5 = string | null;
+/**
+ * dataset: default the latest
+ */
+export type DatasetVersion2 = number | null;
+/**
+ * OpenAI chat fine-tuning, or generic messages
+ */
+export type Format = "openai" | "messages";
+/**
+ * runs: online evaluators' scores count as well
+ */
+export type IncludeOnline = boolean;
+export type Limit = number;
+/**
+ * runs: the mean human score a run needs
+ */
+export type MinScore = number;
+/**
+ * runs only: these runs, not all
+ */
+export type RunIds = string[] | null;
+/**
+ * accepted runs of the workflow, or a dataset
+ */
+export type Source6 = "runs" | "dataset";
+/**
+ * dataset: only this split
+ */
+export type Split4 = string | null;
+/**
+ * the system message; default the workflow's own prompt
+ */
+export type System = string | null;
+export type Examples5 = number;
+export type Reason = string;
+export type Ref = string;
+export type Skipped = Skipped1[];
 export type AsNode = string | null;
 export type CheckpointId = string;
 export type Mode1 = "branch" | "copy";
@@ -1059,25 +1100,25 @@ export type Name29 = string;
  * @minItems 1
  * @maxItems 500
  */
-export type RunIds = [string, ...string[]];
+export type RunIds1 = [string, ...string[]];
 /**
  * these test cases (default: all of the workflow's)
  */
 export type Ids = string[] | null;
-export type DatasetId5 = string;
-/**
- * the dataset version to gate on (default: latest)
- */
-export type DatasetVersion2 = number | null;
-/**
- * largest allowed drop in pass rate against the live version
- */
-export type MaxRegression = number | null;
 export type DatasetId6 = string;
 /**
  * the dataset version to gate on (default: latest)
  */
 export type DatasetVersion3 = number | null;
+/**
+ * largest allowed drop in pass rate against the live version
+ */
+export type MaxRegression = number | null;
+export type DatasetId7 = string;
+/**
+ * the dataset version to gate on (default: latest)
+ */
+export type DatasetVersion4 = number | null;
 export type Environment1 = string;
 /**
  * the evaluators the gate measures with, as saved (null: a gate saved before they were kept)
@@ -1198,18 +1239,18 @@ export type Name31 = string | null;
  * the file's text
  */
 export type Content4 = string;
-export type Format = "csv" | "jsonl";
-export type Split4 = string | null;
+export type Format1 = "csv" | "jsonl";
+export type Split5 = string | null;
 /**
  * split for examples that name none
  */
-export type Split5 = string | null;
+export type Split6 = string | null;
 export type CreatedAt16 = string;
 export type Diagnostics3 = Diagnostic[];
 /**
  * langflow, flowise, n8n, agentspec or openai_agents
  */
-export type Format1 = string;
+export type Format2 = string;
 export type Id35 = string;
 export type IrHash2 = string;
 export type Name32 = string;
@@ -1262,7 +1303,7 @@ export type Output3 = {
   [k: string]: unknown;
 } | null;
 export type QueueId = string;
-export type Reason = string;
+export type Reason1 = string;
 export type ReviewedByMe = boolean;
 export type Reviews = number;
 export type RunId5 = string;
@@ -1277,7 +1318,7 @@ export type JudgeTokens = number;
 export type Passed2 = boolean;
 export type RunId6 = string;
 export type Score2 = number | null;
-export type Source6 = string;
+export type Source7 = string;
 export type ThreadId5 = string;
 /**
  * every score the run has: online evaluators, feedback, reviewers
@@ -1288,7 +1329,7 @@ export type ThreadId6 = string;
 export type CreatedAt20 = string;
 export type Id39 = string;
 export type QueueId1 = string;
-export type Reason1 = string;
+export type Reason2 = string;
 export type ReviewedByMe1 = boolean;
 export type Reviews1 = number;
 export type RunId7 = string;
@@ -1298,7 +1339,7 @@ export type ThreadId7 = string;
  * @minItems 1
  * @maxItems 100
  */
-export type RunIds1 = [string, ...string[]];
+export type RunIds2 = [string, ...string[]];
 export type ApiKey3 = string;
 export type Description10 = string;
 /**
@@ -1348,7 +1389,7 @@ export type Name36 = string;
 export type Publisher = "official" | "vendor" | "community";
 export type Secrets = ConnectorSecret[];
 export type Setup1 = string;
-export type Source7 = string;
+export type Source8 = string;
 export type Verified = string;
 /**
  * Resource name (lets dev/test hosts substitute an in-process server)
@@ -2463,7 +2504,7 @@ export type ThreadId12 = string;
 /**
  * 0-1 in every mode (see the guide)
  */
-export type MinScore = number;
+export type MinScore1 = number;
 export type Mode6 = "hybrid" | "semantic" | "keyword";
 export type Query = string;
 export type TopK = number;
@@ -2473,7 +2514,7 @@ export type DocId = string | null;
 export type Heading1 = string | null;
 export type Page3 = number | null;
 export type Score4 = number;
-export type Source8 = string | null;
+export type Source9 = string | null;
 export type Text6 = string;
 export type Title4 = string | null;
 export type Results1 = SearchResult[];
@@ -2523,7 +2564,7 @@ export type Notes4 = string;
  * local_only: the Copilot may only use models running on your own machines
  */
 export type Privacy1 = "standard" | "local_only";
-export type Source9 = "workflow" | "separate";
+export type Source10 = "workflow" | "separate";
 /**
  * per conversation, in + out
  */
@@ -3234,6 +3275,8 @@ export interface ApiSchemas {
   FileSave?: FileSave;
   FilesOut?: FilesOut;
   FilterIn?: FilterIn;
+  FinetuneIn?: FinetuneIn;
+  FinetunePreview?: FinetunePreview;
   ForkRequest?: ForkRequest;
   FrameworkOut?: FrameworkOut;
   FromRunIn?: FromRunIn;
@@ -3373,6 +3416,7 @@ export interface ApiSchemas {
   ShareSettingsIn?: ShareSettingsIn;
   Simulation?: Simulation;
   SitemapIn?: SitemapIn;
+  Skipped?: Skipped1;
   SpendOut?: SpendOut;
   SpendPeriod?: SpendPeriod;
   SpendPerson?: SpendPerson;
@@ -5092,6 +5136,38 @@ export interface Metadata5 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FinetuneIn".
+ */
+export interface FinetuneIn {
+  dataset_id?: DatasetId5;
+  dataset_version?: DatasetVersion2;
+  format?: Format;
+  include_online?: IncludeOnline;
+  limit?: Limit;
+  min_score?: MinScore;
+  run_ids?: RunIds;
+  source?: Source6;
+  split?: Split4;
+  system?: System;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FinetunePreview".
+ */
+export interface FinetunePreview {
+  examples: Examples5;
+  skipped: Skipped;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Skipped".
+ */
+export interface Skipped1 {
+  reason: Reason;
+  ref: Ref;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ForkRequest".
  */
 export interface ForkRequest {
@@ -5137,7 +5213,7 @@ export interface FromRunIn {
  * via the `definition` "FromRunsIn".
  */
 export interface FromRunsIn {
-  run_ids: RunIds;
+  run_ids: RunIds1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5151,8 +5227,8 @@ export interface FromTestCasesIn {
  * via the `definition` "GateIn".
  */
 export interface GateIn {
-  dataset_id: DatasetId5;
-  dataset_version?: DatasetVersion2;
+  dataset_id: DatasetId6;
+  dataset_version?: DatasetVersion3;
   max_regression?: MaxRegression;
   min_scores?: MinScores;
 }
@@ -5167,8 +5243,8 @@ export interface MinScores {
  * via the `definition` "GateOut".
  */
 export interface GateOut {
-  dataset_id: DatasetId6;
-  dataset_version?: DatasetVersion3;
+  dataset_id: DatasetId7;
+  dataset_version?: DatasetVersion4;
   environment: Environment1;
   evaluators: Evaluators3;
   id: Id34;
@@ -5334,12 +5410,12 @@ export interface ImportFile {
  */
 export interface ImportIn {
   content: Content4;
-  format: Format;
+  format: Format1;
   /**
    * CSV only: columns -> fields
    */
   mapping?: Mapping | null;
-  split?: Split5;
+  split?: Split6;
 }
 /**
  * Which CSV column fills which field. Without one: columns named like an input field fill it,
@@ -5351,7 +5427,7 @@ export interface ImportIn {
 export interface Mapping {
   input?: Input5;
   reference?: Reference3;
-  split?: Split4;
+  split?: Split5;
 }
 /**
  * input field -> column
@@ -5372,7 +5448,7 @@ export interface Reference3 {
 export interface Imported {
   created_at: CreatedAt16;
   diagnostics: Diagnostics3;
-  format: Format1;
+  format: Format2;
   id: Id35;
   ir: Ir2;
   ir_hash: IrHash2;
@@ -5453,7 +5529,7 @@ export interface ItemDetail {
   input: Input6;
   output: Output3;
   queue_id: QueueId;
-  reason: Reason;
+  reason: Reason1;
   reviewed_by_me: ReviewedByMe;
   reviews: Reviews;
   run_id: RunId5;
@@ -5477,7 +5553,7 @@ export interface ScoreOut {
   passed: Passed2;
   run_id: RunId6;
   score: Score2;
-  source: Source6;
+  source: Source7;
   thread_id: ThreadId5;
 }
 /**
@@ -5488,7 +5564,7 @@ export interface ItemOut {
   created_at: CreatedAt20;
   id: Id39;
   queue_id: QueueId1;
-  reason: Reason1;
+  reason: Reason2;
   reviewed_by_me: ReviewedByMe1;
   reviews: Reviews1;
   run_id: RunId7;
@@ -5500,7 +5576,7 @@ export interface ItemOut {
  * via the `definition` "ItemsIn".
  */
 export interface ItemsIn {
-  run_ids: RunIds1;
+  run_ids: RunIds2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5617,7 +5693,7 @@ export interface McpConnector {
   publisher?: Publisher;
   secrets?: Secrets;
   setup?: Setup1;
-  source?: Source7;
+  source?: Source8;
   verified?: Verified;
 }
 export interface Config5 {
@@ -6456,7 +6532,7 @@ export interface ScoredRunOut {
  * via the `definition` "SearchIn".
  */
 export interface SearchIn {
-  min_score?: MinScore;
+  min_score?: MinScore1;
   mode?: Mode6;
   query: Query;
   top_k?: TopK;
@@ -6479,7 +6555,7 @@ export interface SearchResult {
   heading: Heading1;
   page: Page3;
   score: Score4;
-  source: Source8;
+  source: Source9;
   text: Text6;
   title: Title4;
 }
@@ -6539,7 +6615,7 @@ export interface SettingsOut {
   notes?: Notes4;
   privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
-  source?: Source9;
+  source?: Source10;
   token_cap?: TokenCap2;
 }
 /**

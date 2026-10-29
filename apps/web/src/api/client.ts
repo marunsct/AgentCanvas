@@ -76,9 +76,12 @@ export async function apiFetch<T>(
   }
 }
 
-/** Download a file the API serves (a plain link would not carry the bearer token). */
-export async function apiDownload(path: string, fallbackName: string): Promise<void> {
-  const res = await authFetch(`${API_BASE}${path}`);
+/** Download a file the API serves (a plain link would not carry the bearer token); `json` makes it a POST with
+ * that body, for exports that take options. */
+export async function apiDownload(path: string, fallbackName: string, json?: unknown): Promise<void> {
+  const res = await authFetch(`${API_BASE}${path}`, json === undefined ? {} : {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(json),
+  });
   if (!res.ok) throw await failed(res);
   const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
   const url = URL.createObjectURL(await res.blob());

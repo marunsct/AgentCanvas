@@ -4559,6 +4559,138 @@
         "title": "FilterIn",
         "type": "object"
       },
+      "FinetuneIn": {
+        "properties": {
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "dataset: which one",
+            "title": "Dataset Id"
+          },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "dataset: default the latest",
+            "title": "Dataset Version"
+          },
+          "format": {
+            "default": "openai",
+            "description": "OpenAI chat fine-tuning, or generic messages",
+            "enum": [
+              "openai",
+              "messages"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "include_online": {
+            "default": false,
+            "description": "runs: online evaluators' scores count as well",
+            "title": "Include Online",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 1000,
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "min_score": {
+            "default": 0.8,
+            "description": "runs: the mean human score a run needs",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "type": "number"
+          },
+          "run_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "runs only: these runs, not all",
+            "title": "Run Ids"
+          },
+          "source": {
+            "default": "runs",
+            "description": "accepted runs of the workflow, or a dataset",
+            "enum": [
+              "runs",
+              "dataset"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "dataset: only this split",
+            "title": "Split"
+          },
+          "system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the system message; default the workflow's own prompt",
+            "title": "System"
+          }
+        },
+        "title": "FinetuneIn",
+        "type": "object"
+      },
+      "FinetunePreview": {
+        "properties": {
+          "examples": {
+            "title": "Examples",
+            "type": "integer"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/Skipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "examples",
+          "skipped"
+        ],
+        "title": "FinetunePreview",
+        "type": "object"
+      },
       "ForkRequest": {
         "properties": {
           "as_node": {
@@ -11223,6 +11355,24 @@
           "url"
         ],
         "title": "SitemapIn",
+        "type": "object"
+      },
+      "Skipped": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "reason"
+        ],
+        "title": "Skipped",
         "type": "object"
       },
       "SpendOut": {
@@ -30829,6 +30979,95 @@
         "summary": "Export Plan",
         "tags": [
           "versions"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/finetune-export": {
+      "post": {
+        "description": "Training examples as JSONL (G-10): accepted runs (scored by people, or by online evaluators if asked, with no\nthumbs-down) or a dataset's examples, in OpenAI's chat fine-tuning format or plain messages. It carries run\ncontent: builders only, and the export is audited.",
+        "operationId": "finetune_export_v1_workflows__wf_id__finetune_export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "count the examples and say what was left out, without the file",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "count the examples and say what was left out, without the file",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinetuneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinetunePreview"
+                }
+              },
+              "application/x-ndjson": {}
+            },
+            "description": "the JSONL file, unless preview"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Finetune Export",
+        "tags": [
+          "evaluation"
         ]
       }
     },

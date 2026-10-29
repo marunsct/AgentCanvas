@@ -17,11 +17,12 @@ import { ScoreBadge } from "./ScoreBadge";
 import { confirmDialog, toast } from "../ui/dialog";
 import { EvaluatorForm, useEvaluatorKinds } from "./EvaluatorForm";
 import { ExampleForm } from "./ExampleForm";
+import { FineTune } from "./FineTune";
 import { fromRows, OverrideEditor } from "./OverrideEditor";
 import { PageHeader } from "../ui/PageHeader";
 import { NEW_RED_TEAM, RedTeamFields, redTeamBody, type RedTeamDraft } from "./RedTeam";
 
-type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
+type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues" | "finetune";
 
 function parseJson(text: string, what: string): Record<string, unknown> {
   if (!text.trim()) return {};
@@ -52,9 +53,9 @@ export function EvaluationPage() {
       <PageHeader title="Evaluation" crumbs={[{ to: "/", label: "Workflows" }, { to: `/workflows/${id}`, label: wf.data?.name ?? "Workflow", testId: "back-to-workflow" }]}
         description="Datasets, evaluators and experiments for this workflow; release gates that keep a regression from being published." />
       <nav className="tabs" role="tablist">
-        {(["datasets", "evaluators", "experiments", "gates", "production", "queues"] as Tab[]).map((t) => (
+        {(["datasets", "evaluators", "experiments", "gates", "production", "queues", "finetune"] as Tab[]).map((t) => (
           <button type="button" role="tab" key={t} aria-selected={tab === t} className={tab === t ? "active" : ""}
-            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates", production: "Production", queues: "Annotation queues" }[t]}</button>
+            onClick={() => setTab(t)}>{{ datasets: "Datasets", evaluators: "Evaluators", experiments: "Experiments", gates: "Release gates", production: "Production", queues: "Annotation queues", finetune: "Fine-tuning" }[t]}</button>
         ))}
       </nav>
       {tab === "datasets" && <Datasets wfId={id} channels={wf.data?.ir.state?.channels ?? []} />}
@@ -64,6 +65,7 @@ export function EvaluationPage() {
       {tab === "gates" && <Gates wfId={id} />}
       {tab === "production" && <Production wfId={id} />}
       {tab === "queues" && <Queues wfId={id} />}
+      {tab === "finetune" && <FineTune wfId={id} />}
     </div>
   );
 }
