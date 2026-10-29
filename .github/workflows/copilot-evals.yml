@@ -1,6 +1,6 @@
 name: copilot-evals
 # The Copilot against a real model (PLAN.md section 2.5): build ten workflows from plain requests and fix about
-# a hundred planted bugs, on both engines, and fail below a pass rate. It needs a provider key in the repository's
+# over a hundred planted bugs, on both engines, and fail below a pass rate. It needs a provider key in the repository's
 # secrets (ANTHROPIC_API_KEY, or OPENAI_API_KEY with COPILOT_EVAL_MODEL set to an OpenAI model); without one the
 # job says so and stops. The model is the repository variable COPILOT_EVAL_MODEL (default: a small Claude model, to
 # keep a nightly run cheap). Results are kept as an artifact for 30 days.

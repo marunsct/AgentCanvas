@@ -1,0 +1,490 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_parallel_code_review",
+  "name": "Parallel code review panel",
+  "description": "Three reviewers (security, performance, readability) look at a pull request at the same time, and a lead reviewer turns their notes into one verdict.",
+  "state": {
+    "channels": [
+      {
+        "name": "diff",
+        "io": "in",
+        "description": "The pull request's diff"
+      },
+      {
+        "name": "change_goal",
+        "io": "in",
+        "description": "What the change is meant to do"
+      },
+      {
+        "name": "change_summary",
+        "io": "private",
+        "description": "What the change does, for the reviewers"
+      },
+      {
+        "name": "security_findings",
+        "io": "out",
+        "description": "The security reviewer's notes"
+      },
+      {
+        "name": "performance_findings",
+        "io": "out",
+        "description": "The performance reviewer's notes"
+      },
+      {
+        "name": "readability_findings",
+        "io": "out",
+        "description": "The readability reviewer's notes"
+      },
+      {
+        "name": "verdict",
+        "io": "out",
+        "description": "One review comment, starting with 'Verdict: approve' or 'Verdict: request changes'"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_panel",
+      "type": "core.subgraph",
+      "name": "review_panel",
+      "label": "Review panel",
+      "config": {
+        "workflow": {
+          "ir_version": "1.1",
+          "id": "tpl_parallel_code_review.review_panel",
+          "name": "Review panel",
+          "state": {
+            "channels": [
+              {
+                "name": "diff",
+                "description": "The pull request's diff"
+              },
+              {
+                "name": "change_goal",
+                "description": "What the change is meant to do"
+              },
+              {
+                "name": "change_summary",
+                "description": "What the change does, for the reviewers"
+              },
+              {
+                "name": "security_findings"
+              },
+              {
+                "name": "performance_findings"
+              },
+              {
+                "name": "readability_findings"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "id": "r_fast",
+              "type": "model.chat",
+              "name": "fast_model",
+              "config": {
+                "model": "anthropic:claude-haiku-4-5",
+                "temperature": 0
+              }
+            },
+            {
+              "id": "r_smart",
+              "type": "model.chat",
+              "name": "smart_model",
+              "config": {
+                "model": "anthropic:claude-sonnet-5-5",
+                "temperature": 0
+              }
+            }
+          ],
+          "nodes": [
+            {
+              "id": "n_read",
+              "type": "core.llm",
+              "name": "read_the_change",
+              "label": "Read the change",
+              "policies": {
+                "retry": {
+                  "max_attempts": 3
+                },
+                "timeout": {
+                  "run_timeout": 60
+                }
+              },
+              "config": {
+                "prompt": "Summarise this pull request for a panel of reviewers in at most five bullet points: what it changes, which functions it touches, and anything that deserves a close look (user input, database queries, loops, error handling). Describe; do not judge it yet.\n\nGoal of the change: {{ state.change_goal }}\n\n{{ state.diff }}",
+                "output": "change_summary"
+              }
+            },
+            {
+              "id": "n_security",
+              "type": "core.llm",
+              "name": "review_security",
+              "label": "Security reviewer",
+              "policies": {
+                "retry": {
+                  "max_attempts": 3
+                },
+                "timeout": {
+                  "run_timeout": 60
+                }
+              },
+              "config": {
+                "prompt": "You are a security reviewer. Check this change only for security problems: injection (SQL, shell, HTML), missing permission checks, secrets in the code, unsafe deserialisation, and personal data written to logs. For each problem give the line, why it matters and a fix, most serious first. Reply 'No security issues.' if there are none.\n\nWhat the change does:\n{{ state.change_summary }}\n\nThe change:\n{{ state.diff }}",
+                "output": "security_findings"
+              }
+            },
+            {
+              "id": "n_performance",
+              "type": "core.llm",
+              "name": "review_performance",
+              "label": "Performance reviewer",
+              "policies": {
+                "retry": {
+                  "max_attempts": 3
+                },
+                "timeout": {
+                  "run_timeout": 60
+                }
+              },
+              "config": {
+                "prompt": "You are a performance reviewer. Check this change only for performance problems: database queries or network calls inside loops, work repeated for every item, whole tables or files loaded into memory, and blocking calls in async code. For each problem give the line, what it costs as the data grows and a fix. Reply 'No performance issues.' if there are none.\n\nWhat the change does:\n{{ state.change_summary }}\n\nThe change:\n{{ state.diff }}",
+                "output": "performance_findings"
+              }
+            },
+            {
+              "id": "n_readability",
+              "type": "core.llm",
+              "name": "review_readability",
+              "label": "Readability reviewer",
+              "policies": {
+                "retry": {
+                  "max_attempts": 3
+                },
+                "timeout": {
+                  "run_timeout": 60
+                }
+              },
+              "config": {
+                "prompt": "You are a readability reviewer. Suggest at most five improvements to the naming, structure, comments and tests of this change, each with the line it applies to. Skip formatting a linter would fix. Reply 'Reads well.' if there is nothing worth changing.\n\nWhat the change does:\n{{ state.change_summary }}\n\nThe change:\n{{ state.diff }}",
+                "output": "readability_findings"
+              }
+            },
+            {
+              "id": "n_wait",
+              "type": "core.join",
+              "name": "wait_for_reviews",
+              "label": "Wait for all reviews",
+              "config": {}
+            }
+          ],
+          "edges": [
+            {
+              "id": "p_start",
+              "kind": "flow",
+              "source": {
+                "node": "START"
+              },
+              "target": {
+                "node": "n_read"
+              }
+            },
+            {
+              "id": "p_security",
+              "kind": "flow",
+              "source": {
+                "node": "n_read"
+              },
+              "target": {
+                "node": "n_security"
+              }
+            },
+            {
+              "id": "p_performance",
+              "kind": "flow",
+              "source": {
+                "node": "n_read"
+              },
+              "target": {
+                "node": "n_performance"
+              }
+            },
+            {
+              "id": "p_readability",
+              "kind": "flow",
+              "source": {
+                "node": "n_read"
+              },
+              "target": {
+                "node": "n_readability"
+              }
+            },
+            {
+              "id": "p_security_done",
+              "kind": "flow",
+              "source": {
+                "node": "n_security"
+              },
+              "target": {
+                "node": "n_wait"
+              }
+            },
+            {
+              "id": "p_performance_done",
+              "kind": "flow",
+              "source": {
+                "node": "n_performance"
+              },
+              "target": {
+                "node": "n_wait"
+              }
+            },
+            {
+              "id": "p_readability_done",
+              "kind": "flow",
+              "source": {
+                "node": "n_readability"
+              },
+              "target": {
+                "node": "n_wait"
+              }
+            },
+            {
+              "id": "p_end",
+              "kind": "flow",
+              "source": {
+                "node": "n_wait"
+              },
+              "target": {
+                "node": "END"
+              }
+            },
+            {
+              "id": "p_w_read",
+              "kind": "wiring",
+              "source": {
+                "node": "r_fast"
+              },
+              "target": {
+                "node": "n_read",
+                "port": "model"
+              }
+            },
+            {
+              "id": "p_w_security",
+              "kind": "wiring",
+              "source": {
+                "node": "r_smart"
+              },
+              "target": {
+                "node": "n_security",
+                "port": "model"
+              }
+            },
+            {
+              "id": "p_w_performance",
+              "kind": "wiring",
+              "source": {
+                "node": "r_fast"
+              },
+              "target": {
+                "node": "n_performance",
+                "port": "model"
+              }
+            },
+            {
+              "id": "p_w_readability",
+              "kind": "wiring",
+              "source": {
+                "node": "r_fast"
+              },
+              "target": {
+                "node": "n_readability",
+                "port": "model"
+              }
+            }
+          ]
+        },
+        "inputs": [
+          "change_goal",
+          "diff"
+        ],
+        "outputs": [
+          "change_summary",
+          "performance_findings",
+          "readability_findings",
+          "security_findings"
+        ]
+      }
+    },
+    {
+      "id": "n_lead",
+      "type": "core.llm",
+      "name": "write_verdict",
+      "label": "Lead reviewer writes the verdict",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "You are the lead reviewer. Turn the three reviews below into one pull-request review comment.\nStart with exactly one line: 'Verdict: approve' or 'Verdict: request changes'. Request changes when a review reports a security or performance problem that would reach users; otherwise approve.\nThen list the blocking issues, each with the reviewer who found it, then at most five optional suggestions. Merge duplicates and drop anything the change itself does not support.\n\nGoal of the change: {{ state.change_goal }}\n\nWhat the change does:\n{{ state.change_summary }}\n\nSecurity review:\n{{ state.security_findings }}\n\nPerformance review:\n{{ state.performance_findings }}\n\nReadability review:\n{{ state.readability_findings }}\n\nThe change:\n{{ state.diff }}",
+        "output": "verdict"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_panel"
+      }
+    },
+    {
+      "id": "e_lead",
+      "kind": "flow",
+      "source": {
+        "node": "n_panel"
+      },
+      "target": {
+        "node": "n_lead"
+      }
+    },
+    {
+      "id": "e_end",
+      "kind": "flow",
+      "source": {
+        "node": "n_lead"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w_lead",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_lead",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Engineering",
+      "tags": [
+        "code review",
+        "parallel branches",
+        "group of steps",
+        "evaluation"
+      ],
+      "difficulty": "advanced",
+      "sample_input": {
+        "diff": "--- a/app/orders.py\n+++ b/app/orders.py\n@@ -10,5 +10,9 @@ def orders_for_customer(db, customer_name):\n-    customer = db.customers.get(name=customer_name)\n-    return db.orders.filter(customer_id=customer.id)\n+    rows = db.execute(f\"SELECT id FROM customers WHERE name = '{customer_name}'\")\n+    orders = []\n+    for row in rows:\n+        orders += db.execute(f\"SELECT * FROM orders WHERE customer_id = {row.id}\")\n+    return orders\n",
+        "change_goal": "Return the orders of every customer with this name, not only the first one"
+      }
+    },
+    "kit": {
+      "dataset": {
+        "name": "Example pull requests",
+        "description": "Three small changes: two that should be sent back and one that is fine as it is.",
+        "examples": [
+          {
+            "input": {
+              "diff": "--- a/app/orders.py\n+++ b/app/orders.py\n@@ -10,5 +10,9 @@ def orders_for_customer(db, customer_name):\n-    customer = db.customers.get(name=customer_name)\n-    return db.orders.filter(customer_id=customer.id)\n+    rows = db.execute(f\"SELECT id FROM customers WHERE name = '{customer_name}'\")\n+    orders = []\n+    for row in rows:\n+        orders += db.execute(f\"SELECT * FROM orders WHERE customer_id = {row.id}\")\n+    return orders\n",
+              "change_goal": "Return the orders of every customer with this name, not only the first one"
+            },
+            "metadata": {
+              "expected_verdict": "request changes",
+              "why": "SQL injection through the name, and one query per customer"
+            }
+          },
+          {
+            "input": {
+              "diff": "--- a/app/reports.py\n+++ b/app/reports.py\n@@ -3,2 +3,7 @@ def export_users(users):\n-    return [user.to_row() for user in users]\n+    rows = []\n+    for user in users:\n+        user.refresh_from_db()\n+        rows = rows + [user.to_row()]\n+    log.info(\"exported %s\", user.email)\n+    return rows\n",
+              "change_goal": "Export up-to-date user data"
+            },
+            "metadata": {
+              "expected_verdict": "request changes",
+              "why": "a database query per user, a list copied on every row, an email in the log"
+            }
+          },
+          {
+            "input": {
+              "diff": "--- a/app/maths.py\n+++ b/app/maths.py\n@@ -1,2 +1,6 @@\n-def calc(a, b):\n-    return a / b\n+def safe_ratio(numerator: float, denominator: float) -> float | None:\n+    \"\"\"The ratio, or None when the denominator is zero.\"\"\"\n+    if denominator == 0:\n+        return None\n+    return numerator / denominator\n--- a/tests/test_maths.py\n+++ b/tests/test_maths.py\n@@ -0,0 +1,6 @@\n+from app.maths import safe_ratio\n+\n+\n+def test_safe_ratio():\n+    assert safe_ratio(6, 3) == 2\n+    assert safe_ratio(1, 0) is None\n",
+              "change_goal": "Stop the crash when the denominator is zero"
+            },
+            "metadata": {
+              "expected_verdict": "approve",
+              "why": "a clear fix with a test"
+            }
+          }
+        ]
+      },
+      "evaluators": [
+        {
+          "name": "starts with a verdict",
+          "kind": "regex",
+          "config": {
+            "channel": "verdict",
+            "pattern": "(?i)^\\s*\\**Verdict:?\\**:?\\s*(approve|request changes)\\b"
+          }
+        }
+      ],
+      "tests": [
+        {
+          "name": "every reviewer reports before the verdict",
+          "input": {
+            "diff": "--- a/app/orders.py\n+++ b/app/orders.py\n@@ -10,5 +10,9 @@ def orders_for_customer(db, customer_name):\n-    customer = db.customers.get(name=customer_name)\n-    return db.orders.filter(customer_id=customer.id)\n+    rows = db.execute(f\"SELECT id FROM customers WHERE name = '{customer_name}'\")\n+    orders = []\n+    for row in rows:\n+        orders += db.execute(f\"SELECT * FROM orders WHERE customer_id = {row.id}\")\n+    return orders\n",
+            "change_goal": "Return the orders of every customer with this name, not only the first one"
+          },
+          "mocks": {
+            "smart_model": [
+              "Verdict: request changes\n\nBlocking issues:\n- Security: the customer name is pasted into the SQL query, so a name like ' OR 1=1 -- returns every customer. Pass it as a query parameter.\n\nSuggestions:\n- Add a test with two customers who share a name."
+            ],
+            "fast_model": [
+              "Reviewed (scripted reply)."
+            ]
+          },
+          "expect": {
+            "status": "success",
+            "channels": {
+              "verdict": "Verdict: request changes\n\nBlocking issues:\n- Security: the customer name is pasted into the SQL query, so a name like ' OR 1=1 -- returns every customer. Pass it as a query parameter.\n\nSuggestions:\n- Add a test with two customers who share a name."
+            },
+            "route": [
+              "n_panel",
+              "n_read",
+              "n_security",
+              "n_performance",
+              "n_readability",
+              "n_wait",
+              "n_lead"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

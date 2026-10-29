@@ -13,7 +13,7 @@ built-in loop and Deep Agents) side by side, each through two suites:
 | Suite | Cases | What a case asks | A case passes when |
 |---|---|---|---|
 | `build` | 10 | Build a workflow from a plain request, such as "classify support tickets as urgent or not; urgent ones need a manager's approval" | the proposal applies to the canvas, has no validation errors, and uses the expected kinds of block (a router, an approval step, …) |
-| `debug` | 104 | Fix a starter template with a planted bug: a missing arrow to Finish, an unplugged model, a wrong output field, a broken condition, an unknown field in a prompt | the Copilot's fix leaves no validation errors |
+| `debug` | 137 (it grows with the templates) | Fix a starter template with a planted bug: a missing arrow to Finish, an unplugged model, a wrong output field, a broken condition, an unknown field in a prompt | the Copilot's fix leaves no validation errors |
 
 A suite fails the job when fewer than 70% of its cases pass. Each engine's results (pass or fail, tokens, seconds
 and the reason for each failure) are kept as an artifact, `copilot-evals-loop` or `copilot-evals-deepagents`, for

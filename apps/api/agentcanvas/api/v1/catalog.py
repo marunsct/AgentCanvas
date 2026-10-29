@@ -23,7 +23,7 @@ from agentcanvas.registry import (
 )
 from agentcanvas.registry.adapters import AdapterManifest
 from agentcanvas.services import template_kit
-from agentcanvas.services.workflows import list_templates, template_gallery
+from agentcanvas.services.workflows import list_templates, runs_in, template_gallery
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["catalog"])
@@ -116,8 +116,9 @@ def mcp_connectors() -> list[McpConnector]:
 
 @router.get("/templates", response_model=list[TemplateInfo])
 def templates(settings: Settings = Depends(get_settings_dep)) -> list[TemplateInfo]:
-    """The template gallery (S23): each starter template with its category, tags, difficulty and a sample input."""
-    return [_template_info(k, v) for k, v in list_templates(settings).items()]
+    """The template gallery (S23): each starter template with its category, tags, difficulty and a sample input; on
+    the hosted service, not those with a block that only runs on your own machine (E041)."""
+    return [_template_info(k, v) for k, v in list_templates(settings).items() if runs_in(settings.edition, v)]
 
 
 def _template_info(key: str, doc: dict[str, Any]) -> TemplateInfo:

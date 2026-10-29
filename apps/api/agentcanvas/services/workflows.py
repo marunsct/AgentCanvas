@@ -62,6 +62,30 @@ def template_gallery(doc: dict[str, Any]) -> dict[str, Any]:
     return g if isinstance(g, dict) else {}
 
 
+def block_types(doc: Any) -> set[str]:
+    """Block types in a workflow document, groups of steps (subgraphs) included."""
+    out: set[str] = set()
+    if isinstance(doc, dict):
+        for key in ("nodes", "resources"):
+            out |= {i["type"] for i in doc.get(key) or [] if isinstance(i, dict) and isinstance(i.get("type"), str)}
+        for value in doc.values():
+            out |= block_types(value)
+    elif isinstance(doc, list):
+        for value in doc:
+            out |= block_types(value)
+    return out
+
+
+def runs_in(edition: str, doc: dict[str, Any]) -> bool:
+    """A template the edition can run: the hosted service refuses blocks that execute on the host (E041)."""
+    if edition != "hosted":
+        return True
+    from agentcanvas.registry import default_registry
+
+    registry = default_registry()
+    return not any((m := registry.get(t)) is not None and m.hosted_forbidden for t in block_types(doc))
+
+
 def without_gallery(doc: dict[str, Any]) -> dict[str, Any]:
     """A template document as a workflow: the gallery metadata only describes the template, and its kit (what it
     brings beside the workflow) is added once, so both are dropped."""

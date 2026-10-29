@@ -1,0 +1,412 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_memory_concierge",
+  "name": "Memory concierge",
+  "description": "A hotel concierge that remembers each guest's preferences from one conversation to the next, uses them when it answers, and deletes them when the guest says \"forget me\". All of a guest's preferences are kept as one memory, so forgetting it removes everything.",
+  "state": {
+    "channels": [
+      {
+        "name": "message",
+        "type": {
+          "type": "string"
+        },
+        "io": "in",
+        "description": "What the guest just said"
+      },
+      {
+        "name": "saved",
+        "type": {
+          "type": "array"
+        },
+        "io": "private",
+        "description": "The guest's preferences, as remembered from earlier conversations"
+      },
+      {
+        "name": "intent",
+        "type": {
+          "type": "string"
+        },
+        "io": "private",
+        "description": "answer, remember or forget"
+      },
+      {
+        "name": "preferences",
+        "type": {
+          "type": "string"
+        },
+        "io": "private",
+        "description": "The updated list of preferences, when the guest shared a new one"
+      },
+      {
+        "name": "reply",
+        "type": {
+          "type": "string"
+        },
+        "io": "out",
+        "description": "The concierge's reply to the guest"
+      }
+    ]
+  },
+  "context": {
+    "fields": [
+      {
+        "name": "user_id",
+        "type": {
+          "type": "string"
+        },
+        "source": "user",
+        "description": "The guest: each guest has their own preferences"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "chat_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_recall",
+      "type": "core.memory_recall",
+      "name": "recall_preferences",
+      "label": "Look up their preferences",
+      "config": {
+        "space": "guest_preferences",
+        "scope": "user",
+        "query": "",
+        "top_k": 1,
+        "output": "saved"
+      }
+    },
+    {
+      "id": "n_classify",
+      "type": "core.llm",
+      "name": "detect_intent",
+      "label": "What do they want?",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "prompt": "A hotel guest sent this message. Reply with one lowercase word and nothing else:\n- forget: they ask you to forget, delete or stop keeping what you know about them\n- remember: they tell you a preference or a personal detail worth keeping for later stays (diet, allergies, room, pillows, arrival habits, favourite places)\n- answer: anything else\n\nMessage: {{ state.message }}",
+        "output": "intent"
+      }
+    },
+    {
+      "id": "n_route",
+      "type": "core.router",
+      "name": "route_by_intent",
+      "label": "Answer, remember or forget",
+      "config": {
+        "cases": [
+          {
+            "when": "state.intent.matches(r\"(?i)^\\s*forget\\W*$\")",
+            "route": "forget"
+          },
+          {
+            "when": "state.intent.matches(r\"(?i)^\\s*remember\\W*$\")",
+            "route": "remember"
+          }
+        ],
+        "default": "answer"
+      }
+    },
+    {
+      "id": "n_update",
+      "type": "core.llm",
+      "name": "update_preferences",
+      "label": "Update their preferences",
+      "config": {
+        "prompt": "You keep a short list of a hotel guest's preferences.\n\nWhat we knew before:\n{% for m in state.saved %}{{ m.value }}\n{% else %}Nothing yet.\n{% endfor %}\nWhat the guest just said: {{ state.message }}\n\nWrite the full updated list, one preference per line, each starting with \"- \". Keep what is still true, change what the guest corrected, and add what is new. Include only what the guest said about themselves; leave out questions and requests for today. Reply with the list only.",
+        "output": "preferences"
+      }
+    },
+    {
+      "id": "n_save",
+      "type": "core.memory_remember",
+      "name": "save_preferences",
+      "label": "Save their preferences",
+      "config": {
+        "space": "guest_preferences",
+        "scope": "user",
+        "key": "preferences",
+        "value": "preferences"
+      }
+    },
+    {
+      "id": "n_answer",
+      "type": "core.llm",
+      "name": "answer",
+      "label": "Answer the guest",
+      "config": {
+        "prompt": "You are the concierge of a city hotel: warm, brief and practical. Use what you know about the guest when it helps (for example, offer a light sleeper a quiet room), but do not recite the list back to them.\n\nWhat you know about this guest:\n{% if (state.intent | trim | lower | replace('.', '')) == 'remember' %}{{ state.preferences }}\n{% else %}{% for m in state.saved %}{{ m.value }}\n{% else %}Nothing yet: this is a new guest.\n{% endfor %}{% endif %}\nIf the guest just shared a preference, say in one sentence that you will keep it in mind for future stays, then answer anything else they asked. If you do not know something about the hotel, offer to find out.\n\nGuest: {{ state.message }}",
+        "output": "reply"
+      }
+    },
+    {
+      "id": "n_forget",
+      "type": "core.memory_forget",
+      "name": "forget_preferences",
+      "label": "Forget their preferences",
+      "config": {
+        "space": "guest_preferences",
+        "scope": "user",
+        "key": "preferences"
+      }
+    },
+    {
+      "id": "n_forgotten",
+      "type": "core.set",
+      "name": "confirm_forgotten",
+      "label": "Confirm it is forgotten",
+      "config": {
+        "values": {
+          "reply": "Done: I have deleted the preferences you shared with us, so I will not use them again. Is there anything else I can help you with today?"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_recall"
+      }
+    },
+    {
+      "id": "e_classify",
+      "kind": "flow",
+      "source": {
+        "node": "n_recall"
+      },
+      "target": {
+        "node": "n_classify"
+      }
+    },
+    {
+      "id": "e_route",
+      "kind": "flow",
+      "source": {
+        "node": "n_classify"
+      },
+      "target": {
+        "node": "n_route"
+      }
+    },
+    {
+      "id": "e_answer",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:answer"
+      },
+      "target": {
+        "node": "n_answer"
+      }
+    },
+    {
+      "id": "e_remember",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:remember"
+      },
+      "target": {
+        "node": "n_update"
+      }
+    },
+    {
+      "id": "e_forget",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:forget"
+      },
+      "target": {
+        "node": "n_forget"
+      }
+    },
+    {
+      "id": "e_save",
+      "kind": "flow",
+      "source": {
+        "node": "n_update"
+      },
+      "target": {
+        "node": "n_save"
+      }
+    },
+    {
+      "id": "e_saved",
+      "kind": "flow",
+      "source": {
+        "node": "n_save"
+      },
+      "target": {
+        "node": "n_answer"
+      }
+    },
+    {
+      "id": "e_forgotten",
+      "kind": "flow",
+      "source": {
+        "node": "n_forget"
+      },
+      "target": {
+        "node": "n_forgotten"
+      }
+    },
+    {
+      "id": "e_end_answer",
+      "kind": "flow",
+      "source": {
+        "node": "n_answer"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e_end_forgotten",
+      "kind": "flow",
+      "source": {
+        "node": "n_forgotten"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w_classify",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_classify",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_update",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_update",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_answer",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_answer",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Customer support",
+      "tags": [
+        "memory",
+        "personalisation",
+        "router",
+        "privacy"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "message": "I'm vegetarian and I sleep badly near the lift, so please remember a quiet room for next time. Also, what time is breakfast?"
+      }
+    },
+    "kit": {
+      "tests": [
+        {
+          "name": "a shared preference takes the remember path",
+          "input": {
+            "message": "Please remember that I'm allergic to feathers."
+          },
+          "mocks": {
+            "chat_model": [
+              "remember"
+            ]
+          },
+          "expect": {
+            "status": "success",
+            "route": [
+              "n_recall",
+              "n_classify",
+              "n_route",
+              "n_update",
+              "n_save",
+              "n_answer"
+            ]
+          }
+        },
+        {
+          "name": "a question is answered without saving anything",
+          "input": {
+            "message": "Is the rooftop bar open tonight?"
+          },
+          "mocks": {
+            "chat_model": [
+              "answer"
+            ]
+          },
+          "expect": {
+            "status": "success",
+            "route": [
+              "n_recall",
+              "n_classify",
+              "n_route",
+              "n_answer"
+            ]
+          }
+        },
+        {
+          "name": "forget me deletes their preferences",
+          "input": {
+            "message": "Please forget everything you know about me."
+          },
+          "mocks": {
+            "chat_model": [
+              "forget"
+            ]
+          },
+          "expect": {
+            "status": "success",
+            "channels": {
+              "reply": "Done: I have deleted the preferences you shared with us, so I will not use them again. Is there anything else I can help you with today?"
+            },
+            "route": [
+              "n_recall",
+              "n_classify",
+              "n_route",
+              "n_forget",
+              "n_forgotten"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

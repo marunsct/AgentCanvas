@@ -69,6 +69,16 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **Nine new templates, six of them advanced, and every feature has one**: Support inbox from email events (an
+  event handler, prompt-injection and personal-data checks, workspace code, a question for a person, an approval),
+  Lead scoring with research (a custom block, Python tools, tool add-ons, evaluation), Daily metrics report (a
+  script, a schedule, an output-format check), Resilient research agent (backup models, retries, shorter chats, a
+  to-do list, a quality check, scratch files, memory tools), Memory concierge (remember, recall, forget), Parallel
+  code review panel (a group of steps, parallel branches, Wait for all), Content safety gate (harmful-content and
+  output-format checks), Incident agent network (A2A and MCP agents, an agent from another framework, app
+  connectors) and Editorial crew (a CrewAI crew and task). A test fails when a block in the palette or a feature
+  outside the canvas (event handlers, scripts, custom blocks, Python tools, evaluation, saved tests, schedules) has
+  no template. The hosted service no longer lists a template it cannot run (a block that runs on the host, E041).
 - **W017: "Retry AI calls" connected after "Backup models" hides them.** The first add-on connected wraps the ones
   after it, and a retry that carries on when its retries run out (the default) answers the failure itself, so the
   backup models were never tried, without a word. The editor now warns and says how to fix it.

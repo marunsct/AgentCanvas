@@ -1,0 +1,576 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_lead_scoring_pro",
+  "name": "Lead scoring with research",
+  "description": "Your own scoring block rates each inbound lead with clear rules; for a hot lead an agent looks the company up with Python tools from the workspace and drafts a first email.",
+  "state": {
+    "channels": [
+      {
+        "name": "lead",
+        "type": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "company": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "company_size": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        "io": "in",
+        "description": "The web form submission: name, email, company, role, company size and message"
+      },
+      {
+        "name": "score",
+        "type": {
+          "type": "integer"
+        },
+        "io": "out",
+        "description": "0 to 100, from the rules"
+      },
+      {
+        "name": "tier",
+        "type": {
+          "type": "string"
+        },
+        "io": "out",
+        "description": "hot, warm or cold"
+      },
+      {
+        "name": "score_reasons",
+        "type": {
+          "type": "array"
+        },
+        "io": "out",
+        "description": "The points the lead got, and why"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "private",
+        "description": "The conversation the agent reads"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "out",
+        "description": "The agent's research notes and drafted email"
+      },
+      {
+        "name": "next_step",
+        "io": "out",
+        "description": "What happens to the lead now"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "research_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "picker_model",
+      "config": {
+        "model": "anthropic:claude-haiku-4-5",
+        "temperature": 0
+      }
+    },
+    {
+      "id": "r_profile",
+      "type": "tool.python",
+      "name": "company_profile",
+      "config": {
+        "import_path": "tools.lead_research:company_profile"
+      }
+    },
+    {
+      "id": "r_news",
+      "type": "tool.python",
+      "name": "company_news",
+      "config": {
+        "import_path": "tools.lead_research:company_news"
+      }
+    },
+    {
+      "id": "r_contacts",
+      "type": "tool.python",
+      "name": "past_contacts",
+      "config": {
+        "import_path": "tools.lead_research:past_contacts"
+      }
+    },
+    {
+      "id": "r_pick",
+      "type": "mw.tool_selector",
+      "name": "pick_tools",
+      "config": {
+        "max_tools": 2,
+        "always_include": [
+          "company_profile"
+        ]
+      }
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.tool_call_limit",
+      "name": "tool_limit",
+      "config": {
+        "run_limit": 6,
+        "exit_behavior": "continue"
+      }
+    },
+    {
+      "id": "r_retry",
+      "type": "mw.tool_retry",
+      "name": "tool_retry",
+      "config": {
+        "max_retries": 2,
+        "on_failure": "continue",
+        "initial_delay": 1.0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_score",
+      "type": "templates.score_lead",
+      "name": "score_lead",
+      "label": "Score the lead",
+      "config": {
+        "hot_at": 70,
+        "warm_at": 40
+      }
+    },
+    {
+      "id": "n_route",
+      "type": "core.router",
+      "name": "route_tier",
+      "label": "Hot lead?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.tier == \"hot\"",
+            "route": "hot"
+          }
+        ],
+        "default": "nurture"
+      }
+    },
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "brief_researcher",
+      "label": "Brief the researcher",
+      "config": {
+        "values": {
+          "messages": "Research this lead and draft a first email.\n\nLead:\n{{ state.lead }}\n\nScore: {{ state.score }}/100\nWhy:\n{% for r in state.score_reasons %}- {{ r }}\n{% endfor %}",
+          "next_step": "Hot lead: outreach drafted for a sales rep to review and send."
+        }
+      }
+    },
+    {
+      "id": "n_research",
+      "type": "core.agent",
+      "name": "research_and_draft",
+      "label": "Research and draft",
+      "config": {
+        "system_prompt": "You are a sales development rep. Before writing, look the company up with your tools: its profile, its recent news, and any earlier contact with us (by the domain of the lead's email). Use only facts from the tools or from the lead's own message; never invent any. Then draft a short, personal first email (under 120 words) that names their need, mentions one relevant fact you found, and proposes a 20-minute call this week.",
+        "response_format": {
+          "title": "Outreach",
+          "type": "object",
+          "required": [
+            "research_notes",
+            "subject",
+            "email"
+          ],
+          "properties": {
+            "research_notes": {
+              "type": "string",
+              "description": "What the tools found, in two or three sentences"
+            },
+            "talking_points": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "At most three"
+            },
+            "subject": {
+              "type": "string",
+              "description": "The email's subject line"
+            },
+            "email": {
+              "type": "string",
+              "description": "The email body, under 120 words"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n_nurture",
+      "type": "core.set",
+      "name": "add_to_nurture",
+      "label": "Add to nurture list",
+      "config": {
+        "values": {
+          "next_step": "{{ state.tier | capitalize }} lead ({{ state.score }}/100): added to the nurture sequence, no email drafted."
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_score"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_score"
+      },
+      "target": {
+        "node": "n_route"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:hot"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_route",
+        "port": "route:nurture"
+      },
+      "target": {
+        "node": "n_nurture"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_research"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_research"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e7",
+      "kind": "flow",
+      "source": {
+        "node": "n_nurture"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w8",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w9",
+      "kind": "wiring",
+      "source": {
+        "node": "r_profile"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "tools"
+      }
+    },
+    {
+      "id": "w10",
+      "kind": "wiring",
+      "source": {
+        "node": "r_news"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "tools"
+      }
+    },
+    {
+      "id": "w11",
+      "kind": "wiring",
+      "source": {
+        "node": "r_contacts"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "tools"
+      }
+    },
+    {
+      "id": "w12",
+      "kind": "wiring",
+      "source": {
+        "node": "r_pick"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 0
+    },
+    {
+      "id": "w13",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 1
+    },
+    {
+      "id": "w14",
+      "kind": "wiring",
+      "source": {
+        "node": "r_retry"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 2
+    },
+    {
+      "id": "w15",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "r_pick",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Sales",
+      "tags": [
+        "leads",
+        "custom block",
+        "python tools",
+        "agent add-ons",
+        "evaluation"
+      ],
+      "difficulty": "advanced",
+      "sample_input": {
+        "lead": {
+          "name": "Dana Whitfield",
+          "email": "dana@northwind.example",
+          "company": "Northwind Traders",
+          "role": "VP Finance Operations",
+          "company_size": "1,200",
+          "message": "We need to automate invoice approvals across our 14 warehouses before an audit in 6 weeks. Budget is approved for this quarter. Could we talk this week?"
+        }
+      }
+    },
+    "kit": {
+      "files": {
+        "nodes/lead_scoring.py": "\"\"\"Lead scoring with clear rules: every point a lead gets comes with the reason, so sales can see why and tune it.\n\nAdded by the \"Lead scoring with research\" template. Change the rules below to fit your market; the thresholds are\nsettings on the block.\n\"\"\"\n\nimport re\n\nfrom agentcanvas.sdk import canvas_node\n\nFREE_EMAIL = {\"gmail.com\", \"yahoo.com\", \"hotmail.com\", \"outlook.com\", \"icloud.com\", \"aol.com\", \"proton.me\", \"gmx.de\"}\nSENIOR = (\"chief\", \"ceo\", \"cto\", \"coo\", \"cfo\", \"founder\", \"owner\", \"president\", \"vp\", \"head of\", \"director\")\nMANAGER = (\"manager\", \"lead\", \"principal\", \"senior\")\nBUDGET = (\"budget\", \"approved\", \"funded\", \"funding\", \"purchase order\", \"procurement\")\nTIMELINE = (\n    \"this quarter\",\n    \"next month\",\n    \"weeks\",\n    \"asap\",\n    \"deadline\",\n    \"by the end of\",\n    \"before the end of\",\n    \"before our\",\n    \"urgent\",\n)\nNOT_BUYING = (\"student\", \"school project\", \"thesis\", \"just curious\", \"looking for a job\", \"internship\")\n\n\ndef _size(value) -> int:\n    \"\"\"The company size as a number: 120, \"120\", \"51-200\" (the first number) or \"about 2,000 people\".\"\"\"\n    found = re.search(r\"\\d[\\d,]*\", str(value or \"\"))\n    return int(found.group().replace(\",\", \"\")) if found else 0\n\n\n@canvas_node(\n    name=\"templates.score_lead\",\n    label=\"Score lead\",\n    category=\"Sales\",\n    icon=\"list-checks\",\n    description=\"Scores an inbound lead from 0 to 100 with clear rules (company size, role, budget, timeline, email) \"\n    \"and sorts it into hot, warm or cold, with the reason for every point.\",\n    config={\n        \"type\": \"object\",\n        \"properties\": {\n            \"hot_at\": {\n                \"type\": \"integer\",\n                \"title\": \"Hot from\",\n                \"minimum\": 1,\n                \"maximum\": 100,\n                \"default\": 70,\n                \"description\": \"A score at or above this is a hot lead.\",\n            },\n            \"warm_at\": {\n                \"type\": \"integer\",\n                \"title\": \"Warm from\",\n                \"minimum\": 1,\n                \"maximum\": 100,\n                \"default\": 40,\n                \"description\": \"A score at or above this (and below Hot from) is a warm lead.\",\n            },\n        },\n    },\n    reads=[\"lead\"],\n    writes=[\"score\", \"tier\", \"score_reasons\"],\n)\ndef score_lead(state: dict, cfg: dict) -> dict:\n    \"\"\"Score the lead in `lead` (a form submission: name, email, company, role, company_size, message).\"\"\"\n    lead = state.get(\"lead\") or {}\n    if not isinstance(lead, dict):\n        lead = {\"message\": str(lead)}\n    role = str(lead.get(\"role\") or \"\").lower()\n    message = str(lead.get(\"message\") or \"\").lower()\n    domain = str(lead.get(\"email\") or \"\").rpartition(\"@\")[2].lower()\n    size = _size(lead.get(\"company_size\"))\n\n    points: list[tuple[int, str]] = []\n    if size >= 500:\n        points.append((25, f\"large company ({size} people)\"))\n    elif size >= 100:\n        points.append((20, f\"mid-size company ({size} people)\"))\n    elif size >= 20:\n        points.append((10, f\"small company ({size} people)\"))\n    elif size:\n        points.append((3, f\"very small company ({size} people)\"))\n    if any(word in role for word in SENIOR):\n        points.append((25, f\"decision maker ({lead.get('role')})\"))\n    elif any(word in role for word in MANAGER):\n        points.append((15, f\"manager-level contact ({lead.get('role')})\"))\n    elif role:\n        points.append((5, f\"individual contributor ({lead.get('role')})\"))\n    if any(word in message for word in BUDGET):\n        points.append((20, \"mentions a budget\"))\n    if any(word in message for word in TIMELINE):\n        points.append((15, \"has a timeline\"))\n    if domain and domain not in FREE_EMAIL:\n        points.append((15, f\"work email ({domain})\"))\n    elif domain:\n        points.append((-10, f\"personal email ({domain})\"))\n    if any(word in message or word in role for word in NOT_BUYING):\n        points.append((-25, \"not looking to buy (student, job seeker or just curious)\"))\n\n    score = max(0, min(100, sum(p for p, _ in points)))\n    hot_at, warm_at = int(cfg.get(\"hot_at\") or 70), int(cfg.get(\"warm_at\") or 40)\n    tier = \"hot\" if score >= hot_at else \"warm\" if score >= warm_at else \"cold\"\n    reasons = [f\"{p:+d} {why}\" for p, why in points] or [\"no signals in the form\"]\n    return {\"score\": score, \"tier\": tier, \"score_reasons\": reasons}\n",
+        "tools/lead_research.py": "\"\"\"Research tools for sales agents: a company's profile, its recent news, and our past contact with it.\n\nAdded by the \"Lead scoring with research\" template. They answer from the sample records below; replace each\nbody with a call to your CRM or data provider (keep the name, arguments and docstring: the agent reads them).\n\"\"\"\n\nfrom langchain_core.tools import tool\n\nPROFILES = {\n    \"northwind traders\": \"Northwind Traders: food wholesale, 1,200 employees, headquartered in Seattle. Runs its \"\n    \"finance on SAP; invoice approvals are still done by email across 14 warehouses.\",\n    \"contoso\": \"Contoso Ltd: logistics software, 450 employees, offices in London and Berlin. Grew 40% last year; \"\n    \"hiring a second operations team.\",\n    \"fabrikam\": \"Fabrikam Inc: furniture maker, 80 employees, one factory in Ohio. Family owned.\",\n}\nNEWS = {\n    \"northwind traders\": \"Oct 2026: Northwind Traders announced an external audit of its accounts payable before \"\n    \"year end. Sep 2026: opened two new warehouses in Oregon.\",\n    \"contoso\": \"Oct 2026: Contoso raised a $30M Series C to expand in Europe.\",\n}\nCONTACTS = {\n    \"northwind.example\": \"2025-03: downloaded the 'Invoice automation checklist'. No sales conversation yet.\",\n    \"contoso.example\": \"2026-06: a demo with their IT lead; they paused it for budget reasons.\",\n}\n\n\ndef _key(name: str) -> str:\n    return \" \".join(name.lower().replace(\",\", \" \").replace(\".\", \" \").split())\n\n\n@tool\ndef company_profile(company: str) -> str:\n    \"\"\"Look up a company's industry, size, location and the tools it uses. Pass the company's name.\"\"\"\n    key = _key(company)\n    found = next((v for k, v in PROFILES.items() if k in key or key in k), None) if key else None\n    return found or f\"No profile on file for '{company}'. Rely on what the lead wrote.\"\n\n\n@tool\ndef company_news(company: str) -> str:\n    \"\"\"Find a company's recent news (funding, expansion, audits, leadership changes). Pass the company's name.\"\"\"\n    key = _key(company)\n    found = next((v for k, v in NEWS.items() if k in key or key in k), None) if key else None\n    return found or f\"No recent news found for '{company}'.\"\n\n\n@tool\ndef past_contacts(email_domain: str) -> str:\n    \"\"\"Our earlier contact with a company (downloads, demos, deals), found by its email domain, e.g. contoso.com.\"\"\"\n    domain = email_domain.lower().strip().lstrip(\"@\").rpartition(\"@\")[2]\n    return CONTACTS.get(domain) or f\"No earlier contact with '{domain}' in the CRM.\"\n",
+        "scripts/lead_scoring_checks.py": "\"\"\"Evaluator for the \"Lead scoring with research\" template: scores you can trust, and an email for every hot lead.\n\nUsed by the \"Score explained, hot leads get an email\" evaluator on the Evaluation page.\n\"\"\"\n\n\ndef check(sample: dict) -> dict:\n    \"\"\"1 when the score is 0-100 with its reasons, and a hot lead has a drafted email; 0 otherwise.\"\"\"\n    out = sample.get(\"output\") or {}\n    score, reasons = out.get(\"score\"), out.get(\"score_reasons\") or []\n    if not isinstance(score, int) or not 0 <= score <= 100:\n        return {\"score\": 0, \"comment\": f\"the score is not a number from 0 to 100: {score!r}\"}\n    if not reasons:\n        return {\"score\": 0, \"comment\": \"the score has no reasons\"}\n    if out.get(\"tier\") == \"hot\":\n        email = str((out.get(\"structured_response\") or {}).get(\"email\") or \"\").strip()\n        if not email:\n            return {\"score\": 0, \"comment\": \"a hot lead got no drafted email\"}\n        return {\"score\": 1, \"comment\": f\"scored {score} with {len(reasons)} reasons; email drafted\"}\n    return {\"score\": 1, \"comment\": f\"scored {score} with {len(reasons)} reasons\"}\n"
+      },
+      "dataset": {
+        "name": "Inbound leads",
+        "description": "Four form submissions, one of each kind, with the tier the rules should give.",
+        "examples": [
+          {
+            "input": {
+              "lead": {
+                "name": "Dana Whitfield",
+                "email": "dana@northwind.example",
+                "company": "Northwind Traders",
+                "role": "VP Finance Operations",
+                "company_size": "1,200",
+                "message": "We need to automate invoice approvals across our 14 warehouses before an audit in 6 weeks. Budget is approved for this quarter. Could we talk this week?"
+              }
+            },
+            "reference": {
+              "tier": "hot"
+            }
+          },
+          {
+            "input": {
+              "lead": {
+                "name": "Priya Natarajan",
+                "email": "priya@contoso.example",
+                "company": "Contoso",
+                "role": "IT Manager",
+                "company_size": "450",
+                "message": "We are comparing options for next year. Can you send pricing?"
+              }
+            },
+            "reference": {
+              "tier": "warm"
+            }
+          },
+          {
+            "input": {
+              "lead": {
+                "name": "Marco Rossi",
+                "email": "marco@fabrikam.example",
+                "company": "Fabrikam",
+                "role": "Owner",
+                "company_size": "80",
+                "message": "Our paper invoices are a mess and we'd like this fixed before the end of the year."
+              }
+            },
+            "reference": {
+              "tier": "warm"
+            }
+          },
+          {
+            "input": {
+              "lead": {
+                "name": "Sam Lee",
+                "email": "sam.lee@gmail.com",
+                "company": "State University",
+                "role": "Student",
+                "company_size": "",
+                "message": "I'm writing my thesis on workflow tools. Could I get a free account?"
+              }
+            },
+            "reference": {
+              "tier": "cold"
+            }
+          }
+        ]
+      },
+      "evaluators": [
+        {
+          "name": "Right tier",
+          "kind": "exact",
+          "config": {
+            "channels": [
+              "tier"
+            ]
+          }
+        },
+        {
+          "name": "Score explained, hot leads get an email",
+          "kind": "code",
+          "config": {
+            "function": "scripts.lead_scoring_checks:check"
+          }
+        }
+      ],
+      "tests": [
+        {
+          "name": "a student on a personal email goes to nurture",
+          "input": {
+            "lead": {
+              "name": "Sam Lee",
+              "email": "sam.lee@gmail.com",
+              "company": "State University",
+              "role": "Student",
+              "company_size": "",
+              "message": "I'm writing my thesis on workflow tools. Could I get a free account?"
+            }
+          },
+          "expect": {
+            "channels": {
+              "tier": "cold",
+              "score": 0
+            },
+            "route": [
+              "n_score",
+              "n_route",
+              "n_nurture"
+            ]
+          }
+        },
+        {
+          "name": "a VP with budget and a deadline is hot and gets an email",
+          "input": {
+            "lead": {
+              "name": "Dana Whitfield",
+              "email": "dana@northwind.example",
+              "company": "Northwind Traders",
+              "role": "VP Finance Operations",
+              "company_size": "1,200",
+              "message": "We need to automate invoice approvals across our 14 warehouses before an audit in 6 weeks. Budget is approved for this quarter. Could we talk this week?"
+            }
+          },
+          "expect": {
+            "channels": {
+              "tier": "hot",
+              "score": 100
+            },
+            "route": [
+              "n_score",
+              "n_route",
+              "n_brief",
+              "n_research"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -63,7 +63,7 @@ marks beta blocks. *Reverse:* remove it with an IR version bump and a migration 
   leaving the variable unset.
 - **The nightly evaluation needs a key from you**: add `ANTHROPIC_API_KEY` as a repository secret (Settings →
   Secrets → Actions). Until then the job says it was skipped. It uses `anthropic:claude-haiku-4-5` unless you set
-  the repository variable `COPILOT_EVAL_MODEL` (114 cases per engine per night). Step by step, with what it checks:
+  the repository variable `COPILOT_EVAL_MODEL` (147 cases per engine per night, more as templates are added). Step by step, with what it checks:
   `docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md`.
 - **AG-UI: the event names and shapes, not the `ag-ui-langgraph` bridge.** The bridge expects its own agent
   wrapper and input contract, which do not fit our sign-in, proposals and saved conversations; the panel reads our

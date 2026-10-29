@@ -80,21 +80,60 @@ async def test_gallery_endpoint_and_created_workflows_drop_gallery_metadata(api_
     assert "gallery" not in wf["ir"].get("metadata", {})
 
 
+def _agent_network(monkeypatch) -> dict:
+    """agent_network's remote agents in process: the platform agent (A2A) behind a mock transport, the log analyst
+    and the issue tracker (MCP) as FastMCP servers, and the kit's OpenAI Agents SDK agent without its own model."""
+    from types import SimpleNamespace
+
+    import agents
+    import httpx
+    from fastmcp import FastMCP
+
+    def platform(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":  # its Agent Card
+            return httpx.Response(200, json={"name": "Platform", "url": "https://agents.example.com/platform/a2a"})
+        said = {"kind": "message", "role": "agent", "parts": [{"kind": "text", "text": "Clusters are healthy."}]}
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": said})
+
+    logs, tracker = FastMCP("log analyst"), FastMCP("issue tracker")
+    logs.tool(lambda question: "502s from pods restarting since 14:02", name="investigate")
+    tracker.tool(lambda query: "No open issue matches.", name="search_issues")
+    tracker.tool(lambda title, body: "Opened issue #481", name="create_issue")
+
+    async def run(agent, input, **kw):
+        return SimpleNamespace(final_output=f"{agent.name}: v2.14.0 deployed at 13:55 UTC")
+
+    monkeypatch.setattr(agents.Runner, "run", run)
+    return {
+        "http_transport": httpx.MockTransport(platform),
+        "overrides": {"log_analyst": logs, "issue_tracker": tracker},  # by the resource's name
+        "secrets": {"PLATFORM_AGENT_KEY": "Bearer test"},
+    }
+
+
 @pytest.mark.parametrize("name", NAMES)
-async def test_template_validates_and_runs(app, api_client, name):
+async def test_template_validates_and_runs(app, api_client, name, monkeypatch):
+    from agentcanvas.adapters.crewai import crewai_python
     from agentcanvas.testing import DemoResources
 
     if name == "mixed_team" and designs.part_python("crewai") is None and not designs.importable("crewai"):
         pytest.skip("its CrewAI writer needs CrewAI's environment (make crewai)")
-    demo = DemoResources()
+    demo = DemoResources(
+        workspace=app.state.projects.workspace("prj_default").root,  # a kit's code runs from it
+        registry=lambda: app.state.projects.registry("prj_default"),  # and its custom blocks are known
+        **(_agent_network(monkeypatch) if name == "agent_network" else {}),
+    )
     app.state.resources_factory = lambda thread_id, wf: demo
     if name == "knowledge_qa":  # S24: searches the sample knowledge base, like a project that loaded it
         assert (await api_client.post(f"{P}/knowledge", json={"sample": "handbook"})).status_code == 201
         demo.knowledge = app.state.projects.knowledge.for_project("prj_default")
     wf = (await api_client.post(f"{P}/workflows", json={"name": name, "template": name})).json()
     assert not [d for d in wf["diagnostics"] if d["severity"] == "error"], wf["diagnostics"]
+    crewai = wf["ir"].get("framework") == "crewai"
+    code = (await api_client.get(f"/v1/workflows/{wf['id']}/code")).text
+    assert ("(Flow[dict]):" if crewai else "def build_graph(") in code  # a CrewAI workflow exports as a flow
+    if crewai and crewai_python() is None:
+        pytest.skip("it runs on CrewAI, which needs CrewAI's environment (make crewai); validated and exported")
     text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": _input(name)})).text
     last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert last["type"] == "RUN_FINISHED", last
-    code = (await api_client.get(f"/v1/workflows/{wf['id']}/code")).text
-    assert "def build_graph(" in code

@@ -1,0 +1,113 @@
+{
+  "ir_version": "1.2",
+  "id": "tpl_agent_network",
+  "name": "Incident agent network",
+  "description": "An incident lead weighs what three agents find: the platform team's agent over A2A, a log analyst published as an MCP tool, and a change-history agent built with the OpenAI Agents SDK in your Workspace. It then checks the issue tracker through an app connector and opens an issue only after you approve. The addresses (agents.example.com, mcp.example.com) are placeholders: replace them with your own agents and servers, and set the secrets PLATFORM_AGENT_KEY and ISSUE_TRACKER_KEY.",
+  "state": {
+    "channels": [
+      {"name": "service", "io": "in", "description": "The service that is failing"},
+      {"name": "incident", "io": "in", "description": "What is going wrong, as it was reported"},
+      {"name": "platform_status", "io": "out", "description": "What the platform team's agent says about the infrastructure"},
+      {"name": "log_findings", "io": "out", "description": "What the log analyst found"},
+      {"name": "recent_changes", "io": "out", "description": "Recent deploys and configuration changes"},
+      {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages", "io": "out", "description": "The incident lead's update"}
+    ]
+  },
+  "resources": [
+    {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "anthropic:claude-sonnet-5-5"}},
+    {
+      "id": "r_logs", "type": "mcp.server", "name": "log_analyst", "label": "Log analyst (MCP server)",
+      "config": {
+        "transport": "http",
+        "url": "https://agents.example.com/log-analyst/mcp",
+        "tool_filter": ["investigate"]
+      }
+    },
+    {
+      "id": "r_tracker", "type": "mcp.server", "name": "issue_tracker", "label": "Issue tracker (app connector)",
+      "config": {
+        "transport": "http",
+        "url": "https://mcp.example.com/issues/mcp",
+        "headers": {"Authorization": {"$secret": "ISSUE_TRACKER_KEY"}},
+        "tool_filter": ["search_issues", "create_issue"]
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_platform", "type": "agent.a2a", "name": "platform_agent", "label": "Ask the platform team's agent",
+      "config": {
+        "url": "https://agents.example.com/platform/.well-known/agent-card.json",
+        "prompt": "Is anything wrong with the infrastructure that {{ state.service }} runs on (clusters, network, databases)? Reported problem: {{ state.incident }}",
+        "output": "platform_status",
+        "headers": {"Authorization": {"$secret": "PLATFORM_AGENT_KEY"}},
+        "timeout": 90
+      }
+    },
+    {
+      "id": "n_logs", "type": "agent.mcp", "name": "log_analyst_agent", "label": "Ask the log analyst",
+      "config": {
+        "tool": "investigate",
+        "arguments": {
+          "question": "What in the logs of {{ state.service }} from the last two hours explains this problem? {{ state.incident }}"
+        },
+        "output": "log_findings"
+      }
+    },
+    {
+      "id": "n_changes", "type": "agent.framework", "name": "change_history", "label": "Check recent changes",
+      "config": {
+        "framework": "openai_agents",
+        "import_path": "tools.change_history_agent:change_history_agent",
+        "prompt": "List the deploys and configuration changes to {{ state.service }} in the last 24 hours that could explain this problem: {{ state.incident }}",
+        "output": "recent_changes"
+      }
+    },
+    {"id": "n_wait", "type": "core.join", "name": "wait_for_findings", "label": "Wait for every finding", "config": {}},
+    {
+      "id": "n_brief", "type": "core.set", "name": "brief_the_lead", "label": "Brief the incident lead",
+      "config": {
+        "values": {
+          "messages": "Incident on {{ state.service }}: {{ state.incident }}\n\nThe platform team's agent says:\n{{ state.platform_status }}\n\nThe log analyst found:\n{{ state.log_findings }}\n\nRecent changes:\n{{ state.recent_changes }}"
+        }
+      }
+    },
+    {
+      "id": "n_lead", "type": "core.agent", "name": "incident_lead", "label": "Incident lead",
+      "config": {
+        "system_prompt": "You lead the response to a production incident. Three specialists have reported: the platform team's agent, the log analyst and the change-history agent. Weigh their findings, name the most likely cause and say how sure you are. Search the issue tracker for an open issue about this problem, and open a new one only if none exists. Then write a short update for the team: what is happening, the likely cause, who is affected and the next step.",
+        "approve_tools": ["create_issue"]
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e0", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_platform"}},
+    {"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_logs"}},
+    {"id": "e2", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_changes"}},
+    {"id": "e3", "kind": "flow", "source": {"node": "n_platform"}, "target": {"node": "n_wait"}},
+    {"id": "e4", "kind": "flow", "source": {"node": "n_logs"}, "target": {"node": "n_wait"}},
+    {"id": "e5", "kind": "flow", "source": {"node": "n_changes"}, "target": {"node": "n_wait"}},
+    {"id": "e6", "kind": "flow", "source": {"node": "n_wait"}, "target": {"node": "n_brief"}},
+    {"id": "e7", "kind": "flow", "source": {"node": "n_brief"}, "target": {"node": "n_lead"}},
+    {"id": "e8", "kind": "flow", "source": {"node": "n_lead"}, "target": {"node": "END"}},
+    {"id": "w1", "kind": "wiring", "source": {"node": "r_logs"}, "target": {"node": "n_logs", "port": "tools"}},
+    {"id": "w2", "kind": "wiring", "source": {"node": "r_model"}, "target": {"node": "n_lead", "port": "model"}},
+    {"id": "w3", "kind": "wiring", "source": {"node": "r_tracker"}, "target": {"node": "n_lead", "port": "tools"}, "order": 0}
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Engineering",
+      "tags": ["A2A", "MCP", "OpenAI Agents SDK", "multi-agent", "incident response"],
+      "difficulty": "advanced",
+      "sample_input": {
+        "service": "checkout-api",
+        "incident": "About 5% of checkout requests have failed with HTTP 502 since 14:00 UTC."
+      }
+    },
+    "kit": {
+      "files": {
+        "tools/change_history_agent.py": "\"\"\"The change-history agent of the Incident agent network template: an OpenAI Agents SDK agent that lists\nrecent deploys and configuration changes of a service.\n\nIt runs inside AgentCanvas with its own model, not the canvas model blocks: the server needs OPENAI_API_KEY in its\nenvironment. The two tools return sample data; replace them with calls to your deploy and configuration history.\n\"\"\"\n\nfrom agents import Agent, function_tool\n\n\n@function_tool\ndef recent_deploys(service: str) -> str:\n    \"\"\"The deploys of a service in the last 24 hours, newest first.\"\"\"\n    return f\"{service}: v2.14.0 at 13:55 UTC (connection pool settings changed); v2.13.2 yesterday at 09:10 UTC.\"\n\n\n@function_tool\ndef config_changes(service: str) -> str:\n    \"\"\"The configuration and feature-flag changes of a service in the last 24 hours, newest first.\"\"\"\n    return f\"{service}: feature flag new-payment-page turned on for 10% of users at 13:40 UTC.\"\n\n\nchange_history_agent = Agent(\n    name=\"change_history\",\n    instructions=(\n        \"You find what changed before a production problem started. Look up the service's recent deploys and \"\n        \"configuration changes, then list the ones that could explain the problem, newest first, with their times. \"\n        \"Say plainly when nothing changed.\"\n    ),\n    model=\"gpt-5.5\",\n    tools=[recent_deploys, config_changes],\n)\n"
+      }
+    }
+  }
+}

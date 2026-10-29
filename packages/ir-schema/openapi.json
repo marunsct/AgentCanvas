@@ -22140,7 +22140,7 @@
     },
     "/v1/templates": {
       "get": {
-        "description": "The template gallery: each starter template with its category, tags, difficulty and a sample input.",
+        "description": "The template gallery: each starter template with its category, tags, difficulty and a sample input; on\nthe hosted service, not those with a block that only runs on your own machine (E041).",
         "operationId": "templates_v1_templates_get",
         "parameters": [
           {
