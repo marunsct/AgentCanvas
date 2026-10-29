@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.gates import gate_for
-from agentcanvas.api.v1.runs import _context, _respond, _thread
+from agentcanvas.api.v1.runs import _context, _respond
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Deployment, Organization, Project, Run, RunScore, Thread, WorkflowVersion
@@ -274,14 +274,21 @@ async def _start(
     dep, wf = caller or await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
     if body.thread_id:
-        t = await _thread(session, body.thread_id)
-        if t.deployment_id != dep.id:
-            raise InvalidInput(f"thread '{body.thread_id}' was not started by this deployment")
+        await own_thread(session, dep, body.thread_id)
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
     return await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
     )  # fmt: skip
+
+
+async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str) -> Thread:
+    """A conversation this deployment started. Any other (unknown, another deployment's, another organisation's)
+    is the same 404, so a key holder cannot learn which thread ids exist elsewhere (S-6)."""
+    t = await session.scalar(select(Thread).where(Thread.id == thread_id, Thread.deployment_id == dep.id))
+    if t is None:
+        raise NotFound(f"thread '{thread_id}' not found for this deployment")
+    return t
 
 
 async def _continue_on(session: AsyncSession, dep: Deployment, wf: Workflow, thread_id: str) -> tuple[Workflow, str]:
@@ -401,9 +408,7 @@ async def api_resume(
 ) -> ApiResult:
     """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
     dep, wf = await _caller(request, session, dep_id, authorization)
-    t = await _thread(session, thread_id)
-    if t.deployment_id != dep.id:
-        raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
+    await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(

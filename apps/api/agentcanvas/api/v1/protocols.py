@@ -28,8 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session, get_settings_dep
-from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start
-from agentcanvas.api.v1.runs import _thread
+from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start, own_thread
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
 from agentcanvas.ir.contract import Contract, contract
@@ -160,9 +159,7 @@ async def _resume(
     iid: str | None,
     labels: dict[str, str] | None = None,
 ) -> ApiResult:
-    t = await _thread(session, thread_id)
-    if t.deployment_id != dep.id:
-        raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
+    await own_thread(session, dep, thread_id)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf,

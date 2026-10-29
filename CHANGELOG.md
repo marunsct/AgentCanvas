@@ -8,6 +8,10 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- A deployment key could tell a thread id of another deployment or organisation from one that does not exist (404
+  for unknown, 422 "not started by this deployment" otherwise). Both are now the same 404. nginx's per-visitor rate
+  limit now covers each deployment's MCP and A2A endpoints (and its agent card) and the Matura webhook, as it did
+  the deployment API and share links (HARDENING S-6).
 - In the hosted edition, an MCP server's address was checked by name and then connected to by name again, so a DNS
   answer that changed in between (rebinding) could reach the cloud metadata service or the cluster; a model's own
   base URL was not checked at all. MCP clients and OpenAI-compatible model clients there now resolve, check and

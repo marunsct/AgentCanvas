@@ -293,3 +293,18 @@ def test_the_reference_sdk_reads_the_agent_card():
     for version in ("1.0", None):
         card = resolver.parse_agent_card(agent_card(wf, "1.0.0", "https://x.example/a2a", version))
         assert card.name == "Greeter" and card.supported_interfaces[0].protocol_version == "1.0"
+
+
+async def test_another_deployments_thread_answers_like_an_unknown_one(api_client):
+    """S-6: a key holder could tell a thread id of another deployment (or organisation) from one that does not
+    exist: 404 for unknown, a different 422 for someone else's. Both are now the same 404."""
+    dep_a, key_a = await _publish(api_client, await make_greeter(api_client))
+    dep_b, key_b = await _publish(api_client, await make_greeter(api_client, "Hi"))
+    ran = (await api_client.post(f"/v1/deployments/{dep_a}/runs/wait", json={"input": {"who": "Ada"}},
+                                 headers=bearer(key_a))).json()  # fmt: skip
+    url_b = f"/v1/deployments/{dep_b}/runs/wait"
+    theirs = await api_client.post(url_b, json={"input": {"who": "x"}, "thread_id": ran["thread_id"]},
+                                   headers=bearer(key_b))  # fmt: skip
+    unknown = await api_client.post(url_b, json={"input": {"who": "x"}, "thread_id": "th_nope"}, headers=bearer(key_b))
+    assert theirs.status_code == unknown.status_code == 404
+    assert theirs.json()["detail"].replace(ran["thread_id"], "X") == unknown.json()["detail"].replace("th_nope", "X")
