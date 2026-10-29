@@ -367,15 +367,24 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
         params["base_url"] = _local(OLLAMA_URL)
     if provider in OPENAI_COMPATIBLE:
         default = OPENAI_COMPATIBLE[provider]
+        own = not params.get("base_url")  # the provider's own address: its stored key may go there
         base_url = params.get("base_url") or (_local(default) if default else None)
         if not base_url:
             raise ValueError(f"model '{model}' needs a base URL: the server's OpenAI-compatible address, e.g. …/v1")
         params["base_url"] = base_url
         if "api_key" not in params:  # the server's key when one is set; else a placeholder the OpenAI client insists on
             var = OPTIONAL_KEYS.get(provider)
-            params["api_key"] = (var and (secrets.get(var) or os.environ.get(var))) or "not-needed"
+            stored = own and var and (secrets.get(var) or os.environ.get(var))
+            params["api_key"] = stored or "not-needed"  # another address gets a key only when the model names one
         return f"openai:{name}", params
     key = PROVIDER_KEYS.get(provider)
+    if key and "api_key" not in params and params.get("base_url"):
+        # the provider's key, stored for its own API, is not sent to an address the workflow chose (S-4); the SDK
+        # would otherwise read it from the server's environment
+        raise ValueError(
+            f"model '{model}' has its own base URL, so it needs its own key: set its API key to a secret "
+            f'(for example {{"$secret": "{key}"}} to send the project\'s {key} there on purpose)'
+        )
     if key and "api_key" not in params and key in secrets:
         params["api_key"] = secrets[key]
     return model, params

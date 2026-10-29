@@ -5,6 +5,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Security
+- **A builder could read the project's stored model keys by pointing a model at a server they run**: the model-list
+  probe, the connection test and runs sent the provider key (a project secret or server variable) to whatever base
+  URL was given. A stored key now goes only to its provider or the server saved with it; any other address gets a
+  key only when it is typed in or named on purpose as the model's API key (HARDENING S-4).
 - **Workspace code in the sandbox service could call the API from inside**, past nginx and its per-visitor limits:
   on the compose stacks the sandbox shared a network with the API, the API believed any `X-Forwarded-For`, and the
   sandbox's in-process network block can be side-stepped by code that imports `_socket`. The API now calls the

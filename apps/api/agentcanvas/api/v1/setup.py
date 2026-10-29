@@ -93,6 +93,21 @@ def _default_model(body: SetupIn, p: ProviderInfo, key_given: bool) -> DefaultMo
     return DefaultModel(model=body.model, base_url=base_url, api_key=api_key)
 
 
+def _same(a: str | None, b: str | None) -> bool:
+    return bool(a and b) and a.strip().rstrip("/").lower() == b.strip().rstrip("/").lower()  # type: ignore[union-attr]
+
+
+def stored_key_may_go(project_settings: dict[str, Any], p: ProviderInfo, base_url: str | None) -> bool:
+    """Whether a key stored for provider `p` (project secret or server variable) may be sent to `base_url`: its own
+    address (none given, or the provider's), or the server the project saved with it in setup. Anywhere else the key
+    must be given with the request: a builder could otherwise point a model at a server they run and read the
+    project's key from the request it receives (2026-10-29 review, S-4)."""
+    if not base_url or _same(base_url, p.base_url):
+        return True
+    saved = (project_settings or {}).get("default_model") or {}
+    return str(saved.get("model", "")).partition(":")[0] == p.id and _same(base_url, saved.get("base_url"))
+
+
 def _key_set(request: Request, project_id: str, name: str | None) -> bool:
     if name is None:
         return False
@@ -152,11 +167,13 @@ async def test_model(
     project_id: str, body: SetupIn, request: Request, session: AsyncSession = Depends(get_session)
 ) -> TestOut:
     """Send one short message to the model with these settings (nothing is saved)."""
-    await ProjectRepo(session).require(project_id)
+    project = await ProjectRepo(session).require(project_id)
     p = _provider(body.model)
     projects = request.app.state.projects
     secrets = dict(projects.secrets.get(project_id, {}))
     name = _key_secret(p)
+    if name and not stored_key_may_go(project.settings or {}, p, body.base_url):
+        secrets.pop(name, None)  # another server: only a key typed here goes there
     if body.api_key and body.api_key.strip() and name:
         secrets[name] = body.api_key.strip()
     try:
@@ -185,7 +202,7 @@ async def server_models(project_id: str, body: ServerModelsIn, request: Request,
                         session: AsyncSession = Depends(get_session)) -> ServerModelsOut:  # fmt: skip
     """The models a local server (Ollama, LM Studio, vLLM, llama.cpp) or an OpenAI-compatible API offers, read from
     its model list (`/api/tags` for Ollama, `/models` otherwise), so the model name can be picked instead of typed."""
-    await ProjectRepo(session).require(project_id)
+    project = await ProjectRepo(session).require(project_id)
     p = next((x for x in installed_providers() if x.id == body.provider), None)
     if p is None or not (p.local or p.base_url_required):
         raise InvalidInput(f"'{body.provider}' is not a local server or an OpenAI-compatible API")
@@ -193,9 +210,9 @@ async def server_models(project_id: str, body: ServerModelsIn, request: Request,
     if not base:
         return ServerModelsOut(ok=False, error=f"{p.label} needs a base URL")
     name = _key_secret(p)
-    key = (body.api_key or "").strip() or (
-        (request.app.state.projects.secrets.get(project_id, {}).get(name) or os.environ.get(name)) if name else None
-    )
+    key = (body.api_key or "").strip() or None
+    if not key and name and stored_key_may_go(project.settings or {}, p, base):  # another server gets a typed key only
+        key = request.app.state.projects.secrets.get(project_id, {}).get(name) or os.environ.get(name)
     return await list_server_models(request, p, base, key)
 
 

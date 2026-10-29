@@ -36,7 +36,11 @@ server settings (paste one of its API tokens), vLLM or llama.cpp started with `-
 secret `LMSTUDIO_API_KEY`, `VLLM_API_KEY` or `LLAMACPP_API_KEY` (or the server variable of that name), and the
 first-run screen stores it for you. Set **Base URL** only when the server is not on its default address (the vLLM default
 port 8000 is also the AgentCanvas API's in development, so run vLLM on another port and set the Base URL). Start the
-server and load or pull the model before running a workflow. Local models vary in how well they call tools and
+server and load or pull the model before running a workflow.
+
+A stored key goes only where it was stored for: a provider's key to that provider, a server's key to the address saved
+with it. A model whose **Base URL** points anywhere else gets a key only when its own **API key** setting names one
+(a secret, chosen on purpose), so a workflow cannot send the project's keys to a server of its choosing. Local models vary in how well they call tools and
 produce structured output: if an agent misbehaves, try a larger model.
 
 When AgentCanvas runs in Docker, `localhost` is the container itself: local servers are reached through

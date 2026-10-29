@@ -296,7 +296,8 @@ async def test_a_provider_outage_fails_over(app, api_client, demo_backups, frame
     """S26 exit: a provider outage fails over (on the canvas's own framework and on the SDK)."""
     res = Resources(secrets={"OPENAI_API_KEY": "k"})
     app.state.resources_factory = lambda thread_id, wf: res
-    config = {"model": "openai:gpt-5-mini", "base_url": DOWN, "timeout": 5, "fallbacks": ["anthropic:claude-haiku-4-5"]}
+    config = {"model": "openai:gpt-5-mini", "base_url": DOWN, "api_key": {"$secret": "OPENAI_API_KEY"}, "timeout": 5,
+              "fallbacks": ["anthropic:claude-haiku-4-5"]}  # fmt: skip
     wf = await _make(api_client, _llm_ir(config, framework=framework))
     evs = await _run(api_client, wf)
     fin = evs[-1]
