@@ -132,6 +132,12 @@ the agent's settings instead (see [Choosing a framework](frameworks.md#design-an
 | `tests/` | The saved test cases (with scripted model replies) and the service's own tests, all offline |
 | `workflow.ir.json` | The exported workflow; import it into AgentCanvas to see which version is deployed |
 | `src/<name>/graph.py`, `src/agentcanvas/` | The generated LangGraph code and the node library it uses |
+
+**File and image fields** travel in a LangGraph export. The service takes a file as `{"kind": "file", "name": "…",
+"media_type": "…", "data": "<base64>"}` (up to 2 MB, kept in the checkpoint) or `"url": "https://…"` (fetched when a model
+needs it), and Ask AI and AI Agent steps show it to their model as on the canvas. `pypdf` and `python-docx` are added to
+`pyproject.toml` for PDFs and Word documents; the README has an example. Exports to other frameworks cannot do this:
+their `GAPS.md` lists the file fields as carried but never shown to a model.
 | `src/flows/<id>/…`, `src/scripts/…` and other workspace folders | Your workspace code that this workflow uses (below) |
 | `tests/test_workspace_code.py` | Checks that every code path the workflow names (`flows.<id>.scripts.x:run` …) imports inside the export |
 | `contracts.json`, `parts/<agent>/` | A mixed flow's parts: each agent's framework, where it runs and its typed contract; agents whose framework clashes with LangGraph get their own folder and environment ([Mixed flows](frameworks.md#mixed-flows-parts-and-contracts)) |

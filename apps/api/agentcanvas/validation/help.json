@@ -248,6 +248,10 @@
       "what": "This model does not take a temperature (or top_p, top_k), so the setting is left out.",
       "fix": "Clear the setting. To make answers more varied or more exact, say so in the prompt."
     },
+    "P008": {
+      "what": "This workflow has file or image fields, but the framework it is set to run on does not show them to an AI model. The file is carried along as plain data and no step reads it.",
+      "fix": "Run the workflow on LangChain (Framework in the workflow settings), where Ask AI and AI Agent steps show the files to their model."
+    },
     "W025": {
       "what": "This step is shown a file or image field, but its model cannot see images. Images are left out and a PDF is read as plain text, so layout, tables and scans are lost.",
       "fix": "Pick a model that takes images, or limit the step to the fields it needs under “Files to show the AI”."

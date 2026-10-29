@@ -46,6 +46,7 @@ The Problems tab explains the rest:
 | P004 | This AI block is designed for another workflow framework than the workflow's; for now it runs on the workflow's |
 | P005 | The agent framework this AI agent is designed for cannot take something wired into it (add-ons, some tools, its answer shape) |
 | P006 | The agent framework this AI agent is designed for is not installed on this server, so runs here fail until it is (`make framework FW=<id>` fixes it) |
+| P008 | The workflow has file or image fields and its framework does not show them to a model (only LangGraph does) |
 
 ## An AI block of its own framework
 
@@ -393,6 +394,15 @@ up*. The top bar shows the workflow's own framework; **+N** opens the others.
 **Export for any framework.** In **Versions → Export**, **Framework** lists the workflow's own framework first, then
 every other installed framework that can run it (the same workflow, written for that framework, as in the Code tab),
 then the Agent Spec previews. Only a LangGraph service gets the deploy kit and **Where it will run**.
+
+### Files and images
+
+[File and image fields](canvas.md#file-and-image-fields) reach an AI model on **LangGraph** only: runs on the canvas
+and LangGraph exports show them to Ask AI and AI Agent steps. Every other framework (the OpenAI Agents SDK, CrewAI, Google
+ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex, Mastra) and the Agent Spec previews carry the
+field as plain data, a reference, and no step reads the file, so the model never sees it. A workflow set to one of them
+gets the warning **P008**, and the `GAPS.md` of its export lists the file fields. Planning Agents do not receive file
+fields on LangGraph either.
 
 ## The Echo demo engine
 

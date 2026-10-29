@@ -41,6 +41,7 @@ from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.adapters.langchain.interop import FRAMEWORKS
 from agentcanvas.designs import article
 from agentcanvas.errors import InvalidInput
+from agentcanvas.ir.files import is_file_schema
 from agentcanvas.ir.models import Workflow
 from agentcanvas.tomltext import toml_string
 from agentcanvas.validation.analysis import refuse_plain_secrets
@@ -70,6 +71,7 @@ RUNTIME_FILES = [
     "workspace/loader.py",
     "workspace/store.py",
 ]
+FILE_PACKAGES = ["pypdf", "python-docx"]  # added when the workflow has file fields (G-5)
 PINNED = ["langgraph", "langchain", "langchain-core", "deepagents", "jsonschema", "cel-python", "jinja2", "httpx"]
 SERVICE = [  # the HTTP service and where it keeps conversations (S16)
     "fastapi", "uvicorn", "langgraph-checkpoint-sqlite", "aiosqlite", "langgraph-checkpoint-postgres", "psycopg",
@@ -143,6 +145,15 @@ def _models(wf: Workflow) -> list[tuple[str, str]]:
     return out
 
 
+def file_fields_of(wf: Workflow, subflows: bool = True) -> list[str]:
+    """Names of the file and image fields (G-5) of the workflow and, unless `subflows` is off, its subflows."""
+    out = [c.name for c in wf.state.channels if is_file_schema(c.type)]
+    for n in wf.nodes if subflows else []:
+        if n.type == "core.subgraph":
+            out += file_fields_of(wf.subworkflow(n))
+    return list(dict.fromkeys(out))
+
+
 def _frameworks(wf: Workflow) -> set[str]:
     """Frameworks of the wrapped agents (`agent.framework` steps), subgraphs included."""
     out = {str(n.config.get("framework")) for n in wf.nodes if n.type == "agent.framework"}
@@ -184,6 +195,10 @@ def dependencies(wf: Workflow) -> list[str]:
         for pkg in designs.AGENT_FRAMEWORKS[str(node.engine)].packages:
             if pkg not in deps:
                 deps.append(pkg)
+    if file_fields_of(wf):  # filecontent.py reads PDFs and Word documents for models that cannot see them
+        for dist in FILE_PACKAGES:
+            v = _version(dist)
+            deps.append(f"{dist}=={v}" if v else dist)
     for _, model in _models(wf):
         pkg = PROVIDERS.get(model.partition(":")[0], (None, None))[0]
         if pkg and not any(d.startswith(pkg) for d in deps):
@@ -297,7 +312,31 @@ The service (`src/{pkg}/app.py`) answers the same API as an AgentCanvas deployme
 `src/scripts|tools|nodes/` is the project's workspace code. In your own code: `from {pkg}.graph import build_graph`
 and pass your checkpointer and store. `python -m {pkg} '{{"input": {{}}}}'` runs one turn from the command line, and
 `langgraph dev` serves it with LangGraph Studio (`pip install "langgraph-cli[inmem]"`).
-{_mixed(wf)}"""
+{_files(wf)}{_mixed(wf)}"""
+
+
+def _files(wf: Workflow) -> str:
+    """The README's section on file and image fields (G-5), or nothing."""
+    names = file_fields_of(wf)
+    if not names:
+        return ""
+    return f"""
+## Files and images
+
+The file fields ({", ".join(f"`{n}`" for n in names)}) hold a reference to a file. Without an AgentCanvas server the
+reference carries the file itself or its address, in the run's input:
+
+```json
+{{"{names[0]}": {{"kind": "file", "name": "invoice.pdf", "media_type": "application/pdf", "data": "<base64>"}}}}
+{{"{names[0]}": {{"kind": "file", "name": "photo.png", "media_type": "image/png", "url": "https://example.com/photo.png"}}}}
+```
+
+`data` is read up to 2 MB and, being part of the input, is saved in the checkpoint: use `url` for anything larger
+(it is fetched when a model needs it, not saved). Ask AI and AI Agent steps show these files to their model as
+LangChain content blocks: images and PDFs to a model that can see them, a PDF's text to one that cannot, Word
+documents and text files as text. To read files from your own storage instead, set `resources.files` to an async
+function that takes the reference and returns `(bytes, media_type, name)`.
+"""
 
 
 def _mixed(wf: Workflow) -> str:
@@ -532,6 +571,12 @@ def canvas_only(wf: Workflow, label: str) -> list[str]:
             out.append(f"Model block '{r.name}': its answer cache ({r.config['cache_ttl']} s) is not exported; every "
                        "request reaches the model.")  # fmt: skip
     names = [("retry", "retry"), ("timeout", "time limit"), ("cache", "cache"), ("error_route", "error path")]
+    if files := file_fields_of(
+        wf, subflows=False
+    ):  # G-5: only the LangChain / LangGraph runtime shows files to a model
+        out.append(f"File and image fields ({', '.join(files)}): only a LangGraph export shows them to a model. In "
+                   f"{label} they are carried as plain data (the reference), and no step reads the file; the model "
+                   "never sees it.")  # fmt: skip
 
     def unused(found: list[str]) -> str:
         return " and ".join(found) + (" do" if len(found) > 1 else " does") + f" not apply in {label}"
