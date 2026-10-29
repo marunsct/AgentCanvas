@@ -314,6 +314,24 @@ class Run(Base):
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
+class RunSearch(Base):
+    """G-10: a finished run's input and answer, embedded for "find conversations where …". One row per run; it goes
+    with its run (retention, deleting the conversation or the workflow). `model` is the embedding model that made
+    the vector: a search ranks only the rows of the project's current model, `reindex` redoes the others."""
+
+    __tablename__ = "run_search"
+    __table_args__ = (Index("run_search_project_idx", "project_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), unique=True)
+    thread_id: Mapped[str] = mapped_column(Text, index=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    text: Mapped[str] = mapped_column(Text)
+    vector: Mapped[bytes | None] = mapped_column(LargeBinary)  # float32, little-endian
+    model: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
 class InterruptTask(Base):
     __tablename__ = "interrupt_task"
     __table_args__ = (

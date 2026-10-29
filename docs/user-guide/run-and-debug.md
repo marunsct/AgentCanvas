@@ -59,6 +59,21 @@ around steps. Each row shows its time, tokens and a bar placed on the run's time
 that step on the canvas, and the arrow to open arguments, replies and results. Runs are kept with their events,
 so the tree works for past runs too; runs from before this version show a note instead.
 
+## Find conversations by meaning
+
+The search box at the top of the **Runs** page finds conversations by what was asked and answered, not by exact
+words: *customers asking for a refund* finds a chat that says "I want my money back" when the project's embedding
+model understands that. Results are the best run of each conversation, with a snippet; click one to open it in the
+Timeline. Narrow it with the workflow filter below.
+
+- Each run is indexed in the background when it finishes, with the project's **embedding** model (Settings >
+  Models; the built-in offline embedding when none is chosen, which matches word forms, not synonyms).
+- Runs from before this version, and runs indexed with a model you have since replaced, are listed as *not
+  searchable yet*; **Index them** (builders) adds them, newest first.
+- The index follows your data: deleting a conversation, or the organisation's retention period, removes its search
+  entry, and nobody sees another organisation's runs. Secret values are masked before anything is embedded, but with
+  a hosted embedding model the masked text of inputs and answers is sent to that provider, as with a knowledge base.
+
 ## Explain
 
 The **Explain** tab narrates the run in plain language: which step ran, what each router chose and why

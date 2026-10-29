@@ -61,6 +61,7 @@ from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.run_gate import RunGate
+from agentcanvas.services.run_search import RunSearchService
 from agentcanvas.services.secrets import SecretCache, encoded_forms
 from agentcanvas.services.trace_export import TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
@@ -230,6 +231,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # tests check drift after every score; servers at most every few seconds per evaluator
             app.state.online = OnlineScorer(db, runner, drift_every_s=0 if settings.env == "test" else 10.0)
             runner.finish_hooks.append(app.state.online.on_run_finished)
+            # G-10: finished runs are embedded for "find conversations where …" (the project's embedding model)
+            app.state.run_search = RunSearchService(
+                db, knowledge_embedder(adapter), lambda project_id: app.state.projects.secrets.get(project_id, {})
+            )
+            runner.finish_hooks.append(app.state.run_search.on_run_finished)
             app.state.trace_export = TraceExportHook(db, app.state.projects)
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
@@ -280,6 +286,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 await app.state.online.stop()  # after the drain: runs finishing in it are scored too
+                await app.state.run_search.drain()
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()

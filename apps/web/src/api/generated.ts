@@ -2270,15 +2270,25 @@ export type Pins1 = {
   };
 } | null;
 export type Stream1 = boolean;
+export type RunId8 = string;
+/**
+ * 0-1, best first
+ */
+export type Score3 = number;
+export type Snippet = string;
+export type StartedAt = string | null;
+export type ThreadId8 = string;
+export type WorkflowId8 = string;
+export type WorkflowName1 = string | null;
 export type CostUsd3 = number;
 export type EndedAt1 = string | null;
 export type Error7 = string | null;
 export type Id50 = string;
 export type IrHash3 = string;
 export type Mode3 = string;
-export type StartedAt = string;
+export type StartedAt1 = string;
 export type Status13 = string;
-export type ThreadId8 = string;
+export type ThreadId9 = string;
 export type TokensIn1 = number;
 export type TokensOut1 = number;
 export type Traced = boolean;
@@ -2294,7 +2304,20 @@ export type Pins2 = {
   };
 } | null;
 export type Stream2 = boolean;
-export type ThreadId9 = string | null;
+export type ThreadId10 = string | null;
+export type Hits = RunHit[];
+/**
+ * runs of the project this search could rank
+ */
+export type Indexed = number;
+/**
+ * the embedding model that ranked them
+ */
+export type Model10 = string;
+/**
+ * runs indexed with another model or not yet: reindex to include them
+ */
+export type Stale1 = number;
 /**
  * inject rules add their headers (LangSmith only)
  */
@@ -2332,10 +2355,10 @@ export type Question = {
   [k: string]: unknown;
 } | null;
 export type Role5 = string;
-export type RunId8 = string | null;
+export type RunId9 = string | null;
 export type Text5 = string;
 export type Messages3 = SavedMessage[];
-export type ThreadId10 = string | null;
+export type ThreadId11 = string | null;
 export type Diagnostics4 = LintItem[];
 export type Modified1 = number;
 export type Path6 = string;
@@ -2372,11 +2395,11 @@ export type Enabled6 = boolean;
  * the token's first characters, to tell it from another
  */
 export type Prefix1 = string | null;
-export type RunId9 = string;
+export type RunId10 = string;
 export type Scores4 = ScoreOut[];
-export type StartedAt1 = string;
+export type StartedAt2 = string;
 export type Status14 = string;
-export type ThreadId11 = string;
+export type ThreadId12 = string;
 /**
  * 0-1 in every mode (see the guide)
  */
@@ -2389,7 +2412,7 @@ export type Cite = number;
 export type DocId = string | null;
 export type Heading1 = string | null;
 export type Page3 = number | null;
-export type Score3 = number;
+export type Score4 = number;
 export type Source8 = string | null;
 export type Text6 = string;
 export type Title4 = string | null;
@@ -2431,7 +2454,7 @@ export type Enabled7 = boolean;
 /**
  * provider:model when separate
  */
-export type Model10 = string | null;
+export type Model11 = string | null;
 /**
  * project conventions the Copilot always reads
  */
@@ -2453,7 +2476,7 @@ export type BaseUrl6 = string | null;
 /**
  * provider:model, e.g. ollama:llama3.3
  */
-export type Model11 = string;
+export type Model12 = string;
 export type Done1 = boolean;
 /**
  * the project secret the default model's key is read from
@@ -2536,7 +2559,7 @@ export type Message11 = string;
 /**
  * continue one of this visitor's conversations
  */
-export type ThreadId12 = string | null;
+export type ThreadId13 = string | null;
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
@@ -2709,8 +2732,8 @@ export type Status15 = string;
 export type Title9 = string | null;
 export type Tokens2 = number;
 export type UpdatedAt11 = string;
-export type WorkflowId8 = string;
-export type WorkflowName1 = string | null;
+export type WorkflowId9 = string;
+export type WorkflowName2 = string | null;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
 export type CanvasNodeId1 = string | null;
@@ -2733,7 +2756,7 @@ export type StartMs = number | null;
 /**
  * runs: when it began
  */
-export type StartedAt2 = string | null;
+export type StartedAt3 = string | null;
 /**
  * steps and runs: running, ok, error, interrupted, success, …
  */
@@ -2743,8 +2766,8 @@ export type Tokens3 = number;
  * one per run of the conversation, oldest first
  */
 export type Runs8 = TrajectoryNode[];
-export type ThreadId13 = string;
-export type WorkflowId9 = string;
+export type ThreadId14 = string;
+export type WorkflowId10 = string;
 export type CreatedAt32 = string;
 export type Email4 = string;
 export type ExpiresAt1 = string | null;
@@ -2856,7 +2879,7 @@ export type IrHash5 = string;
 export type Message14 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
-export type Model12 = string | null;
+export type Model13 = string | null;
 export type Name62 = string;
 export type SystemPrompt1 = string;
 export type Temperature1 = number | null;
@@ -3254,8 +3277,10 @@ export interface ApiSchemas {
   ResumeRequest?: ResumeRequest;
   RetryPolicySpec?: RetryPolicySpec;
   Rules?: Rules;
+  RunHit?: RunHit;
   RunOut?: RunOut;
   RunRequest?: RunRequest;
+  RunSearchResult?: RunSearchResult;
   SandboxOut?: SandboxOut;
   SandboxPolicy?: SandboxPolicy;
   SavedConversation?: SavedConversation;
@@ -6198,6 +6223,19 @@ export interface Value4 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "RunHit".
+ */
+export interface RunHit {
+  run_id: RunId8;
+  score: Score3;
+  snippet: Snippet;
+  started_at?: StartedAt;
+  thread_id: ThreadId8;
+  workflow_id: WorkflowId8;
+  workflow_name?: WorkflowName1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "RunOut".
  */
 export interface RunOut {
@@ -6207,9 +6245,9 @@ export interface RunOut {
   id: Id50;
   ir_hash: IrHash3;
   mode: Mode3;
-  started_at: StartedAt;
+  started_at: StartedAt1;
   status: Status13;
-  thread_id: ThreadId8;
+  thread_id: ThreadId9;
   tokens_in?: TokensIn1;
   tokens_out?: TokensOut1;
   traced?: Traced;
@@ -6228,13 +6266,23 @@ export interface RunRequest {
   mode?: Mode4;
   pins?: Pins2;
   stream?: Stream2;
-  thread_id?: ThreadId9;
+  thread_id?: ThreadId10;
 }
 export interface Context5 {
   [k: string]: unknown;
 }
 export interface Input8 {
   [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "RunSearchResult".
+ */
+export interface RunSearchResult {
+  hits: Hits;
+  indexed: Indexed;
+  model: Model10;
+  stale: Stale1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6269,7 +6317,7 @@ export interface SandboxPolicy {
 export interface SavedConversation {
   busy?: Busy;
   messages?: Messages3;
-  thread_id?: ThreadId10;
+  thread_id?: ThreadId11;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6280,7 +6328,7 @@ export interface SavedMessage {
   error?: Error9;
   question?: Question;
   role: Role5;
-  run_id?: RunId8;
+  run_id?: RunId9;
   text: Text5;
 }
 /**
@@ -6321,11 +6369,11 @@ export interface ScimStatus {
  * via the `definition` "ScoredRunOut".
  */
 export interface ScoredRunOut {
-  run_id: RunId9;
+  run_id: RunId10;
   scores: Scores4;
-  started_at: StartedAt1;
+  started_at: StartedAt2;
   status: Status14;
-  thread_id: ThreadId11;
+  thread_id: ThreadId12;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6354,7 +6402,7 @@ export interface SearchResult {
   doc_id: DocId;
   heading: Heading1;
   page: Page3;
-  score: Score3;
+  score: Score4;
   source: Source8;
   text: Text6;
   title: Title4;
@@ -6411,7 +6459,7 @@ export interface SettingsOut {
   ask_model?: AskModel1;
   base_url?: BaseUrl5;
   enabled?: Enabled7;
-  model?: Model10;
+  model?: Model11;
   notes?: Notes4;
   privacy?: Privacy1;
   resolved?: ModelInfoOut | null;
@@ -6425,7 +6473,7 @@ export interface SettingsOut {
 export interface SetupIn {
   api_key?: ApiKey7;
   base_url?: BaseUrl6;
-  model: Model11;
+  model: Model12;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6496,7 +6544,7 @@ export interface ShareResumeIn {
 export interface ShareRunIn {
   files?: Files4;
   message: Message11;
-  thread_id?: ThreadId12;
+  thread_id?: ThreadId13;
   visitor: Visitor3;
 }
 /**
@@ -6756,8 +6804,8 @@ export interface ThreadOut {
   title: Title9;
   tokens?: Tokens2;
   updated_at: UpdatedAt11;
-  workflow_id: WorkflowId8;
-  workflow_name?: WorkflowName1;
+  workflow_id: WorkflowId9;
+  workflow_name?: WorkflowName2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6773,8 +6821,8 @@ export interface ThreadPage {
  */
 export interface ThreadTrajectory {
   runs: Runs8;
-  thread_id: ThreadId13;
-  workflow_id: WorkflowId9;
+  thread_id: ThreadId14;
+  workflow_id: WorkflowId10;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6789,7 +6837,7 @@ export interface TrajectoryNode {
   kind: Kind9;
   label: Label20;
   start_ms?: StartMs;
-  started_at?: StartedAt2;
+  started_at?: StartedAt3;
   status?: Status16;
   tokens?: Tokens3;
 }
@@ -6978,7 +7026,7 @@ export interface VersionOut {
  * via the `definition` "WorkflowIn".
  */
 export interface WorkflowIn {
-  model?: Model12;
+  model?: Model13;
   name?: Name62;
   system_prompt?: SystemPrompt1;
   temperature?: Temperature1;

@@ -9428,6 +9428,63 @@
         "title": "Rules",
         "type": "object"
       },
+      "RunHit": {
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "score": {
+            "description": "0-1, best first",
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          },
+          "workflow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Name"
+          }
+        },
+        "required": [
+          "thread_id",
+          "run_id",
+          "workflow_id",
+          "score",
+          "snippet"
+        ],
+        "title": "RunHit",
+        "type": "object"
+      },
       "RunOut": {
         "properties": {
           "cost_usd": {
@@ -9612,6 +9669,40 @@
           }
         },
         "title": "RunRequest",
+        "type": "object"
+      },
+      "RunSearchResult": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/RunHit"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "indexed": {
+            "description": "runs of the project this search could rank",
+            "title": "Indexed",
+            "type": "integer"
+          },
+          "model": {
+            "description": "the embedding model that ranked them",
+            "title": "Model",
+            "type": "string"
+          },
+          "stale": {
+            "description": "runs indexed with another model or not yet: reindex to include them",
+            "title": "Stale",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hits",
+          "model",
+          "indexed",
+          "stale"
+        ],
+        "title": "RunSearchResult",
         "type": "object"
       },
       "SandboxOut": {
@@ -23694,6 +23785,198 @@
         "summary": "Make Workflow",
         "tags": [
           "playground"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/runs/search": {
+      "get": {
+        "description": "Find conversations by meaning (G-10): the project's runs ranked against `q` with its embedding model, the\nbest run of each conversation first. `stale` counts runs not in the index yet (`POST \u2026/runs/search/index`).",
+        "operationId": "search_runs_v1_projects__project_id__runs_search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "what to find: \"customers asking for a refund\"",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "what to find: \"customers asking for a refund\"",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "hybrid",
+              "enum": [
+                "hybrid",
+                "semantic",
+                "keyword"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSearchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search Runs",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/runs/search/index": {
+      "post": {
+        "description": "Index the project's runs that are not in the search index (from before it, or made with another embedding\nmodel), newest first, at most 2000 a call.",
+        "operationId": "index_runs_v1_projects__project_id__runs_search_index_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Index Runs V1 Projects  Project Id  Runs Search Index Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Index Runs",
+        "tags": [
+          "runs"
         ]
       }
     },

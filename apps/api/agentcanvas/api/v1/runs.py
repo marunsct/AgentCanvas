@@ -34,6 +34,7 @@ from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
+from agentcanvas.services.run_search import RunSearchResult, RunSearchService
 from agentcanvas.services.secrets import hide_secrets
 from agentcanvas.services.trajectory import ThreadTrajectory, build_run
 from agentcanvas.services.workflows import WorkflowService
@@ -359,6 +360,37 @@ async def run_events(run_id: str, after: int = Query(0, ge=0), r: Runner = Depen
 @router.post("/runs/{run_id}/cancel", status_code=202)
 async def cancel_run(run_id: str, r: Runner = Depends(runner)) -> dict[str, Any]:
     return {"cancelled": await r.cancel(run_id)}
+
+
+# ------------------------------------------------------------------ search ----
+def run_search(request: Request) -> RunSearchService:
+    return request.app.state.run_search
+
+
+@router.get("/projects/{project_id}/runs/search", response_model=RunSearchResult)
+async def search_runs(
+    project_id: str,
+    q: str = Query(..., min_length=1, max_length=500, description='what to find: "customers asking for a refund"'),
+    workflow_id: str | None = None,
+    mode: Literal["hybrid", "semantic", "keyword"] = "hybrid",
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    svc: RunSearchService = Depends(run_search),
+) -> RunSearchResult:
+    """Find conversations by meaning (G-10): the project's runs ranked against `q` with its embedding model, the
+    best run of each conversation first. `stale` counts runs not in the index yet (`POST …/runs/search/index`)."""
+    if workflow_id:
+        row = await session.get(WorkflowRow, workflow_id)
+        if row is None or row.project_id != project_id:
+            raise NotFound(f"workflow '{workflow_id}' not found")
+    return await svc.search(project_id, q, workflow_id=workflow_id, limit=limit, mode=mode)
+
+
+@router.post("/projects/{project_id}/runs/search/index")
+async def index_runs(project_id: str, svc: RunSearchService = Depends(run_search)) -> dict[str, int]:
+    """Index the project's runs that are not in the search index (from before it, or made with another embedding
+    model), newest first, at most 2000 a call."""
+    return await svc.reindex(project_id)
 
 
 # ----------------------------------------------------------------- threads ----
