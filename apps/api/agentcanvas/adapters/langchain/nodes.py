@@ -1064,6 +1064,17 @@ def keyword_rank(items: list[Any], query: str, limit: int) -> list[Any]:
     return [i for score, _, i in sorted(scored, key=lambda t: (-t[0], t[1])) if score > 0][:limit]
 
 
+async def recall(store: Any, namespace: tuple[str, ...], query: str, limit: int) -> list[Any]:
+    """The `limit` memories of a namespace that best match `query`: by meaning with `top_k` when the store has a
+    semantic index (F-7), else the namespace's first 1000 ranked by shared words. An empty query returns the most
+    recent ones."""
+    q = query.strip()
+    if getattr(store, "index_config", None) is not None:
+        return list(await store.asearch(namespace, query=q or None, limit=limit))
+    items = await store.asearch(namespace, limit=1000 if q else limit)
+    return keyword_rank(items, q, limit) if q else items
+
+
 def memory_node(
     *,
     op: str,
@@ -1088,10 +1099,7 @@ def memory_node(
         ns = namespace(runtime)
         if op == "recall":
             q = render_template(query, state).strip() if query else ""
-            indexed = getattr(store, "index_config", None) is not None
-            items = await store.asearch(ns, query=q or None, limit=top_k if indexed or not q else 1000)
-            if q and not indexed:
-                items = keyword_rank(items, q, top_k)
+            items = await recall(store, ns, q, top_k)
             return {output: [{"key": i.key, **i.value} for i in items]} if output else {}
         k = render_template(key or "", state).strip()
         if not k:
@@ -1120,7 +1128,7 @@ def memory_tools(*, space: str, scope: str, workflow_id: str, user_key: str | No
 
     async def search_memory(query: str) -> str:
         store, ns = _ctx()
-        items = keyword_rank(await store.asearch(ns, limit=1000), query, 5)
+        items = await recall(store, ns, query, 5)
         return json.dumps([{"key": i.key, **i.value} for i in items], default=str) if items else "nothing found"
 
     async def save_memory(key: str, text: str) -> str:

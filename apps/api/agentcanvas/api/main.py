@@ -23,6 +23,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from agentcanvas import observability
 from agentcanvas.adapters import get_adapter, installed_adapters, model_service
+from agentcanvas.adapters.langchain.persistence import MemoryEmbedding
 from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
@@ -142,6 +143,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         adapter = get_adapter("langchain")  # the host framework: long-term memory, MCP browsing, model resolution
         others = {i: a for i, a in installed_adapters().items() if i != adapter.id}  # S20: other frameworks
         async with contextlib.AsyncExitStack() as stack:
+            # the host framework's long-term memory gets a semantic index when the server names a model (F-7);
+            # the adapter outlives this app, so a server without one clears the previous app's
+            cast(Any, adapter).memory_embedding = (
+                MemoryEmbedding(
+                    settings.memory_embedding,
+                    settings.memory_embedding_dims,
+                    settings.memory_embedding_base_url or None,
+                )
+                if settings.memory_embedding
+                else None
+            )
             await stack.enter_async_context(adapter.persistence(settings.persistence_url or settings.database_url))
             for other in others.values():
                 await stack.enter_async_context(other.persistence(settings.persistence_url or settings.database_url))

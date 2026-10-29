@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     retention_days: int = 90
     audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever (S12)
     memory_retention_days: int = 0  # long-term memories not updated for this long are deleted; 0 (default): kept
+    # long-term memory's semantic index (F-7): "builtin" or "<provider>:<model>"; empty (default): by words.
+    # One size of vector per server (the pgvector column), so one model for every project; a model other than the
+    # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)
+    memory_embedding: str = ""
+    memory_embedding_dims: int = 0
+    memory_embedding_base_url: str = ""  # a local server's address (LM Studio, Ollama) for `memory_embedding`
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20

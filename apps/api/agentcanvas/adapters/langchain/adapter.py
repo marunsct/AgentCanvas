@@ -22,7 +22,7 @@ from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.codegen import generate
 from agentcanvas.adapters.langchain.events import UsageTracker, jsonable, nested_index, node_index, translate
 from agentcanvas.adapters.langchain.interpreter import build_from_plan, prepare
-from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread, open_persistence
+from agentcanvas.adapters.langchain.persistence import MemoryEmbedding, Persistence, copy_thread, open_persistence
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
@@ -49,6 +49,9 @@ class LangChainAdapter:
 
     def __init__(self, graph_cache_size: int = 128):
         self._p: Persistence | None = None
+        self.memory_embedding: MemoryEmbedding | None = (
+            None  # set before `persistence`: long-term memory's semantic index
+        )
         self._graphs: OrderedDict[tuple[str, int, str], tuple[Any, Any]] = OrderedDict()
         self._cache_size = graph_cache_size
         self._shared = self.new_resources()
@@ -72,7 +75,7 @@ class LangChainAdapter:
 
     @asynccontextmanager
     async def persistence(self, database_url: str | None) -> AsyncIterator[None]:
-        async with open_persistence(database_url) as p:
+        async with open_persistence(database_url, self.memory_embedding) as p:
             self._p = p
             try:
                 yield
@@ -172,9 +175,7 @@ class LangChainAdapter:
         return list(await self.store.alist_namespaces(prefix=prefix or None, limit=limit))
 
     async def memory_items(self, namespace: tuple[str, ...], query: str | None, limit: int) -> list[dict[str, Any]]:
-        items = await self.store.asearch(namespace, limit=1000 if query else limit)
-        if query:
-            items = ac.keyword_rank(items, query, limit)
+        items = await ac.recall(self.store, namespace, query or "", limit)
         return [
             {
                 "namespace": list(i.namespace),
@@ -235,7 +236,7 @@ class LangChainAdapter:
                 await self.store.aput((*root, *i.namespace), i.key, i.value)
                 await self.store.adelete(i.namespace, i.key)
             moved += len(items)
-        await self.store.aput(*self.ADOPTED, {"org_id": org_id, "items": moved})
+        await self.store.aput(*self.ADOPTED, {"org_id": org_id, "items": moved}, index=False)
         return moved
 
     def generate(self, wf: Workflow, registry: Any = None) -> str:
