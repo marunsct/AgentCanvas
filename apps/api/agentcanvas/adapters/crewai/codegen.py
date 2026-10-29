@@ -18,7 +18,7 @@ from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.models import Node, Workflow
 
-CREWAI_VERSION = "1.15.25"
+CREWAI_VERSION = "1.15.33"
 RUNTIME_IMPORT = "from agentcanvas.adapters.crewai import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",

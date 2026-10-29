@@ -19,8 +19,8 @@ from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.models import Node, Workflow
 
-ADK_VERSION = "2.11.0"
-LITELLM_VERSION = "1.104.2"
+ADK_VERSION = "2.13.0"
+LITELLM_VERSION = "1.105.7"
 RUNTIME_IMPORT = "from agentcanvas.adapters.google_adk import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",

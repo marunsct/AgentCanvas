@@ -358,7 +358,7 @@ async def test_the_api_lists_frameworks_and_shows_an_agents_code(api_client, app
     r = await api_client.get(f"/v1/workflows/{wf['id']}/export.zip")
     z = zipfile.ZipFile(io.BytesIO(r.content))
     assert "orders/src/orders/agents/helper.py" in z.namelist()
-    assert "openai-agents==0.23.1" in z.read("orders/pyproject.toml").decode()
+    assert "openai-agents==0.24.0" in z.read("orders/pyproject.toml").decode()
     assert "orders/src/agentcanvas/adapters/langchain/bridge.py" in z.namelist()
 
 
@@ -373,5 +373,5 @@ def test_an_export_lists_its_tools_and_settings(tmp_path):
     assert "'allow_private_network': False" in tools  # Python literals, not JSON
     assert 'APPROVE = ["lookup_order"]' in tools
     assert "OPENAI_API_KEY=" in str(files["helper-agno/.env.example"])
-    assert '"agno==3.1.1"' in str(files["helper-agno/pyproject.toml"])
+    assert '"agno==3.1.11"' in str(files["helper-agno/pyproject.toml"])
     compile(str(files["helper-agno/tests/test_agent.py"]), "test_agent.py", "exec")

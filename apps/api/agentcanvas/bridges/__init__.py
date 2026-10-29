@@ -51,7 +51,7 @@ TARGETS: dict[str, Target] = {
                _ALL_NODES, "pyagentspec builds a LangGraph graph from the flow when it starts."),
         Target("wayflow", "WayFlow", ("wayflowcore==26.3.1", "jinja2>=3.1"), _ALL_NODES,
                "WayFlow, Oracle's Agent Spec runtime, runs the flow as a WayFlow Flow."),
-        Target("openai_agents", "OpenAI Agents SDK", ("pyagentspec==26.3.1", "openai-agents==0.23.1"),
+        Target("openai_agents", "OpenAI Agents SDK", ("pyagentspec==26.3.1", "openai-agents==0.24.0"),
                frozenset({"StartNode", "EndNode", "LlmNode", "AgentNode", "BranchingNode"}),
                "pyagentspec writes the flow as OpenAI Agents SDK code when it starts; it takes AI steps, agents and "
                "simple paths only."),

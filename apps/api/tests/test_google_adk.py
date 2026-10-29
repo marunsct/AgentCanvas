@@ -417,7 +417,7 @@ def test_export_is_an_adk_project(tmp_path):
             "src/agentcanvas/adapters/google_adk/runtime.py", "tests/test_workflow.py"} <= names  # fmt: skip
     assert not any("langchain" in n for n in names)
     pyproject = (project / "pyproject.toml").read_text()
-    assert "google-adk==2.11.0" in pyproject and "litellm==1.104.2" in pyproject
+    assert "google-adk==2.13.0" in pyproject and "litellm==1.105.7" in pyproject
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     for py in project.rglob("*.py"):
         compile(py.read_text(), str(py), "exec")

@@ -47,13 +47,13 @@ class AgentFramework:
 AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
     f.id: f
     for f in [
-        AgentFramework("openai_agents", "OpenAI Agents SDK", ("openai-agents==0.23.1",), "agents", "openai"),
-        AgentFramework("crewai", "CrewAI", ("crewai==1.15.25",), "crewai", "openai", own_env=True),
-        AgentFramework("google_adk", "Google ADK", ("google-adk==2.11.0", "litellm==1.104.2"), "google.adk", "openai",
+        AgentFramework("openai_agents", "OpenAI Agents SDK", ("openai-agents==0.24.0",), "agents", "openai"),
+        AgentFramework("crewai", "CrewAI", ("crewai==1.15.33",), "crewai", "openai", own_env=True),
+        AgentFramework("google_adk", "Google ADK", ("google-adk==2.13.0", "litellm==1.105.7"), "google.adk", "openai",
                        own_env=True),
-        AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.54.0",), "pydantic_ai", "openai"),
-        AgentFramework("agno", "Agno", ("agno==3.1.1", "openai==2.54.0"), "agno", "openai", own_env=True),
-        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.58.1",), "strands", "openai",
+        AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.63.0",), "pydantic_ai", "openai"),
+        AgentFramework("agno", "Agno", ("agno==3.1.11", "openai==2.54.0"), "agno", "openai", own_env=True),
+        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.62.0",), "strands", "openai",
                        own_env=True),
         AgentFramework(
             "llamaindex", "LlamaIndex",
@@ -62,9 +62,9 @@ AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
         ),
         AgentFramework(
             "microsoft_agent_framework", "Microsoft Agent Framework",
-            ("agent-framework-core==1.20.0", "agent-framework-openai==1.16.0"), "agent_framework", "openai",
+            ("agent-framework-core==1.23.0", "agent-framework-openai==1.17.0"), "agent_framework", "openai",
         ),
-        AgentFramework("claude_agent_sdk", "Claude Agent SDK", ("claude-agent-sdk==0.2.164",), "claude_agent_sdk",
+        AgentFramework("claude_agent_sdk", "Claude Agent SDK", ("claude-agent-sdk==0.2.174",), "claude_agent_sdk",
                        "anthropic"),
     ]
 }  # fmt: skip

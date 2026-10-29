@@ -86,20 +86,20 @@ jobs:
       fail-fast: false
       matrix:
         include:  # versions match interop.FRAMEWORKS and designs.AGENT_FRAMEWORKS (what exports install)
-          - { check: openai_agents, with: "openai-agents==0.23.1" }
-          - { check: crewai, with: "crewai==1.15.25" }
-          - { check: google_adk, with: "google-adk==2.11.0 litellm==1.104.2" }
-          - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.54.0" }
-          - { check: agno, with: "agno==3.1.1 openai==2.54.0" }
-          - { check: strands, with: "strands-agents[openai]==1.58.1" }
+          - { check: openai_agents, with: "openai-agents==0.24.0" }
+          - { check: crewai, with: "crewai==1.15.33" }
+          - { check: google_adk, with: "google-adk==2.13.0 litellm==1.105.7" }
+          - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.63.0" }
+          - { check: agno, with: "agno==3.1.11 openai==2.54.0" }
+          - { check: strands, with: "strands-agents[openai]==1.62.0" }
           - { check: llamaindex, with: "llama-index-workflows==2.25.0 llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1" }
-          - { check: microsoft_agent_framework, with: "agent-framework-core==1.20.0 agent-framework-openai==1.16.0" }
-          - { check: claude_agent_sdk, with: "claude-agent-sdk==0.2.164" }
+          - { check: microsoft_agent_framework, with: "agent-framework-core==1.23.0 agent-framework-openai==1.17.0" }
+          - { check: claude_agent_sdk, with: "claude-agent-sdk==0.2.174" }
           - { check: agentspec, with: "pyagentspec==26.3.1" }
           # S22: whole workflows through Agent Spec (preview); versions match bridges.TARGETS
           - { check: bridge_langgraph, with: "pyagentspec[langgraph]==26.3.1 jinja2" }
           - { check: bridge_wayflow, with: "wayflowcore==26.3.1 jinja2" }
-          - { check: bridge_openai_agents, with: "pyagentspec==26.3.1 openai-agents==0.23.1" }
+          - { check: bridge_openai_agents, with: "pyagentspec==26.3.1 openai-agents==0.24.0" }
     defaults: { run: { working-directory: apps/api } }
     steps:
       - uses: actions/checkout@v7

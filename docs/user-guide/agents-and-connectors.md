@@ -31,15 +31,15 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 
 | Framework | Package (exports install this version) | Point the block at |
 |---|---|---|
-| OpenAI Agents SDK | `openai-agents==0.23.1` | an `Agent` |
-| CrewAI | `crewai==1.15.25` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
-| Google ADK | `google-adk==2.11.0` | an agent (`LlmAgent`, …) |
-| Pydantic AI | `pydantic-ai-slim==2.54.0` | an `Agent` |
-| Agno | `agno==3.1.1` | an `Agent` or `Team` |
-| Strands Agents | `strands-agents==1.58.1` | an `Agent` |
+| OpenAI Agents SDK | `openai-agents==0.24.0` | an `Agent` |
+| CrewAI | `crewai==1.15.33` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
+| Google ADK | `google-adk==2.13.0` | an agent (`LlmAgent`, …) |
+| Pydantic AI | `pydantic-ai-slim==2.63.0` | an `Agent` |
+| Agno | `agno==3.1.11` | an `Agent` or `Team` |
+| Strands Agents | `strands-agents==1.62.0` | an `Agent` |
 | LlamaIndex Workflows | `llama-index-workflows==2.25.0` | a `Workflow` (it gets `input=` and the other fields) |
-| Microsoft Agent Framework | `agent-framework-core==1.20.0` | an agent (`client.as_agent(...)`) |
-| Claude Agent SDK | `claude-agent-sdk==0.2.164` | a `ClaudeAgentOptions` |
+| Microsoft Agent Framework | `agent-framework-core==1.23.0` | an agent (`client.as_agent(...)`) |
+| Claude Agent SDK | `claude-agent-sdk==0.2.174` | a `ClaudeAgentOptions` |
 | Python function | none | `async def run(input, ctx)`: return text, or a dict to set several fields |
 
 - The agent's own package (and its model provider's, such as `openai`) must be installed on the server, and an

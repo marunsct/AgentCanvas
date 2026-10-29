@@ -283,7 +283,7 @@ def test_export_is_a_project_that_runs_its_saved_cases(tmp_path):
     assert {"src/support/flow.py", "src/support/host.py", "src/tools/orders.py", "README.md", ".env.example",
             "src/agentcanvas/adapters/openai_agents/runtime.py", "tests/test_flow.py"} <= names  # fmt: skip
     assert not any("langchain" in n for n in names)
-    assert "openai-agents==0.23.1" in (project / "pyproject.toml").read_text()
+    assert "openai-agents==0.24.0" in (project / "pyproject.toml").read_text()
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
     out = subprocess.run(

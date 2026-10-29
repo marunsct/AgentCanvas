@@ -35,10 +35,10 @@ FRAMEWORKS = ["pydantic_ai", "agno", "microsoft_agent_framework", "strands", "ll
 CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen, "microsoft_agent_framework": maf_codegen,
            "strands": strands_codegen, "llamaindex": llama_codegen}  # fmt: skip
 PINS = {
-    "pydantic_ai": "pydantic-ai-slim[openai]==2.54.0",
-    "agno": "agno==3.1.1",
-    "microsoft_agent_framework": "agent-framework-core==1.20.0",
-    "strands": "strands-agents[openai]==1.58.1",
+    "pydantic_ai": "pydantic-ai-slim[openai]==2.63.0",
+    "agno": "agno==3.1.11",
+    "microsoft_agent_framework": "agent-framework-core==1.23.0",
+    "strands": "strands-agents[openai]==1.62.0",
     "llamaindex": "llama-index-core==0.14.25",
 }
 MODEL = {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}}

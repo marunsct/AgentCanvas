@@ -18,7 +18,7 @@ from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.ir.models import Node, Resource, Workflow
 from agentcanvas.sampling import without_sampling
 
-SDK_VERSION = "0.23.1"
+SDK_VERSION = "0.24.0"
 RUNTIME_IMPORT = "from agentcanvas.adapters.openai_agents import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",

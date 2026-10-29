@@ -29,36 +29,36 @@ ARG FRAMEWORKS=""
 #   docker build --build-arg WITH_CREWAI=true ...   Without it they can still be designed and exported.
 ARG WITH_CREWAI=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_CREWAI" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|crewai) "; then \
-      uv venv .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25; fi
+      uv venv .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.33; fi
 # 4) optional (S29): Google ADK in an environment of its own, for workflows designed for ADK and ADK agents in mixed
 #   flows (about 350 MB): docker build --build-arg WITH_GOOGLE_ADK=true ...
 ARG WITH_GOOGLE_ADK=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_GOOGLE_ADK" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|google_adk) "; then \
       uv venv .frameworks/google_adk && uv pip install --python .frameworks/google_adk/bin/python \
-      google-adk==2.11.0 litellm==1.104.2 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      google-adk==2.13.0 litellm==1.105.7 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 5) optional (S32): Pydantic AI and Agno, each in an environment of its own, for workflows designed for them and their
 #   agents in mixed flows: docker build --build-arg WITH_PYDANTIC_AI=true --build-arg WITH_AGNO=true ...
 ARG WITH_PYDANTIC_AI=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_PYDANTIC_AI" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|pydantic_ai) "; then \
       uv venv .frameworks/pydantic_ai && uv pip install --python .frameworks/pydantic_ai/bin/python \
-      "pydantic-ai-slim[openai]==2.54.0" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      "pydantic-ai-slim[openai]==2.63.0" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 ARG WITH_AGNO=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_AGNO" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|agno) "; then \
       uv venv .frameworks/agno && uv pip install --python .frameworks/agno/bin/python \
-      agno==3.1.1 openai==2.54.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      agno==3.1.11 openai==2.54.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 6) optional (S33–S34): the Microsoft Agent Framework in an environment of its own, for workflows designed for it:
 #   docker build --build-arg WITH_MICROSOFT_AGENT_FRAMEWORK=true ...
 ARG WITH_MICROSOFT_AGENT_FRAMEWORK=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_MICROSOFT_AGENT_FRAMEWORK" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|microsoft_agent_framework) "; then \
       uv venv .frameworks/microsoft_agent_framework && uv pip install \
-      --python .frameworks/microsoft_agent_framework/bin/python agent-framework-core==1.20.0 \
-      agent-framework-openai==1.16.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      --python .frameworks/microsoft_agent_framework/bin/python agent-framework-core==1.23.0 \
+      agent-framework-openai==1.17.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 7) optional (S35): Strands Agents and LlamaIndex, each in an environment of its own:
 #   docker build --build-arg WITH_STRANDS=true --build-arg WITH_LLAMAINDEX=true ...
 ARG WITH_STRANDS=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_STRANDS" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|strands) "; then \
       uv venv .frameworks/strands && uv pip install --python .frameworks/strands/bin/python \
-      "strands-agents[openai]==1.58.1" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      "strands-agents[openai]==1.62.0" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 ARG WITH_LLAMAINDEX=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|llamaindex) "; then \
       uv venv .frameworks/llamaindex && uv pip install --python .frameworks/llamaindex/bin/python \

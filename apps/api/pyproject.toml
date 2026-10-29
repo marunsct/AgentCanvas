@@ -47,7 +47,7 @@ dependencies = [
   "pypdf>=5",
   "python-docx>=1.1",
   "python-multipart>=0.0.20",
-  "openai-agents==0.23.1",  # S25: workflows designed for the OpenAI Agents SDK (pre-1.0: exact pin)
+  "openai-agents==0.24.0",  # S25: workflows designed for the OpenAI Agents SDK (pre-1.0: exact pin)
 ]
 
 [dependency-groups]
