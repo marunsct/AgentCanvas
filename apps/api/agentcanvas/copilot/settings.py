@@ -45,7 +45,7 @@ def load(project_settings: dict[str, Any] | None) -> CopilotSettings:
     return CopilotSettings.model_validate((project_settings or {}).get("copilot") or {})
 
 
-def _endpoint_for(model: str, settings: CopilotSettings, project_settings: dict[str, Any] | None) -> dict[str, Any]:
+def endpoint_for(model: str, settings: CopilotSettings, project_settings: dict[str, Any] | None) -> dict[str, Any]:
     """The base URL and key of the separate model or the project default when `model` is from the same provider
     (a self-hosted server answers both), else none: the provider's own endpoint and key."""
     provider = model.partition(":")[0]
@@ -70,12 +70,12 @@ def resolve(
     model the person chose for this conversation; it passes the same checks (policies, local-only)."""
     if override:
         chosen = ResolvedModel(
-            model=override, config=_endpoint_for(override, settings, project_settings), origin="chosen for this chat"
+            model=override, config=endpoint_for(override, settings, project_settings), origin="chosen for this chat"
         )
     elif mode == "ask" and settings.ask_model:
         chosen = ResolvedModel(
             model=settings.ask_model,
-            config=_endpoint_for(settings.ask_model, settings, project_settings),
+            config=endpoint_for(settings.ask_model, settings, project_settings),
             origin="Copilot settings (questions)",
         )
     elif settings.source == "separate":

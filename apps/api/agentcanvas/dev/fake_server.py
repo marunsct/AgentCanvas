@@ -10,5 +10,6 @@ from agentcanvas.adapters.langchain.testing import DemoResources
 from agentcanvas.api.main import app
 
 app.state.resources_class = DemoResources
+app.state.demo_models = True  # every model answers here, so the Copilot's model menu offers the whole catalogue
 
 __all__ = ["app"]

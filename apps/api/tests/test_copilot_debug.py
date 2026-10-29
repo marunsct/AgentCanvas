@@ -155,7 +155,7 @@ async def test_debug_suite_plants_bugs_and_scores_a_fix():
 
 def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
     """Review fix: a dry run stubs risky tools but not code; new code and re-pointed secrets wait for an accept."""
-    from agentcanvas.copilot.settings import CopilotSettings, _endpoint_for
+    from agentcanvas.copilot.settings import CopilotSettings, endpoint_for
     from agentcanvas.copilot.tools import unaccepted_risks
     from agentcanvas.ir.models import Resource, Workflow
     from agentcanvas.registry import default_registry
@@ -182,8 +182,8 @@ def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
 
     # Ask mode on a self-hosted server keeps the separate model's address and key
     cs = CopilotSettings(source="separate", model="vllm:big", base_url="http://gpu:8000/v1", ask_model="vllm:small")
-    assert _endpoint_for("vllm:small", cs, None) == {"base_url": "http://gpu:8000/v1"}
-    assert _endpoint_for("anthropic:claude-haiku-4-5", cs, None) == {}
+    assert endpoint_for("vllm:small", cs, None) == {"base_url": "http://gpu:8000/v1"}
+    assert endpoint_for("anthropic:claude-haiku-4-5", cs, None) == {}
 
 
 def _script_node():

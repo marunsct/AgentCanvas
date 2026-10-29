@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.api.v1.runs import _context as run_context
+from agentcanvas.api.v1.setup import list_server_models
 from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.copilot import settings as copilot_settings
 from agentcanvas.copilot.pack import Pack, build_pack
@@ -37,15 +39,17 @@ from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
-from agentcanvas.registry import Registry, default_registry
+from agentcanvas.registry import ProviderInfo, Registry, default_registry, installed_providers
 from agentcanvas.runtime.runner import price
 from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
+from agentcanvas.validation.policies import Policy
 
 router = APIRouter(tags=["copilot"])
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 LEASE = timedelta(minutes=15)  # a turn holds its conversation this long at most (a crashed server's lease expires)
+LOCAL_LIST_TIMEOUT_S = 3.0  # a local model server that does not answer this fast is left out of the menu
 _packs: dict[str, Pack] = {}  # registry + templates fingerprint -> pack
 
 
@@ -512,6 +516,89 @@ class ChatModelIn(BaseModel):
     model: str | None = Field(
         None, pattern=r"^[a-z0-9_\-]+:.+$", description="provider:model for this conversation; null: the project's"
     )
+
+
+class ChatModelOption(BaseModel):
+    id: str = Field(description="provider:model")
+    label: str
+    provider: str = Field(description="the provider's name, e.g. LM Studio")
+    local: bool = False
+
+
+async def _ready_models(
+    request: Request,
+    project_id: str,
+    project_settings: dict[str, Any],
+    cs: CopilotSettings,
+    wf: Workflow,
+    registry: Registry,
+    policies: list[Policy],
+) -> list[ChatModelOption]:
+    """Models set up to answer here: hosted ones whose key is a project secret or server variable, the models a
+    local server lists right now, and the project's own OpenAI-compatible model; each passes the Copilot's checks
+    (tool calling, local-only, policies). The demo server answers every model, so it offers the whole catalogue."""
+    providers = {p.id: p for p in installed_providers() if p.installed}
+    secrets = request.app.state.projects.secrets.get(project_id, {})
+    demo = bool(getattr(request.app.state, "demo_models", False))
+    default = (project_settings.get("default_model") or {}).get("model")
+    configured = [m for m in (cs.model, cs.ask_model, default) if m] + [
+        str(r.config["model"])
+        for r in wf.resources
+        if r.type == "model.chat" and isinstance(r.config.get("model"), str)
+    ]
+    ready: list[str] = []
+    for model in dict.fromkeys([m.id for m in registry.models()] + configured):
+        p = providers.get(model.partition(":")[0])
+        if p is None or (p.local and not demo):
+            continue
+        if demo or (p.key_env and (p.key_env in secrets or os.environ.get(p.key_env))):
+            ready.append(model)
+        elif p.base_url_required and copilot_settings.endpoint_for(model, cs, project_settings).get("base_url"):
+            ready.append(model)
+
+    async def listed(p: ProviderInfo) -> list[str]:
+        base = copilot_settings.endpoint_for(f"{p.id}:-", cs, project_settings).get("base_url") or p.base_url
+        name = p.optional_key_env
+        key = (secrets.get(name) or os.environ.get(name)) if name else None
+        found = await list_server_models(request, p, str(base or ""), key, timeout=LOCAL_LIST_TIMEOUT_S)
+        return [f"{p.id}:{m}" for m in found.models] if found.ok else []
+
+    if not demo:
+        for found in await asyncio.gather(*(listed(p) for p in providers.values() if p.local and p.base_url)):
+            ready += found
+    options = []
+    for model in dict.fromkeys(ready):
+        base_url = copilot_settings.endpoint_for(model, cs, project_settings).get("base_url")
+        try:
+            copilot_settings.check_model(model, cs, policies, registry, base_url if isinstance(base_url, str) else None)
+        except InvalidInput:
+            continue
+        info, p = registry.model(model), providers[model.partition(":")[0]]
+        options.append(
+            ChatModelOption(id=model, label=info.label if info else model.partition(":")[2], provider=p.label,
+                            local=p.local)
+        )  # fmt: skip
+    return options
+
+
+@router.get("/workflows/{wf_id}/copilot/models", response_model=list[ChatModelOption])
+async def chat_models(
+    wf_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> list[ChatModelOption]:
+    """The models the conversation can switch to (PLAN §2.3): only those set up to answer here, so the menu does not
+    offer a model that would fail for want of a key or a running server."""
+    svc = _service(request, session, settings)
+    view = await svc.get(wf_id)
+    project_id = view.row.project_id
+    project = await ProjectRepo(session).require(project_id)
+    registry = svc.registry(project_id) or default_registry()
+    return await _ready_models(
+        request, project_id, project.settings or {}, copilot_settings.load(project.settings), view.workflow,
+        registry, await svc.policies(project_id),
+    )  # fmt: skip
 
 
 @router.put("/workflows/{wf_id}/copilot/model", response_model=ModelInfoOut)

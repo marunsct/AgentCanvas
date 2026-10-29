@@ -1157,8 +1157,18 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .md-table { overflow-x: auto; margin: 10px 0; }
 .md-table td, .md-table th { vertical-align: top; font-size: 13px; }
 .model-switch > button { padding: 0; border: 0; background: transparent; box-shadow: none; }
-.model-switch .model-chip { font-family: inherit; max-width: 170px; cursor: pointer; }
+.model-switch .model-chip { font-family: inherit; max-width: 100%; cursor: pointer; display: block; }
 .copilot-head .link { white-space: nowrap; }
+/* a narrow side panel: the model chip gives way so History and New chat stay in sight */
+.copilot-head { flex-wrap: nowrap; min-width: 0; }
+.copilot-head > .copilot-title, .copilot-head > .link, .copilot-head > .menu:not(.model-switch) { flex: none; }
+.copilot-head > .model-switch { min-width: 48px; flex: 0 1 auto; }
+.model-switch > button { max-width: 100%; min-width: 0; }
+.model-switch .menu-list > button .model-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-list .menu-note { margin: 4px 10px; white-space: normal; }
+/* a table in an answer keeps its words whole and scrolls sideways instead of breaking them letter by letter */
+.copilot-msg .md-table td, .copilot-msg .md-table th { overflow-wrap: normal; word-break: normal; min-width: 5ch; }
+.copilot-msg .md-table code { white-space: nowrap; }
 .menu-list > button[role="menuitemradio"]::before { content: ""; width: 1em; flex: none; }
 .menu-list > button[role="menuitemradio"][aria-checked="true"]::before { content: "✓"; color: var(--accent); }
 ul.plain.files { max-height: none; }

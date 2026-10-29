@@ -84,8 +84,12 @@ Copilot too: a policy that allows only some models in workflows also limits the 
 
 **Model for questions** (optional) answers Ask-mode questions with a different, usually cheaper, model.
 
-To try another model in one conversation, click the model's name at the top of the panel and pick one. The same
+To try another model in one conversation, click the model's name at the top of the panel and pick one. The list
+shows only models that can answer here: hosted models whose API key is set (a project secret or a server
+variable), the models your local server (Ollama, LM Studio, vLLM, llama.cpp) lists while it is running, and the
+project's own OpenAI-compatible model. **Set up more models…** at the bottom opens **Settings › Models**. The same
 policies and privacy setting apply; **New chat** goes back to the project's choice.
+
 **Private** limits the Copilot to models running on your own machines (Ollama, LM Studio, vLLM, llama.cpp), so
 your workflows never leave them.
 

@@ -127,8 +127,14 @@ test("a conversation can switch its model, and New chat goes back to the project
   await page.getByTestId("copilot-button").click();
   const panel = page.getByTestId("copilot-panel");
   await expect(panel.getByTestId("copilot-model")).toContainText("Claude Haiku 4.5");
+  // the header keeps History and New chat inside a narrow panel
+  const box = (await panel.boundingBox())!;
+  const newChat = (await panel.getByRole("button", { name: "New chat" }).boundingBox())!;
+  expect(newChat.x + newChat.width).toBeLessThanOrEqual(box.x + box.width);
   await panel.getByTestId("copilot-model").click();
-  await page.getByRole("menuitemradio", { name: "Claude Opus 5.5" }).click();
+  await expect(page.getByTestId("copilot-model-setup")).toHaveAttribute("href", "/settings/models");
+  await expect(page.getByRole("menuitemradio", { name: /fake/i })).toHaveCount(0); // the test-only model is not offered
+  await page.getByRole("menuitemradio", { name: /^Claude Opus 5\.5/ }).click();
   await expect(panel.getByTestId("copilot-model")).toContainText("Claude Opus 5.5 · this chat");
   await page.getByLabel("Message the Copilot").fill("What can you do?");
   await page.getByRole("button", { name: "Send" }).click();

@@ -1210,6 +1210,36 @@
         "title": "ChatModelIn",
         "type": "object"
       },
+      "ChatModelOption": {
+        "properties": {
+          "id": {
+            "description": "provider:model",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "local": {
+            "default": false,
+            "title": "Local",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "the provider's name, e.g. LM Studio",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "provider"
+        ],
+        "title": "ChatModelOption",
+        "type": "object"
+      },
       "ChatOut": {
         "properties": {
           "model": {
@@ -24610,6 +24640,76 @@
           }
         ],
         "summary": "Choose Chat Model",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot/models": {
+      "get": {
+        "description": "The models the conversation can switch to (PLAN \u00a72.3): only those set up to answer here, so the menu does not\noffer a model that would fail for want of a key or a running server.",
+        "operationId": "chat_models_v1_workflows__wf_id__copilot_models_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatModelOption"
+                  },
+                  "title": "Response Chat Models V1 Workflows  Wf Id  Copilot Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chat Models",
         "tags": [
           "copilot"
         ]

@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { useModels } from "../api/queries";
-import type { CopilotThreadOut, GuidePageRef } from "../api/generated";
+import type { ChatModelOption, CopilotThreadOut, GuidePageRef } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
 import { Markdown, slug } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
@@ -352,7 +352,8 @@ function ModelSwitcher({ workflowId, model, chosen, busy }: {
   workflowId: string; model: Conversation["model"]; chosen: string | null; busy: boolean;
 }) {
   const models = useModels();
-  const label = (models.data ?? []).find((m) => m.id === model.model)?.label ?? model.model ?? "No model yet";
+  const label = (models.data ?? []).find((m) => m.id === model.model)?.label
+    ?? model.model?.slice(model.model.indexOf(":") + 1) ?? "No model yet";
   const title = model.origin ? `${model.model} (${model.origin})` : undefined;
   if (!can("builder")) return <span className="model-chip" title={title}>{label}</span>;
   const pick = async (id: string | null) => {
@@ -363,21 +364,45 @@ function ModelSwitcher({ workflowId, model, chosen, busy }: {
       useCopilot.setState({ error: `Could not switch the model: ${(e as Error).message}` });
     }
   };
-  const offered = (models.data ?? []).filter((m) => m.provider !== "fake");
   return (
     <Menu testId="copilot-model" className="model-switch" align="left" title={title ? `${title}: switch for this chat` : "Choose a model for this chat"}
       label={<span className="model-chip">{label}{chosen ? " · this chat" : ""} ▾</span>}>
-      {(close) => (
-        <>
-          <p className="menu-heading">Model for this chat</p>
-          <button type="button" role="menuitemradio" aria-checked={!chosen} disabled={busy}
-            onClick={() => { close(); void pick(null); }}>The project's choice</button>
-          {offered.map((m) => (
-            <button type="button" role="menuitemradio" key={m.id} aria-checked={chosen === m.id} disabled={busy}
-              onClick={() => { close(); void pick(m.id); }}>{m.label}</button>
-          ))}
-        </>
-      )}
+      {(close) => <ModelChoices workflowId={workflowId} chosen={chosen} busy={busy} close={close} pick={pick} />}
     </Menu>
+  );
+}
+
+/** The models the chat can switch to: only those set up to answer here (a key, or a local server that lists them),
+ * fetched when the menu opens, and a way to set up more. */
+function ModelChoices({ workflowId, chosen, busy, close, pick }: {
+  workflowId: string; chosen: string | null; busy: boolean; close: () => void; pick: (id: string | null) => Promise<void>;
+}) {
+  const ready = useQuery({
+    queryKey: ["copilot-models", workflowId], staleTime: 30_000,
+    queryFn: () => apiFetch<ChatModelOption[]>(`/workflows/${workflowId}/copilot/models`),
+  });
+  const choose = (id: string | null) => { close(); void pick(id); };
+  const missing = chosen && ready.data && !ready.data.some((m) => m.id === chosen);
+  return (
+    <>
+      <p className="menu-heading">Model for this chat</p>
+      <button type="button" role="menuitemradio" aria-checked={!chosen} disabled={busy} onClick={() => choose(null)}>The project's choice</button>
+      {ready.isPending && <p className="menu-note muted small" role="status">Checking which models are set up…</p>}
+      {ready.error && <p className="menu-note error-text small">Could not list the models: {(ready.error as Error).message}</p>}
+      {(ready.data ?? []).map((m) => (
+        <button type="button" role="menuitemradio" key={m.id} aria-checked={chosen === m.id} disabled={busy}
+          title={m.id} onClick={() => choose(m.id)}>
+          <span className="model-name">{m.label}</span><span className="muted small">{m.provider}</span>
+        </button>
+      ))}
+      {missing && (
+        <button type="button" role="menuitemradio" aria-checked disabled title={chosen}>
+          <span className="model-name">{chosen.slice(chosen.indexOf(":") + 1)}</span><span className="warn-text small">not set up now</span>
+        </button>
+      )}
+      {ready.data?.length === 0 && <p className="menu-note muted small">No other model is set up yet.</p>}
+      <hr />
+      <Link role="menuitem" to="/settings/models" data-testid="copilot-model-setup" onClick={close}>Set up more models…</Link>
+    </>
   );
 }

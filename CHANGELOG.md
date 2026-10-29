@@ -5,6 +5,17 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **The Copilot's model menu offered models that could not answer**: it listed the whole catalogue, so picking a
+  provider without a key (or a local server that was not running) failed on the next message. The menu now lists
+  only models set up to answer (`GET /v1/workflows/{id}/copilot/models`: hosted ones whose key is a project secret
+  or server variable, what a local server lists right now, the project's OpenAI-compatible model, each through the
+  Copilot's privacy and policy checks), ends with **Set up more models…**, and names a model outside the catalogue
+  without its provider prefix.
+- **The Copilot panel's header ran out of the panel**: a long model name pushed **New chat** off the side panel's
+  edge. The model chip now gives way. A table in an answer keeps its words whole and scrolls sideways instead of
+  breaking them letter by letter.
+- **A menu opened near the window's right edge ran off screen** (the Copilot's model menu); it now moves left
+  until it fits.
 - **No model had a price, so costs read $0 and USD budgets and cost alerts never fired**: the catalog carried no
   prices at all (W015 warned on every cost budget, with a remedy no user could apply). It now prices the Claude
   models (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 4.5 $1/$5 per million tokens), and

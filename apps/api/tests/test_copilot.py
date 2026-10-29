@@ -497,6 +497,43 @@ async def test_a_conversation_switches_its_model_within_policy(app, api_client):
     assert (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["chosen_model"] is None
 
 
+async def test_the_model_menu_offers_only_models_set_up_to_answer(app, api_client, monkeypatch):
+    import httpx
+
+    from agentcanvas.registry import installed_providers
+
+    for p in installed_providers():
+        for name in (p.key_env, p.optional_key_env):
+            if name:
+                monkeypatch.delenv(name, raising=False)
+    monkeypatch.setitem(app.state.projects.secrets.setdefault("prj_default", {}), "ANTHROPIC_API_KEY", "sk-ant-test")
+
+    def servers(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/api/tags":  # Ollama runs, with one model pulled
+            return httpx.Response(200, json={"models": [{"name": "qwen3:8b"}]})
+        raise httpx.ConnectError("connection refused")  # LM Studio, vLLM and llama.cpp are not running
+
+    monkeypatch.setattr(app.state, "model_list_transport", httpx.MockTransport(servers), raising=False)
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    url = f"/v1/workflows/{wf}/copilot/models"
+    offered = {m["id"]: m for m in (await api_client.get(url)).json()}
+    assert "anthropic:claude-haiku-4-5" in offered  # its key is a project secret
+    assert offered["ollama:qwen3:8b"] == {"id": "ollama:qwen3:8b", "label": "qwen3:8b", "provider": "Ollama (local)",
+                                          "local": True}  # fmt: skip
+    assert not [m for m in offered if m.split(":")[0] in ("openai", "google_genai", "lmstudio", "fake")]
+
+    # the Copilot's own checks apply: local-only leaves the local models
+    s = (await api_client.get("/v1/projects/prj_default/copilot-settings")).json()
+    await api_client.put("/v1/projects/prj_default/copilot-settings", json={**s, "privacy": "local_only"})
+    try:
+        assert [m["id"] for m in (await api_client.get(url)).json()] == ["ollama:qwen3:8b"]
+    finally:
+        await api_client.put("/v1/projects/prj_default/copilot-settings", json={**s, "privacy": "standard"})
+
+    monkeypatch.setattr(app.state, "demo_models", True, raising=False)  # the demo server answers every model
+    assert "openai:gpt-5.5" in {m["id"] for m in (await api_client.get(url)).json()}
+
+
 async def test_a_proposal_can_carry_workspace_code_written_only_when_accepted(app, api_client):
     wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
     ws = app.state.projects.workspace("prj_default")

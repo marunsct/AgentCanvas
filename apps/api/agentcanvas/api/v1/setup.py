@@ -196,11 +196,18 @@ async def server_models(project_id: str, body: ServerModelsIn, request: Request,
     key = (body.api_key or "").strip() or (
         (request.app.state.projects.secrets.get(project_id, {}).get(name) or os.environ.get(name)) if name else None
     )
+    return await list_server_models(request, p, base, key)
+
+
+async def list_server_models(
+    request: Request, p: ProviderInfo, base: str, key: str | None, timeout: float = LIST_TIMEOUT_S
+) -> ServerModelsOut:
+    """Read a local server's or OpenAI-compatible API's model list; any connection or format error is the answer."""
     ollama = p.id == "ollama"
     url = base.rstrip("/") + ("/api/tags" if ollama else "/models")
     try:
         transport = getattr(request.app.state, "model_list_transport", None)  # tests serve a fake server here
-        async with httpx.AsyncClient(timeout=LIST_TIMEOUT_S, follow_redirects=False, transport=transport) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, transport=transport) as client:
             r = await client.get(url, headers={"Authorization": f"Bearer {key}"} if key else {})
         if r.status_code in (401, 403):
             return ServerModelsOut(
