@@ -12,6 +12,12 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### S-10 needed a test, not a change
+The designed-agent header puts the block's name and the workflow's name into a docstring. The block's name is
+restricted to an identifier by the IR, and the workflow's name goes through `json.dumps`, which escapes quotes, so
+neither can close the docstring today. A test now sends a hostile workflow name through all nine generators and checks
+the result has no code from it, so a later edit that breaks either guard fails.
+
 ### LiteLLM stays at 1.105.7, one step short of the newest
 The framework pins were raised to the releases of late October (HARDENING 1.7), except LiteLLM: 1.106.x makes Google
 ADK's tool calls fail with "No module named 'mcp'", a package it imports without declaring. 1.105.7 is the newest
