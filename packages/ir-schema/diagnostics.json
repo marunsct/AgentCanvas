@@ -228,6 +228,10 @@
       "what": "This backup model is already tried before it, so it adds nothing when the model fails.",
       "fix": "Pick a backup model from another provider."
     },
+    "W017": {
+      "what": "\u201cRetry AI calls\u201d comes after \u201cBackup models\u201d and is set to carry on when its retries run out, so it answers the failure itself and the backup models are never tried.",
+      "fix": "Select the retry add-on and set \u201cWhen retries are exhausted\u201d to error, or connect it before the backup models."
+    },
     "W018": {
       "what": "Something inside this group of steps needs attention.",
       "fix": "Double-click the group to look inside."
