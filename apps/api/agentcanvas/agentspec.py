@@ -397,6 +397,12 @@ def _title(name: Any) -> str:
     return (str(name or "").strip() or "Imported flow")[:200]
 
 
+def _key(n: Any) -> Any:
+    """What identifies a step of the file: its component id, so an inlined copy of a step (the start node written out
+    under `start_node` and again in `nodes`) is the same step; the object itself when it has no id."""
+    return n["id"] if isinstance(n, dict) and isinstance(n.get("id"), str) else id(n)
+
+
 def _collect(x: Any, refs: dict[str, Any]) -> None:
     if isinstance(x, dict):
         for k, v in (x.get("$referenced_components") or {}).items():
@@ -500,33 +506,33 @@ class _Importer:
         start = deref(flow.get("start_node")) or next(
             (n for n in nodes if n.get("component_type") == "StartNode"), None
         )
-        ids: dict[int, str] = {}  # id(spec node) -> IR node id or START/END
+        ids: dict[Any, str] = {}  # spec node (`_key`) -> IR node id or START/END
         for n in nodes:
-            if n is start or n.get("component_type") == "StartNode":
-                ids[id(n)] = "START"
+            if _key(n) == _key(start) or n.get("component_type") == "StartNode":
+                ids[_key(n)] = "START"
             elif n.get("component_type") == "EndNode":
-                ids[id(n)] = "END"
-        data_in: dict[tuple[int, str], str] = {}  # (node, input) -> channel name
+                ids[_key(n)] = "END"
+        data_in: dict[tuple[Any, str], str] = {}  # (node, input) -> channel name
         for e in flow.get("data_flow_connections") or []:
             src, dst = deref(e.get("source_node")), deref(e.get("destination_node"))
             out = str(e.get("source_output"))
             schema = next((o for o in (src or {}).get("outputs") or [] if o.get("title") == out), None)
-            data_in[(id(dst), str(e.get("destination_input")))] = self.channel(out, schema)
+            data_in[(_key(dst), str(e.get("destination_input")))] = self.channel(out, schema)
         for n in nodes:
-            if ids.get(id(n)) == "START":
+            if ids.get(_key(n)) == "START":
                 for p in n.get("inputs") or n.get("outputs") or []:
                     self.channel(str(p.get("title")), p, "in")
-            if ids.get(id(n)) == "END":
+            if ids.get(_key(n)) == "END":
                 for p in n.get("outputs") or n.get("inputs") or []:
-                    self.channel(data_in.get((id(n), str(p.get("title"))), str(p.get("title"))), p, "out")
+                    self.channel(data_in.get((_key(n), str(p.get("title"))), str(p.get("title"))), p, "out")
 
         ir_nodes: list[dict[str, Any]] = []
         for n in nodes:
-            if id(n) in ids:
+            if _key(n) in ids:
                 continue
-            node = self.node(n, lambda inp, n=n: data_in.get((id(n), inp)) or self.channel(inp))
+            node = self.node(n, lambda inp, n=n: data_in.get((_key(n), inp)) or self.channel(inp))
             node["id"] = f"n_{len(ir_nodes) + 1}"
-            ids[id(n)] = node["id"]
+            ids[_key(n)] = node["id"]
             if rid := node.pop("_model", None):
                 self.edges.append({"id": f"w_{node['id']}", "kind": "wiring", "source": {"node": rid},
                                    "target": {"node": node["id"], "port": "model"}})  # fmt: skip
@@ -534,12 +540,12 @@ class _Importer:
 
         for i, e in enumerate(flow.get("control_flow_connections") or []):
             src, dst = deref(e.get("from_node")), deref(e.get("to_node"))
-            if id(src) not in ids or id(dst) not in ids:
+            if _key(src) not in ids or _key(dst) not in ids:
                 raise AgentSpecError("a control flow edge points at a step that is not in the flow")
-            source: dict[str, Any] = {"node": ids[id(src)]}
+            source: dict[str, Any] = {"node": ids[_key(src)]}
             if (src or {}).get("component_type") == "BranchingNode":
                 source["port"] = f"route:{self.route(e.get('from_branch') or 'default')}"
-            self.edges.append({"id": f"e{i + 1}", "kind": "flow", "source": source, "target": {"node": ids[id(dst)]}})
+            self.edges.append({"id": f"e{i + 1}", "kind": "flow", "source": source, "target": {"node": ids[_key(dst)]}})
 
         channels = list(self.channels.values())
         if any(n["type"] in ("core.agent", "agent.a2a") for n in ir_nodes) and "messages" not in self.channel_names:
@@ -597,7 +603,9 @@ class _Importer:
                 out.update(type="core.agent", config={"system_prompt": agent.get("system_prompt") or ""})
                 self.wire(out, agent.get("llm_config"))
                 if agent.get("tools"):
-                    self.report.append(f"Agent '{name}': its {len(agent['tools'])} tools were not imported; add "
+                    found = [self.deref(t) for t in agent["tools"]]
+                    tools = [str(t.get("name") or "unnamed") if isinstance(t, dict) else "unnamed" for t in found]
+                    self.report.append(f"Agent '{name}': its tools were not imported ({', '.join(tools)}); add "
                                        "them on the canvas.")  # fmt: skip
             else:
                 self.placeholder(out, n, f"its {agent.get('component_type')} agent")

@@ -191,6 +191,36 @@ def test_import_a_single_agent():
     }
 
 
+def test_import_steps_written_out_in_place_and_names_what_it_leaves_out():
+    """A file may write a step out wherever it is used (the start node under `start_node`, again in `nodes` and in
+    each edge) instead of referring to it: the copies are one step (X-9). The report names the tools it leaves out."""
+    tool = {"component_type": "ServerTool", "id": "t1", "name": "lookup_order"}
+    agent = {"component_type": "Agent", "id": "a1", "name": "helper", "system_prompt": "Hi", "tools": [tool]}
+    start = {"component_type": "StartNode", "id": "s", "name": "start", "inputs": [{"title": "q", "type": "string"}]}
+    step = {"component_type": "AgentNode", "id": "n", "name": "ask", "agent": agent}
+    end = {"component_type": "EndNode", "id": "e", "name": "end", "outputs": []}
+
+    def copy(x):
+        return json.loads(json.dumps(x))
+
+    doc = {
+        "component_type": "Flow", "id": "f", "name": "Inline", "start_node": copy(start),
+        "nodes": [copy(start), copy(step), copy(end)], "data_flow_connections": [],
+        "control_flow_connections": [{"component_type": "ControlFlowEdge", "id": "c1", "from_node": copy(start),
+                                      "to_node": copy(step)},
+                                     {"component_type": "ControlFlowEdge", "id": "c2", "from_node": copy(step),
+                                      "to_node": copy(end)}],
+    }  # fmt: skip
+    ir, report, _ = import_flow(doc, wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert [n.type for n in wf.nodes] == ["core.agent"]
+    assert {(e.source.node, e.target.node) for e in wf.edges if e.kind == "flow"} == {
+        ("START", wf.nodes[0].id),
+        (wf.nodes[0].id, "END"),
+    }
+    assert any("tools were not imported (lookup_order)" in r for r in report)
+
+
 def test_import_unknown_steps_become_placeholders():
     doc = json.loads(json.dumps(SAMPLE))
     say = next(c for c in _components(doc).values() if c["name"] == "Say")
