@@ -242,6 +242,17 @@
             "title": "Ir Hash",
             "type": "string"
           },
+          "kit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KitOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "created from a template: the files, dataset, evaluators, tests and schedule it added"
+          },
           "layout": {
             "additionalProperties": true,
             "title": "Layout",
@@ -1634,6 +1645,17 @@
           "ir_hash": {
             "title": "Ir Hash",
             "type": "string"
+          },
+          "kit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KitOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "created from a template: the files, dataset, evaluators, tests and schedule it added"
           },
           "layout": {
             "additionalProperties": true,
@@ -4933,6 +4955,17 @@
             "title": "Ir Hash",
             "type": "string"
           },
+          "kit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KitOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "created from a template: the files, dataset, evaluators, tests and schedule it added"
+          },
           "layout": {
             "additionalProperties": true,
             "title": "Layout",
@@ -5370,6 +5403,54 @@
           "api_key"
         ],
         "title": "KeyOut",
+        "type": "object"
+      },
+      "KitOut": {
+        "description": "What creating the workflow added beside it.",
+        "properties": {
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "evaluators": {
+            "default": 0,
+            "title": "Evaluators",
+            "type": "integer"
+          },
+          "files_kept": {
+            "description": "already in the workspace: left as they were",
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Kept",
+            "type": "array"
+          },
+          "files_written": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Written",
+            "type": "array"
+          },
+          "tests": {
+            "default": 0,
+            "title": "Tests",
+            "type": "integer"
+          },
+          "triggers": {
+            "default": 0,
+            "title": "Triggers",
+            "type": "integer"
+          }
+        },
+        "title": "KitOut",
         "type": "object"
       },
       "KnowledgeBaseIn": {
@@ -10076,7 +10157,8 @@
               {
                 "enum": [
                   "beginner",
-                  "intermediate"
+                  "intermediate",
+                  "advanced"
                 ],
                 "type": "string"
               },
@@ -10089,6 +10171,14 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "kit": {
+            "description": "what it adds beside the workflow, e.g. '2 workspace files', 'a dataset'",
+            "items": {
+              "type": "string"
+            },
+            "title": "Kit",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -11262,6 +11352,17 @@
           "ir_hash": {
             "title": "Ir Hash",
             "type": "string"
+          },
+          "kit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KitOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "created from a template: the files, dataset, evaluators, tests and schedule it added"
           },
           "layout": {
             "additionalProperties": true,
@@ -21019,6 +21120,7 @@
         ]
       },
       "post": {
+        "description": "An empty workflow, or one from a template with what the template brings beside it (`kit`).",
         "operationId": "create_workflow_v1_projects__project_id__workflows_post",
         "parameters": [
           {

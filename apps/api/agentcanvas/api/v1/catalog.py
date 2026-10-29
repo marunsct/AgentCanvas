@@ -22,6 +22,7 @@ from agentcanvas.registry import (
     load_gallery,
 )
 from agentcanvas.registry.adapters import AdapterManifest
+from agentcanvas.services import template_kit
 from agentcanvas.services.workflows import list_templates, template_gallery
 from agentcanvas.settings import Settings
 
@@ -78,8 +79,11 @@ class TemplateInfo(BaseModel):
     block_count: int = 0  # steps and resources (models, tools, middleware) on the canvas
     category: str | None = None
     tags: list[str] = []
-    difficulty: Literal["beginner", "intermediate"] | None = None
+    difficulty: Literal["beginner", "intermediate", "advanced"] | None = None
     sample_input: dict[str, Any] | None = None
+    kit: list[str] = Field(
+        default_factory=list, description="what it adds beside the workflow, e.g. '2 workspace files', 'a dataset'"
+    )
 
 
 class ConnectorSecret(BaseModel):
@@ -122,6 +126,7 @@ def _template_info(key: str, doc: dict[str, Any]) -> TemplateInfo:
         id=key, name=doc["name"], description=doc.get("description", ""), node_count=len(doc.get("nodes", [])),
         block_count=len(doc.get("nodes", [])) + len(doc.get("resources", [])), category=g.get("category"),
         tags=g.get("tags") or [], difficulty=g.get("difficulty"), sample_input=g.get("sample_input"),
+        kit=template_kit.summary(template_kit.kit_of(doc)),
     )  # fmt: skip
 
 

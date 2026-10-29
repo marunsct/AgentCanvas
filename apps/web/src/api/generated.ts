@@ -52,6 +52,15 @@ export type Severity = "error" | "warning" | "info";
 export type Diagnostics = Diagnostic[];
 export type Id3 = string;
 export type IrHash = string;
+export type DatasetId1 = string | null;
+export type Evaluators = number;
+/**
+ * already in the workspace: left as they were
+ */
+export type FilesKept = string[];
+export type FilesWritten = string[];
+export type Tests = number;
+export type Triggers = number;
 export type Name3 = string;
 export type ProjectId = string;
 export type Report1 = string[];
@@ -464,7 +473,7 @@ export type Split = string;
  */
 export type Trajectory = string[] | null;
 export type Items1 = Example[];
-export type DatasetId1 = string;
+export type DatasetId2 = string;
 export type Name15 = string;
 /**
  * the version the last pull made here
@@ -628,7 +637,7 @@ export type Message6 = string;
 export type Route1 = string[] | null;
 export type Status3 = "success" | "interrupted" | "error";
 export type Concurrency = number;
-export type DatasetId2 = string;
+export type DatasetId3 = string;
 /**
  * default: the latest version
  */
@@ -685,11 +694,11 @@ export type Label8 = string | null;
 export type Version4 = string | null;
 export type Concurrency1 = number;
 export type CreatedAt14 = string;
-export type DatasetId3 = string;
+export type DatasetId4 = string;
 export type DatasetVersion1 = number;
 export type EndedAt = string | null;
 export type Error1 = string | null;
-export type Evaluators = string[];
+export type Evaluators1 = string[];
 export type Id29 = string;
 export type Name27 = string;
 /**
@@ -704,7 +713,7 @@ export type CostUsd1 = number;
  * runs that did not end in success
  */
 export type Errors = number;
-export type Evaluators1 = EvaluatorSummary[];
+export type Evaluators2 = EvaluatorSummary[];
 export type Examples4 = number;
 export type Label9 = string;
 export type LatencyP50Ms = number | null;
@@ -818,7 +827,7 @@ export type RunIds = [string, ...string[]];
  * these test cases (default: all of the workflow's)
  */
 export type Ids = string[] | null;
-export type DatasetId4 = string;
+export type DatasetId5 = string;
 /**
  * the dataset version to gate on (default: latest)
  */
@@ -827,7 +836,7 @@ export type DatasetVersion2 = number | null;
  * largest allowed drop in pass rate against the live version
  */
 export type MaxRegression = number | null;
-export type DatasetId5 = string;
+export type DatasetId6 = string;
 /**
  * the dataset version to gate on (default: latest)
  */
@@ -836,7 +845,7 @@ export type Environment1 = string;
 /**
  * the evaluators the gate measures with, as saved (null: a gate saved before they were kept)
  */
-export type Evaluators2 = string[] | null;
+export type Evaluators3 = string[] | null;
 export type Id33 = string;
 /**
  * largest allowed drop in pass rate against the live version
@@ -1465,7 +1474,7 @@ export type Status11 = "accepted" | "rejected";
 /**
  * accepted: the indices of the tests to save; null = all
  */
-export type Tests = number[] | null;
+export type Tests1 = number[] | null;
 export type BaseUrl3 = string | null;
 export type BaseUrlRequired = boolean;
 export type Example1 = string;
@@ -2137,8 +2146,12 @@ export type NodeIds = [string, ...string[]];
 export type BlockCount = number;
 export type Category2 = string | null;
 export type Description19 = string;
-export type Difficulty = ("beginner" | "intermediate") | null;
+export type Difficulty = ("beginner" | "intermediate" | "advanced") | null;
 export type Id50 = string;
+/**
+ * what it adds beside the workflow, e.g. '2 workspace files', 'a dataset'
+ */
+export type Kit = string[];
 export type Name52 = string;
 export type NodeCount = number;
 export type SampleInput = {
@@ -2407,6 +2420,7 @@ export interface ApiSchemas {
   ItemOut?: ItemOut;
   ItemsIn?: ItemsIn;
   KeyOut?: KeyOut;
+  KitOut?: KitOut;
   KnowledgeBaseIn?: KnowledgeBaseIn;
   KnowledgeBaseOut?: KnowledgeBaseOut;
   KnowledgeBasePatch?: KnowledgeBasePatch;
@@ -2706,6 +2720,10 @@ export interface AgentSpecImported {
   id: Id3;
   ir: Ir;
   ir_hash: IrHash;
+  /**
+   * created from a template: the files, dataset, evaluators, tests and schedule it added
+   */
+  kit?: KitOut | null;
   layout: Layout;
   name: Name3;
   project_id: ProjectId;
@@ -2728,6 +2746,20 @@ export interface Diagnostic {
 }
 export interface Ir {
   [k: string]: unknown;
+}
+/**
+ * What creating the workflow added beside it.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "KitOut".
+ */
+export interface KitOut {
+  dataset_id?: DatasetId1;
+  evaluators?: Evaluators;
+  files_kept?: FilesKept;
+  files_written?: FilesWritten;
+  tests?: Tests;
+  triggers?: Triggers;
 }
 export interface Layout {
   [k: string]: unknown;
@@ -3280,6 +3312,10 @@ export interface CommandResult {
   inverse: Inverse;
   ir: Ir1;
   ir_hash: IrHash1;
+  /**
+   * created from a template: the files, dataset, evaluators, tests and schedule it added
+   */
+  kit?: KitOut | null;
   layout: Layout1;
   name: Name11;
   project_id: ProjectId1;
@@ -3508,7 +3544,7 @@ export interface Reference1 {
  * via the `definition` "LangSmithLink".
  */
 export interface LangSmithLink {
-  dataset_id: DatasetId1;
+  dataset_id: DatasetId2;
   name: Name15;
   pulled_version?: PulledVersion;
   pushed_version?: PushedVersion;
@@ -3837,7 +3873,7 @@ export interface Channels1 {
  */
 export interface ExperimentIn {
   concurrency?: Concurrency;
-  dataset_id: DatasetId2;
+  dataset_id: DatasetId3;
   dataset_version?: DatasetVersion;
   evaluator_ids?: EvaluatorIds;
   name?: Name26;
@@ -3884,11 +3920,11 @@ export interface Overrides {
 export interface ExperimentOut {
   concurrency: Concurrency1;
   created_at: CreatedAt14;
-  dataset_id: DatasetId3;
+  dataset_id: DatasetId4;
   dataset_version: DatasetVersion1;
   ended_at: EndedAt;
   error: Error1;
-  evaluators: Evaluators;
+  evaluators: Evaluators1;
   id: Id29;
   name: Name27;
   pairwise?: Pairwise;
@@ -3907,7 +3943,7 @@ export interface TargetSummary {
   completed: Completed;
   cost_usd: CostUsd1;
   errors: Errors;
-  evaluators: Evaluators1;
+  evaluators: Evaluators2;
   examples: Examples4;
   label: Label9;
   latency_p50_ms: LatencyP50Ms;
@@ -4138,7 +4174,7 @@ export interface FromTestCasesIn {
  * via the `definition` "GateIn".
  */
 export interface GateIn {
-  dataset_id: DatasetId4;
+  dataset_id: DatasetId5;
   dataset_version?: DatasetVersion2;
   max_regression?: MaxRegression;
   min_scores?: MinScores;
@@ -4154,10 +4190,10 @@ export interface MinScores {
  * via the `definition` "GateOut".
  */
 export interface GateOut {
-  dataset_id: DatasetId5;
+  dataset_id: DatasetId6;
   dataset_version?: DatasetVersion3;
   environment: Environment1;
-  evaluators: Evaluators2;
+  evaluators: Evaluators3;
   id: Id33;
   max_regression?: MaxRegression1;
   min_scores?: MinScores1;
@@ -4311,6 +4347,10 @@ export interface Imported {
   id: Id34;
   ir: Ir2;
   ir_hash: IrHash2;
+  /**
+   * created from a template: the files, dataset, evaluators, tests and schedule it added
+   */
+  kit?: KitOut | null;
   layout: Layout2;
   name: Name31;
   project_id: ProjectId2;
@@ -4926,7 +4966,7 @@ export interface ProposalDecision {
   files?: Files3;
   notes?: Notes2;
   status: Status11;
-  tests?: Tests;
+  tests?: Tests1;
 }
 /**
  * A model provider: the `provider:` prefix of a model id, its integration and where its API key comes from.
@@ -5382,6 +5422,7 @@ export interface TemplateInfo {
   description: Description19;
   difficulty?: Difficulty;
   id: Id50;
+  kit?: Kit;
   name: Name52;
   node_count: NodeCount;
   sample_input?: SampleInput;
@@ -5660,6 +5701,10 @@ export interface WorkflowOut {
   id: Id57;
   ir: Ir5;
   ir_hash: IrHash6;
+  /**
+   * created from a template: the files, dataset, evaluators, tests and schedule it added
+   */
+  kit?: KitOut | null;
   layout: Layout4;
   name: Name56;
   project_id: ProjectId5;

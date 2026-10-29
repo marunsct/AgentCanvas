@@ -63,9 +63,10 @@ def template_gallery(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def without_gallery(doc: dict[str, Any]) -> dict[str, Any]:
-    """A template document as a workflow: the gallery metadata only describes the template, so it is dropped."""
+    """A template document as a workflow: the gallery metadata only describes the template, and its kit (what it
+    brings beside the workflow) is added once, so both are dropped."""
     out = {k: v for k, v in doc.items() if k != "metadata"}
-    meta = {k: v for k, v in (doc.get("metadata") or {}).items() if k != GALLERY}
+    meta = {k: v for k, v in (doc.get("metadata") or {}).items() if k not in (GALLERY, "kit")}
     return {**out, "metadata": meta} if meta else out
 
 
@@ -116,9 +117,11 @@ class WorkflowService:
         PROJECT_OF[wf.id] = row.project_id  # lets the runner resolve workspace code for this workflow
         return WorkflowView(row, wf, await self._validate(wf, row.project_id))
 
-    async def create(self, project_id: str, name: str, template: str | None, created_by: str | None) -> WorkflowView:
+    async def create(
+        self, project_id: str, name: str, template: str | None, created_by: str | None, wf_id: str | None = None
+    ) -> WorkflowView:
         project = await self.projects.require(project_id)
-        wf_id = new_id("wf")
+        wf_id = wf_id or new_id("wf")
         if template:
             doc = list_templates(self.settings).get(template)
             if doc is None:

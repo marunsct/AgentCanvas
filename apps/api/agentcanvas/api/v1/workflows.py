@@ -14,13 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas import agentspec, importers
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
+from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.db.models import CostAlert, Run, Thread
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
 from agentcanvas.registry.adapters import portability
 from agentcanvas.runtime.runner import periods
-from agentcanvas.services.workflows import WorkflowService, WorkflowView
+from agentcanvas.services import template_kit
+from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic
 from agentcanvas.validation.blast import BlastRadius, blast_radius
@@ -45,6 +47,9 @@ class WorkflowOut(BaseModel):
     diagnostics: list[Diagnostic]
     created_at: datetime
     updated_at: datetime
+    kit: template_kit.KitOut | None = Field(
+        default=None, description="created from a template: the files, dataset, evaluators, tests and schedule it added"
+    )
 
 
 class WorkflowSummary(BaseModel):
@@ -102,13 +107,27 @@ def _out(v: WorkflowView, response: Response | None = None) -> WorkflowOut:
 async def create_workflow(
     project_id: str,
     body: CreateWorkflow,
+    request: Request,
     response: Response,
     svc: WorkflowService = Depends(service),
     user: CurrentUser = Depends(current_user),
 ) -> WorkflowOut:
-    view = await svc.create(project_id, body.name, body.template, user.id)
+    """An empty workflow, or one from a template with what the template brings beside it (`kit`)."""
+    doc = list_templates(svc.settings).get(body.template) if body.template else None
+    kit = template_kit.kit_of(doc)
+    template_kit.check(kit)
+    wf_id = new_id("wf")
+    added = template_kit.KitOut()
+    if kit.files:  # before the workflow, so its custom blocks are known when it is checked
+        await svc.projects.require(project_id)
+        ws = request.app.state.projects.workspace(project_id)
+        added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, str(body.template)))
+    view = await svc.create(project_id, body.name, body.template, user.id, wf_id=wf_id)
+    if kit.dataset or kit.evaluators or kit.tests or kit.triggers:
+        added = await template_kit.add_records(svc.repo.s, kit, wf_id, user.id, added)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
-    return _out(view, response)
+    out = _out(view, response)
+    return out.model_copy(update={"kit": added}) if kit != template_kit.Kit() else out
 
 
 @router.get("/projects/{project_id}/workflows", response_model=WorkflowPage)

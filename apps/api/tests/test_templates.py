@@ -47,8 +47,12 @@ INPUTS = {
 
 def test_the_catalogue_has_the_mvp_templates():
     assert {"ticket_triage", "research_brief", "rag_qa", "approval_workflow", "data_extraction"} <= set(NAMES)
-    assert set(INPUTS) == set(NAMES)  # a new template needs a sample input here
+    assert set(INPUTS) <= set(NAMES)  # a template without an input here runs with its gallery sample input
     assert len(NAMES) >= 25  # S23: the template gallery
+
+
+def _input(name: str) -> dict:
+    return INPUTS.get(name) or template_gallery(json.loads((TEMPLATES / f"{name}.ir.json").read_text()))["sample_input"]
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -57,12 +61,13 @@ def test_template_has_gallery_metadata(name):
     doc = json.loads((TEMPLATES / f"{name}.ir.json").read_text())
     g = template_gallery(doc)
     assert g.get("category") in GALLERY_CATEGORIES
-    assert g.get("difficulty") in ("beginner", "intermediate")
+    assert g.get("difficulty") in ("beginner", "intermediate", "advanced")
     assert g.get("tags") and all(isinstance(t, str) and len(t) <= 24 for t in g["tags"])
     wf = Workflow.model_validate(doc)
     inputs = {c.name for c in wf.state.channels if c.io in ("in", "inout")}
     assert g.get("sample_input") and set(g["sample_input"]) <= inputs, (set(g["sample_input"]), inputs)
-    assert 3 <= len(wf.nodes) + len(wf.resources) <= 9  # small enough to read at a glance
+    blocks = len(wf.nodes) + len(wf.resources)
+    assert 3 <= blocks <= (18 if g["difficulty"] == "advanced" else 9)  # small enough to read at a glance
 
 
 async def test_gallery_endpoint_and_created_workflows_drop_gallery_metadata(api_client):
@@ -88,7 +93,7 @@ async def test_template_validates_and_runs(app, api_client, name):
         demo.knowledge = app.state.projects.knowledge.for_project("prj_default")
     wf = (await api_client.post(f"{P}/workflows", json={"name": name, "template": name})).json()
     assert not [d for d in wf["diagnostics"] if d["severity"] == "error"], wf["diagnostics"]
-    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text
+    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": _input(name)})).text
     last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert last["type"] == "RUN_FINISHED", last
     code = (await api_client.get(f"/v1/workflows/{wf['id']}/code")).text
