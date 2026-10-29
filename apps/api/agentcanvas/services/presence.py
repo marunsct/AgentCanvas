@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.db.models import AppUser, Presence
 
@@ -61,6 +62,29 @@ class PresenceHub:
     async def beat(self, wf_id: str, user_id: str, body: Beat, now: datetime | None = None) -> list[Peer]:
         """Record a tab's heartbeat; returns everyone here now (the tab included)."""
         now = now or datetime.now(UTC)
+        changed = False
+        for attempt in (1, 2):  # a tab's first two heartbeats can arrive together: the loser updates the winner's row
+            try:
+                changed = await self._record(wf_id, user_id, body, now)
+                break
+            except IntegrityError:
+                if attempt == 2:
+                    raise
+        if changed:
+            self._event(wf_id).set()
+        return await self.peers(wf_id, now)
+
+    async def leave(self, wf_id: str, user_id: str, session: str) -> None:
+        async with self.db.sessionmaker() as s:
+            await s.execute(
+                delete(Presence).where(
+                    Presence.workflow_id == wf_id, Presence.session_id == session, Presence.user_id == user_id
+                )
+            )
+            await s.commit()
+        self._event(wf_id).set()
+
+    async def _record(self, wf_id: str, user_id: str, body: Beat, now: datetime) -> bool:
         async with self.db.sessionmaker() as s:
             row = await s.get(Presence, (wf_id, body.session))
             if row is not None and row.user_id != user_id:  # a session id is one person's: never take another's over
@@ -75,19 +99,7 @@ class PresenceHub:
                 row.selected, row.version, row.seen_at = body.selected, body.version, now
             await s.execute(delete(Presence).where(Presence.seen_at < now - timedelta(seconds=self.ttl_s * 4)))
             await s.commit()
-        if changed:
-            self._event(wf_id).set()
-        return await self.peers(wf_id, now)
-
-    async def leave(self, wf_id: str, user_id: str, session: str) -> None:
-        async with self.db.sessionmaker() as s:
-            await s.execute(
-                delete(Presence).where(
-                    Presence.workflow_id == wf_id, Presence.session_id == session, Presence.user_id == user_id
-                )
-            )
-            await s.commit()
-        self._event(wf_id).set()
+            return changed
 
     async def peers(self, wf_id: str, now: datetime | None = None) -> list[Peer]:
         now = now or datetime.now(UTC)

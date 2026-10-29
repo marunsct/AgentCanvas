@@ -150,3 +150,25 @@ async def test_the_endpoints_check_the_workflow_the_role_and_the_organisation(ap
     finally:
         app.dependency_overrides.clear()
     assert [p["session"] for p in (await api_client.get(url(wf))).json()["peers"]] == [S1]
+
+
+async def test_a_tabs_first_heartbeats_arriving_together_make_one_row(app, api_client, monkeypatch):
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    wf = await make_greeter(api_client)
+    hub: PresenceHub = app.state.presence
+    await hub.beat(wf, "usr_dev", Beat(session=S3, selected="n_first"))  # the winner's row is already there ...
+    real_get, stale = AsyncSession.get, {"left": 1}
+
+    async def get(self, entity, ident, *args, **kwargs):
+        if entity is Presence and stale["left"]:  # ... but the loser read before it was written
+            stale["left"] -= 1
+            return None
+        return await real_get(self, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "get", get)
+    await hub.beat(wf, "usr_dev", Beat(session=S3, selected="n_second"))  # used to fail with a UNIQUE error
+    assert stale["left"] == 0
+    async with app.state.db.sessionmaker() as s:
+        rows = (await s.execute(select(Presence).where(Presence.session_id == S3))).scalars().all()
+    assert [r.selected for r in rows] == ["n_second"]
