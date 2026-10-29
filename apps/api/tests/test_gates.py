@@ -145,6 +145,28 @@ async def test_examples_that_cannot_run_fail_the_gate(app, api_client, monkeypat
     assert check(refused.json())["items"][0] == "exact: mean 0.5 (needs 1)"  # the run that never started scores 0
 
 
+async def test_an_evaluation_that_times_out_is_stopped_too(app, api_client, monkeypatch):
+    """C-6: the gate fails on its timeout, and the experiment (and its model spend) stops with it."""
+    import asyncio
+
+    from agentcanvas.services import gates
+
+    wf, _ = await gated(api_client)
+    monkeypatch.setattr(gates, "GATE_TIMEOUT_S", 0.3)
+    stuck = asyncio.Event()
+
+    async def hangs(*_args, **_kwargs):
+        await stuck.wait()  # a model call that never answers
+
+    monkeypatch.setattr(app.state.runner, "start", hangs)
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert refused.status_code == 422, refused.text
+    assert "did not finish" in check(refused.json())["detail"]
+    [exp] = (await api_client.get(f"/v1/workflows/{wf}/experiments")).json()
+    assert exp["status"] == "cancelled", exp
+    assert not app.state.experiments.tasks
+
+
 async def test_a_draft_changed_during_the_evaluation_is_not_published(api_client, monkeypatch):
     from agentcanvas.services import gates
 

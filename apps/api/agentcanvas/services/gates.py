@@ -177,6 +177,7 @@ async def evaluate(
         try:
             await asyncio.wait_for(asyncio.shield(job.launch(exp_id)), GATE_TIMEOUT_S)
         except TimeoutError:
+            await job.cancel(exp_id)  # the gate has failed: stop the experiment and its model spend with it
             return Check(name="evaluation", ok=False, detail=f"the evaluation did not finish in {GATE_TIMEOUT_S:g} s")
         async with db.sessionmaker() as s:
             exp = await s.get(Experiment, exp_id)
