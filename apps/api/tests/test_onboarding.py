@@ -101,6 +101,15 @@ async def test_playground_becomes_a_workflow_that_runs(app, api_client):
     assert events[-1]["type"] == "RUN_FINISHED", events[-1]
 
 
+async def test_playground_workflow_leaves_out_a_temperature_the_model_refuses(app, api_client):
+    """W020: a model the catalog marks `sampling: false` gets no temperature in the workflow made from the chat."""
+    await _set_default_model(api_client)
+    body = {"model": "anthropic:claude-haiku-5-5", "temperature": 0.5}
+    wf = (await api_client.post(f"{P}/playground/workflow", json=body)).json()
+    assert wf["ir"]["resources"][0]["config"] == {"model": "anthropic:claude-haiku-5-5"}
+    assert not [d for d in wf["diagnostics"] if d["code"] == "W020"], wf["diagnostics"]
+
+
 # ------------------------------------------------------------------ Push to GitHub ----
 class FakeGitHub:
     """GitHub's Git Data API for one repository with a `main` branch."""

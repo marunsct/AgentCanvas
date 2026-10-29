@@ -23,6 +23,7 @@ from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.observability import counted_stream
+from agentcanvas.sampling import without_sampling
 from agentcanvas.services.secrets import redact
 from agentcanvas.services.workflows import WorkflowService
 
@@ -156,6 +157,7 @@ async def make_workflow(
     conf: dict[str, Any] = {"model": model, **config}
     if body.temperature is not None:
         conf["temperature"] = body.temperature
+    conf, _ = without_sampling(model, conf)  # W020: a model that refuses a temperature does not get one in the IR
     ir = {
         "ir_version": "1.2",
         "id": new_id("wf"),

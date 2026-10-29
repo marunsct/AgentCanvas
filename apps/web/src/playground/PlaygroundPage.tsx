@@ -7,6 +7,7 @@ import { postStream } from "../run/sse";
 import { Markdown } from "../ui/Markdown";
 import { PROJECT_ID, useModels, useSetup } from "../api/queries";
 import { PageHeader } from "../ui/PageHeader";
+import { takesTemperature } from "./playground";
 
 interface Turn { role: "user" | "assistant"; content: string }
 
@@ -30,7 +31,10 @@ export function PlaygroundPage() {
   useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify(turns)); } catch { /* not kept */ } }, [turns]);
   const [draft, setDraft] = useState("");
   const [name, setName] = useState("My assistant");
+  const [temperature, setTemperature] = useState<number | null>(null); // null = the model's (or project's) own
   const chosen = model || undefined;
+  const sampling = takesTemperature(models.data, model || defaultModel);
+  const temp = sampling && temperature !== null ? temperature : undefined; // sent only when the model takes one
   const conversation = useRef(0); // bumped by Clear: a reply to an earlier conversation is dropped
 
   const send = useMutation({
@@ -40,7 +44,7 @@ export function PlaygroundPage() {
       let reply = "";
       let failure: string | null = null;
       try {
-        await postStream(`/projects/${PROJECT_ID}/playground/chat/stream`, { messages, system_prompt: system, model: chosen }, (raw) => {
+        await postStream(`/projects/${PROJECT_ID}/playground/chat/stream`, { messages, system_prompt: system, model: chosen, temperature: temp }, (raw) => {
           const e = raw as unknown as { type: string; text?: string; reply?: string; message?: string };
           if (e.type === "delta" && e.text) { reply += e.text; if (mine === conversation.current) setLive(reply); }
           if (e.type === "error") failure = e.message ?? "the model call failed";
@@ -57,7 +61,7 @@ export function PlaygroundPage() {
   });
   const make = useMutation({
     mutationFn: () => apiFetch<{ id: string }>(`/projects/${PROJECT_ID}/playground/workflow`, {
-      method: "POST", json: { name: name.trim() || "My assistant", system_prompt: system, model: chosen },
+      method: "POST", json: { name: name.trim() || "My assistant", system_prompt: system, model: chosen, temperature: temp },
     }),
     onSuccess: (wf) => {
       void qc.invalidateQueries({ queryKey: ["workflows"] });
@@ -87,6 +91,19 @@ export function PlaygroundPage() {
           {!defaultModel && !model && setup.data && (
             <p className="small muted">No default model yet: <Link to="/settings/models">choose one</Link> or pick a model above.</p>
           )}
+          <label htmlFor="pg-temperature">Temperature</label>
+          <div className="row gap">
+            <input id="pg-temperature" type="range" min={0} max={2} step={0.1} disabled={!sampling}
+              value={temperature ?? 1} aria-valuetext={temperature === null ? "the model's default" : String(temperature)}
+              onChange={(e) => setTemperature(Number(e.target.value))} />
+            <span className="small" data-testid="pg-temperature-value">{!sampling || temperature === null ? "default" : temperature.toFixed(1)}</span>
+            {sampling && temperature !== null && <button type="button" className="small" onClick={() => setTemperature(null)}>Reset</button>}
+          </div>
+          <p className="small muted">
+            {sampling
+              ? "Lower answers more predictably, higher more varied. Default: the model's own, or the project's setting."
+              : "This model takes no temperature: it always uses its own sampling."}
+          </p>
           <label htmlFor="pg-system">Instructions</label>
           <textarea id="pg-system" rows={8} value={system} onChange={(e) => setSystem(e.target.value)}
             placeholder="Who the assistant is and how it answers" />

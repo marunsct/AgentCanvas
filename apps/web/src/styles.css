@@ -961,6 +961,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .playground-grid .chat-log { max-height: 60vh; min-height: 360px; }
 .playground-grid .chat-log > .empty-hint { align-self: center; text-align: center; margin: 150px 0 0; }
 .playground-grid .chat form input { flex: 1; }
+.playground #pg-temperature { flex: 1; min-width: 0; }
 .playground .stack, .github-push .stack { display: flex; flex-direction: column; gap: 6px; }
 .github-push { margin-top: 10px; }
 .github-push summary { cursor: pointer; }
