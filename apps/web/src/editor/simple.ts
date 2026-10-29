@@ -4,7 +4,7 @@
  * tests and code panels, and the canvas power tools. It hides blocks, not the product: Publish (Versions), Evaluate
  * and Workspace stay reachable. Nothing in the workflow changes: a block that is
  * already on the canvas stays, and switching back to Full shows everything again. The choice is remembered in this
- * browser. */
+ * browser and, when signed in, with the person (api/preferences.ts). */
 
 /** The blocks Simple mode offers: steps that answer, decide, set values or ask a person, and their models and tools. */
 export const SIMPLE_TYPES = new Set([

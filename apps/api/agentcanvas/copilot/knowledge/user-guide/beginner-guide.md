@@ -68,7 +68,8 @@ At the top of the editor, **Simple** shows only what a first workflow needs: the
 choose a path, set values or ask a person, with their models and tools; and the Inspector, Copilot, Run and
 Versions panels, so you can still publish. **Evaluate** stays on the bar and **More** still opens the workspace,
 knowledge and memory. The power tools (subgraphs, maps, frames, blast radius, tests, code) are hidden, not removed:
-press **Full** to see everything again. The editor remembers your choice in this browser.
+press **Full** to see everything again. The editor remembers your choice in this browser and with your account, so it opens
+the same way wherever you sign in (also under **Settings › Appearance › Editor**).
 
 Built something in Langflow, Flowise or n8n before? [Import it](switching.md).
 

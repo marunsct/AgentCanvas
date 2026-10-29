@@ -6,6 +6,7 @@ import { Navigate, NavLink, useParams } from "react-router";
 import { PROJECT_NAME } from "../api/queries";
 import { useCan, useMe, type Role } from "../api/session";
 import { CopilotSettings } from "../copilot/CopilotSettings";
+import { useUi } from "../editor/ui";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
@@ -75,12 +76,31 @@ export function SettingsPage() {
   );
 }
 
+function EditorMode() {
+  const simple = useUi((s) => s.simple);
+  const setSimple = useUi((s) => s.setSimple);
+  return (
+    <div className="segmented" role="radiogroup" aria-label="Editor mode">
+      {([[true, "Simple"], [false, "Full"]] as const).map(([on, label]) => (
+        <button type="button" key={label} role="radio" aria-checked={simple === on} className={simple === on ? "active" : ""}
+          onClick={() => setSimple(on)}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
 function Appearance() {
   return (
     <section className="settings-card" aria-label="Appearance">
       <h2>Appearance</h2>
-      <p className="muted small">The colour theme of this browser. System follows your computer's light or dark setting.</p>
+      <p className="muted small">Your colour theme. System follows your computer's light or dark setting.</p>
       <ThemeSwitcher />
+      <h3>Editor</h3>
+      <p className="muted small">
+        Simple shows only the blocks and panels a first workflow needs; Full shows everything. This is the mode the
+        editor opens in, wherever you sign in; the Simple and Full buttons in the editor change it too.
+      </p>
+      <EditorMode />
     </section>
   );
 }

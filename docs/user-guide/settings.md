@@ -39,7 +39,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow and by person, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person. Cost counts models with a price. The same report is `GET /v1/org/spending?since=&until=` | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
-| You › **Appearance** | Your colour theme (saved with your account) | you |
+| You › **Appearance** | Your colour theme, and whether the editor opens in Simple or Full mode (both saved with your account) | you |
 | You › **Keyboard shortcuts** | Every shortcut of the editor and the canvas (Ctrl/⌘+K opens the command palette) | read only |
 
 The addresses pages had before Settings existed (`/setup`, `/members`, `/audit`, `/policies`) still work and open

@@ -1,6 +1,5 @@
-/** Preferences that follow the person between browsers (the theme): applied when `/me` answers, saved on change.
- * Saving is best effort: a failure keeps the choice in this browser, as before. The editor's Simple mode stays
- * with the browser (the API keeps `simple_mode` for clients that want it). */
+/** Preferences that follow the person between browsers (the theme and the editor's Simple or Full mode): applied
+ * when `/me` answers, saved on change. Saving is best effort: a failure keeps the choice in this browser. */
 import { apiFetch } from "./client";
 import type { Preferences } from "./generated";
 
@@ -16,6 +15,7 @@ export async function applyPreferences(p: Preferences | undefined): Promise<void
   applying = true;
   try {
     if (p.theme) (await import("../theme/theme")).useTheme.getState().setTheme(p.theme);
+    if (typeof p.simple_mode === "boolean") (await import("../editor/ui")).useUi.getState().setSimple(p.simple_mode);
   } finally {
     applying = false;
   }

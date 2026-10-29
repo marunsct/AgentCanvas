@@ -1,6 +1,7 @@
 /** Transient UI state (command palette, dock tab). */
 import { create } from "zustand";
 import type { PortRef } from "../canvas/suggest";
+import { savePreference } from "../api/preferences";
 import { loadSimple, saveSimple } from "./simple";
 
 export type DockTab = "problems" | "timeline" | "explain" | "runs";
@@ -44,5 +45,5 @@ export const useUi = create<UiState>((set) => ({
   help: false,
   setHelp: (help) => set({ help }),
   simple: loadSimple(),
-  setSimple: (simple) => { saveSimple(simple); set({ simple }); },
+  setSimple: (simple) => { saveSimple(simple); set({ simple }); savePreference({ simple_mode: simple }); },
 }));
