@@ -16,7 +16,7 @@ import re
 
 from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import doc_line, one_line
-from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py
+from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.models import Node, Workflow
 
 ADK_VERSION = "2.11.0"
@@ -163,7 +163,7 @@ def _llm(wf: Workflow, n: Node) -> str:
     if not models:
         raise ValueError(f"'{n.name}' needs an AI model")
     m = models[0]
-    settings = [f", {k}={_py(m.config[k])}" for k in ("temperature", "max_tokens") if m.config.get(k) is not None]
+    settings = [f", {k}={_py(v)}" for k, v in model_settings(m).items()]
     return f"run.llm({_py(m.name)}{''.join(settings)})"
 
 

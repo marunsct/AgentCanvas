@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.sampling import without_sampling
 
 
 @dataclass(frozen=True)
@@ -186,7 +187,9 @@ def design_for(wf: Workflow, node: Node) -> AgentDesign:
     model = None
     for r in wired.get("model", [])[:1]:
         provider, _, name = str(r.config.get("model", "")).partition(":")
-        model = ModelChoice(r.name, provider, name, r.config.get("base_url"), r.config.get("temperature"),
+        # W020: no temperature for a model that refuses it (the provider would answer with a 400)
+        kept, _ = without_sampling(str(r.config.get("model", "")), {"temperature": r.config.get("temperature")})
+        model = ModelChoice(r.name, provider, name, r.config.get("base_url"), kept.get("temperature"),
                             r.config.get("max_tokens"))  # fmt: skip
     tools = [ToolChoice(r.name, r.type, dict(r.config)) for r in wired.get("tools", []) if r.type in TOOL_TYPES]
     cfg = node.config
