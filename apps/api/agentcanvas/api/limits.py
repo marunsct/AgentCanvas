@@ -7,6 +7,7 @@ from its Content-Length at once, or as soon as a chunked body grows past it.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 from typing import Any
 
@@ -50,3 +51,36 @@ class BodyLimit:
             "headers": [(b"content-type", b"application/problem+json"), (b"content-length", str(len(body)).encode())],
         })  # fmt: skip
         await send({"type": "http.response.body", "body": body})
+
+
+class RefuseClients:
+    """403 for every request from the given networks (`refuse_clients`): the network the API shares with the sandbox
+    service so it can call it. Workspace code runs there and could otherwise call the API from inside, past nginx and
+    its limits; the API never needs a request from that side (2026-10-29 review, S-3)."""
+
+    def __init__(self, app: Any, networks: list[str]):
+        self.app = app
+        self.networks = [ipaddress.ip_network(n, strict=False) for n in networks]
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        client = scope.get("client")
+        if scope["type"] in ("http", "websocket") and client and self._refused(client[0]):
+            body = json.dumps({
+                "type": "https://agentcanvas.dev/errors/forbidden", "title": "Forbidden", "status": 403,
+                "detail": "requests from the sandbox network are not served",
+            }).encode()  # fmt: skip
+            await send({
+                "type": "http.response.start", "status": 403,
+                "headers": [(b"content-type", b"application/problem+json"),
+                            (b"content-length", str(len(body)).encode())],
+            })  # fmt: skip
+            await send({"type": "http.response.body", "body": body})
+            return
+        await self.app(scope, receive, send)
+
+    def _refused(self, host: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        return any(ip in net for net in self.networks)

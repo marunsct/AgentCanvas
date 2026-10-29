@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     # default until Deep Agents has passed the same suite and the real-model evaluation)
     copilot_engine: Literal["loop", "deepagents"] = "loop"
     cors_origins: list[str] = ["http://localhost:5173"]
+    # networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so
+    # workspace code there cannot call the API from inside
+    refuse_clients: list[str] = []
     log_json: bool = False
     metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
@@ -108,6 +111,15 @@ class Settings(BaseSettings):
     handover_interval_s: float = 10.0
     # a running run whose instance has not refreshed it for this long lost its instance and is handed over
     orphan_after_s: float = 60.0
+
+    @field_validator("refuse_clients")
+    @classmethod
+    def _networks(cls, value: list[str]) -> list[str]:
+        import ipaddress
+
+        for network in value:
+            ipaddress.ip_network(network, strict=False)  # a typo stops the start, not a request
+        return value
 
 
 @cache

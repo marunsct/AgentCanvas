@@ -5,6 +5,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Security
+- **Workspace code in the sandbox service could call the API from inside**, past nginx and its per-visitor limits:
+  on the compose stacks the sandbox shared a network with the API, the API believed any `X-Forwarded-For`, and the
+  sandbox's in-process network block can be side-stepped by code that imports `_socket`. The API now calls the
+  sandbox on its own internal network (`sandbox-control`) and refuses every request from it
+  (`AGENTCANVAS_REFUSE_CLIENTS`); it trusts forwarded headers only from the web container's network (`front`); the
+  subnets are `SANDBOX_CONTROL_SUBNET` and `FRONT_SUBNET` if they clash with yours (HARDENING S-3).
 - **A project could open the sandbox to the cloud metadata service or the database by naming the address in
   `sandbox.json`**: the egress proxy refused private addresses a host name resolved to, but let any address the list
   named literally through, and the list is written by the project. Private addresses now need the operator

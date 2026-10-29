@@ -32,7 +32,9 @@ x-api: &api
     # hosts a project's sandbox.json allows are reached through the `egress` service below, and only those
     AGENTCANVAS_EGRESS_PROXY: egress:3128
     AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:?set AGENTCANVAS_EGRESS_SECRET (32+ random characters)}
-    FORWARDED_ALLOW_IPS: "*"                   # only nginx (web) reaches the API on this network
+    # the network the API shares with the sandbox service: workspace code runs there, so its requests are refused
+    AGENTCANVAS_REFUSE_CLIENTS: '["${SANDBOX_CONTROL_SUBNET:-10.250.250.0/24}"]'
+    FORWARDED_ALLOW_IPS: ${FRONT_SUBNET:-10.250.251.0/24}  # only nginx (web, on `front`) is trusted for X-Forwarded-*
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   volumes:
@@ -40,14 +42,14 @@ x-api: &api
 
 services:
   # Runs workspace code for the API (script_execution=remote). Same image, none of the API's secrets, read-only root,
-  # no capabilities, and a network (`sandbox`, internal) that only the API and the egress proxy share: no route out
-  # except through the proxy, for the hosts a project's sandbox.json lists.
+  # no capabilities, and two internal networks: `sandbox`, whose only way out is the egress proxy (for the hosts a
+  # project's sandbox.json lists), and `sandbox-control`, where the API calls it and refuses any request from it.
   sandbox:
     image: ${API_IMAGE:-agentcanvas-api:latest}
     command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
       AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:?set AGENTCANVAS_SANDBOX_TOKEN (32+ random characters)}
-    networks: [sandbox]
+    networks: [sandbox, sandbox-control]       # the API calls it on sandbox-control, and refuses calls back
     read_only: true
     tmpfs: ["/tmp:size=512m,mode=1777"]
     cap_drop: [ALL]
@@ -111,7 +113,7 @@ services:
     <<: *api
     deploy:
       replicas: ${API_REPLICAS:-2}
-    networks: [default, sandbox]
+    networks: [default, front, sandbox-control]
     depends_on:
       migrate: { condition: service_completed_successfully }
       sandbox: { condition: service_healthy }
@@ -125,6 +127,7 @@ services:
       OIDC_ISSUER: ${AGENTCANVAS_OIDC_ISSUER:-} # its origin is allowed in the Content-Security-Policy
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-}     # other identity provider origins (e.g. a separate token host)
     ports: ["${WEB_PORT:-8080}:8080"]
+    networks: [front]                          # it reaches the API and nothing else
     depends_on:
       api: { condition: service_healthy }
     healthcheck:                               # `up --wait` returns only once nginx answers
@@ -138,6 +141,13 @@ services:
 networks:
   sandbox:
     internal: true                             # no route out but the egress proxy: never the database, only listed hosts
+  # the API calls the sandbox service here; a request the other way (workspace code calling the API) is refused
+  sandbox-control:
+    internal: true
+    ipam: { config: [{ subnet: "${SANDBOX_CONTROL_SUBNET:-10.250.250.0/24}" }] }
+  # nginx to the API: the only network whose X-Forwarded-For the API believes
+  front:
+    ipam: { config: [{ subnet: "${FRONT_SUBNET:-10.250.251.0/24}" }] }
 
 volumes:
   pgdata:

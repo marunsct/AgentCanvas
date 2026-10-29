@@ -26,7 +26,7 @@ from agentcanvas.adapters import get_adapter, installed_adapters, model_service
 from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
-from agentcanvas.api.limits import BodyLimit
+from agentcanvas.api.limits import BodyLimit, RefuseClients
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
@@ -251,6 +251,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_problem_handlers(app)
     observability.setup_tracing(app)
     app.add_middleware(BodyLimit)  # 413 for bodies over 20 MB, whoever reaches the API
+    if settings.refuse_clients:
+        app.add_middleware(RefuseClients, networks=settings.refuse_clients)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

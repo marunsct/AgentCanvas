@@ -42,7 +42,9 @@ services:
       AGENTCANVAS_CORS_ORIGINS: '["http://localhost:${WEB_PORT:-7777}"]'
       # models on your computer (Ollama, LM Studio, vLLM, llama.cpp) are reached from inside the container here
       AGENTCANVAS_LOCAL_MODELS_HOST: ${AGENTCANVAS_LOCAL_MODELS_HOST:-host.docker.internal}
-      FORWARDED_ALLOW_IPS: "*"
+      # the network the API shares with the sandbox service: workspace code runs there, so its requests are refused
+      AGENTCANVAS_REFUSE_CLIENTS: '["${SANDBOX_CONTROL_SUBNET:-10.250.250.0/24}"]'
+      FORWARDED_ALLOW_IPS: ${FRONT_SUBNET:-10.250.251.0/24}  # only nginx (web, on `front`) is trusted for X-Forwarded-*
       # optional: server-wide provider keys (the first-run screen stores a key per project instead)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -55,7 +57,7 @@ services:
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
     extra_hosts: ["host.docker.internal:host-gateway"]   # Linux; Docker Desktop provides it already
     volumes: ["workspaces:/data/workspaces"]
-    networks: [default, sandbox]
+    networks: [default, front, sandbox-control]
     depends_on:
       postgres: { condition: service_healthy }
       sandbox: { condition: service_healthy }
@@ -68,7 +70,7 @@ services:
     command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
       AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:-local-sandbox-token-0123456789abcdef}
-    networks: [sandbox]
+    networks: [sandbox, sandbox-control]       # the API calls it on sandbox-control, and refuses calls back
     read_only: true
     tmpfs: ["/tmp:size=512m,mode=1777"]
     cap_drop: [ALL]
@@ -107,6 +109,7 @@ services:
       API_UPSTREAM: http://api:8000
     # no sign-in here, so only this computer may reach it; WEB_BIND=0.0.0.0 opens it to your network on purpose
     ports: ["${WEB_BIND:-127.0.0.1}:${WEB_PORT:-7777}:8080"]
+    networks: [front]                          # it reaches the API and nothing else
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
@@ -119,7 +122,14 @@ services:
 
 networks:
   sandbox:
-    internal: true                             # no route out but the egress proxy
+    internal: true                             # no route out but the egress proxy: never the database, only listed hosts
+  # the API calls the sandbox service here; a request the other way (workspace code calling the API) is refused
+  sandbox-control:
+    internal: true
+    ipam: { config: [{ subnet: "${SANDBOX_CONTROL_SUBNET:-10.250.250.0/24}" }] }
+  # nginx to the API: the only network whose X-Forwarded-For the API believes
+  front:
+    ipam: { config: [{ subnet: "${FRONT_SUBNET:-10.250.251.0/24}" }] }
 
 volumes:
   pgdata:

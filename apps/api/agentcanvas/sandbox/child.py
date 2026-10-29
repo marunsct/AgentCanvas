@@ -24,7 +24,11 @@ import traceback
 
 def _block_network(proxy: str = "") -> None:
     """No connections, or only to the egress proxy (`host:port` in AC_EGRESS_PROXY) when the project allows some
-    hosts: HTTP clients reach those through it (HTTPS_PROXY), and the proxy checks the list."""
+    hosts: HTTP clients reach those through it (HTTPS_PROXY), and the proxy checks the list.
+
+    This is a guard against mistakes, not isolation: code that imports `_socket`, uses ctypes or starts a program
+    goes around it. What keeps code in is the container's network (docker: none or the internal egress network;
+    the sandbox service: internal networks, and the API refusing requests from them)."""
     host, _, port = proxy.rpartition(":")
     real_getaddrinfo = socket.getaddrinfo
     real_connect, real_connect_ex = socket.socket.connect, socket.socket.connect_ex

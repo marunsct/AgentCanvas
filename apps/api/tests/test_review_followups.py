@@ -154,6 +154,27 @@ async def test_request_bodies_over_the_limit_are_refused(api_client):
     assert r.status_code == 413
 
 
+async def test_requests_from_the_sandbox_network_are_refused():
+    """Compose puts the API and the sandbox service on one network so the API can call it; workspace code runs
+    there, so a request coming from that network is refused before any route runs (S-3)."""
+    import httpx
+    import pytest
+    from fastapi import FastAPI
+
+    from agentcanvas.api.limits import RefuseClients
+    from agentcanvas.settings import Settings
+
+    inner = FastAPI()
+    inner.get("/v1/x")(lambda: {"ok": True})
+    guarded = RefuseClients(inner, ["10.250.250.0/24"])
+    for client, status in ((("10.250.250.7", 5000), 403), (("10.0.0.9", 5000), 200), (("127.0.0.1", 1), 200)):
+        transport = httpx.ASGITransport(app=guarded, client=client)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api") as c:
+            assert (await c.get("/v1/x")).status_code == status, client
+    with pytest.raises(ValueError):
+        Settings(refuse_clients=["10.250.250.0/33"])
+
+
 def test_a_broken_check_is_reported_not_raised(monkeypatch):
     from test_frameworks import GREETER
 
