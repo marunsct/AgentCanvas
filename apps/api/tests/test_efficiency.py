@@ -197,3 +197,21 @@ async def test_the_workspace_is_walked_once_for_many_reads_and_again_after_a_cha
     assert saved.status_code == 200, saved.text
     types = {t["type"] for t in (await api_client.get("/v1/node-types", params={"project_id": "prj_default"})).json()}
     assert "eff.shout" in types and len(walks) > before  # a save is seen at once
+
+
+async def test_deleting_a_project_removes_its_workspace_off_the_event_loop(app, api_client, monkeypatch):
+    import shutil
+    import threading
+
+    pid = (await api_client.post("/v1/projects", json={"name": "Doomed"})).json()["id"]
+    root = app.state.projects.workspace(pid).root
+    where = []
+    rmtree = shutil.rmtree
+
+    def watched(path, *args, **kwargs):
+        where.append(threading.current_thread() is threading.main_thread())
+        return rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", watched)
+    assert (await api_client.delete(f"/v1/projects/{pid}")).status_code == 204
+    assert where == [False] and not root.exists()

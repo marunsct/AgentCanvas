@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -156,7 +157,8 @@ async def delete_project(
     projects = getattr(request.app.state, "projects", None)
     if projects is not None:
         await projects.forget(project_id)
-    shutil.rmtree(Path(settings.workspaces_dir) / project_id, ignore_errors=True)
+    # a workspace can hold thousands of files: deleted in a worker thread, not on the event loop
+    await asyncio.to_thread(shutil.rmtree, Path(settings.workspaces_dir) / project_id, ignore_errors=True)
     return Response(status_code=204)
 
 
