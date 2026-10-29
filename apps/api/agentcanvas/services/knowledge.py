@@ -479,7 +479,7 @@ class KnowledgeService:
             id=new_id("kdoc"), kb_id=kb_id, name=(name or title)[:300], source=kind, url=url, content=text,
             sha256=digest, created_by=user_id,
         )  # fmt: skip
-        title = (title or doc.name)[:300]
+        title = self._title(doc)[:300]  # the title search shows and cites, so the vectors match what is shown
         pieces = await asyncio.to_thread(self._chunks, kb, text, title)
         _, total = await self.counts(kb_id)
         if total + len(pieces) > MAX_CHUNKS:

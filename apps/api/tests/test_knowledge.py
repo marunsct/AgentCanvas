@@ -151,6 +151,28 @@ async def test_a_stale_knowledge_base_is_searched_by_keywords_until_it_is_reinde
         assert calls == [["lost laptop"]]
 
 
+async def test_a_file_is_embedded_with_the_title_it_is_cited_by(app):
+    """E-12: a PDF or Word file was embedded with its metadata title but searched and cited by its file name, so
+    its vectors changed on the next reindex."""
+    import docx
+
+    d = docx.Document()
+    d.core_properties.title = "Microsoft Word - final v7"
+    d.add_paragraph("Book flights through the travel portal at least two weeks ahead.")
+    buf = io.BytesIO()
+    d.save(buf)
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s)
+        kb = await svc.create("prj_default", "titles")
+        await svc.add_file(kb.id, "travel.docx", buf.getvalue())
+        before = {c["id"]: c["vector"] for c in (await svc.index(await svc.get(kb.id))).chunks}
+        [found] = await svc.search(await svc.get(kb.id), "travel portal", top_k=1)
+        assert found["title"] == "travel"
+        await svc.reindex(kb.id)
+        after = {c["id"]: c["vector"] for c in (await svc.index(await svc.get(kb.id))).chunks}
+        assert before == after
+
+
 def test_retrieval_metrics():
     m = ks.retrieval_metrics(["a", "x", "b", "y"], ["a", "b"], k=3)
     assert m == {"recall": 1.0, "precision": 2 / 3, "hit": 1.0, "mrr": 1.0}

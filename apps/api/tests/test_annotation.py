@@ -121,6 +121,11 @@ async def test_runs_are_added_by_hand(app, api_client, reviewers):
         url = f"/v1/annotation-queues/{aq['id']}/items"
         added = await api_client.post(url, json={"run_ids": [run["run_id"], run["run_id"]]})
         assert added.status_code == 200 and [i["reason"] for i in added.json()] == ["manual"]
+        review = {"scores": {"helpful": 4, "on topic": 2}}
+        r = await api_client.post(f"/v1/annotation-items/{added.json()[0]['id']}/annotations", json=review)
+        assert r.status_code == 200, r.text
+        [again] = (await api_client.post(url, json={"run_ids": [run["run_id"]]})).json()  # E-12: said 0 reviews
+        assert again["reviews"] == 1 and again["reviewed_by_me"]
         assert (await api_client.post(url, json={"run_ids": ["run_nope"]})).status_code == 404
         assert (await api_client.delete(f"/v1/annotation-items/{added.json()[0]['id']}")).status_code == 403
         assert (await api_client.patch(f"/v1/annotation-queues/{aq['id']}", json={"name": "x"})).status_code == 403
@@ -130,7 +135,7 @@ async def test_runs_are_added_by_hand(app, api_client, reviewers):
         f"/v1/annotation-queues/{aq['id']}", json={"rules": {"failed": True}, "instructions": "be kind"}
     )
     assert patched.json()["rules"]["failed"] and patched.json()["instructions"] == "be kind"
-    [item] = (await api_client.get(f"/v1/annotation-queues/{aq['id']}/items")).json()
+    [item] = (await api_client.get(f"/v1/annotation-queues/{aq['id']}/items", params={"status": "all"})).json()
     assert (await api_client.delete(f"/v1/annotation-items/{item['id']}")).status_code == 204
     assert (await api_client.delete(f"/v1/annotation-queues/{aq['id']}")).status_code == 204
     assert (await api_client.get(f"/v1/workflows/{wf}/annotation-queues")).json() == []
