@@ -10,6 +10,7 @@ import { useUi } from "../editor/ui";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
+import { ApiTokens } from "./ApiTokens";
 import { ModelDefaults } from "./ModelDefaults";
 import { OrgLimits } from "./OrgLimits";
 import { OrgSettings } from "./OrgSettings";
@@ -43,6 +44,7 @@ export const SECTIONS: Section[] = [
   { id: "server", group: "Organisation", label: "Server", read: "admin", render: () => <ServerSettings /> },
   { id: "appearance", group: "You", label: "Appearance", render: () => <Appearance /> },
   { id: "shortcuts", group: "You", label: "Keyboard shortcuts", render: () => <Shortcuts /> },
+  { id: "tokens", group: "You", label: "API tokens", render: () => <ApiTokens /> },
 ];
 
 export function SettingsPage() {

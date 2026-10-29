@@ -34,6 +34,7 @@ SECURITY_ACTIONS = frozenset({
     "set_gate", "delete_gate",  # release gates
     "put_trace_export", "delete_trace_export",  # where traces (and the data in them) are sent
     "set_project_workspace",  # a project moved between Matura workspaces
+    "create_token", "revoke_my_token", "revoke_org_token",  # personal API tokens (G-13)
 })  # fmt: skip
 
 

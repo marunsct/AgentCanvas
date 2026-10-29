@@ -820,3 +820,25 @@ class CopilotConversation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
+
+
+class PersonalToken(Base):
+    """A person's API token (G-13): `Authorization: Bearer act_…` acts as them in one organisation, with at most the
+    role chosen when it was made. Only the SHA-256 of the token is kept; it is shown once."""
+
+    __tablename__ = "personal_token"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin','builder','reviewer','viewer')", name="personal_token_role"),
+        Index("personal_token_owner_idx", "org_id", "user_id"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    prefix: Mapped[str] = mapped_column(Text)  # the first characters, shown to tell tokens apart
+    role: Mapped[str] = mapped_column(Text)  # the most it may do; the person's role now applies when that is lower
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    created_at: Mapped[datetime] = _now()

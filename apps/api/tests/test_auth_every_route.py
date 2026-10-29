@@ -37,13 +37,14 @@ async def client(app):
 async def test_no_route_serves_a_stranger(app, client):
     spec = app.openapi()
     forged = bearer(token(key=OTHER_KEY))
+    unknown = bearer("act_" + "x" * 43)  # a personal API token nobody made (G-13)
     served: list[str] = []
     checked = 0
     for path, item in sorted(spec["paths"].items()):
         for method in item:
             if method not in ("get", "post", "put", "patch", "delete") or (method.upper(), path) in PUBLIC:
                 continue
-            for headers in ({}, forged, {"Authorization": "Bearer "}, {"Authorization": "Basic eDp5"}):
+            for headers in ({}, forged, {"Authorization": "Bearer "}, {"Authorization": "Basic eDp5"}, unknown):
                 r = await client.request(
                     method.upper(), _fill(path), headers=headers, json={} if method != "get" else None
                 )
@@ -51,5 +52,5 @@ async def test_no_route_serves_a_stranger(app, client):
                 if r.status_code < 400 or r.status_code >= 500:
                     how = "with a bad token" if headers else "with none"
                     served.append(f"{method.upper()} {path} {how} -> {r.status_code}")
-    assert checked > 600
+    assert checked > 750
     assert not served, "routes that answered a stranger:\n" + "\n".join(sorted(set(served)))

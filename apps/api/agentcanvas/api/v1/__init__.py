@@ -39,6 +39,7 @@ from agentcanvas.api.v1 import (
     server,
     setup,
     share,
+    tokens,
     tools,
     traces,
     triggers,
@@ -51,6 +52,7 @@ signed_in = APIRouter(dependencies=[Depends(current_user), Depends(role_policy),
 signed_in.include_router(auth.router)
 signed_in.include_router(catalog.router)
 signed_in.include_router(org.router)
+signed_in.include_router(tokens.router)
 signed_in.include_router(projects.router)
 signed_in.include_router(model_choices.router)
 signed_in.include_router(workflows.router)

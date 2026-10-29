@@ -1076,6 +1076,8 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 }
 .settings-card form.row > input, .settings-card form.row > select { flex: 1 1 200px; width: auto; margin: 0; }
 .settings-card form.row > button { flex: none; width: auto; }
+.settings-card .callout { border: 1px solid var(--accent, #2563eb); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.settings-card .callout code { word-break: break-all; }
 .danger-zone { border-color: color-mix(in srgb, var(--err) 35%, var(--border)); }
 .danger-zone > button { margin-top: 6px; }
 .settings-card h3 { margin: 18px 0 6px; font-size: 14px; }

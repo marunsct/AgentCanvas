@@ -2624,6 +2624,48 @@ export type WorkflowId8 = string;
 export type WorkflowName1 = string | null;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
+export type CreatedAt29 = string;
+export type Email4 = string;
+export type ExpiresAt = string | null;
+export type Id56 = string;
+export type LastUsedAt = string | null;
+export type Name59 = string;
+/**
+ * the token's first characters, to tell tokens apart
+ */
+export type Prefix = string;
+export type RevokedAt = string | null;
+export type Role5 = "admin" | "builder" | "reviewer" | "viewer";
+/**
+ * the token itself: shown this once, store it now
+ */
+export type Token1 = string;
+export type UserId2 = string;
+/**
+ * null: never expires
+ */
+export type ExpiresInDays = number | null;
+/**
+ * what the token is for, e.g. 'CI pipeline'
+ */
+export type Name60 = string;
+/**
+ * the most it may do; default: your role now
+ */
+export type Role6 = ("admin" | "builder" | "reviewer" | "viewer") | null;
+export type CreatedAt30 = string;
+export type Email5 = string;
+export type ExpiresAt1 = string | null;
+export type Id57 = string;
+export type LastUsedAt1 = string | null;
+export type Name61 = string;
+/**
+ * the token's first characters, to tell tokens apart
+ */
+export type Prefix1 = string;
+export type RevokedAt1 = string | null;
+export type Role7 = "admin" | "builder" | "reviewer" | "viewer";
+export type UserId3 = string;
 /**
  * Phoenix API key, as a secret (optional)
  */
@@ -2653,19 +2695,19 @@ export type SecretKey = {
   [k: string]: string;
 } | null;
 export type MissingSecrets = string[];
-export type CreatedAt29 = string;
+export type CreatedAt31 = string;
 export type DeploymentId4 = string | null;
 export type Enabled9 = boolean;
-export type Id56 = string;
+export type Id58 = string;
 export type Kind10 = string;
 export type Secret = string | null;
 export type Url4 = string | null;
 export type DeploymentId5 = string | null;
 export type Kind11 = "webhook" | "cron";
-export type CreatedAt30 = string;
+export type CreatedAt32 = string;
 export type DeploymentId6 = string | null;
 export type Enabled10 = boolean;
-export type Id57 = string;
+export type Id59 = string;
 export type Kind12 = string;
 export type Url5 = string | null;
 export type Url6 = string;
@@ -2673,9 +2715,9 @@ export type Url6 = string;
  * the Copilot proposals accepted since the version before, and by whom
  */
 export type CopilotChanges = CopilotChange[];
-export type CreatedAt31 = string;
+export type CreatedAt33 = string;
 export type CreatedBy2 = string | null;
-export type Id58 = string;
+export type Id60 = string;
 export type IrHash4 = string;
 export type Message12 = string;
 export type Semver1 = string;
@@ -2686,15 +2728,15 @@ export type Message13 = string;
  * the Copilot proposals accepted since the version before, and by whom
  */
 export type CopilotChanges1 = CopilotChange[];
-export type CreatedAt32 = string;
+export type CreatedAt34 = string;
 export type CreatedBy3 = string | null;
-export type Id59 = string;
+export type Id61 = string;
 export type IrHash5 = string;
 export type Message14 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
 export type Model12 = string | null;
-export type Name59 = string;
+export type Name62 = string;
 export type SystemPrompt1 = string;
 export type Temperature1 = number | null;
 /**
@@ -2835,24 +2877,24 @@ export type Tools4 =
       string,
       string
     ];
-export type CreatedAt33 = string;
+export type CreatedAt35 = string;
 export type Diagnostics5 = Diagnostic[];
-export type Id60 = string;
+export type Id62 = string;
 export type IrHash6 = string;
-export type Name60 = string;
+export type Name63 = string;
 export type ProjectId6 = string;
 export type UpdatedAt11 = string;
 export type Version13 = number;
-export type Id61 = string;
-export type Name61 = string;
+export type Id63 = string;
+export type Name64 = string;
 export type UpdatedAt12 = string;
 export type Version14 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
-export type Name62 = string;
-export type Id62 = string;
+export type Name65 = string;
+export type Id64 = string;
 export type IsDefault = boolean;
-export type Name63 = string;
+export type Name66 = string;
 /**
  * default: the latest version
  */
@@ -3139,6 +3181,9 @@ export interface ApiSchemas {
   ThreadOut?: ThreadOut;
   ThreadPage?: ThreadPage;
   TimeoutPolicySpec?: TimeoutPolicySpec;
+  TokenCreated?: TokenCreated;
+  TokenIn?: TokenIn;
+  TokenOut?: TokenOut;
   ToolUse?: ToolUse;
   TraceExport?: TraceExport;
   TraceExportOut?: TraceExportOut;
@@ -6494,6 +6539,48 @@ export interface ThreadPage {
   next_cursor: NextCursor;
 }
 /**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TokenCreated".
+ */
+export interface TokenCreated {
+  created_at: CreatedAt29;
+  email: Email4;
+  expires_at: ExpiresAt;
+  id: Id56;
+  last_used_at: LastUsedAt;
+  name: Name59;
+  prefix: Prefix;
+  revoked_at: RevokedAt;
+  role: Role5;
+  token: Token1;
+  user_id: UserId2;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TokenIn".
+ */
+export interface TokenIn {
+  expires_in_days?: ExpiresInDays;
+  name: Name60;
+  role?: Role6;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TokenOut".
+ */
+export interface TokenOut {
+  created_at: CreatedAt30;
+  email: Email5;
+  expires_at: ExpiresAt1;
+  id: Id57;
+  last_used_at: LastUsedAt1;
+  name: Name61;
+  prefix: Prefix1;
+  revoked_at: RevokedAt1;
+  role: Role7;
+  user_id: UserId3;
+}
+/**
  * A project's trace destination (stored in the project's settings under `trace_export`).
  *
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6541,10 +6628,10 @@ export interface Guides {
  */
 export interface TriggerCreated {
   config: Config7;
-  created_at: CreatedAt29;
+  created_at: CreatedAt31;
   deployment_id: DeploymentId4;
   enabled: Enabled9;
-  id: Id56;
+  id: Id58;
   kind: Kind10;
   secret?: Secret;
   url?: Url4;
@@ -6570,10 +6657,10 @@ export interface Config8 {
  */
 export interface TriggerOut {
   config: Config9;
-  created_at: CreatedAt30;
+  created_at: CreatedAt32;
   deployment_id: DeploymentId6;
   enabled: Enabled10;
-  id: Id57;
+  id: Id59;
   kind: Kind12;
   url?: Url5;
 }
@@ -6593,9 +6680,9 @@ export interface UrlIn {
  */
 export interface VersionDetail {
   copilot_changes?: CopilotChanges;
-  created_at: CreatedAt31;
+  created_at: CreatedAt33;
   created_by: CreatedBy2;
-  id: Id58;
+  id: Id60;
   ir: Ir4;
   ir_hash: IrHash4;
   layout: Layout3;
@@ -6623,9 +6710,9 @@ export interface VersionIn {
  */
 export interface VersionOut {
   copilot_changes?: CopilotChanges1;
-  created_at: CreatedAt32;
+  created_at: CreatedAt34;
   created_by: CreatedBy3;
-  id: Id59;
+  id: Id61;
   ir_hash: IrHash5;
   message: Message14;
   semver: Semver2;
@@ -6637,7 +6724,7 @@ export interface VersionOut {
  */
 export interface WorkflowIn {
   model?: Model12;
-  name?: Name59;
+  name?: Name62;
   system_prompt?: SystemPrompt1;
   temperature?: Temperature1;
   tools?: Tools4;
@@ -6647,9 +6734,9 @@ export interface WorkflowIn {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt33;
+  created_at: CreatedAt35;
   diagnostics: Diagnostics5;
-  id: Id60;
+  id: Id62;
   ir: Ir5;
   ir_hash: IrHash6;
   /**
@@ -6657,7 +6744,7 @@ export interface WorkflowOut {
    */
   kit?: KitOut | null;
   layout: Layout4;
-  name: Name60;
+  name: Name63;
   project_id: ProjectId6;
   updated_at: UpdatedAt11;
   version: Version13;
@@ -6681,8 +6768,8 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id61;
-  name: Name61;
+  id: Id63;
+  name: Name64;
   updated_at: UpdatedAt12;
   version: Version14;
 }
@@ -6691,16 +6778,16 @@ export interface WorkflowSummary {
  * via the `definition` "WorkflowPatch".
  */
 export interface WorkflowPatch {
-  name: Name62;
+  name: Name65;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "WorkspaceOut".
  */
 export interface WorkspaceOut {
-  id: Id62;
+  id: Id64;
   is_default: IsDefault;
-  name: Name63;
+  name: Name66;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

@@ -39,6 +39,29 @@ has signed in.
 To bootstrap a new install, list the first admins' emails in `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS`; they become
 admins of the default organisation on first sign-in.
 
+## API tokens
+
+For scripts and CI, anyone can make **personal API tokens** under **Settings › You › API tokens**: give it a name,
+pick a role (at most your own) and an expiry (30 days, 90 days, a year or never), then **Create token**. The token
+(`act_…`) is shown once: copy it then. Send it as `Authorization: Bearer act_…` to the API, exactly where a signed-in
+browser sends its sign-in token:
+
+```bash
+curl -H "Authorization: Bearer act_…" https://<your AgentCanvas>/api/v1/projects
+```
+
+- A token acts as you, in the organisation you made it in only (`X-Org-Id` naming another one is refused), and with
+  the lower of its role and your role now: demoting you demotes your tokens, removing you from the organisation
+  stops them.
+- Only a fingerprint (SHA-256) of the token is stored. Revoke a token there and it stops working at once; admins see
+  everyone's tokens in the same place and can revoke any of them.
+- A token cannot make another token: that needs a real sign-in.
+- Every change made with a token is in the audit log under your name, with the token's id (`personal token tok_…`);
+  making and revoking tokens are recorded too.
+
+Deployment keys are different: they belong to a published workflow and can only run it (see
+[Publish](publish.md)).
+
 ## Audit log
 
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a

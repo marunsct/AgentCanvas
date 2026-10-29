@@ -134,6 +134,21 @@ async def test_token_gives_organisation_and_role_and_data_stays_in_its_organisat
     assert me["memberships"] == {ACME: "builder", GLOBEX: "viewer"}
 
 
+async def test_personal_tokens_work_in_matura_mode_within_the_token_organisation(client):
+    """G-13: a token made by a Matura user acts in the organisation it was made in, with the role mirrored there."""
+    ana = as_user(ANA, ACME, "builder")
+    made = await client.post("/v1/projects", json={"name": "Acme bots"}, headers=ana)
+    assert made.status_code == 201, made.text
+    tok = await client.post("/v1/me/tokens", json={"name": "ci", "role": "viewer"}, headers=ana)
+    assert tok.status_code == 201, tok.text
+    h = {"Authorization": f"Bearer {tok.json()['token']}"}
+    me = (await client.get("/v1/me", headers=h)).json()
+    assert me["id"] == ANA and me["org_id"] == ACME and me["role"] == "viewer"
+    assert [p["name"] for p in (await client.get("/v1/projects", headers=h)).json()] == ["Acme bots"]
+    assert (await client.post("/v1/projects", json={"name": "x"}, headers=h)).status_code == 403
+    assert (await client.get("/v1/me", headers={**h, "X-Org-Id": GLOBEX})).status_code == 403
+
+
 async def test_refusals(client):
     no_tenant = {"Authorization": f"Bearer {ISSUER.token(ANA, perms=['canvas.read'])}"}
     r = await client.get("/v1/me", headers=no_tenant)
