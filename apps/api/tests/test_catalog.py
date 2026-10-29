@@ -580,6 +580,36 @@ def test_join_rules():
     assert "E016" in errors(racy)
 
 
+def test_a_join_after_two_paths_of_one_router_is_refused():
+    """E-5: `router(a|b) -> set_a -> join <- set_b` validated clean, yet only one branch ever arrives and the run
+    ends without reaching Finish."""
+
+    def routed(flow: list) -> Workflow:
+        return workflow(
+            channels=[ch("kind"), ch("a"), ch("b"), ch("c")],
+            nodes=[
+                ("pick", "core.router", {"cases": [{"when": 'state.kind == "a"', "route": "a"}], "default": "b"}),
+                ("set_a", "core.set", {"values": {"a": "A"}}),
+                ("set_b", "core.set", {"values": {"b": "B"}}),
+                ("more", "core.set", {"values": {"c": "C"}}),
+                ("wait", "core.join", {}),
+            ],
+            flow=[("START", "pick"), *flow, ("wait", "END")],
+        )
+
+    apart = routed([
+        ("pick", "set_a", "route:a"), ("pick", "set_b", "route:b"), ("set_b", "more"),
+        ("set_a", "wait"), ("more", "wait"),
+    ])  # fmt: skip
+    diags = [d for d in validate(apart) if d.code == "E016"]
+    assert len(diags) == 1 and "'pick'" in diags[0].message and "('a', 'b')" in diags[0].message
+    together = routed([
+        ("pick", "more", "route:a"), ("pick", "END", "route:b"), ("more", "set_a"), ("more", "set_b"),
+        ("set_a", "wait"), ("set_b", "wait"),
+    ])  # fmt: skip
+    assert not errors(together)  # both after the same path: they arrive together
+
+
 @pytest.mark.asyncio
 async def test_research_template_equivalence(tmp_path):
     import json

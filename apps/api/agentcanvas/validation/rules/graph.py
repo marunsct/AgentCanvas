@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from agentcanvas.ir.models import Edge
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
 
 
@@ -131,6 +132,7 @@ def map_fan_out(ctx: ValidationContext) -> Iterator[Diagnostic]:
 @rule
 def joins(ctx: ValidationContext) -> Iterator[Diagnostic]:
     """E016: a join waits for *every* input, so an input that may never arrive blocks it forever."""
+    guards = _route_guards(ctx) if ctx.join_ids else {}
     for n in ctx.wf.nodes:
         if n.id not in ctx.join_ids:
             continue
@@ -146,8 +148,64 @@ def joins(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     edge_id=e.id,
                     hint="connect conditional branches straight to the next step (joins wait for every branch)",
                 )
+        # inputs further down different paths of one router (or map): only one of them ever arrives
+        later = [e for e in inputs if e.source.node != "START" and e.source.node not in ctx.conditional_ids]
+        reported: set[str] = set()
+        for i, a in enumerate(later):
+            for b in later[i + 1 :]:
+                clash = _exclusive(guards.get(a.source.node), guards.get(b.source.node))
+                if clash is None or b.id in reported:
+                    continue
+                reported.add(b.id)
+                cond, pa, pb = clash
+                yield error(
+                    "E016",
+                    f"join '{n.name}' waits for '{ctx.wf.require_node(a.source.node).name}' and "
+                    f"'{ctx.wf.require_node(b.source.node).name}', which follow different paths of "
+                    f"'{ctx.wf.require_node(cond).name}' ('{pa}', '{pb}'): only one of them ever arrives",
+                    node_id=n.id,
+                    edge_id=b.id,
+                    hint="connect the paths straight to the next step (joins wait for every branch)",
+                )
         if len({e.source.node for e in inputs}) < 2:
             yield warning("W013", f"join '{n.name}' has fewer than two incoming branches", node_id=n.id)
+
+
+def _route_guards(ctx: ValidationContext) -> dict[str, frozenset[tuple[str, str]]]:
+    """For each reachable node, the router paths and map outputs (node id, port) that every way from START to it
+    goes through (a dominator analysis over the flow edges)."""
+    into: dict[str, list[Edge]] = {}
+    for e in ctx.wf.flow_edges():
+        into.setdefault(e.target.node, []).append(e)
+    guards: dict[str, frozenset[tuple[str, str]]] = {"START": frozenset()}
+
+    def via(e: Edge) -> frozenset[tuple[str, str]] | None:
+        g = guards.get(e.source.node)
+        if g is not None and e.source.node in ctx.conditional_ids:
+            g = g | {(e.source.node, e.source.route)}
+        return g
+
+    changed = True
+    while changed:  # values only shrink once set, so this ends
+        changed = False
+        for node, edges in into.items():
+            if node == "START" or not (ins := [g for e in edges if (g := via(e)) is not None]):
+                continue
+            new = frozenset.intersection(*ins)
+            if guards.get(node) != new:
+                guards[node], changed = new, True
+    return guards
+
+
+def _exclusive(
+    a: frozenset[tuple[str, str]] | None, b: frozenset[tuple[str, str]] | None
+) -> tuple[str, str, str] | None:
+    """(router or map, path of a, path of b) when a and b lie on different paths of one of them."""
+    for cond, pa in sorted(a or ()):
+        for other, pb in sorted(b or ()):
+            if other == cond and pa != pb:
+                return cond, pa, pb
+    return None
 
 
 @rule
