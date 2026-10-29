@@ -61,6 +61,7 @@ class RunHandle:
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
+    finishing: bool = False  # saving its outcome: a cancel now would cut the save short and wedge the thread
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
@@ -589,26 +590,41 @@ class Runner:
                 {"type": "RUN_ERROR", "code": "internal", "message": error, "runId": h.run_id, "threadId": h.thread_id},
             )
         finally:
+            h.finishing = True  # from here on the run only saves itself; `cancel()` and friends leave it alone
             try:
-                if events is not None:
-                    await events.aclose()  # stops the graph if we left early (budget, cancel)
-                h.status = status
-                await self._finish(h, status, error, interrupts)
-                self.spend.finish(h.workflow_id, h.run_id)  # after its cost is saved: later runs read it there
-            finally:  # even if finalising was cut short: the thread is released and the last events are published
-                if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
-                    del self.active_by_thread[h.thread_id]
-                for event in held:
-                    await self._emit(h, event)
-            await self._hooks(self.finish_hooks, h, status, error, interrupts)
-            h.finished_at = time.monotonic()
-            h.done.set()
-            self._evict()  # a quiet server must not hold finished runs' events beyond its limits
-            async with h.changed:
-                h.changed.notify_all()
+                await self._close(h, events, status, error, interrupts, held)
+            finally:  # however the save went, whoever waits for the run is told it is over
+                h.finished_at = time.monotonic()
+                h.done.set()
+                self._evict()  # a quiet server must not hold finished runs' events beyond its limits
+                async with h.changed:
+                    h.changed.notify_all()
             # event handlers may take long and start or resume runs (on this thread too): nobody waiting for the
             # run waits for them, but they still run in its task, so a shutdown lets them finish
             await self._hooks(self.after_hooks, h, status, error, interrupts)
+
+    async def _close(
+        self,
+        h: RunHandle,
+        events: Any,
+        status: str,
+        error: str | None,
+        interrupts: list[dict[str, Any]],
+        held: list[dict[str, Any]],
+    ) -> None:
+        """Save a run's outcome, free its thread, publish its last events and run the finish hooks."""
+        try:
+            if events is not None:
+                await events.aclose()  # stops the graph if we left early (budget, cancel)
+            h.status = status
+            await self._finish(h, status, error, interrupts)
+            self.spend.finish(h.workflow_id, h.run_id)  # after its cost is saved: later runs read it there
+        finally:  # even if finalising was cut short: the thread is released and the last events are published
+            if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
+                del self.active_by_thread[h.thread_id]
+            for event in held:
+                await self._emit(h, event)
+        await self._hooks(self.finish_hooks, h, status, error, interrupts)
 
     @staticmethod
     async def _hooks(hooks: list[Callable[..., Any]], h: RunHandle, *args: Any) -> None:
@@ -659,6 +675,9 @@ class Runner:
         except Exception:
             log.exception("run.finish_failed", run_id=h.run_id)
             await self._finish_bare(h, status, error, thread_status)
+        except asyncio.CancelledError:  # a shutdown that would not wait: leave at least the status and a free thread
+            await self._finish_bare(h, status, error, thread_status)
+            raise
 
     async def _finish_bare(self, h: RunHandle, status: str, error: str | None, thread_status: str) -> None:
         """The least a finished run must leave in the database when saving everything failed (a recording or a usage
@@ -773,11 +792,17 @@ class Runner:
         await h.done.wait()
         return h
 
+    @staticmethod
+    def _stoppable(h: RunHandle) -> bool:
+        """Still doing its work: a run that is saving its outcome finishes that first (a second cancel, a drain or a
+        superseded heartbeat used to cut the save short and leave its thread `running`)."""
+        return h.task is not None and not h.done.is_set() and not h.finishing
+
     async def cancel(self, run_id: str) -> bool:
         h = self.handles.get(run_id)
-        if h is None or h.task is None or h.done.is_set():
+        if h is None or not self._stoppable(h):
             return False
-        h.task.cancel()
+        h.task.cancel()  # type: ignore[union-attr]
         return True
 
     async def drain(self, grace_s: float) -> list[str]:
@@ -787,7 +812,7 @@ class Runner:
         running = [h for h in self.handles.values() if h.task and not h.done.is_set()]
         if running and grace_s > 0:
             await asyncio.wait([asyncio.ensure_future(h.done.wait()) for h in running], timeout=grace_s)
-        left = [h for h in running if not h.done.is_set()]
+        left = [h for h in running if self._stoppable(h)]
         for h in left:
             h.drained = True
             h.task.cancel()  # type: ignore[union-attr]
@@ -814,16 +839,16 @@ class Runner:
             await s.commit()
         for run_id in gone:
             h = self.handles.get(run_id)
-            if h is not None and h.task is not None and not h.done.is_set():
+            if h is not None and self._stoppable(h):
                 log.warning("run.superseded", run_id=run_id)
                 h.superseded = True
-                h.task.cancel()
+                h.task.cancel()  # type: ignore[union-attr]
         return gone
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):
-            if h.task and not h.done.is_set():
-                h.task.cancel()
+            if self._stoppable(h):
+                h.task.cancel()  # type: ignore[union-attr]
         await asyncio.gather(*(h.task for h in self.handles.values() if h.task), return_exceptions=True)
 
     # -------------------------------------------------------------- queries ----

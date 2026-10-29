@@ -59,3 +59,40 @@ async def test_two_decisions_on_one_approval_one_applies_and_the_other_is_told(t
     assert thread["status"] == "idle"
     runs = (await api.get("/v1/threads/th_low/runs")).json()
     assert [x["status"] for x in runs] == ["interrupted", "success"]  # applied once, not twice
+
+
+class _Hangs:
+    """The workflow's adapter, but a run that starts a step and then waits until it is cancelled."""
+
+    id = "langchain"
+
+    def __init__(self, inner):
+        self.inner, self.manifest = inner, inner.manifest
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    async def execute(self, spec, resources):
+        yield {"type": "STEP_STARTED", "stepName": "x", "canvas_node_id": "n1", "task_id": "t"}
+        await asyncio.sleep(3600)
+
+
+async def test_a_second_cancel_while_a_run_saves_itself_leaves_its_thread_free(app, api_client, monkeypatch):
+    wf = Workflow.model_validate((await greeter(api_client))["ir"])
+    runner = app.state.runner
+    monkeypatch.setitem(runner.adapters, "langchain", _Hangs(runner.adapters["langchain"]))
+    save = runner._finish
+
+    async def slow_save(h, *args):
+        await asyncio.sleep(0.3)  # a slow database: the second click lands while the run saves its outcome
+        await save(h, *args)
+
+    monkeypatch.setattr(runner, "_finish", slow_save)
+    h = await runner.start(wf, input={"who": "x"}, thread_id="th_twice")
+    await asyncio.sleep(0.1)
+    assert await runner.cancel(h.run_id)
+    await asyncio.sleep(0.1)
+    assert not await runner.cancel(h.run_id)  # already stopping: nothing to cancel
+    await asyncio.wait_for(h.done.wait(), 5)
+    assert (await api_client.get("/v1/threads/th_twice")).json()["status"] == "idle"
+    assert h.status == "cancelled"

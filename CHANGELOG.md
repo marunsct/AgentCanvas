@@ -5,6 +5,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **Clicking Cancel twice (or a server restart, or another server taking a stalled run over) could leave a
+  conversation stuck as "running"**: the second stop landed while the run was saving its outcome, cut the save
+  short, and the next message on that conversation was refused with 409 for a minute. A run that is saving itself is
+  no longer stopped again, and whoever waits for it is always told it is over (HARDENING R-1).
 - **Importing an n8n file with a loop of pass-through nodes stopped the whole server**: the importer followed the
   loop forever on the event loop, so every other request waited too. Both walks now stop at a node they have seen,
   and imports run off the event loop. A fuzz test now wires every sample file into loops (HARDENING C-1).
