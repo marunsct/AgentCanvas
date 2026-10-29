@@ -4,7 +4,8 @@ import { HelpText } from "../help/HelpText";
 import { useManifests } from "../api/queries";
 import { DesignedAgent, EnginePicker } from "../editor/Frameworks";
 import { useEditor } from "../editor/store";
-import { findElement, isResource, type IRNode } from "../ir/model";
+import { useState } from "react";
+import { findElement, isResource, type IRNode, type IRResource, nameProblem } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
 import { MockPanel, PinPanel } from "./DebugAids";
 import { McpBrowser } from "./McpBrowser";
@@ -15,7 +16,25 @@ import { WorkflowPanel } from "./WorkflowPanel";
 import { useCopilot } from "../copilot/copilot";
 import { useCan } from "../api/session";
 
-const NAME = /^[a-z][a-z0-9_]{0,62}$/;
+/** The name field: a name that cannot be used says why and stays for fixing (it used to be dropped on blur). */
+function NameField({ el, taken, onRename }: { el: IRNode | IRResource; taken: string[]; onRename: (name: string) => void }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  return (
+    <label>
+      Name (letters, digits and _ only; used to refer to it)
+      <input className="mono" defaultValue={el.name} aria-label="node name" aria-invalid={Boolean(problem)}
+        aria-describedby={problem ? `name-problem-${el.id}` : undefined}
+        onChange={() => setProblem(null)}
+        onBlur={(e) => {
+          const v = e.target.value;
+          const p = v === el.name ? null : nameProblem(v, taken);
+          setProblem(p);
+          if (!p && v !== el.name) onRename(v);
+        }} />
+      {problem && <span id={`name-problem-${el.id}`} className="field-error" role="alert">{problem}</span>}
+    </label>
+  );
+}
 
 export function Inspector() {
   const wf = useEditor((s) => s.wf);
@@ -48,11 +67,8 @@ export function Inspector() {
             `Fix the problems of the block "${el.label || el.name}" (id ${el.id}).`, "build")}>Fix with the Copilot</button>
         )}
       </div>
-      <label>
-        Name (letters, digits and _ only; used to refer to it)
-        <input className="mono" defaultValue={el.name} aria-label="node name"
-          onBlur={(e) => { const v = e.target.value; if (v !== el.name && NAME.test(v)) update({ name: v }); }} />
-      </label>
+      <NameField el={el} onRename={(name) => update({ name })}
+        taken={[...wf.nodes, ...wf.resources].filter((x) => x.id !== el.id).map((x) => x.name)} />
       {!res && (
         <label>
           Label
