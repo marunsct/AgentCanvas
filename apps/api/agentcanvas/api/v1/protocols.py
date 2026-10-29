@@ -48,7 +48,15 @@ META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_SERVER = "io.modelcontextprotocol/serverInfo"
 LIST_TTL_MS = 300_000  # a deployment's tools change only when it is published again
 HEADER_MISMATCH, UNSUPPORTED_VERSION = -32020, -32022
-A2A_VERSION = "0.3.0"
+A2A_VERSION = "0.3.0"  # what a client that sends no `A2A-Version` header speaks (the spec's rule)
+A2A_V1 = "1.0"
+A2A_V1_METHODS = ("SendMessage", "GetTask", "CancelTask", "ListTasks", "SendStreamingMessage", "SubscribeToTask",
+                  "GetExtendedAgentCard")  # fmt: skip
+TASK_NOT_FOUND, TASK_NOT_CANCELABLE, UNSUPPORTED_OPERATION, VERSION_NOT_SUPPORTED = -32001, -32002, -32004, -32009
+V1_STATES = {
+    "completed": "TASK_STATE_COMPLETED", "input-required": "TASK_STATE_INPUT_REQUIRED", "working": "TASK_STATE_WORKING",
+    "canceled": "TASK_STATE_CANCELED", "failed": "TASK_STATE_FAILED",
+}  # fmt: skip
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
 
@@ -403,7 +411,28 @@ async def _deployment(session: AsyncSession, dep_id: str) -> tuple[Deployment, W
     return dep, Workflow.model_validate(version.ir), version.semver
 
 
-def agent_card(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
+def agent_card(wf: Workflow, semver: str, url: str, version: str | None = None) -> dict[str, Any]:
+    """The agent card: A2A 1.0's shape for a client that asks for 1.x (`A2A-Version`), else 0.3's, which also lists
+    the 1.0 interface (`supportedInterfaces`) so a 1.0 client reading it without the header finds it."""
+    card = _card_v03(wf, semver, url)
+    interfaces = [{"url": url, "protocolBinding": "JSONRPC", "protocolVersion": A2A_V1},
+                  {"url": url, "protocolBinding": "JSONRPC", "protocolVersion": "0.3"}]  # fmt: skip
+    if not _v1(version):
+        return {**card, "supportedInterfaces": interfaces}
+    drop = ("protocolVersion", "url", "preferredTransport", "securitySchemes", "security")
+    return {
+        **{k: v for k, v in card.items() if k not in drop},
+        "supportedInterfaces": interfaces,
+        "securitySchemes": {"deploymentKey": {"httpAuthSecurityScheme": {"scheme": "bearer"}}},
+        "securityRequirements": [{"schemes": {"deploymentKey": {"list": []}}}],
+    }
+
+
+def _v1(version: str | None) -> bool:
+    return bool(version) and str(version).strip().split(".")[0] == "1"
+
+
+def _card_v03(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
     c = contract(wf)
     fields = ", ".join(c.input) or "none"
     return {
@@ -440,7 +469,8 @@ async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depend
     """The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the
     workflow and its input fields; running it needs the key."""
     _, wf, semver = await _deployment(session, dep_id)
-    return agent_card(wf, semver, str(request.url_for("a2a_endpoint", dep_id=dep_id)))
+    url = str(request.url_for("a2a_endpoint", dep_id=dep_id))
+    return agent_card(wf, semver, url, request.headers.get("a2a-version"))
 
 
 def _parts(message: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
@@ -503,12 +533,31 @@ def _agent_message(task_id: str, context_id: str, text: str, data: dict[str, Any
             "contextId": context_id, "parts": parts}  # fmt: skip
 
 
+def _v1_task(task: dict[str, Any]) -> dict[str, Any]:
+    """A task in A2A 1.0's wire form: ProtoJSON enum names, parts without `kind`, no `kind` on the task."""
+
+    def parts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{k: v for k, v in p.items() if k != "kind"} for p in items]
+
+    status = dict(task["status"])
+    status["state"] = V1_STATES.get(status["state"], "TASK_STATE_FAILED")
+    if "message" in status:
+        m = status["message"]
+        status["message"] = {**{k: v for k, v in m.items() if k != "kind"}, "role": "ROLE_AGENT",
+                             "parts": parts(m["parts"])}  # fmt: skip
+    out = {k: v for k, v in task.items() if k not in ("kind", "status", "artifacts")}
+    out["status"] = status
+    if task.get("artifacts"):
+        out["artifacts"] = [{**a, "parts": parts(a["parts"])} for a in task["artifacts"]]
+    return out
+
+
 async def _task_thread(session: AsyncSession, dep: Deployment, task_id: str) -> Thread:
     """The conversation of a task (a task is named after the run that started it)."""
     q = select(Thread).join(Run, Thread.id == Run.thread_id)
     thread = await session.scalar(q.where(Run.id == task_id, Thread.deployment_id == dep.id))
     if thread is None:
-        raise RpcError(-32001, f"task '{task_id}' not found")
+        raise RpcError(TASK_NOT_FOUND, f"task '{task_id}' not found")
     return thread
 
 
@@ -544,7 +593,7 @@ async def _a2a_send(
     except ValidationError as exc:
         raise RpcError(-32602, f"invalid message: {exc.errors()[0]['msg']}") from None
     except NotFound:
-        raise RpcError(-32001, f"context '{context_id}' not found") from None
+        raise RpcError(TASK_NOT_FOUND, f"context '{context_id}' not found") from None
     await session.close()
     res = await _result(h)
     return _task(res, res.run_id)
@@ -566,6 +615,26 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
     return _task(res, task_id)
 
 
+async def _a2a_v1(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    method: str,
+    params: dict[str, Any],
+    auth: str | None,
+) -> dict[str, Any]:
+    """An A2A 1.0 call: the 0.3 handlers do the work, the answer takes 1.0's shape."""
+    if method == "SendMessage":
+        return {"task": _v1_task(await _a2a_send(request, session, dep, wf, params, auth))}
+    if method == "GetTask":
+        return _v1_task(await _a2a_get(request, session, dep, params))
+    if method == "CancelTask":
+        await _task_thread(session, dep, str(params.get("id") or ""))  # an unknown task is TaskNotFound
+        raise RpcError(TASK_NOT_CANCELABLE, "tasks cannot be cancelled through A2A; a paused task simply waits")
+    raise RpcError(UNSUPPORTED_OPERATION, f"{method} is not supported by this agent (see its card's capabilities)")
+
+
 @router.post("/deployments/{dep_id}/a2a", name="a2a_endpoint")
 async def a2a_endpoint(
     dep_id: str,
@@ -573,7 +642,8 @@ async def a2a_endpoint(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """The deployment as an A2A agent (JSON-RPC, A2A 0.3)."""
+    """The deployment as an A2A agent (JSON-RPC): A2A 1.0's methods (`SendMessage`, `GetTask`, …) and 0.3's
+    (`message/send`, `tasks/get`), told apart by name as the reference SDK does."""
     dep, wf = await _caller(request, session, dep_id, authorization)
     id_: Any = None
     try:
@@ -581,7 +651,13 @@ async def a2a_endpoint(
         method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
         if "id" not in msg:  # a notification: nothing runs and nothing is answered
             return Response(status_code=204)
-        if method == "message/send":
+        if method in A2A_V1_METHODS:
+            version = request.headers.get("a2a-version") or "0.3"  # the spec: no header means 0.3
+            if not _v1(version):
+                said = f"{method} is A2A {A2A_V1}; send the header A2A-Version: {A2A_V1} (0.3 clients use message/send)"
+                raise RpcError(VERSION_NOT_SUPPORTED, said, {"supportedVersions": [A2A_V1, "0.3"]})
+            result = await _a2a_v1(request, session, dep, wf, method, params, authorization)
+        elif method == "message/send":
             result = await _a2a_send(request, session, dep, wf, params, authorization)
         elif method == "tasks/get":
             result = await _a2a_get(request, session, dep, params)

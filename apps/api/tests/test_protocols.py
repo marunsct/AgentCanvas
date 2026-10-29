@@ -230,3 +230,66 @@ async def test_mcp_speaks_the_2026_revision_without_a_handshake(api_client):
     assert "2026-07-28" in future.json()["error"]["data"]["supported"]
     legacy = await api_client.post(url, json=rpc("initialize", {"protocolVersion": "2026-07-28"}), headers=auth)
     assert legacy.json()["result"]["protocolVersion"] == "2025-11-25"  # `initialize` is the legacy era
+
+
+async def test_a2a_1_0_methods_and_card(app, api_client):
+    """A2A 1.0: PascalCase methods, the `A2A-Version` header (none means 0.3), ProtoJSON enum names, parts without
+    `kind`, `SendMessage` answering `{"task": …}`; the card in 1.0's shape when asked for, and 0.3's (listing the
+    1.0 interface) otherwise. A pause is `TASK_STATE_INPUT_REQUIRED`, answered on the same task."""
+    from agentcanvas.testing import DemoResources
+
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    card_url, url = f"/v1/deployments/{dep}/a2a/.well-known/agent-card.json", f"/v1/deployments/{dep}/a2a"
+    v1 = {"A2A-Version": "1.0"}
+    card = (await api_client.get(card_url, headers=v1)).json()
+    assert "url" not in card and "protocolVersion" not in card
+    assert {(i["protocolBinding"], i["protocolVersion"]) for i in card["supportedInterfaces"]} == {
+        ("JSONRPC", "1.0"), ("JSONRPC", "0.3")}  # fmt: skip
+    assert card["securitySchemes"]["deploymentKey"]["httpAuthSecurityScheme"]["scheme"] == "bearer"
+    old_card = (await api_client.get(card_url)).json()
+    assert old_card["protocolVersion"] == "0.3.0" and old_card["supportedInterfaces"]
+
+    auth = {**bearer(key), **v1}
+    msg = {"message": {"role": "ROLE_USER", "messageId": "m1", "parts": [{"data": {"who": "Grace"}}]}}
+    no_header = (await api_client.post(url, json=rpc("SendMessage", msg), headers=bearer(key))).json()
+    assert no_header["error"]["code"] == -32009  # no header is 0.3, which does not have SendMessage
+    sent = (await api_client.post(url, json=rpc("SendMessage", msg), headers=auth)).json()["result"]["task"]
+    assert sent["status"]["state"] == "TASK_STATE_COMPLETED" and "kind" not in sent
+    [part] = sent["artifacts"][0]["parts"]
+    assert "kind" not in part and part["data"]["out"] == "Hello Grace"
+    got = (await api_client.post(url, json=rpc("GetTask", {"id": sent["id"]}), headers=auth)).json()["result"]
+    assert got["id"] == sent["id"] and got["status"]["state"] == "TASK_STATE_COMPLETED"
+    gone = (await api_client.post(url, json=rpc("GetTask", {"id": "run_nope"}), headers=auth)).json()
+    assert gone["error"]["code"] == -32001
+    cancel = (await api_client.post(url, json=rpc("CancelTask", {"id": sent["id"]}), headers=auth)).json()
+    assert cancel["error"]["code"] == -32002
+    stream = (await api_client.post(url, json=rpc("SendStreamingMessage", msg), headers=auth)).json()
+    assert stream["error"]["code"] == -32004
+
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(HIGH_CASE["mocks"])
+    triage, key2 = await _publish(api_client, (await new_triage(api_client))["id"])
+    url2, auth2 = f"/v1/deployments/{triage}/a2a", {**bearer(key2), **v1}
+    ask = {"message": {"role": "ROLE_USER", "messageId": "t1", "parts": [{"text": "down"}]}}
+    paused = (await api_client.post(url2, json=rpc("SendMessage", ask), headers=auth2)).json()["result"]["task"]
+    assert paused["status"]["state"] == "TASK_STATE_INPUT_REQUIRED"
+    assert paused["status"]["message"]["role"] == "ROLE_AGENT" and "kind" not in paused["status"]["message"]
+    reply = {"message": {"role": "ROLE_USER", "messageId": "t2", "taskId": paused["id"],
+                         "contextId": paused["contextId"], "parts": [{"text": "yes"}]}}  # fmt: skip
+    done = (await api_client.post(url2, json=rpc("SendMessage", reply), headers=auth2)).json()["result"]["task"]
+    assert done["status"]["state"] == "TASK_STATE_COMPLETED"
+
+
+def test_the_reference_sdk_reads_the_agent_card():
+    """Both card shapes parse with a2a-sdk's own card parser, when the SDK is installed."""
+    import pytest
+
+    resolver = pytest.importorskip("a2a.client.card_resolver")
+    from test_frameworks import GREETER
+
+    from agentcanvas.api.v1.protocols import agent_card
+    from agentcanvas.ir.models import Workflow
+
+    wf = Workflow.model_validate({"id": "wf_c", "name": "Greeter", **GREETER})
+    for version in ("1.0", None):
+        card = resolver.parse_agent_card(agent_card(wf, "1.0.0", "https://x.example/a2a", version))
+        assert card.name == "Greeter" and card.supported_interfaces[0].protocol_version == "1.0"

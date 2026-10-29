@@ -115,7 +115,7 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 | | |
 |---|---|
 | Agent card | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a/.well-known/agent-card.json` (no key needed to read it) |
-| Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC, A2A 0.3) |
+| Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC: A2A 1.0 with the header `A2A-Version: 1.0`, and A2A 0.3) |
 | Sign-in | `Authorization: Bearer <deployment key>` |
 
 - `message/send` runs the workflow. A **data** part gives the input fields; a **text** part goes to the workflow's
@@ -124,7 +124,10 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 - A pause becomes the `input-required` state. Send the answer to the same task (`taskId`): "yes" or "no" for an
   approval, or the answer to a question.
 - `contextId` continues a conversation; `tasks/get` reads a task again.
-- Not supported: streaming (`message/stream`), push notifications and cancelling a task.
+- A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,
+  parts without `kind`); the agent card comes in 1.0's form when read with `A2A-Version: 1.0`, and lists both
+  versions either way.
+- Not supported: streaming (`message/stream`, `SendStreamingMessage`), push notifications and cancelling a task.
 
 Runs started over MCP or A2A are ordinary runs of the deployment: they appear under **Runs**, count towards online
 evaluation and keep their conversations.
