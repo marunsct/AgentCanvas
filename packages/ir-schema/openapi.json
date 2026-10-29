@@ -9971,6 +9971,20 @@
         "title": "StateEdit",
         "type": "object"
       },
+      "StopOut": {
+        "properties": {
+          "stopped": {
+            "description": "a turn was answering on this server and has been ended; its text is kept",
+            "title": "Stopped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stopped"
+        ],
+        "title": "StopOut",
+        "type": "object"
+      },
       "SubgraphRequest": {
         "properties": {
           "name": {
@@ -25141,6 +25155,72 @@
           }
         ],
         "summary": "Decide Proposal",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/copilot/stop": {
+      "post": {
+        "description": "End the Copilot's answer to your last message (the panel's Stop button): the model call is cancelled, so no\nmore tokens are spent; what was said so far stays in the conversation, marked stopped. `stopped: false` when\nnothing is answering on this server (it already finished, or another replica answers: closing the stream ends it\nthere too).",
+        "operationId": "stop_turn_v1_workflows__wf_id__copilot_stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stop Turn",
         "tags": [
           "copilot"
         ]

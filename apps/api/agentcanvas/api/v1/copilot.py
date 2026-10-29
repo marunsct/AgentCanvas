@@ -3,15 +3,19 @@
 `POST /workflows/{wf_id}/copilot/messages` streams the answer as Server-Sent Events: `start`, `text`, `tool`,
 `brief`, `usage`, `proposal`, `error`, and always `done` last. A proposal is applied by the editor through the normal
 `POST /workflows/{wf_id}/commands` (so it is one undo step), then reported here as accepted or rejected.
+`POST /workflows/{wf_id}/copilot/stop` ends the answer being written: the turn is cancelled on the server, so the
+model call stops spending tokens, and the stream ends with `done` (`stopped: true`).
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 from collections import OrderedDict
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -52,6 +56,18 @@ SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 LEASE = timedelta(minutes=15)  # a turn holds its conversation this long at most (a crashed server's lease expires)
 PACKS = 16  # knowledge packs kept, least recently used dropped first
 _packs: OrderedDict[str, Pack] = OrderedDict()
+STOP_WAIT_S = 10.0  # Stop waits this long for the stopped answer to be saved
+
+
+@dataclass
+class _Running:
+    """A turn answering in this process: Stop cancels its task and waits for `saved`."""
+
+    task: asyncio.Task[None]
+    saved: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+_running: dict[str, _Running] = {}  # conversation id -> its turn
 
 
 class MessageIn(BaseModel):
@@ -383,23 +399,53 @@ async def _start_turn(
             row.usage = now
             await s.commit()
 
+    def priced(event: dict[str, Any]) -> dict[str, Any]:
+        if event["type"] in ("usage", "done"):  # what the conversation has cost so far, when the price is known
+            used = event["usage"]
+            turn_used = {k: v - usage_before.get(k, 0) for k, v in used.items() if isinstance(v, int)}
+            now = usage_price(model.model, turn_used)  # this turn, on top of the earlier answers (as a reload)
+            total = None if now is None and spent_before is None else (spent_before or 0) + (now or 0)
+            return {**event, "cost_usd": total}
+        return event
+
+    async def pump(queue: asyncio.Queue[Any]) -> None:
+        """The turn runs in a task of its own, so `POST …/copilot/stop` can end it however long a model call takes."""
+        try:
+            async for event in turn.run(body.text.strip(), body.mode):
+                queue.put_nowait(event)
+        except Exception as exc:  # noqa: BLE001 - the stream turns it into an `error` event
+            queue.put_nowait(exc)
+        finally:
+            queue.put_nowait(None)
+
     async def stream() -> AsyncIterator[str]:
         done = False
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        running = _Running(asyncio.create_task(pump(queue)))
+        _running[conv_id] = running
+
+        async def finish() -> None:
+            running.task.cancel()  # a dropped connection ends the turn too
+            await asyncio.gather(running.task, return_exceptions=True)
+            try:
+                await save()
+            finally:
+                _running.pop(conv_id, None)
+                running.saved.set()
+
         try:
-            async for raw in turn.run(body.text.strip(), body.mode):
-                event = raw
-                if event["type"] in ("usage", "done"):  # what the conversation has cost so far, when the price is known
-                    used = event["usage"]
-                    turn_used = {k: v - usage_before.get(k, 0) for k, v in used.items() if isinstance(v, int)}
-                    now = usage_price(model.model, turn_used)  # this turn, on top of the earlier answers (as a reload)
-                    total = None if now is None and spent_before is None else (spent_before or 0) + (now or 0)
-                    event = {**event, "cost_usd": total}
-                if event["type"] == "proposal":  # older open proposals are replaced by the new one
+            while (item := await queue.get()) is not None:
+                if isinstance(item, Exception):
+                    raise item
+                if item["type"] == "proposal":  # older open proposals are replaced by the new one
                     for p in turn.proposals[:-1]:
                         if p.get("status") == "pending":
                             p["status"] = "superseded"
-                done = done or event["type"] == "done"
-                yield f"data: {json.dumps(event, default=str)}\n\n"
+                done = done or item["type"] == "done"
+                yield f"data: {json.dumps(priced(item), default=str)}\n\n"
+            if not done:  # stopped: what was said is kept, marked as stopped
+                stopped = priced({"type": "done", "usage": dict(turn.usage), "cap": turn.token_cap, "stopped": True})
+                yield f"data: {json.dumps(stopped, default=str)}\n\n"
         except Exception as exc:  # the stream still ends with `error` and `done`, never just stops
             if done:
                 raise
@@ -407,9 +453,31 @@ async def _start_turn(
             yield f"data: {json.dumps(failed)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'usage': dict(turn.usage), 'cap': turn.token_cap})}\n\n"
         finally:
-            await asyncio.shield(save())
+            await asyncio.shield(finish())
 
     return StreamingResponse(counted_stream(stream()), media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+class StopOut(BaseModel):
+    stopped: bool = Field(description="a turn was answering on this server and has been ended; its text is kept")
+
+
+@router.post("/workflows/{wf_id}/copilot/stop", response_model=StopOut)
+async def stop_turn(
+    wf_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> StopOut:
+    """End the Copilot's answer to your last message (the panel's Stop button): the model call is cancelled, so no
+    more tokens are spent; what was said so far stays in the conversation, marked stopped. `stopped: false` when
+    nothing is answering on this server (it already finished, or another replica answers: closing the stream ends it
+    there too)."""
+    conv = await _conversation(session, wf_id, user.id)
+    running = _running.get(conv.id) if conv else None
+    if running is None or running.task.done():
+        return StopOut(stopped=False)
+    running.task.cancel()
+    with contextlib.suppress(TimeoutError):  # the answer is saved before this returns: the panel reloads it next
+        await asyncio.wait_for(running.saved.wait(), STOP_WAIT_S)
+    return StopOut(stopped=True)
 
 
 @router.post("/workflows/{wf_id}/copilot/proposals/{proposal_id}", status_code=204)

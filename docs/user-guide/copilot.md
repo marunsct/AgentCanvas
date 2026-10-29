@@ -32,7 +32,8 @@ a memory space.
 
 - **History** at the top of the panel lists your earlier conversations about this workflow; open one to carry on
   where it stopped. **New chat** keeps the current one there.
-- **■ Stop** ends an answer while it is being written; what was said so far is kept.
+- **■ Stop** ends an answer while it is being written: the Copilot stops on the server straight away, so it spends no
+  more tokens; what was said so far is kept and marked "stopped".
 - On a longer build the Copilot keeps a short **Plan** (a to-do list, "2 of 5 done") under its answer, so you see
   where it is.
 - A proposal lists each change with a tick box: untick what you do not want (unticking a step unticks the wires to
@@ -137,7 +138,8 @@ do. The Copilot refuses to put API keys or passwords into settings and uses secr
 
 - `GET/PUT /v1/projects/{id}/copilot-settings` turns the Copilot on or off and sets its model and token limit.
 - `GET /v1/workflows/{id}/copilot` returns your conversation, its brief and any open proposal;
-  `POST …/copilot/messages` streams an answer (Server-Sent Events); `POST …/copilot/proposals/{id}` records
+  `POST …/copilot/messages` streams an answer (Server-Sent Events); `POST …/copilot/stop` ends it (Stop);
+  `POST …/copilot/proposals/{id}` records
   accept or reject; `DELETE …/copilot` starts a new chat. Conversations are per person and per workflow.
 - `make copilot-evals` (from the repository root) measures the Copilot with a model of your choice on your own
   computer: `MODEL=ollama:qwen3` (the default) or any `provider:model`, `ENGINE=loop` or `deepagents`, and

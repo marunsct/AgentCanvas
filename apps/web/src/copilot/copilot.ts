@@ -151,6 +151,10 @@ const TOOL_LABELS: Record<string, string> = {
   list_workspace_files: "Looked at the workspace",
   read_workspace_file: "Read workspace code",
   propose_file: "Wrote code",
+  list_secrets: "Looked at the secrets",
+  list_knowledge_bases: "Looked at the knowledge bases",
+  export_plan: "Checked what an export needs",
+  read_skill: "Read a how-to",
 };
 export const toolLabel = (name: string) => TOOL_LABELS[name] ?? name;
 
@@ -274,8 +278,14 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   },
 
   stop: () => {
-    // the server keeps what was said so far, marked as stopped; the reload in send() shows it
-    stopCopilotStream();
+    // the server ends the turn (so the model stops spending tokens) and keeps what was said so far, marked as
+    // stopped; the stream then ends by itself and the reload in send() shows it. Closing the stream is the fallback
+    // when the server cannot be asked, or answers from another replica.
+    const workflowId = get().workflowId;
+    if (!workflowId || !copilotStream) return;
+    apiFetch(`/workflows/${workflowId}/copilot/stop`, { method: "POST" })
+      .catch(() => undefined)
+      .finally(stopCopilotStream);
   },
 
   retry: async () => {

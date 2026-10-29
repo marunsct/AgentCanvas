@@ -2166,6 +2166,10 @@ export type SpentUsd1 = number;
 export type Tokens1 = number;
 export type AsNode1 = string | null;
 export type CheckpointId1 = string | null;
+/**
+ * a turn was answering on this server and has been ended; its text is kept
+ */
+export type Stopped = boolean;
 export type Name51 = string | null;
 /**
  * @minItems 1
@@ -2545,6 +2549,7 @@ export interface ApiSchemas {
   SpendOut?: SpendOut;
   SpendPeriod?: SpendPeriod;
   StateEdit?: StateEdit;
+  StopOut?: StopOut;
   SubgraphRequest?: SubgraphRequest;
   Surface?: Surface;
   TargetIn?: TargetIn;
@@ -5432,6 +5437,13 @@ export interface StateEdit {
 }
 export interface Values1 {
   [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "StopOut".
+ */
+export interface StopOut {
+  stopped: Stopped;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
