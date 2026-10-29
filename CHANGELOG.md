@@ -112,6 +112,11 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **Published workflows speak MCP 2026-07-28**, the current revision: no `initialize` handshake (the version and
+  client travel in each request's `_meta`), `server/discover`, every result marked `complete`, tool lists that say
+  how long they stay fresh (`ttlMs`, `cacheScope`), and the mirrored `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-
+  Name` headers checked against the body. Clients that open with `initialize` keep the earlier revisions (HARDENING
+  G-2, P-1).
 - **Nine new templates, six of them advanced, and every feature has one**: Support inbox from email events (an
   event handler, prompt-injection and personal-data checks, workspace code, a question for a person, an approval),
   Lead scoring with research (a custom block, Python tools, tool add-ons, evaluation), Daily metrics report (a

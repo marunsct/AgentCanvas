@@ -181,3 +181,52 @@ async def test_mcp_refuses_foreign_origins_and_unknown_protocol_versions(api_cli
         ok = await api_client.post(url, json=rpc("tools/list"), headers={**auth, "MCP-Protocol-Version": version})
         assert ok.status_code == 200, version
     assert (await api_client.post(url, json=rpc("tools/list"), headers=auth)).status_code == 200
+
+
+def modern(method: str, params: dict | None = None, id_: int = 1, name: str | None = None) -> tuple[dict, dict]:
+    """A 2026-07-28 request: the version and client in `_meta`, mirrored in the headers."""
+    meta = {"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
+            "io.modelcontextprotocol/clientCapabilities": {}}  # fmt: skip
+    headers = {"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": method}
+    if name is not None:
+        headers["Mcp-Name"] = name
+    return rpc(method, {**(params or {}), "_meta": meta}, id_), headers
+
+
+async def test_mcp_speaks_the_2026_revision_without_a_handshake(api_client):
+    """MCP 2026-07-28: no `initialize`, `server/discover`, every result `complete`, list results cacheable, and the
+    mirrored headers checked against the body. Legacy clients keep their handshake (dual-era server)."""
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    url, auth = f"/v1/deployments/{dep}/mcp", bearer(key)
+    body, headers = modern("server/discover")
+    found = (await api_client.post(url, json=body, headers={**auth, **headers})).json()["result"]
+    assert found["resultType"] == "complete" and "2026-07-28" in found["supportedVersions"]
+    assert "2025-11-25" in found["supportedVersions"] and "tools" in found["capabilities"]
+    assert found["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "agentcanvas-greeter"
+    body, headers = modern("tools/list")
+    listed = (await api_client.post(url, json=body, headers={**auth, **headers})).json()["result"]
+    assert [t["name"] for t in listed["tools"]] == ["greeter"]
+    assert listed["ttlMs"] > 0 and listed["cacheScope"] == "private" and listed["resultType"] == "complete"
+    body, headers = modern("tools/call", {"name": "greeter", "arguments": {"who": "Ada"}}, name="greeter")
+    called = (await api_client.post(url, json=body, headers={**auth, **headers})).json()["result"]
+    assert called["resultType"] == "complete" and called["structuredContent"]["output"]["out"] == "Hello Ada"
+    # the mirrored headers must match the body, or a gateway routing on them would see something else run
+    body, headers = modern("tools/call", {"name": "greeter", "arguments": {"who": "Ada"}}, name="other_tool")
+    mismatch = await api_client.post(url, json=body, headers={**auth, **headers})
+    assert mismatch.status_code == 400 and mismatch.json()["error"]["code"] == -32020
+    body, headers = modern("tools/list")
+    del headers["Mcp-Method"]
+    assert (await api_client.post(url, json=body, headers={**auth, **headers})).json()["error"]["code"] == -32020
+    encoded = "=?base64?Z3JlZXRlcg==?="  # "greeter", as clients send names that are not plain ASCII
+    body, headers = modern("tools/call", {"name": "greeter", "arguments": {"who": "B"}}, name=encoded)
+    assert (await api_client.post(url, json=body, headers={**auth, **headers})).status_code == 200
+    body, headers = modern("sampling/createMessage")
+    assert (await api_client.post(url, json=body, headers={**auth, **headers})).status_code == 404
+    body, headers = modern("tools/list")
+    body["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = headers["MCP-Protocol-Version"] = "2099-01-01"
+    future = await api_client.post(url, json=body, headers={**auth, **headers})
+    assert future.status_code == 400 and future.json()["error"]["code"] == -32022
+    assert "2026-07-28" in future.json()["error"]["data"]["supported"]
+    legacy = await api_client.post(url, json=rpc("initialize", {"protocolVersion": "2026-07-28"}), headers=auth)
+    assert legacy.json()["result"]["protocolVersion"] == "2025-11-25"  # `initialize` is the legacy era

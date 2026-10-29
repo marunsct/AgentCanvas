@@ -84,6 +84,7 @@ same one as the [deployment API](publish.md), with the same rate limits.
 |---|---|
 | Address | `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp` |
 | Transport | Streamable HTTP (every answer is one JSON message; no server-sent stream) |
+| Protocol | MCP `2026-07-28` (no handshake: `server/discover`, the version in each request) and the earlier revisions back to `2024-11-05` for clients that open with `initialize` |
 | Sign-in | `Authorization: Bearer <deployment key>` |
 | Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person |
 

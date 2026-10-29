@@ -39,7 +39,15 @@ from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["agent protocols"])
 
-MCP_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")  # newest first
+# 2026-07-28 is "modern": every request carries its version in `_meta`, no `initialize`, no sessions. The older ones are
+# "legacy" (an `initialize` handshake); this server speaks both, choosing by how the client opens (dual-era)
+MCP_MODERN = ("2026-07-28",)
+MCP_LEGACY = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
+MCP_VERSIONS = MCP_MODERN + MCP_LEGACY  # newest first
+META_VERSION = "io.modelcontextprotocol/protocolVersion"
+META_SERVER = "io.modelcontextprotocol/serverInfo"
+LIST_TTL_MS = 300_000  # a deployment's tools change only when it is published again
+HEADER_MISMATCH, UNSUPPORTED_VERSION = -32020, -32022
 A2A_VERSION = "0.3.0"
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
@@ -258,10 +266,45 @@ def _mcp_transport_refusal(request: Request, settings: Settings) -> JSONResponse
         return JSONResponse(_rpc_error(None, -32600, f"requests from the origin '{origin[:200]}' are not allowed"), 403)
     version = request.headers.get("mcp-protocol-version")
     if version is not None and version not in MCP_VERSIONS:
-        known = ", ".join(MCP_VERSIONS)
-        return JSONResponse(
-            _rpc_error(None, -32600, f"MCP protocol version '{version[:40]}' is not supported ({known})"), 400
-        )
+        return _unsupported(None, version)
+    return None
+
+
+def _unsupported(id_: Any, version: str) -> JSONResponse:
+    known = ", ".join(MCP_VERSIONS)
+    body = _rpc_error(id_, UNSUPPORTED_VERSION, f"MCP protocol version '{version[:40]}' is not supported ({known})",
+                      {"supported": list(MCP_VERSIONS), "requested": version[:40]})  # fmt: skip
+    return JSONResponse(body, 400)
+
+
+def _header_value(raw: str | None) -> str | None:
+    """A mirrored header's value, decoding the `=?base64?…?=` form clients use for names that are not plain ASCII."""
+    if raw is not None and raw.startswith("=?base64?") and raw.endswith("?="):
+        import base64
+        import binascii
+
+        try:
+            return base64.b64decode(raw[9:-2], validate=True).decode()
+        except (binascii.Error, UnicodeDecodeError):
+            return None
+    return raw
+
+
+def _modern_refusal(request: Request, msg: dict[str, Any], version: str) -> JSONResponse | None:
+    """The 2026-07-28 request checks: a version this server speaks, and the mirrored headers (`MCP-Protocol-Version`,
+    `Mcp-Method`, `Mcp-Name`) present and equal to the body, so a gateway routing on them sees what runs."""
+    id_ = msg.get("id")
+    if version not in MCP_MODERN:
+        return _unsupported(id_, version)
+    params = msg.get("params") or {}
+    expected = {"mcp-protocol-version": version, "mcp-method": msg["method"]}
+    if msg["method"] in ("tools/call", "prompts/get", "resources/read"):
+        expected["mcp-name"] = str(params.get("name") if msg["method"] != "resources/read" else params.get("uri"))
+    for header, value in expected.items():
+        sent = request.headers.get(header)
+        if (_header_value(sent) if header == "mcp-name" else sent) != value:
+            what = "is missing" if sent is None else f"'{sent[:80]}' does not match the body's '{value[:80]}'"
+            return JSONResponse(_rpc_error(id_, HEADER_MISMATCH, f"Header mismatch: {header} {what}"), 400)
     return None
 
 
@@ -284,12 +327,17 @@ async def mcp_endpoint(
     method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
     if "id" not in msg:  # a notification (initialized, cancelled, ...): nothing to answer
         return Response(status_code=202)
+    modern = ((params.get("_meta") or {}) if isinstance(params.get("_meta"), dict) else {}).get(META_VERSION)
+    if modern is not None:
+        if (refused := _modern_refusal(request, msg, str(modern))) is not None:
+            return refused
+        return await _mcp_modern(request, session, dep, wf, msg, authorization)
     try:
         if method == "initialize":
             asked = params.get("protocolVersion")
             version = await session.get(WorkflowVersion, dep.version_id)
             result: dict[str, Any] = {
-                "protocolVersion": asked if asked in MCP_VERSIONS else MCP_VERSIONS[0],
+                "protocolVersion": asked if asked in MCP_LEGACY else MCP_LEGACY[0],  # `initialize` is legacy
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": f"agentcanvas-{tool_name(wf)}", "version": version.semver if version else "0"},
                 "instructions": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
@@ -306,6 +354,37 @@ async def mcp_endpoint(
             raise RpcError(-32601, f"method '{method}' is not supported")
     except RpcError as e:
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+
+
+async def _mcp_modern(
+    request: Request, session: AsyncSession, dep: Deployment, wf: Workflow, msg: dict[str, Any], auth: str | None
+) -> Response:
+    """A 2026-07-28 request, served on its own: every result says it is `complete`, names this server, and list
+    results say how long they stay fresh (`ttlMs`) and that they are this caller's (`cacheScope`)."""
+    method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
+    version = await session.get(WorkflowVersion, dep.version_id)
+    server = {"name": f"agentcanvas-{tool_name(wf)}", "version": version.semver if version else "0"}
+    cached = {"ttlMs": LIST_TTL_MS, "cacheScope": "private"}  # behind the deployment key: never a shared cache
+    try:
+        if method == "server/discover":
+            result: dict[str, Any] = {
+                "supportedVersions": list(MCP_VERSIONS), "capabilities": {"tools": {"listChanged": False}},
+                "instructions": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
+                **cached,
+            }  # fmt: skip
+        elif method == "tools/list":
+            result = {"tools": _mcp_tools(wf, contract(wf)), **cached}
+        elif method == "tools/call":
+            result = await _mcp_call(request, session, dep, wf, params, auth)
+        elif method in ("resources/list", "prompts/list", "resources/templates/list"):
+            result = {method.split("/")[0] if method != "resources/templates/list" else "resourceTemplates": [],
+                      **cached}  # fmt: skip
+        else:  # the modern transport answers an unknown method with 404 and the JSON-RPC error
+            return JSONResponse(_rpc_error(id_, -32601, f"method '{method}' is not supported"), 404)
+    except RpcError as e:
+        return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
+    result = {"resultType": "complete", **result, "_meta": {META_SERVER: server}}
     return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
 
 
