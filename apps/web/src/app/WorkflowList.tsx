@@ -10,6 +10,7 @@ import { useCan } from "../api/session";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 import { Menu } from "../ui/Menu";
 import { QueryStatus } from "../ui/QueryStatus";
+import { Table } from "../ui/Table";
 import { ago, exact } from "../ui/time";
 import { EmptyState } from "../ui/EmptyState";
 import { CHANGED, type Changed, listPage, pageNumbers, type Sort } from "./workflowList";
@@ -64,9 +65,9 @@ export function WorkflowList() {
         <div className="empty-state">No workflow matches{q.trim() ? ` “${q.trim()}”` : ""}{changed !== "any" ? ` changed ${CHANGED.find((c) => c.id === changed)!.label.toLowerCase()}` : ""}.</div>
       )}
       {act.error && <p className="error-text small" role="alert">{(act.error as Error).message}</p>}
-      {view.total > 0 && <table className="table wf-table">
-        <thead><tr><th>Name</th><th className="wf-version">Version</th><th>Last changed</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
-        <tbody data-testid="workflow-list">
+      {view.total > 0 && <Table className="wf-table" bodyTestId="workflow-list" columns={[
+        { label: "Name" }, { label: "Version", className: "wf-version" }, { label: "Last changed" }, { label: "Actions", hidden: true },
+      ]}>
         {view.rows.map((w) => (
           <tr key={w.id}>
             <td className="wf-name"><Link to={`/workflows/${w.id}`}>{w.name}</Link></td>
@@ -98,8 +99,7 @@ export function WorkflowList() {
             )}</td>
           </tr>
         ))}
-        </tbody>
-      </table>}
+      </Table>}
       {view.pages > 1 && (
         <nav className="pager" aria-label="workflow pages">
           <span className="muted small">{view.from}–{view.to} of {view.total}</span>

@@ -8,6 +8,7 @@ import { PROJECT_ID } from "../api/queries";
 import { useCan } from "../api/session";
 import { STRATEGIES } from "../knowledge/knowledge";
 import { toast } from "../ui/dialog";
+import { Field } from "../ui/Form";
 import { QueryStatus } from "../ui/QueryStatus";
 
 type Chunking = Required<NonNullable<KnowledgeDefaults["chunking"]>>;
@@ -26,7 +27,9 @@ export function KnowledgeSettings() {
   if (!q.data || !draft) return <section className="settings-card"><h2>Knowledge</h2><QueryStatus q={q} what="the knowledge defaults" /></section>;
   const set = (patch: Partial<Chunking>) => setDraft({ ...draft, ...patch });
   const num = (v: string) => Number(v) || 0;
-  const valid = draft.size >= 100 && draft.size <= 8000 && draft.overlap >= 0 && draft.overlap <= 2000;
+  const sizeOk = draft.size >= 100 && draft.size <= 8000;
+  const overlapOk = draft.overlap >= 0 && draft.overlap <= 2000;
+  const valid = sizeOk && overlapOk;
   return (
     <section className="settings-card" aria-label="Knowledge defaults">
       <h2>Knowledge</h2>
@@ -36,30 +39,22 @@ export function KnowledgeSettings() {
       </p>
       {!canBuild && <p className="muted small">You can read these; a builder can change them.</p>}
       <form className="stack settings-form" onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate(draft); }}>
-        <label>
-          Split documents
+        <Field label="Split documents">
           <select value={draft.strategy} disabled={!canBuild} onChange={(e) => set({ strategy: e.target.value as Chunking["strategy"] })}>
             {STRATEGIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
-        </label>
-        <label>
-          About this many characters per passage (100 to 8000)
+        </Field>
+        <Field label="About this many characters per passage (100 to 8000)" error={sizeOk ? undefined : "Size is 100 to 8000."}>
           <input type="number" min={100} max={8000} step={50} value={draft.size} disabled={!canBuild}
             onChange={(e) => set({ size: num(e.target.value) })} />
-        </label>
+        </Field>
         {draft.strategy === "fixed" && (
-          <label>
-            Characters shared between passages (0 to 2000)
+          <Field label="Characters shared between passages (0 to 2000)" error={overlapOk ? undefined : "Overlap is 0 to 2000."}>
             <input type="number" min={0} max={2000} step={10} value={draft.overlap} disabled={!canBuild}
               onChange={(e) => set({ overlap: num(e.target.value) })} />
-          </label>
+          </Field>
         )}
-        {canBuild && (
-          <div className="row gap">
-            <button type="submit" className="primary" disabled={!valid || save.isPending}>Save</button>
-            {!valid && <span className="error-text small" role="alert">Size 100 to 8000, overlap 0 to 2000.</span>}
-          </div>
-        )}
+        {canBuild && <button type="submit" className="primary" disabled={!valid || save.isPending}>Save</button>}
         {save.error && <p className="error-text small" role="alert">Could not save: {(save.error as Error).message}</p>}
       </form>
     </section>

@@ -11,16 +11,18 @@ import { confirmDialog, toast } from "../ui/dialog";
 import { PageHeader } from "../ui/PageHeader";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
+import { Badge, type Tone } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
+import { Table } from "../ui/Table";
 import { AddToDataset } from "./AddToDataset";
 import { sinceFor, WHEN, type When } from "./runs";
 import { Activity } from "lucide-react";
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  idle: { label: "done", cls: "ok" },
-  running: { label: "running", cls: "status-running" },
-  interrupted: { label: "waiting for a person", cls: "warn" },
-  error: { label: "failed", cls: "err" },
+const STATUS: Record<string, { label: string; tone: Tone }> = {
+  idle: { label: "done", tone: "ok" },
+  running: { label: "running", tone: "running" },
+  interrupted: { label: "waiting for a person", tone: "warn" },
+  error: { label: "failed", tone: "err" },
 };
 
 export function duration(t: Pick<ThreadOut, "last_started_at" | "last_ended_at">): string {
@@ -84,37 +86,38 @@ export function RunsPage() {
           : <EmptyState icon={Activity} title="No runs yet">Run a workflow from the editor with ▶ Test, or call a published one; every conversation shows here.</EmptyState>
       )}
       {items.length > 0 && (
-        <table className="table runs-table" data-testid="runs">
-          <thead><tr>{canBuild && <th aria-label="select" />}<th>Status</th><th>Workflow</th><th>From</th><th>Started</th><th>Took</th><th>Runs</th><th>Cost</th><th aria-label="actions" /></tr></thead>
-          <tbody>
-            {items.map((t) => {
-              const s = STATUS[t.status] ?? { label: t.status, cls: "" };
-              return (
-                <tr key={t.id}>
-                  {canBuild && <td><input type="checkbox" aria-label={`select conversation ${t.id}`} checked={picked.includes(t.id)}
-                    onChange={(e) => pick(t.id, e.target.checked)} /></td>}
-                  <td><span className={`badge ${s.cls}`}>{s.label}</span></td>
-                  <td>
-                    <Link to={`/workflows/${t.workflow_id}?thread=${t.id}`} title="Open in the editor's timeline">{t.workflow_name ?? t.workflow_id}</Link>
-                    {t.title && <div className="muted small">{t.title}</div>}
-                    {t.last_error && <div className="error-text small" title={t.last_error}>{t.last_error.slice(0, 120)}</div>}
-                  </td>
-                  <td className="small">{t.deployment_id ? "API" : "Editor"}</td>
-                  <td className="small" title={t.last_started_at ? exact(t.last_started_at) : undefined}>{t.last_started_at ? ago(t.last_started_at) : "—"}</td>
-                  <td className="small">{duration(t) || "—"}</td>
-                  <td className="small">{t.runs}</td>
-                  <td className="small">{t.cost_usd ? `$${t.cost_usd.toFixed(4)}` : "—"}</td>
-                  <td className="actions">{canBuild && (
-                    <button type="button" className="link small" aria-label={`delete conversation ${t.id}`} disabled={remove.isPending}
-                      onClick={async () => {
-                        if (await confirmDialog({ title: "Delete this conversation?", body: "Its runs, checkpoints and pending decisions are deleted.", confirm: "Delete", danger: true })) remove.mutate(t.id);
-                      }}>Delete</button>
-                  )}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <Table className="runs-table" testId="runs" columns={[
+          ...(canBuild ? [{ label: "Select", hidden: true }] : []),
+          { label: "Status" }, { label: "Workflow" }, { label: "From" }, { label: "Started" }, { label: "Took" }, { label: "Runs" },
+          { label: "Cost" }, { label: "Actions", hidden: true },
+        ]}>
+          {items.map((t) => {
+            const s = STATUS[t.status] ?? { label: t.status, tone: "neutral" as Tone };
+            return (
+              <tr key={t.id}>
+                {canBuild && <td><input type="checkbox" aria-label={`select conversation ${t.id}`} checked={picked.includes(t.id)}
+                  onChange={(e) => pick(t.id, e.target.checked)} /></td>}
+                <td><Badge tone={s.tone}>{s.label}</Badge></td>
+                <td>
+                  <Link to={`/workflows/${t.workflow_id}?thread=${t.id}`} title="Open in the editor's timeline">{t.workflow_name ?? t.workflow_id}</Link>
+                  {t.title && <div className="muted small">{t.title}</div>}
+                  {t.last_error && <div className="error-text small" title={t.last_error}>{t.last_error.slice(0, 120)}</div>}
+                </td>
+                <td className="small">{t.deployment_id ? "API" : "Editor"}</td>
+                <td className="small" title={t.last_started_at ? exact(t.last_started_at) : undefined}>{t.last_started_at ? ago(t.last_started_at) : "—"}</td>
+                <td className="small">{duration(t) || "—"}</td>
+                <td className="small">{t.runs}</td>
+                <td className="small">{t.cost_usd ? `$${t.cost_usd.toFixed(4)}` : "—"}</td>
+                <td className="actions">{canBuild && (
+                  <button type="button" className="link small" aria-label={`delete conversation ${t.id}`} disabled={remove.isPending}
+                    onClick={async () => {
+                      if (await confirmDialog({ title: "Delete this conversation?", body: "Its runs, checkpoints and pending decisions are deleted.", confirm: "Delete", danger: true })) remove.mutate(t.id);
+                    }}>Delete</button>
+                )}</td>
+              </tr>
+            );
+          })}
+        </Table>
       )}
       {remove.error && <p className="error-text small" role="alert">Could not delete: {(remove.error as Error).message}</p>}
       {threads.hasNextPage && (
