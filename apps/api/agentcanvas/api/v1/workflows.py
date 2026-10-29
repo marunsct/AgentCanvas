@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -367,10 +368,14 @@ async def import_file(
     user: CurrentUser = Depends(current_user),
 ) -> Imported:
     """A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec), with what changed."""
-    try:
-        kind, ir, report, layout = importers.import_document(body.file, wf_id=new_id("wf"), name=body.name)
+    try:  # off the event loop: a large or strange file must not stop the server answering others
+        kind, ir, report, layout = await asyncio.to_thread(
+            importers.import_document, body.file, wf_id=new_id("wf"), name=body.name
+        )
     except importers.ImportError_ as exc:
         raise InvalidInput(str(exc)) from exc
+    except RecursionError as exc:
+        raise InvalidInput("the file is nested too deeply to import") from exc
     view = await svc.create_from_ir(project_id, ir, layout, user.id)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     return Imported(**_out(view, response).model_dump(), format=kind, report=report)

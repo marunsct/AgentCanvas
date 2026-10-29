@@ -111,8 +111,12 @@ class _N8n:
 
     def field(self, key: str, source: str | None) -> str:
         """`$json.<key>` as seen after `source` (the node that produced the item)."""
+        passed: set[str] = set()  # a loop of pass-through nodes has no producer: stop at the first repeat
         while source is not None and self.type(source) in IGNORED | {BASE + "if", BASE + "switch", BASE + "filter"}:
+            passed.add(source)
             source = self.previous(source)  # these pass items through unchanged
+            if source in passed:
+                source = None
         if key == "chatInput" or (source is not None and self.type(source) in CHAT_TRIGGERS):
             return self.b.use_chat()
         if source is not None and source in self.b.steps:
@@ -197,16 +201,17 @@ class _N8n:
         wanted = set(steps)
         return [n for n in seen if n in wanted] + [n for n in steps if n not in seen]
 
-    def through(self, src: str) -> list[str]:
-        """The step keys an item from `src` comes from: triggers are the start, ignored nodes are looked through."""
+    def through(self, src: str, seen: frozenset[str] = frozenset()) -> list[str]:
+        """The step keys an item from `src` comes from: triggers are the start, ignored nodes are looked through
+        (a loop of ignored nodes is looked through once)."""
         if self.is_trigger(src):
             return ["START"]
         if src in self.b.steps:
             return [src]
         found: list[str] = []
         for s, _, t in self.main:
-            if t == src:
-                found += self.through(s)
+            if t == src and s not in seen:
+                found += [k for k in self.through(s, seen | {src}) if k not in found]
         return found or ["START"]
 
     def declare(self, n: str) -> None:

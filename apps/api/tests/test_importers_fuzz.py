@@ -102,3 +102,57 @@ def test_damaged_files_import_or_are_refused_plainly(name):
             failures.setdefault("imported a document that is not a valid workflow: " + _where(exc), f"round {round_}")
     assert imported and refused, (imported, refused)  # the damage is neither always harmless nor always fatal
     assert not failures, f"{name}: " + "\n".join(f"{k} ({v})" for k, v in failures.items())
+
+
+def _loop_back(doc: Any, rng: random.Random) -> Any:
+    """The same file with one connection wired back to an earlier node: a cycle, which real files have (n8n
+    `noOp` chains, Langflow loops) and the random damage above never makes."""
+    doc = copy.deepcopy(doc)
+    if isinstance(doc.get("connections"), dict):  # n8n: {source: {"main": [[{"node": target}]]}}
+        names = [n["name"] for n in doc.get("nodes", []) if isinstance(n, dict) and "name" in n]
+        if len(names) >= 2:
+            a, b = rng.sample(names, 2)
+            doc["connections"].setdefault(a, {}).setdefault("main", [[]])[0].append({"node": b, "type": "main"})
+            doc["connections"].setdefault(b, {}).setdefault("main", [[]])[0].append({"node": a, "type": "main"})
+        return doc
+    graph = doc.get("data", doc) if isinstance(doc.get("data", doc), dict) else doc  # Langflow / Flowise
+    edges, nodes = graph.get("edges"), graph.get("nodes")
+    if isinstance(edges, list) and isinstance(nodes, list) and edges:
+        e = copy.deepcopy(rng.choice(edges))
+        if isinstance(e, dict):
+            e["source"], e["target"] = e.get("target"), e.get("source")
+            e["id"] = f"{e.get('id', 'e')}-back"
+            edges.append(e)
+    return doc
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_files_with_a_loop_import_or_are_refused_in_time(name):
+    import concurrent.futures
+
+    original = json.loads((FILES / f"{name}.json").read_text())
+    rng = random.Random(f"{SEED}:loop:{name}")
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        for round_ in range(12):
+            doc = _loop_back(original, rng)
+            job = pool.submit(import_document, doc, wf_id="wf_new")
+            try:
+                job.result(timeout=10)
+            except ImportError_:
+                pass
+            except concurrent.futures.TimeoutError:
+                pytest.fail(f"{name}: round {round_} never finished importing (a loop in the file)")
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def test_a_loop_of_pass_through_nodes_imports():
+    doc = {"nodes": [
+        {"name": "A", "type": "n8n-nodes-base.noOp", "parameters": {}},
+        {"name": "B", "type": "n8n-nodes-base.noOp", "parameters": {}},
+        {"name": "C", "type": "@n8n/n8n-nodes-langchain.chainLlm",
+         "parameters": {"promptType": "define", "text": "={{ $json.foo }}"}},
+    ], "connections": {"A": {"main": [[{"node": "B"}]]}, "B": {"main": [[{"node": "A"}, {"node": "C"}]]}}}  # fmt: skip
+    _, ir, _, _ = import_document(doc, wf_id="wf_new")
+    validate(Workflow.model_validate(ir))

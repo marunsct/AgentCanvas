@@ -5,6 +5,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **Importing an n8n file with a loop of pass-through nodes stopped the whole server**: the importer followed the
+  loop forever on the event loop, so every other request waited too. Both walks now stop at a node they have seen,
+  and imports run off the event loop. A fuzz test now wires every sample file into loops (HARDENING C-1).
 - **A damaged group of steps broke the editor's blast-radius overlay** (a server error) instead of being skipped:
   validation already reports it (E018) and nothing runs it; the overlay and the dry run now leave it out, as the
   other readers do. Found by the workflow fuzz test on the new Parallel code review template.
