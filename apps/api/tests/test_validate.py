@@ -124,6 +124,17 @@ def test_writes_and_reads_unknown_channel(triage):
     assert {"E021", "E023"} <= set(codes(triage))
 
 
+def test_an_optional_channel_field_cleared_to_empty_is_not_an_unknown_channel(triage):
+    """E-4: clearing an optional output such as a guard's `flag_output` gave "refers to unknown state channel ''"."""
+    triage.nodes.append(
+        Node(id="n_g", type="guard.pii", name="pii", config={"input": "messages", "flag_output": "", "output": ""})
+    )
+    triage.edges = [e for e in triage.edges if e.id != "e1"] + [flow("g1", "START", "n_g"), flow("g2", "n_g", "n_cls")]
+    assert "E021" not in codes(triage)
+    triage.require_node("n_cls").config["output"] = ""  # a required one still is
+    assert "E021" in codes(triage)
+
+
 def test_settings_reference_unknown_channel(triage):
     triage.settings.output_channels = ["urgency", "ghost"]
     assert "E021" in codes(triage)
