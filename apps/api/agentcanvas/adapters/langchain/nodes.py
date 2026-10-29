@@ -59,7 +59,7 @@ from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.expr import eval_condition, render_template
-from agentcanvas.registry import without_sampling
+from agentcanvas.sampling import without_sampling
 from agentcanvas.workspace.loader import load_attr
 
 MODEL_CACHE_SIZE = 64  # model clients kept per Resources

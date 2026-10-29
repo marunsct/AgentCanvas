@@ -58,7 +58,9 @@ RUNTIME_FILES = [
     "expr.py",
     "guardrails.py",
     "knowledge_search.py",
+    "registry/models.json",  # which models take sampling settings (`sampling.py`)
     "safe_regex.py",
+    "sampling.py",
     "sdk.py",
     "security/__init__.py",
     "security/imports.py",

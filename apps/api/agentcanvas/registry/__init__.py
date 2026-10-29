@@ -17,6 +17,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agentcanvas.sampling import SAMPLING, without_sampling  # noqa: F401 - part of the registry's API
+
 HERE = Path(__file__).parent
 
 SideEffect = Literal["external_write", "message_send", "code_exec", "spend", "pii_read", "host_exec"]
@@ -91,18 +93,6 @@ class ModelInfo(BaseModel):
     # takes temperature / top_p / top_k: current Claude models refuse non-default values (400) and reasoning models
     # such as GPT-5 take the default only, so a run leaves them out for a model marked False
     sampling: bool = True
-
-
-SAMPLING = ("temperature", "top_p", "top_k")
-
-
-def without_sampling(model_id: str, params: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """`params` without the sampling settings the catalog says `model_id` refuses, and the names left out."""
-    info = default_registry().model(model_id)
-    if info is None or info.sampling:
-        return params, []
-    dropped = [k for k in SAMPLING if k in params]
-    return {k: v for k, v in params.items() if k not in SAMPLING}, dropped
 
 
 def token_counts(meta: Any) -> dict[str, int]:

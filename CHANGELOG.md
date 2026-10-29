@@ -22,6 +22,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Exported LangGraph projects build their model clients with the same sampling rule as the server (the rule and the
+  catalog file it reads are bundled with the export), so an export of a workflow on a current Claude or GPT-5 model
+  does not send them a temperature either.
 - **Templates failed on their first model call with a Claude or GPT-5 key**: every template set `temperature: 0`,
   kept when your project's model is swapped in, and current Claude models (Opus 5.5, Sonnet 5.5) refuse a non-
   default temperature with a 400, while GPT-5 takes only the default. The catalog now says which models take
