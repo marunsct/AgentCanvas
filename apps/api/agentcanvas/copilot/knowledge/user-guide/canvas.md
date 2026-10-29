@@ -35,8 +35,10 @@ conflict instead of overwriting it.
 
 Click an empty spot on the canvas to open the **Workflow** panel. There you set the name, description,
 recursion limit (the maximum number of steps per run), **durability** (how eagerly checkpoints are written:
-*exit* fastest, *async* default, *sync* for workflows with side effects), a **budget**, and the **state
-channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** adds one.
+*exit* fastest, *async* default, *sync* for workflows with side effects), **Defaults for every block** (retries,
+timeout and cache that a block uses unless it sets its own under Runtime policies; only LangChain flows apply
+them), **Hide these fields from traces** (comma-separated field names whose values never reach a trace), a
+**budget**, and the **state channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** adds one.
 
 ### Budgets
 

@@ -6,6 +6,7 @@ import type { SpendOut } from "../api/types";
 import { useEditor } from "../editor/store";
 import { FrameworkPicker } from "../editor/Frameworks";
 import { MAX_ALERTS, parseAlertShares } from "./budget";
+import { PolicyFields } from "./PoliciesEditor";
 import { StateDesigner } from "./StateDesigner";
 
 export function WorkflowPanel() {
@@ -42,9 +43,43 @@ export function WorkflowPanel() {
           </select>
         </label>
       </div>
+      <NodeDefaultsEditor />
+      <TraceRedactEditor />
       <BudgetEditor />
       <StateDesigner />
     </div>
+  );
+}
+
+/** `node_defaults`: retries, timeout and cache every block has unless it sets its own (LangGraph's `set_node_defaults`). */
+function NodeDefaultsEditor() {
+  const defaults = useEditor((s) => s.wf?.settings.node_defaults);
+  const dispatch = useEditor((s) => s.dispatch);
+  return (
+    <details className="budget" open={Boolean(defaults && Object.values(defaults).some((v) => v != null))}>
+      <summary>Defaults for every block</summary>
+      <p className="small muted">What a block does when it has no setting of its own under Runtime policies. Only LangChain flows apply them.</p>
+      <PolicyFields p={defaults ?? {}}
+        update={(patch) => dispatch([{ op: "UpdateSettings", patch: { node_defaults: patch } }], { debounceMs: 400 })} />
+    </details>
+  );
+}
+
+const listText = (v: string[] | null | undefined) => (v ?? []).join(", ");
+const textList = (raw: string) => raw.split(",").map((x) => x.trim()).filter(Boolean);
+
+/** `trace_redact`: field names whose values never reach a trace, wherever they appear in a step's input or output. */
+function TraceRedactEditor() {
+  const fields = useEditor((s) => s.wf?.settings.trace_redact);
+  const dispatch = useEditor((s) => s.dispatch);
+  return (
+    <label>
+      Hide these fields from traces
+      <SettingInput placeholder="e.g. email, card_number" aria-label="trace redact fields"
+        title="Comma-separated field names. Their values are replaced by [redacted] in every trace of this workflow."
+        value={fields ?? []} toText={listText} fromText={textList}
+        onText={(raw) => dispatch([{ op: "UpdateSettings", patch: { trace_redact: textList(raw) } }], { debounceMs: 400 })} />
+    </label>
   );
 }
 

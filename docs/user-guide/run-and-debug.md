@@ -74,7 +74,7 @@ warning in the run that crossed it.
 
 With `LANGSMITH_TRACING=true` and a `LANGSMITH_API_KEY` on the server, each run gets an **Open trace in LangSmith**
 link. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the server also exports OpenTelemetry traces. Secret values are
-masked as `***`; list fields in the workflow's `trace_redact` setting to keep their values out of traces entirely.
+masked as `***`; list fields under **Hide these fields from traces** in the Workflow panel to keep their values out of traces entirely.
 
 ## Save a run as a test
 
