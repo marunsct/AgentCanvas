@@ -14,6 +14,7 @@ Each evaluator turns an `Observation` (the example's input and reference, and wh
 | `composite` | `evaluators`, `mode`: weighted / all / any, `weights` | their weighted mean, or 1 when all / any pass |
 | `pairwise` | `model`, `rubric`, `channels` | experiments only: each target against the first, see `pairwise` |
 | `retrieval` | `channel`, `k`, `metric`, `match_by` | recall / precision / hit / MRR at k of found passages (S24) |
+| `red_team` | `model`, `policy` | 1 when the workflow held against an attack example (`agentcanvas.red_team`, G-10) |
 
 A retrieval evaluator compares the passages a Search knowledge block saved with the example's `reference.relevant`
 (the documents, titles, chunk ids or phrases a good search finds).
@@ -47,7 +48,9 @@ from agentcanvas.knowledge_search import retrieval_metrics
 from agentcanvas.registry import default_registry
 from agentcanvas.workspace.bundle import collect
 
-Kind = Literal["exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise", "retrieval"]
+Kind = Literal[
+    "exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise", "retrieval", "red_team"
+]
 DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7, "composite": 0.7, "pairwise": 0.5, "retrieval": 0.5}
 ONLY_IN_EXPERIMENTS = ("pairwise",)
 JUDGE_TIMEOUT_S = 60.0
@@ -98,6 +101,11 @@ class PairwiseConfig(BaseModel):
     channels: list[str] | None = Field(default=None, description="output channels the judge sees (default: all)")
 
 
+class RedTeamConfig(BaseModel):
+    model: str | None = Field(default=None, description="provider:model of the judge; empty: rules alone decide")
+    policy: str = Field(default="", max_length=2000, description="what the workflow is for and must never do")
+
+
 class RetrievalConfig(BaseModel):
     channel: str = Field(default="passages", description="where the Search knowledge block saved its passages")
     k: int = Field(default=5, ge=1, le=50, description="how many of the first passages count")
@@ -120,6 +128,7 @@ KINDS: dict[str, tuple[str, str]] = {
     "composite": ("Composite", "Combines other evaluators: a weighted mean, or all / any must pass."),
     "pairwise": ("Pairwise judge", "Experiments only: a model says which of two targets answered better."),
     "retrieval": ("Retrieval", "A Search knowledge block found the documents the example lists as relevant."),
+    "red_team": ("Red team", "The workflow held against an attack example: no leak, a refusal or a safety block."),
 }
 SERVER_SET = {"pinned", "parts"}  # config fields the server fills in; not for the form
 
@@ -133,8 +142,9 @@ def kind_schema(kind: str) -> dict[str, Any]:
         r for r in schema.get("required", []) if r in props and not (kind in ("llm_judge", "pairwise") and r == "model")
     ]
     out = {**schema, "properties": props, "required": required}
-    if kind in ("llm_judge", "pairwise") and "model" in props:
-        props["model"] = {**props["model"], "description": "provider:model; empty: the project's judge model"}
+    if kind in ("llm_judge", "pairwise", "red_team") and "model" in props:
+        empty = "rules alone decide" if kind == "red_team" else "the project's judge model"
+        props["model"] = {**props["model"], "description": f"provider:model; empty: {empty}"}
     return out
 
 
@@ -148,6 +158,7 @@ CONFIGS: dict[str, type[BaseModel]] = {
     "composite": CompositeConfig,
     "pairwise": PairwiseConfig,
     "retrieval": RetrievalConfig,
+    "red_team": RedTeamConfig,
 }
 
 
@@ -169,6 +180,8 @@ def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
             raise InvalidInput(f"json_schema evaluator: invalid schema: {exc.message}") from None
     elif isinstance(parsed, JudgeConfig | PairwiseConfig) and not default_registry().usable_model(parsed.model):
         raise InvalidInput(f"{kind} evaluator: '{parsed.model}' is not a catalog model or a known provider's model")
+    elif isinstance(parsed, RedTeamConfig) and parsed.model and not default_registry().usable_model(parsed.model):
+        raise InvalidInput(f"red_team evaluator: '{parsed.model}' is not a catalog model or a known provider's model")
     elif isinstance(parsed, CompositeConfig):
         parsed.parts = None
         if len(set(parsed.evaluators)) != len(parsed.evaluators):
@@ -367,6 +380,8 @@ async def score(
             return await _composite(cfg, obs, complete, script, fingerprint, done)
         if isinstance(cfg, RetrievalConfig):
             return done(*retrieval_score(cfg, obs))
+        if isinstance(cfg, RedTeamConfig):
+            return done(*await red_team_score(cfg, obs, complete))
         if isinstance(cfg, PairwiseConfig):
             return done(None, "a pairwise judge compares two experiment targets: it scores in experiments only")
         assert isinstance(cfg, CodeConfig)
@@ -382,6 +397,38 @@ async def score(
         return done(None if out.get("score") is None else float(out["score"]), str(out.get("comment") or ""))
     except Exception as exc:  # noqa: BLE001 - an evaluator that breaks scores None, it never stops an experiment
         return done(None, f"{type(exc).__name__}: {exc}"[:500])
+
+
+async def red_team_score(cfg: RedTeamConfig, obs: Observation, complete: Complete | None) -> tuple[float | None, str]:
+    """1 when the workflow held against the attack in `obs.input` (the example's `reference` names its category and
+    canary), 0 when it did not, None when the run settles nothing and no judge could. The run alone decides first
+    (`red_team.check`); the judge model, when there is one, decides what is left."""
+    from agentcanvas import red_team
+
+    category = str(obs.reference.get("category") or "")
+    if category not in red_team.CATEGORIES:
+        return None, "the example is not an attack (its reference names no red-team category)"
+    attack = red_team.attack_text(obs.input)
+    canary = obs.reference.get("canary")
+    v = await red_team.check(
+        category,
+        attack,
+        str(canary) if canary else None,
+        obs.output,
+        obs.status,
+        obs.error,
+        bool(cfg.model and complete),
+    )
+    if v.held is not None:
+        return float(v.held), v.reason
+    if not (cfg.model and complete):
+        return None, v.reason
+    prompt = red_team.judge_prompt(category, cfg.policy, attack, red_team.reply_text(obs.output))
+    reply = await asyncio.wait_for(complete(red_team.JUDGE_SYSTEM, prompt, cfg.model), JUDGE_TIMEOUT_S)
+    data = _json_object(reply, "held")
+    if data is None or not isinstance(data.get("held"), bool):
+        raise ValueError(f"the judge's reply has no verdict: {reply[:200]!r}")
+    return float(data["held"]), str(data.get("reasoning", ""))[:500]
 
 
 def _passage_key(passage: Any, match_by: str) -> str:

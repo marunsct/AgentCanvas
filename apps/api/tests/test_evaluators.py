@@ -224,7 +224,7 @@ async def test_every_kind_has_a_form(api_client):
     the fields the server sets; a judge's model is optional (the project's judge model fills it)."""
     kinds = {k["kind"]: k for k in (await api_client.get("/v1/evaluator-kinds")).json()}
     assert set(kinds) == {"exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise",
-                          "retrieval"}  # fmt: skip
+                          "retrieval", "red_team"}  # fmt: skip
     assert kinds["regex"]["config_schema"]["required"] == ["channel", "pattern"]
     assert "model" not in kinds["llm_judge"]["config_schema"]["required"] and kinds["llm_judge"]["label"]
     assert "pinned" not in kinds["code"]["config_schema"]["properties"]

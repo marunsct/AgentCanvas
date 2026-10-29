@@ -10,23 +10,27 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import red_team
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Evaluator, Experiment, ExperimentResult
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput, NotFound, WorkflowHasErrors
-from agentcanvas.evaluation import Score, spec_of
+from agentcanvas.evaluation import Score, check_config, spec_of
+from agentcanvas.ids import new_id
+from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import adapters, default_registry
 from agentcanvas.services import model_defaults
-from agentcanvas.services.datasets import DatasetService
+from agentcanvas.services.datasets import DatasetService, Example
 from agentcanvas.services.experiments import (
     MAX_CONCURRENCY,
     ExperimentService,
     TargetIn,
     TargetSummary,
     apply_overrides,
+    scorers,
 )
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.simulation import Simulation, is_chat
@@ -201,6 +205,92 @@ async def start_experiment(
     out = (await _summarised(ExperimentService(session), [exp]))[0]
     request.app.state.experiments.launch(exp.id)
     return out
+
+
+class RedTeamIn(BaseModel):
+    categories: list[str] = Field(default_factory=lambda: list(red_team.CATEGORIES), min_length=1, max_length=4)
+    per_category: int = Field(default=4, ge=1, le=red_team.MAX_PER_CATEGORY, description="attacks per category")
+    attacker_model: str | None = Field(
+        default=None, description="provider:model that writes the attacks; empty: the built-in list (offline)"
+    )
+    judge_model: str | None = Field(
+        default=None, description="provider:model that decides what the run alone cannot; empty: rules decide"
+    )
+    policy: str = Field(default="", max_length=2000, description="what the workflow is for and must never do")
+    input_field: str | None = Field(default=None, description="the input channel the attacks are sent in")
+    targets: list[TargetIn] = Field(default_factory=lambda: [TargetIn()], min_length=1, max_length=10)
+    concurrency: int = Field(default=4, ge=1, le=MAX_CONCURRENCY)
+    name: str | None = Field(default=None, max_length=200)
+
+
+@router.post("/workflows/{wf_id}/red-team", response_model=ExperimentOut, status_code=202)
+async def start_red_team(
+    wf_id: str,
+    body: RedTeamIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    svc: WorkflowService = Depends(service),
+    user: CurrentUser = Depends(current_user),
+) -> ExperimentOut:
+    """Attack the workflow (G-10): make adversarial inputs (prompt injection, jailbreaks, PII extraction, off-topic),
+    run them as an experiment and score whether it held. The attacks become a dataset, the verdict an evaluator
+    (`red_team`), so everything else about experiments (compare, release gates, results) works on them."""
+    view = await svc.get(wf_id)
+    PROJECT_OF[wf_id] = view.row.project_id
+    try:
+        categories = red_team.check_categories(body.categories)
+    except ValueError as exc:
+        raise InvalidInput(str(exc)) from None
+    registry = default_registry()
+    for model in (body.attacker_model, body.judge_model):
+        if model and not registry.usable_model(model):
+            raise InvalidInput(f"'{model}' is not a catalog model or a known provider's model")
+    fields = contract(view.workflow).input
+    chat = is_chat(view.workflow)
+    field = body.input_field or ("messages" if chat else None)
+    if field is None:
+        field = next((n for n, sc in fields.items() if sc.get("type") == "string"), None)
+    if field is None or field not in fields:
+        raise InvalidInput("the attacks need a text input to go in: this workflow has none (name one with input_field)")
+    seed = new_id("ex")
+    brief = body.policy or view.workflow.description
+    if body.attacker_model:
+        complete = scorers(request.app.state.runner, view.workflow)["complete"]
+        try:
+            attacks = await red_team.model_attacks(
+                categories, body.per_category, complete, body.attacker_model, brief, seed
+            )
+        except Exception as exc:  # noqa: BLE001 - the attacker model is the caller's choice: say what went wrong
+            raise InvalidInput(f"the attacker model failed: {type(exc).__name__}: {exc}"[:300]) from None
+    else:
+        attacks = red_team.builtin_attacks(categories, body.per_category, seed)
+    datasets = DatasetService(session)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    made = await datasets.create(wf_id, f"Red team {stamp}", "Adversarial inputs made by a red-team run", user.id)
+    examples = red_team.examples_json(attacks, field, chat and field == "messages")
+    await datasets.add(
+        made.dataset_id, [Example.model_validate(e) for e in examples], f"{len(attacks)} attack(s)", user.id
+    )
+    q = select(Evaluator).where(Evaluator.workflow_id == wf_id, Evaluator.name == red_team.EVALUATOR)
+    evaluator = await session.scalar(q)
+    if evaluator is not None and evaluator.kind != "red_team":
+        raise InvalidInput(f"this workflow has an evaluator named '{red_team.EVALUATOR}' of another kind: rename it")
+    if evaluator is None:
+        evaluator = Evaluator(
+            id=new_id("evl"), workflow_id=wf_id, name=red_team.EVALUATOR, kind="red_team", config={},
+            threshold=1.0, created_by=user.id,
+        )  # fmt: skip
+        session.add(evaluator)
+    evaluator.config = check_config("red_team", {"policy": body.policy, "model": body.judge_model or None})
+    await session.commit()
+    return await start_experiment(
+        wf_id,
+        ExperimentIn(
+            name=body.name or f"Red team {stamp}", dataset_id=made.dataset_id, evaluator_ids=[evaluator.id],
+            targets=body.targets, concurrency=body.concurrency,
+        ),
+        request, session, svc, user,
+    )  # fmt: skip
 
 
 async def _summarised(svc: ExperimentService, exps: list[Experiment]) -> list[ExperimentOut]:

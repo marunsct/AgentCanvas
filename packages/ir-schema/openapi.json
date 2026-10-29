@@ -3422,7 +3422,8 @@
               "code",
               "composite",
               "pairwise",
-              "retrieval"
+              "retrieval",
+              "red_team"
             ],
             "title": "Kind",
             "type": "string"
@@ -3525,7 +3526,8 @@
               "code",
               "composite",
               "pairwise",
-              "retrieval"
+              "retrieval",
+              "red_team"
             ],
             "title": "Kind",
             "type": "string"
@@ -9054,6 +9056,100 @@
           "failed"
         ],
         "title": "RecrawlResult",
+        "type": "object"
+      },
+      "RedTeamIn": {
+        "properties": {
+          "attacker_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "provider:model that writes the attacks; empty: the built-in list (offline)",
+            "title": "Attacker Model"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Categories",
+            "type": "array"
+          },
+          "concurrency": {
+            "default": 4,
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "input_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the input channel the attacks are sent in",
+            "title": "Input Field"
+          },
+          "judge_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "provider:model that decides what the run alone cannot; empty: rules decide",
+            "title": "Judge Model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "per_category": {
+            "default": 4,
+            "description": "attacks per category",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Per Category",
+            "type": "integer"
+          },
+          "policy": {
+            "default": "",
+            "description": "what the workflow is for and must never do",
+            "maxLength": 2000,
+            "title": "Policy",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetIn"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "title": "RedTeamIn",
         "type": "object"
       },
       "RefactorOut": {
@@ -31608,6 +31704,82 @@
         "summary": "Publish",
         "tags": [
           "deployments"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/red-team": {
+      "post": {
+        "description": "Attack the workflow (G-10): make adversarial inputs (prompt injection, jailbreaks, PII extraction, off-topic),\nrun them as an experiment and score whether it held. The attacks become a dataset, the verdict an evaluator\n(`red_team`), so everything else about experiments (compare, release gates, results) works on them.",
+        "operationId": "start_red_team_v1_workflows__wf_id__red_team_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedTeamIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Red Team",
+        "tags": [
+          "experiments"
         ]
       }
     },

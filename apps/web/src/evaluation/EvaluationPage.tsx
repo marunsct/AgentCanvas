@@ -19,6 +19,7 @@ import { EvaluatorForm, useEvaluatorKinds } from "./EvaluatorForm";
 import { ExampleForm } from "./ExampleForm";
 import { fromRows, OverrideEditor } from "./OverrideEditor";
 import { PageHeader } from "../ui/PageHeader";
+import { NEW_RED_TEAM, RedTeamFields, redTeamBody, type RedTeamDraft } from "./RedTeam";
 
 type Tab = "datasets" | "evaluators" | "experiments" | "gates" | "production" | "queues";
 
@@ -284,18 +285,22 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
   const [open, setOpen] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<string>("");
   const [sim, setSim] = useState({ on: false, model: "", persona: "", goal: "", max_turns: "5" });
+  const [rt, setRt] = useState<RedTeamDraft>(NEW_RED_TEAM);
   const start = useMutation({
-    mutationFn: () => apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
-      method: "POST",
-      json: {
-        dataset_id: dataset || datasets.data?.[0]?.id, split: split || null,
-        targets: targets.map((t) => ({
-          version: t.version || null, label: t.label || null, framework: t.framework || null,
-          overrides: fromRows(t.changes),
-        })),
-        simulation: sim.on ? { model: sim.model.trim() || null, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
-      },
-    }),
+    mutationFn: () => {
+      const given = targets.map((t) => ({
+        version: t.version || null, label: t.label || null, framework: t.framework || null,
+        overrides: fromRows(t.changes),
+      }));
+      if (rt.on) return apiFetch<ExperimentOut>(`/workflows/${wfId}/red-team`, { method: "POST", json: redTeamBody(rt, given) });
+      return apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
+        method: "POST",
+        json: {
+          dataset_id: dataset || datasets.data?.[0]?.id, split: split || null, targets: given,
+          simulation: sim.on ? { model: sim.model.trim() || null, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
+        },
+      });
+    },
     onSuccess: (e) => { setOpen(e.id); void qc.invalidateQueries({ queryKey: key }); },
   });
   const cancel = useMutation({ mutationFn: (eid: string) => apiFetch(`/experiments/${eid}/cancel`, { method: "POST" }), onSuccess: () => void qc.invalidateQueries({ queryKey: key }) });
@@ -308,11 +313,17 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
       {builder && (
         <form className="policy-form" onSubmit={(e) => { e.preventDefault(); start.mutate(); }} data-testid="start-experiment">
           <div className="row gap">
-            <select aria-label="experiment dataset" value={dataset} onChange={(e) => setDataset(e.target.value)}>
-              {datasets.data?.map((d) => <option key={d.id} value={d.id}>{d.name} (v{d.version}, {d.examples} examples)</option>)}
-            </select>
-            <input aria-label="experiment split" placeholder="split (all)" value={split} onChange={(e) => setSplit(e.target.value)} style={{ width: 110 }} />
-            <button type="submit" className="primary" disabled={start.isPending || !datasets.data?.length}>▶ Run experiment</button>
+            {!rt.on && (
+              <>
+                <select aria-label="experiment dataset" value={dataset} onChange={(e) => setDataset(e.target.value)}>
+                  {datasets.data?.map((d) => <option key={d.id} value={d.id}>{d.name} (v{d.version}, {d.examples} examples)</option>)}
+                </select>
+                <input aria-label="experiment split" placeholder="split (all)" value={split} onChange={(e) => setSplit(e.target.value)} style={{ width: 110 }} />
+              </>
+            )}
+            <button type="submit" className="primary" disabled={start.isPending || (rt.on ? rt.categories.length === 0 : !datasets.data?.length)}>
+              {rt.on ? "▶ Run red team" : "▶ Run experiment"}
+            </button>
           </div>
           {targets.map((t, i) => (
             <div className="row gap" key={i}>
@@ -352,6 +363,10 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
               <label className="row">max turns<input aria-label="max turns" value={sim.max_turns} onChange={(e) => setSim((x) => ({ ...x, max_turns: e.target.value }))} style={{ width: 40 }} /></label>
             </div>
           )}
+          <label className="row small" title="make adversarial inputs (prompt injection, jailbreaks, PII extraction, off-topic), run them and score whether the workflow held">
+            <input type="checkbox" checked={rt.on} onChange={(e) => setRt((x) => ({ ...x, on: e.target.checked }))} />red team
+          </label>
+          {rt.on && <RedTeamFields value={rt} onChange={setRt} />}
           {start.error && <p role="alert" className="error-text">{errorText(start.error)}</p>}
         </form>
       )}
