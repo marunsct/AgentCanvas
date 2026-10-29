@@ -2103,12 +2103,15 @@ export type FrameOrigins = string[];
 export type Greeting1 = string;
 export type InputField = string | null;
 /**
- * the chat page, relative to the web app (/s/<token>)
+ * the chat page, relative to the web app (/s/<token>); none without a token
  */
-export type Path7 = string;
+export type Path7 = string | null;
 export type Suggestions1 = string[];
 export type Title6 = string;
-export type Token = string;
+/**
+ * none until the settings are first saved (switching sharing on makes it)
+ */
+export type Token = string | null;
 export type UpdatedAt9 = string | null;
 /**
  * not used: approvals cannot be given on a share link

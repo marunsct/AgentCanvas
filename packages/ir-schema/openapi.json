@@ -9571,9 +9571,16 @@
             "title": "Input Field"
           },
           "path": {
-            "description": "the chat page, relative to the web app (/s/<token>)",
-            "title": "Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the chat page, relative to the web app (/s/<token>); none without a token",
+            "title": "Path"
           },
           "suggestions": {
             "items": {
@@ -9587,8 +9594,16 @@
             "type": "string"
           },
           "token": {
-            "title": "Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "none until the settings are first saved (switching sharing on makes it)",
+            "title": "Token"
           },
           "updated_at": {
             "anyOf": [
@@ -14192,7 +14207,7 @@
     },
     "/v1/deployments/{dep_id}/share": {
       "get": {
-        "description": "The deployment's share link and chat page settings (sharing starts switched off).",
+        "description": "The deployment's share link and chat page settings (sharing starts switched off). Reading them creates\nnothing: the link is made when the settings are first saved.",
         "operationId": "get_share_v1_deployments__dep_id__share_get",
         "parameters": [
           {

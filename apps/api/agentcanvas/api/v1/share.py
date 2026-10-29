@@ -64,8 +64,8 @@ Visitor = Annotated[
 class ShareOut(BaseModel):
     deployment_id: str
     enabled: bool
-    token: str
-    path: str = Field(description="the chat page, relative to the web app (/s/<token>)")
+    token: str | None = Field(description="none until the settings are first saved (switching sharing on makes it)")
+    path: str | None = Field(description="the chat page, relative to the web app (/s/<token>); none without a token")
     title: str
     greeting: str
     suggestions: list[str]
@@ -75,10 +75,14 @@ class ShareOut(BaseModel):
     updated_at: datetime | None = None
 
 
-async def _share_out(session: AsyncSession, share: DeploymentShare, dep: Deployment) -> ShareOut:
+async def _share_out(session: AsyncSession, share: DeploymentShare | None, dep: Deployment) -> ShareOut:
+    """`share` None: a deployment never shared, shown with the settings it would start with."""
     wf = await _pinned(session, dep)
+    if share is None:
+        share = DeploymentShare(deployment_id=dep.id, enabled=False, title="", greeting="", suggestions=[])
     return ShareOut(
-        deployment_id=dep.id, enabled=share.enabled, token=share.token, path=f"/s/{share.token}",
+        deployment_id=dep.id, enabled=share.enabled, token=share.token,
+        path=f"/s/{share.token}" if share.token else None,
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input_field=share.input_field, input=input_shape(wf, share.input_field),
         frame_origins=list(share.frame_origins or []), updated_at=share.updated_at,
@@ -96,11 +100,10 @@ async def _pinned(session: AsyncSession, dep: Deployment) -> Workflow:
 
 @router.get("/deployments/{dep_id}/share", response_model=ShareOut)
 async def get_share(dep_id: str, session: AsyncSession = Depends(get_session)) -> ShareOut:
-    """The deployment's share link and chat page settings (sharing starts switched off)."""
+    """The deployment's share link and chat page settings (sharing starts switched off). Reading them creates
+    nothing: the link is made when the settings are first saved."""
     dep = await DeploymentService(session).require(dep_id)
-    share = await ShareService(session).ensure(dep_id)
-    await session.commit()
-    return await _share_out(session, share, dep)
+    return await _share_out(session, await ShareService(session).get(dep_id), dep)
 
 
 @router.put("/deployments/{dep_id}/share", response_model=ShareOut)

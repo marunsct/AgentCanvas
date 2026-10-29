@@ -57,7 +57,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
   });
   const id = `share-${deployment.id}`;
   const data = share.data;
-  const url = data ? `${location.origin}${data.path}` : "";
+  const url = data?.path ? `${location.origin}${data.path}` : ""; // no path until the link is first saved
   const error = (share.error ?? save.error ?? regenerate.error) as Error | null;
   return (
     <details className="connect share-box small" data-testid={`share-${deployment.environment}`}>
@@ -101,7 +101,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               frame_origins: sites.split("\n").map((s) => s.trim()).filter(Boolean),
             })}>Save</button>
           </div>
-          {data.enabled && (
+          {data.enabled && data.token && (
             <>
               <p id={`${id}-link`} className="connect-label">Link</p>
               <code className="mono" aria-labelledby={`${id}-link`} data-testid="share-link">{url}</code>
@@ -114,7 +114,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               </div>
               <p id={`${id}-embed`} className="connect-label">Chat widget: paste before &lt;/body&gt; on your site</p>
               <pre className="json small" aria-labelledby={`${id}-embed`} data-testid="share-embed">{embedSnippet(location.origin, data.token)}</pre>
-              <button type="button" className="small" onClick={() => void copy(embedSnippet(location.origin, data.token), setNote)}>Copy snippet</button>
+              <button type="button" className="small" onClick={() => void copy(embedSnippet(location.origin, data.token ?? ""), setNote)}>Copy snippet</button>
             </>
           )}
           {note && <p className="muted" role="status">{note}</p>}

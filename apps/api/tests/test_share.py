@@ -40,15 +40,18 @@ async def test_enable_share_and_chat(api_client):
     """S23 AC: a builder switches the link on; a visitor (no sign-in, no key) chats and continues the conversation."""
     _, dep, _ = await publish(api_client)
     off = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
-    assert off["enabled"] is False and off["token"].startswith("sh_") and off["path"] == f"/s/{off['token']}"
+    assert off["enabled"] is False and off["token"] is None and off["path"] is None  # no link until one is made
     assert off["title"] == "Greeter" and off["input"] == {"field": "who", "chat": False}
-    assert (await api_client.get(f"/v1/share/{off['token']}")).status_code == 404  # off until switched on
+    assert (await api_client.get(f"/v1/deployments/{dep}/share")).json() == off  # reading it makes nothing
+    saved = (await api_client.put(f"/v1/deployments/{dep}/share", json={"title": "Say hi"})).json()
+    assert saved["enabled"] is False and saved["token"].startswith("sh_") and saved["path"] == f"/s/{saved['token']}"
+    assert (await api_client.get(f"/v1/share/{saved['token']}")).status_code == 404  # off until switched on
 
     share = await share_on(
         api_client, dep, title="Say hi", greeting="Tell me your name.", suggestions=["Ada", " ", "Bo"]
     )
     token = share["token"]
-    assert share["token"] == off["token"] and share["suggestions"] == ["Ada", "Bo"]
+    assert share["token"] == saved["token"] and share["suggestions"] == ["Ada", "Bo"]
 
     info = await api_client.get(f"/v1/share/{token}")
     assert info.status_code == 200
@@ -299,7 +302,7 @@ async def test_a_link_says_which_sites_may_frame_its_chat_page(api_client):
     """Review follow-up: the chat page was framable by any site. A builder can list the sites; none listed keeps the
     old behaviour; a link that is unknown or off allows only the app itself."""
     _, dep, _ = await publish(api_client)
-    off = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    off = (await api_client.put(f"/v1/deployments/{dep}/share", json={"enabled": False})).json()  # a link, off
     token = off["token"]
     assert off["frame_origins"] == []
 
