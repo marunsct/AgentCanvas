@@ -51,6 +51,23 @@ def test_the_catalogue_has_the_mvp_templates():
     assert len(NAMES) >= 25  # S23: the template gallery
 
 
+def demo_resources(app, **kw):
+    """Demo models with the project's workspace (a template kit's code runs from it) and registry (its custom
+    blocks are known)."""
+    from agentcanvas.testing import DemoResources
+
+    return DemoResources(
+        workspace=app.state.projects.workspace("prj_default").root,
+        registry=lambda: app.state.projects.registry("prj_default"),
+        **kw,
+    )
+
+
+def template_input(name: str) -> dict:
+    """The run input of a template: its entry here, else its gallery sample input."""
+    return _input(name)
+
+
 def _input(name: str) -> dict:
     return INPUTS.get(name) or template_gallery(json.loads((TEMPLATES / f"{name}.ir.json").read_text()))["sample_input"]
 
@@ -114,15 +131,10 @@ def _agent_network(monkeypatch) -> dict:
 @pytest.mark.parametrize("name", NAMES)
 async def test_template_validates_and_runs(app, api_client, name, monkeypatch):
     from agentcanvas.adapters.crewai import crewai_python
-    from agentcanvas.testing import DemoResources
 
     if name == "mixed_team" and designs.part_python("crewai") is None and not designs.importable("crewai"):
         pytest.skip("its CrewAI writer needs CrewAI's environment (make crewai)")
-    demo = DemoResources(
-        workspace=app.state.projects.workspace("prj_default").root,  # a kit's code runs from it
-        registry=lambda: app.state.projects.registry("prj_default"),  # and its custom blocks are known
-        **(_agent_network(monkeypatch) if name == "agent_network" else {}),
-    )
+    demo = demo_resources(app, **(_agent_network(monkeypatch) if name == "agent_network" else {}))
     app.state.resources_factory = lambda thread_id, wf: demo
     if name == "knowledge_qa":  # S24: searches the sample knowledge base, like a project that loaded it
         assert (await api_client.post(f"{P}/knowledge", json={"sample": "handbook"})).status_code == 201

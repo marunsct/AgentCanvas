@@ -292,7 +292,9 @@ def test_the_child_supplies_the_sdk_on_a_bare_image(tmp_path):
     assert run("events.hooks:pong", {"event": event}) == {
         "ok": True, "actions": [{"action": "emit", "type": "test.pong", "data": {"n": 2}}],
     }  # fmt: skip
-    assert run("events.hooks:node", {"state": {"n": 3}, "config": {"k": 2}}) == {"ok": True, "update": {"n": 6}}
+    assert run("events.hooks:node", {"state": {"n": 3}, "config": {"k": 2}}) == {
+        "ok": True, "update": {"n": 6}, "events": [],  # events the code emitted, for the host to relay
+    }  # fmt: skip
 
 
 async def test_network_rules_in_a_mode_without_a_network_are_reported_once(tmp_path):

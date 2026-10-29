@@ -427,11 +427,9 @@ def test_most_templates_run_on_both(framework):
 )  # fmt: skip
 async def test_supported_templates_run(app, api_client, framework, name):
     """Every template each framework can run does, end to end, with the demo model (like `test_templates`)."""
-    from test_templates import INPUTS
+    from test_templates import demo_resources, template_input
 
-    from agentcanvas.testing import DemoResources
-
-    demo = DemoResources()
+    demo = demo_resources(app)
     app.state.resources_factory = lambda thread_id, wf: demo
     P = "/v1/projects/prj_default"
     if name == "knowledge_qa":
@@ -441,7 +439,7 @@ async def test_supported_templates_run(app, api_client, framework, name):
     ir = {**wf["ir"], "framework": framework}
     r = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})
     assert r.status_code == 200 and not [d for d in r.json()["diagnostics"] if d["severity"] == "error"], r.text
-    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text
+    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": template_input(name)})).text
     last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert last["type"] == "RUN_FINISHED", last
 
