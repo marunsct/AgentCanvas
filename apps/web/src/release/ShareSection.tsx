@@ -90,7 +90,18 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               : "Only these sites (and this app) can show the chat page in a frame. The link itself still works for anyone."}
             {" "}Use https://example.com, or https://*.example.com for all its subdomains.
           </p>
-          <p className="muted">
+          {data.inputs.length > 1 && (
+            <>
+              <label htmlFor={`${id}-input`}>Messages go to</label>
+              <select id={`${id}-input`} value={data.input_field ?? ""} disabled={save.isPending}
+                      onChange={(e) => save.mutate({ input_field: e.target.value })}>
+                {/* "" lets the server pick, and keeps picking if a later version renames the inputs */}
+                <option value="">Picked from the workflow's inputs</option>
+                {data.inputs.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </>
+          )}
+          <p className="muted" data-testid="share-input">
             {data.input.field
               ? <>Messages go to the input <code className="inline">{data.input.field}</code>{data.input.chat ? " (as a chat message)" : ""}.</>
               : "This workflow has no text input, so the chat page cannot send it messages."}

@@ -107,7 +107,8 @@ attributes: `data-label` (the button's name), `data-position="left"` and `data-c
 
 **Which input gets the message.** The visitor's message goes to the workflow's text input: one named like
 `message`, `question`, `query` or `input` if there is one, else a chat message list (`messages`), else its only
-text input. The share box says which one it picked. The answer shown is the last assistant message, else an output
+text input. The share box says which one it picked; when the workflow has more than one, choose another under
+**Messages go to** (it is saved at once). The answer shown is the last assistant message, else an output
 field such as `answer`, `reply` or `response`, else the only text output.
 
 **Keep in mind.**

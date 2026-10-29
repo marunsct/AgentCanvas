@@ -2185,6 +2185,10 @@ export type FrameOrigins = string[];
 export type Greeting1 = string;
 export type InputField = string | null;
 /**
+ * what `input_field` may name: the text inputs and the message list
+ */
+export type Inputs1 = string[];
+/**
  * the chat page, relative to the web app (/s/<token>); none without a token
  */
 export type Path7 = string | null;
@@ -5664,6 +5668,7 @@ export interface ShareOut {
   greeting: Greeting1;
   input: InputShape;
   input_field: InputField;
+  inputs: Inputs1;
   path: Path7;
   suggestions: Suggestions1;
   title: Title6;

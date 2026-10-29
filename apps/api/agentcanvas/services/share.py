@@ -116,6 +116,12 @@ def input_shape(wf: Workflow, chosen: str | None) -> InputShape:
     return InputShape(field=next((group[0] for group in (only_in, strings) if group), None))
 
 
+def text_inputs(wf: Workflow) -> list[str]:
+    """The inputs a visitor's message could go to: the text inputs and the message list, in the contract's order."""
+    messages = _messages_field(wf)
+    return [k for k, v in contract(wf).input.items() if k == messages or v.get("type") in (None, "string")]
+
+
 def run_input(shape: InputShape, text: str) -> dict[str, Any]:
     if shape.field is None:
         raise InvalidInput("this workflow has no text input a chat message could go to")

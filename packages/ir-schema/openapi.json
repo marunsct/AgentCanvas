@@ -10028,6 +10028,14 @@
             ],
             "title": "Input Field"
           },
+          "inputs": {
+            "description": "what `input_field` may name: the text inputs and the message list",
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
           "path": {
             "anyOf": [
               {
@@ -10086,6 +10094,7 @@
           "suggestions",
           "input_field",
           "input",
+          "inputs",
           "frame_origins"
         ],
         "title": "ShareOut",
@@ -15093,7 +15102,7 @@
         ]
       },
       "put": {
-        "description": "Switch the share link on or off and set the chat page's title, greeting and suggested prompts.",
+        "description": "Switch the share link on or off and set the chat page's title, greeting, suggested prompts and the input\nmessages go to.",
         "operationId": "update_share_v1_deployments__dep_id__share_put",
         "parameters": [
           {

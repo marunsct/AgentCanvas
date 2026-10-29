@@ -20,7 +20,7 @@ afterEach(cleanup);
 describe("ShareSection (S23)", () => {
   it("keeps unsaved typing when the switch changes the share", async () => {
     server.share = {
-      deployment_id: "d1", enabled: false, greeting: "Hi", input: { field: "q", chat: true }, input_field: "q",
+      deployment_id: "d1", enabled: false, greeting: "Hi", input: { field: "q", chat: true }, input_field: "q", inputs: ["q"],
       path: "/s/t", suggestions: [], title: "Saved title", token: "t", frame_origins: [],
     } as unknown as ShareOut;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -35,7 +35,7 @@ describe("ShareSection (S23)", () => {
 
   it("saves the sites allowed to frame the chat page, one per line", async () => {
     server.share = {
-      deployment_id: "d1", enabled: true, greeting: "", input: { field: "q", chat: false }, input_field: "q",
+      deployment_id: "d1", enabled: true, greeting: "", input: { field: "q", chat: false }, input_field: "q", inputs: ["q"],
       path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [],
     } as unknown as ShareOut;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -46,5 +46,19 @@ describe("ShareSection (S23)", () => {
     await act(async () => { fireEvent.click(screen.getByText("Save")); });
     await waitFor(() => expect(server.share.frame_origins).toEqual(["https://a.example", "https://*.b.example"]));
     expect(await screen.findByText(/Only these sites/)).toBeTruthy();
+  });
+
+  it("picks the input messages go to, or leaves it to the server", async () => {
+    server.share = {
+      deployment_id: "d1", enabled: true, greeting: "", input: { field: "question", chat: false }, input_field: null,
+      inputs: ["question", "messages"], path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [],
+    } as unknown as ShareOut;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><ShareSection deployment={deployment} /></QueryClientProvider>);
+    const select = await screen.findByLabelText("Messages go to") as HTMLSelectElement;
+    expect(select.value).toBe(""); // picked by the server
+    await act(async () => { fireEvent.change(select, { target: { value: "messages" } }); });
+    await waitFor(() => expect(server.share.input_field).toBe("messages"));
+    expect((screen.getByLabelText("Messages go to") as HTMLSelectElement).value).toBe("messages");
   });
 });

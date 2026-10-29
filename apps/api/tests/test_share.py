@@ -9,7 +9,7 @@ from test_ratelimit import limits  # noqa: F401 - fixture
 from test_versions import HIGH_CASE, new_triage
 
 from agentcanvas.ir.models import Workflow
-from agentcanvas.services.share import InputShape, answer_text, input_shape
+from agentcanvas.services.share import InputShape, answer_text, input_shape, text_inputs
 
 ADA = "visitor-ada-0123456789"
 BO = "visitor-bo-0123456789ab"
@@ -136,6 +136,12 @@ async def test_settings_validation_and_roles(api_client, app):
     _, dep, _ = await publish(api_client)
     r = await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": "nope"})
     assert r.status_code == 422
+    share = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    assert share["inputs"] == ["who", "out"] and share["input_field"] is None  # what the page offers; None: picked
+    chosen = (await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": "who"})).json()
+    assert chosen["input_field"] == "who" and chosen["input"]["field"] == "who"
+    cleared = (await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": ""})).json()
+    assert cleared["input_field"] is None
     r = await api_client.put(f"/v1/deployments/{dep}/share", json={"suggestions": ["a"] * 7})
     assert r.status_code == 422
     app.dependency_overrides[current_user] = lambda: CurrentUser(
@@ -294,6 +300,8 @@ def test_input_shape_and_answer():
     })  # fmt: skip
     shape = input_shape(triage, None)
     assert shape == InputShape(field="ticket")  # a question-like text input wins over the message list
+    assert text_inputs(triage) == ["messages", "ticket", "summary"]
+    assert input_shape(triage, "messages") == InputShape(field="messages", chat=True)
     reply = {"messages": [{"type": "ai", "content": "Sorry about that."}], "summary": "ESCALATED", "ticket": "x"}
     assert answer_text(reply, shape) == "Sorry about that."
 

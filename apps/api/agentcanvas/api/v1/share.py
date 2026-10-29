@@ -46,6 +46,7 @@ from agentcanvas.services.share import (
     input_shape,
     question_of,
     run_input,
+    text_inputs,
     visitor_hash,
 )
 
@@ -72,6 +73,7 @@ class ShareOut(BaseModel):
     suggestions: list[str]
     input_field: str | None
     input: InputShape
+    inputs: list[str] = Field(description="what `input_field` may name: the text inputs and the message list")
     frame_origins: list[str] = Field(description="sites allowed to show the chat page in a frame; empty: any site")
     updated_at: datetime | None = None
 
@@ -85,7 +87,7 @@ async def _share_out(session: AsyncSession, share: DeploymentShare | None, dep: 
         deployment_id=dep.id, enabled=share.enabled, token=share.token,
         path=f"/s/{share.token}" if share.token else None,
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
-        input_field=share.input_field, input=input_shape(wf, share.input_field),
+        input_field=share.input_field, input=input_shape(wf, share.input_field), inputs=text_inputs(wf),
         frame_origins=list(share.frame_origins or []), updated_at=share.updated_at,
     )  # fmt: skip
 
@@ -114,12 +116,13 @@ async def update_share(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> ShareOut:
-    """Switch the share link on or off and set the chat page's title, greeting and suggested prompts."""
+    """Switch the share link on or off and set the chat page's title, greeting, suggested prompts and the input
+    messages go to."""
     dep = await DeploymentService(session).require(dep_id)
     if body.input_field:
         wf = await _pinned(session, dep)
-        if input_shape(wf, body.input_field).field != body.input_field:
-            raise InvalidInput(f"'{body.input_field}' is not an input of the published version")
+        if body.input_field not in text_inputs(wf):
+            raise InvalidInput(f"'{body.input_field}' is not a text input of the published version")
     share = await ShareService(session).update(dep_id, body, user.id)
     return await _share_out(session, share, dep)
 
