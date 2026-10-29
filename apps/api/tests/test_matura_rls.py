@@ -29,7 +29,10 @@ postgres = pytest.mark.skipif(not URL.startswith("postgres"), reason="row-level 
 APP_ROLE, PROBE_ROLE = "agentcanvas_rls_app", "agentcanvas_rls_probe"
 MIGRATIONS = pathlib.Path(__file__).parents[1] / "migrations/versions"
 MIGRATION = MIGRATIONS / "20261017_a3c7e9b1d5f2_matura_workspaces_rls.py"
-LATER = [MIGRATIONS / "20261029_e1a5c9d3f7b2_git_link.py"]  # tables added after it, each with its own policy
+LATER = [
+    MIGRATIONS / "20261029_e1a5c9d3f7b2_git_link.py",
+    MIGRATIONS / "20261029_e4a8c2f6b0d1_a2a_replies.py",
+]  # tables added after it, each with its own policy
 
 
 @pytest.fixture

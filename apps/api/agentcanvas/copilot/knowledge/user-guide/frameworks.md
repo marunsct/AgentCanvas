@@ -175,9 +175,10 @@ whether every block can run there; the ones that cannot are listed with P001.
 - **Typed answers** become the agent's `output_type`, and the answer lands in `structured_response`.
 - **Call limits.** A *Model call limit* add-on becomes the agent's `max_turns`; when it is reached the agent stops
   with a note (or the run fails, if the add-on says so).
-- **What it does not have.** No saved conversation history, state editing, replay or breakpoints, and a paused run
-  is kept in the server's memory (a restart forgets it). Planning agents, maps, subflows, memory blocks, HTTP and MCP
-  tools, guard blocks and other add-ons stay on LangGraph for now.
+- **Paused runs** are kept in the database with their conversation, so any server (another replica, or the same
+  one after a restart) continues them.
+- **What it does not have.** No saved conversation history, state editing, replay or breakpoints. Planning agents,
+  maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay on LangGraph for now.
 - **Export.** The Versions tab exports an OpenAI Agents SDK project: the flow, the small runtime it needs, a
   command-line runner (`python -m <name> '{"input": {...}}'`; a paused run is saved in `.runs/` and continued with
   `{"thread_id": ..., "resume": <answer>}`), each model block reached over its provider's OpenAI-compatible API, and
@@ -214,9 +215,10 @@ and export CrewAI workflows; a run says how to install it.
   starts again from the saved fields, skips the steps that had finished (the paths they took are remembered) and
   gives your answer to the step that asked.
 - **Loops** are guarded: a step that runs more often than the workflow's step limit stops the run.
+- **Paused runs** are kept in the database with their conversation: any server continues them, after a restart too.
 - **What it does not have yet.** Asking before a tool call, saved conversation history, state editing, replay and
-  breakpoints; a paused run is kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and
-  MCP tools, guard blocks and other add-ons stay on LangGraph for now. The Crew and Agent task blocks run only on
+  breakpoints. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay
+  on LangGraph for now. The Crew and Agent task blocks run only on
   CrewAI.
 - **Export.** The Versions tab exports a CrewAI project: the flow, the small runtime it needs, a command-line runner
   that saves a paused run in `.runs/` and continues it, each model block reached over its provider's
@@ -248,9 +250,9 @@ says how to install it.
   answer to the step that asked.
 - **Loops** are guarded: a step that runs more often than the workflow's step limit stops the run, and a **Model
   call limit** block caps an agent's model calls in one turn.
-- **What it does not have yet.** Saved conversation history, state editing, replay and breakpoints; a paused run is
-  kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and
-  other add-ons stay on LangGraph for now.
+- **Paused runs** are kept in the database with their conversation: any server continues them, after a restart too.
+- **What it does not have yet.** Saved conversation history, state editing, replay and breakpoints. Planning agents,
+  maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay on LangGraph for now.
 - **Export.** The Versions tab exports an ADK project: the workflow, the small runtime it needs, a command-line
   runner that saves a paused run in `.runs/` and continues it, each model block reached through LiteLLM over its
   provider's OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
@@ -284,9 +286,9 @@ the canvas draws it, and the AI blocks are the framework's own agents:
 - **Approvals and questions** pause the run; when you answer, it continues from the step that asked.
 - **Model call limit.** The block caps an agent's model calls in one turn: the agent stops with a note in the
   conversation, or the run fails if the block says so.
-- **What they do not have yet.** Saved conversation history, state editing, replay and breakpoints; a paused run is
-  kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and
-  other add-ons stay on LangGraph for now.
+- **Paused runs** are kept in the database with their conversation: any server continues them, after a restart too.
+- **What they do not have yet.** Saved conversation history, state editing, replay and breakpoints. Planning agents,
+  maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay on LangGraph for now.
 - **Export.** The Versions tab exports a project for the framework: the flow, the small runtime it needs, a
   command-line runner that saves a paused run in `.runs/` and continues it, each model block reached over its
   provider's OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
@@ -396,8 +398,9 @@ then the Agent Spec previews. Only a LangGraph service gets the deploy kit and *
 
 Servers started with `AGENTCANVAS_ADAPTERS=langchain,echo` also offer **Echo**, a tiny built-in engine that shows
 how a second framework plugs in. It runs simple flows (set values, paths, wait for all, approvals, questions,
-Python steps), and its AI steps answer with scripted replies or repeat their prompt. It keeps paused runs in memory
-and exports only the workflow file. Use it to try the framework picker, not in production.
+Python steps), and its AI steps answer with scripted replies or repeat their prompt. It keeps paused runs in the
+database, like the other frameworks, and exports only the workflow file. Use it to try the framework picker, not
+in production.
 
 For developers: a new framework implements the adapter core, declares what else it can do in a manifest, and must
 pass the conformance kit (`apps/api/agentcanvas/conformance`); see ADR 0018.

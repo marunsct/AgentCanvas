@@ -296,13 +296,46 @@ def _parts_text(parts: list[dict[str, Any]]) -> str:
     return "\n".join(out)
 
 
-_SENT: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()  # step key -> remote answers, in order
 _SENT_MAX = 1000
 
 
-def _step_key(node_id: str) -> str | None:
-    """Identifies this step within its run, so that a resumed step (LangGraph runs it again from the top) reuses the
-    answers it already got instead of sending the same messages to the remote agent twice."""
+class MemoryReplies:
+    """The replies a remote A2A agent gave each step so far, in this process (an export, a test): bounded, oldest
+    step dropped first. The server installs a store in its database instead (`install_replies`), so a step that
+    paused for a question can be continued on any replica and after a restart."""
+
+    def __init__(self) -> None:
+        self._steps: OrderedDict[tuple[str, str], list[dict[str, Any]]] = OrderedDict()
+
+    async def get(self, thread_id: str, step: str) -> list[dict[str, Any]]:
+        return list(self._steps.get((thread_id, step), []))
+
+    async def add(self, thread_id: str, step: str, reply: dict[str, Any]) -> None:
+        key = (thread_id, step)
+        self._steps.setdefault(key, []).append(reply)
+        self._steps.move_to_end(key)
+        while len(self._steps) > _SENT_MAX:
+            self._steps.popitem(last=False)
+
+    async def drop(self, thread_id: str, step: str) -> None:
+        self._steps.pop((thread_id, step), None)
+
+    def clear(self) -> None:
+        self._steps.clear()
+
+
+REPLIES: Any = MemoryReplies()  # get/add/drop as above; see `install_replies`
+
+
+def install_replies(store: Any) -> None:
+    """Where remote A2A replies are kept (the server's database; a `MemoryReplies` puts the in-process one back)."""
+    global REPLIES  # noqa: PLW0603 - one store per process, chosen by the server
+    REPLIES = store
+
+
+def _step_key(node_id: str) -> tuple[str, str] | None:
+    """Identifies this step within its run, as (thread, step), so that a resumed step (LangGraph runs it again from
+    the top) reuses the answers it already got instead of sending the same messages to the remote agent twice."""
     from langgraph.config import get_config
 
     try:
@@ -310,7 +343,7 @@ def _step_key(node_id: str) -> str | None:
     except RuntimeError:
         return None
     thread = cfg.get("thread_id")
-    return f"{thread}|{cfg.get('checkpoint_ns', '')}|{node_id}" if thread else None
+    return (str(thread), f"{cfg.get('checkpoint_ns', '')}|{node_id}") if thread else None
 
 
 def _answers_given() -> int:
@@ -367,9 +400,9 @@ def a2a_agent_node(
             task_id = context_id = None
             message_text = text
             key = _step_key(node_id)
-            done = list(_SENT.get(key, [])) if key else []  # answers received before this step paused
+            done = await REPLIES.get(*key) if key else []  # answers received before this step paused
             if len(done) < _answers_given():
-                # the remote replies are kept in this process only: after a restart, carrying on would send the
+                # the replies were kept in a process that is gone (no server database): carrying on would send the
                 # first message again and start a second remote task, so stop with a clear message instead
                 raise AgentError(
                     f"AgentCanvas restarted while the remote agent '{name}' was waiting for an answer, so that "
@@ -387,20 +420,17 @@ def a2a_agent_node(
                 else:
                     result = await _rpc(client, endpoint, "message/send", {"message": message})
                     if key:
-                        _SENT.setdefault(key, []).append(result)
-                        _SENT.move_to_end(key)
-                        while len(_SENT) > _SENT_MAX:
-                            _SENT.popitem(last=False)
+                        await REPLIES.add(*key, result)
                 reply, task_id, context_id, status = _a2a_text(result)
                 if status in ("input-required", "auth-required"):
                     answer = interrupt({"kind": "input", "canvas_node_id": node_id,
                                         "prompt": reply or "The remote agent needs more information."})  # fmt: skip
                     message_text = answer if isinstance(answer, str) else json.dumps(answer, default=str)
                     continue
+                if key:
+                    await REPLIES.drop(*key)  # done, or failed: a retry of the step sends the task again
                 if status in ("failed", "rejected", "canceled"):
-                    _SENT.pop(key or "", None)  # a retry of the step sends the task again
                     raise AgentError(f"the remote agent '{name}' {status} the task: {reply or 'no reason given'}")
-                _SENT.pop(key or "", None)
                 _trace(node=name, framework="a2a", input=text, output=reply, task=task_id)
                 return _update(output, name, reply)
         raise AgentError(f"the remote agent '{name}' kept asking questions; stopped after 20")

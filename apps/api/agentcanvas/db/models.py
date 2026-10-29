@@ -294,6 +294,19 @@ class InterruptTask(Base):
     decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
+class A2AReply(Base):
+    """What a remote A2A agent answered one step so far (`adapters/langchain/interop.py`): a step paused for the
+    agent's question continues on the same remote task, on any replica and after a restart (G-9)."""
+
+    __tablename__ = "a2a_reply"
+    thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"), primary_key=True)
+    step: Mapped[str] = mapped_column(Text, primary_key=True)  # checkpoint namespace | canvas node id
+    replies: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
 class Secret(Base):
     __tablename__ = "secret"
     __table_args__ = (UniqueConstraint("project_id", "name"),)

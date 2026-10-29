@@ -3,7 +3,8 @@
 Both run exactly like the CrewAI and Google ADK adapters, whose server side they reuse: the flow runs in a worker
 process started from the framework's own Python environment (`designs.part_python`), the canvas models reach it
 through the model bridge, tools, knowledge bases and workspace code run on the server when the worker asks, and a
-paused run is kept in memory as JSON. A subclass names its framework, its code generator and its worker.
+paused run is kept as JSON with its conversation (`runtime/paused.py`). A subclass names its framework, its code
+generator and its worker.
 """
 
 from __future__ import annotations

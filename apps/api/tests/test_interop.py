@@ -208,7 +208,7 @@ async def test_a2a_stops_instead_of_resending_after_a_restart():
     log: list[dict] = []
     graph = build_graph(wf, Resources(http_transport=a2a_server(log)), checkpointer=InMemorySaver())
     await graph.ainvoke({"messages": [("user", "refund me")]}, cfg())
-    interop._SENT.clear()  # what a restart loses
+    interop.REPLIES.clear()  # what a restart of a server without a database loses
     with pytest.raises(Exception, match="restarted while the remote agent 'billing' was waiting"):
         await graph.ainvoke(Command(resume="ACME-9"), cfg())
     assert [m["parts"][0]["text"] for m in log] == ["refund me"]  # nothing was sent twice

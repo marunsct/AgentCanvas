@@ -23,6 +23,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from agentcanvas import observability
 from agentcanvas.adapters import get_adapter, installed_adapters, model_service
+from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain.persistence import MemoryEmbedding
 from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
@@ -39,7 +40,7 @@ from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
 from agentcanvas.runtime import paused as paused_runs
-from agentcanvas.runtime.paused import DatabasePaused, MemoryPaused
+from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPaused
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
@@ -135,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("rls.bypassed", hint=hint)
         app.state.db = db
         paused_runs.install(DatabasePaused(db))  # paused runs of every replica, kept across restarts
+        interop.install_replies(DatabaseReplies(db))  # and what remote A2A agents answered paused steps (G-9)
         if hint := sandbox_hint(settings):
             log.warning("sandbox.not_isolated", mode=settings.script_execution, hint=hint)
         if settings.script_execution == "subprocess":
@@ -264,6 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await app.state.audit_sink.aclose()
                 await db.dispose()
                 paused_runs.install(MemoryPaused())  # this database is gone
+                interop.install_replies(interop.MemoryReplies())
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
