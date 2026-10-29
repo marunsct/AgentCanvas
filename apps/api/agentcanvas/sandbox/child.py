@@ -5,7 +5,7 @@ Standard library only (it also runs inside a bare python image):
     python child.py scripts.score:run   < {"state": {...}, "config": {...}|null}   > {"ok": true, "update": {...}}
 
 The working directory is the workspace root. Anything the script prints goes to stderr, so stdout carries only
-the result line. With AC_BLOCK_NETWORK=1 socket connections raise, except to the egress proxy in AC_EGRESS_PROXY
+the result line. With AC_BLOCK_NETWORK=1 socket connections raise, except to the egress proxy the payload names
 (defense in depth for the subprocess mode; the Docker mode has no network interface, or only the egress network).
 """
 
@@ -23,7 +23,7 @@ import traceback
 
 
 def _block_network(proxy: str = "") -> None:
-    """No connections, or only to the egress proxy (`host:port` in AC_EGRESS_PROXY) when the project allows some
+    """No connections, or only to the egress proxy (`host:port`) when the project allows some
     hosts: HTTP clients reach those through it (HTTPS_PROXY), and the proxy checks the list.
 
     This is a guard against mistakes, not isolation: code that imports `_socket`, uses ctypes or starts a program
@@ -179,12 +179,38 @@ class _Actions:
         self.recorded.append({"action": "emit", "type": event_type, "data": data or {}})
 
 
+def _not_dumpable() -> None:
+    """Linux: other processes of the same user cannot read this one's /proc/<pid>/environ, memory or file handles,
+    or ptrace it. In a shared sandbox service, one call's code cannot read another call's (2026-10-29 review, S-2)."""
+    if sys.platform != "linux":
+        return
+    try:
+        import ctypes
+
+        ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE, 0
+    except (OSError, AttributeError):
+        pass
+
+
+def _proxy_from(payload: dict) -> str:
+    """The egress proxy (`http://<signed list>@host:port`) from the payload, not the environment, where another
+    process of the same user could read it; set where HTTP clients look for it. Returns its `host:port`."""
+    proxy = str(payload.pop("egress_proxy", None) or "")
+    if proxy:
+        for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY"):
+            os.environ[name] = proxy
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = ""
+    return proxy.rpartition("@")[2] if proxy else ""
+
+
 def main() -> int:
-    if os.environ.get("AC_BLOCK_NETWORK") == "1":
-        _block_network(os.environ.get("AC_EGRESS_PROXY", ""))
+    _not_dumpable()
     out = sys.stdout
     try:
         payload = json.loads(sys.stdin.read() or "{}")
+        proxy = _proxy_from(payload)
+        if os.environ.get("AC_BLOCK_NETWORK") == "1":
+            _block_network(proxy)
         _sdk_shim()
         _collect_emits()
         if "tool_args" in payload:  # one call of a workspace tool: return its output

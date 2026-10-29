@@ -8,6 +8,10 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- **One call's workspace code could read another's egress credential in a shared sandbox**: the signed proxy address
+  was in each child's environment, readable through `/proc/<pid>/environ` by any process of the same user. It now
+  reaches the child on stdin, and the child marks itself not dumpable, so other processes cannot read its
+  environment or memory (HARDENING S-2, part 1).
 - **A staging or production server ran workspace code as the API's own user** when left at the default `inprocess`
   mode (or `subprocess`), with the database password and keys in reach; it only logged a warning. It now refuses to
   start that way: use the sandbox service (`remote`), `docker` or `langsmith`, or set

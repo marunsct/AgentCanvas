@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -344,3 +345,27 @@ async def test_a_cancelled_call_stops_its_code(tmp_path):
         await call
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="prctl and /proc are Linux's")
+async def test_another_process_cannot_read_a_calls_proxy_credential(tmp_path):
+    """S-2: in a shared sandbox, one call's code could read another call's /proc/<pid>/environ (the signed egress
+    credential) because both run as one user. The credential now arrives on stdin and the child is not dumpable."""
+    from agentcanvas.sandbox.runners import _exchange
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "peek.py").write_text(
+        "import ctypes, os\n\n\ndef run(state):\n"
+        "    try:\n        open('/proc/self/environ', 'rb').read()\n        readable = True\n"
+        "    except PermissionError:\n        readable = False\n"
+        "    return {'dumpable': ctypes.CDLL(None).prctl(3, 0, 0, 0, 0), 'environ_readable': readable,\n"
+        "            'proxy_set': os.environ.get('HTTPS_PROXY', '').endswith('@127.0.0.1:9')}\n"
+    )
+    out = await _exchange("subprocess", tmp_path, "scripts.peek:run", {"state": {}}, "", 20,
+                          proxy="http://list:secretcred@127.0.0.1:9")  # fmt: skip
+    # not dumpable: /proc/<pid>/environ is root's, so no other process of the user reads it (nor the call itself)
+    assert out["update"] == {"dumpable": 0, "environ_readable": False, "proxy_set": True}
+    from agentcanvas.sandbox.runners import subprocess_command
+
+    _, env, _ = subprocess_command(tmp_path, "scripts.peek:run")
+    assert not any("secretcred" in v or "PROXY" in k for k, v in env.items())  # the credential is not in the env

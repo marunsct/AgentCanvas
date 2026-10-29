@@ -59,12 +59,9 @@ def proxy_env(proxy: str | None) -> dict[str, str]:
     }  # fmt: skip
 
 
-def subprocess_command(
-    workspace: Path, import_path: str, proxy: str | None = None
-) -> tuple[list[str], dict[str, str], Path]:
+def subprocess_command(workspace: Path, import_path: str) -> tuple[list[str], dict[str, str], Path]:
+    # the proxy (with its signed credential) goes to the child on stdin, not in its environment (`_exchange`)
     env = {"PATH": "/usr/bin:/bin", "AC_BLOCK_NETWORK": "1", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"}
-    if proxy:  # the child may connect to the proxy and nothing else (the network around it enforces the same)
-        env |= proxy_env(proxy) | {"AC_EGRESS_PROXY": proxy.rpartition("@")[2]}
     return [sys.executable, "-I", str(CHILD), import_path], env, workspace
 
 
@@ -135,7 +132,9 @@ async def _exchange(
     if mode == "docker":
         argv, env, cwd = docker_command(image, workspace, import_path, memory_mb, name, proxy), None, None
     else:
-        argv, env, cwd = subprocess_command(workspace, import_path, proxy)
+        argv, env, cwd = subprocess_command(workspace, import_path)
+    if proxy and mode != "docker":  # the child reads it from stdin; another process cannot read it from /proc
+        payload = {**payload, "egress_proxy": proxy}
     limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout))
     proc = await asyncio.create_subprocess_exec(
         *argv,
