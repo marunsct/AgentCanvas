@@ -375,3 +375,16 @@ def test_an_export_lists_its_tools_and_settings(tmp_path):
     assert "OPENAI_API_KEY=" in str(files["helper-agno/.env.example"])
     assert '"agno==3.1.11"' in str(files["helper-agno/pyproject.toml"])
     compile(str(files["helper-agno/tests/test_agent.py"]), "test_agent.py", "exec")
+
+
+@pytest.mark.parametrize("framework", list(designs.AGENT_FRAMEWORKS))
+def test_a_hostile_workflow_name_stays_text_in_the_generated_header(framework):
+    """S-10: the generated module's docstring names the workflow; that code is executed in the API process to run
+    the agent, so a name must never close the docstring and become code."""
+    import ast
+
+    hostile = 'Q"""\nimport os; os.system("touch /tmp/pwned")\n"""\\'
+    design = designs.AgentDesign("plain", hostile, "Hi", designs.ModelChoice("m", "anthropic", "claude-sonnet-5-5"))
+    tree = ast.parse(designs.generate(framework, design))
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "system"]
+    assert not calls and "pwned" in (ast.get_docstring(tree) or "")
