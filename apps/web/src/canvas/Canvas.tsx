@@ -212,6 +212,11 @@ export function Canvas() {
         const ids = rf.getNodes().filter((n) => n.selected).map((n) => n.id);
         clip = copySelection(st.wf, ids, st.layout);
       } else if (e.key.toLowerCase() === "v" && clip && st.wf) {
+        // a subgraph or a Copilot proposal on show is read-only: pasting went into the top level, out of sight
+        if (st.drill.length || useCopilot.getState().ghost) {
+          st.setNotice({ kind: "info", text: "Paste works on the workflow itself: leave the subgraph or the Copilot preview first." });
+          return;
+        }
         const { commands, positions, ids } = pasteCommands(st.wf, clip);
         st.dispatch(commands);
         st.setPositions(positions, true);
