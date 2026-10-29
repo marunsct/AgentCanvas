@@ -62,6 +62,7 @@ class RunHandle:
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
     finishing: bool = False  # saving its outcome: a cancel now would cut the save short and wedge the thread
+    decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
@@ -429,8 +430,9 @@ class Runner:
                         labels=labels or None,
                     )
                 )
+                decided: list[str] = []
                 if resume is not None:
-                    await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
                 await s.commit()
         except BaseException:
             self.active_by_thread.pop(thread_id, None)
@@ -464,6 +466,7 @@ class Runner:
             trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
+        handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
@@ -481,16 +484,22 @@ class Runner:
         q = select(Run.context).where(Run.thread_id == thread_id).order_by(Run.id.desc()).limit(1)
         return (await s.scalar(q)) or {}
 
-    async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> None:
-        q = update(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+    async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> list[str]:
+        """Mark the answered Inbox items decided; returns their ids."""
+        pending = select(InterruptTask.id).where(
+            InterruptTask.thread_id == thread_id, InterruptTask.status == "pending"
+        )
         if resume.interrupt_id:
-            q = q.where(InterruptTask.id == resume.interrupt_id)
+            pending = pending.where(InterruptTask.id == resume.interrupt_id)
+        ids = list((await s.scalars(pending)).all())
+        q = update(InterruptTask).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
         decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
         res = await s.execute(
             q.values(status="decided", decision=decision, decided_by=decided_by, decided_at=datetime.now(UTC))
         )
         if resume.interrupt_id and res.rowcount == 0 and await s.get(InterruptTask, resume.interrupt_id):
             raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
+        return ids
 
     # ---------------------------------------------------------------- pump ----
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
@@ -675,6 +684,15 @@ class Runner:
                     await s.commit()
                     return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
+                untouched = not any(e.get("type") == "STEP_FINISHED" for e in h.events)
+                if status == "error" and h.decided and untouched:  # failed before the answer took: still open
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(InterruptTask.id.in_(h.decided), InterruptTask.status == "decided")
+                        .values(status="pending", decision=None, decided_by=None, decided_at=None)
+                    )
+                    if thread_status == "error":
+                        await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status="interrupted"))
                 for intr in interrupts:
                     if await s.get(InterruptTask, intr["id"]) is None:
                         s.add(

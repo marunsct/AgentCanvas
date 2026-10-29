@@ -59,6 +59,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- An answer whose run failed before it took (the model provider down, say) took the question out of the Inbox
+  although the run was still waiting for it; it now goes back. The Echo demo engine dropped a paused run's state
+  before running the continuation, so a continuation that failed could not be answered again (HARDENING R-4).
 - The Evaluation guide's table of evaluators left out the retrieval evaluator and did not say what a composite does
   with a part that cannot score. It now lists retrieval and explains that such a part is left out of a weighted mix
   but counts as failed for "all" and "any". (HARDENING D-7).

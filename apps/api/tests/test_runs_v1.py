@@ -606,3 +606,30 @@ async def test_running_a_workflow_with_no_steps_says_so_instead_of_failing_in_th
     r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {}})
     assert r.status_code == 422 and "no steps yet" in r.text
     assert (await api_client.get("/v1/threads", params={"workflow_id": wf})).json()["items"] == []
+
+
+async def test_an_answer_that_fails_at_once_goes_back_to_the_inbox(triage_api, app, monkeypatch):
+    """R-4: the Inbox item was marked decided before the resumed run started; when that run failed before the
+    answer took (the model provider down, say), the question disappeared though the run was still waiting."""
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_back"})
+    [item] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    adapters = app.state.runner.adapters
+    real = adapters["langchain"]
+
+    class FailsOnResume:
+        id, manifest = real.id, real.manifest
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        async def execute(self, spec, resources):
+            yield {"type": "RUN_ERROR", "code": "error", "message": "the model provider is down"}
+
+    monkeypatch.setitem(adapters, "langchain", FailsOnResume())
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", params={"stream": "true"},
+                       json={"value": {"decisions": [{"type": "approve"}]}})  # fmt: skip
+    assert events(r.text)[-1]["type"] == "RUN_ERROR"
+    again = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    assert [i["id"] for i in again] == [item["id"]]  # still waiting for an answer
+    assert (await api.get("/v1/threads/th_back")).json()["status"] == "interrupted"
