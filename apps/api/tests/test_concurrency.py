@@ -116,3 +116,30 @@ async def test_two_publishes_of_one_draft_pin_the_same_version(api_client):
     assert first.status_code == second.status_code == 200, (first.text[:200], second.text[:200])
     assert len({r.json()["deployment"]["version_id"] for r in (first, second)}) == 1
     assert [v["semver"] for v in (await api_client.get(f"/v1/workflows/{wf}/versions")).json()] == ["1.0.0"]
+
+
+async def test_a_new_thread_another_server_created_a_moment_ago_is_a_409(app, api_client, monkeypatch):
+    """R-6: two replicas starting the same new caller-named thread: the second insert failed with IntegrityError, a
+    500. It is the same 409 as two starts on one server."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from agentcanvas.db.models import Thread
+
+    wf = Workflow.model_validate((await greeter(api_client))["ir"])
+    real_get = AsyncSession.get
+
+    async def get(self, entity, ident, **kw):
+        found = await real_get(self, entity, ident, **kw)
+        if entity is Thread and ident == "th_race" and found is None:  # the other server wins in between
+            async with app.state.db.sessionmaker() as other:
+                other.add(Thread(id="th_race", workflow_id=wf.id, status="running"))
+                await other.commit()
+        return found
+
+    monkeypatch.setattr(AsyncSession, "get", get)
+    try:
+        await app.state.runner.start(wf, input={"who": "x"}, thread_id="th_race")
+        raise AssertionError("expected a conflict")
+    except Conflict:
+        pass
+    assert "th_race" not in app.state.runner.active_by_thread

@@ -59,6 +59,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Two servers starting the same new caller-named conversation at once answered the second with a server error; it is
+  the same 409 ("already has an active run") as two starts on one server (HARDENING R-6).
 - CrewAI, Google ADK, Mastra, OpenAI Agents SDK, the flow-engine frameworks and single-agent exports wrote a model
   block's temperature into the code even for models that refuse it (current Claude and GPT-5 class models), so the
   exported project's first call failed with a 400. The temperature is now written only for models that take it.

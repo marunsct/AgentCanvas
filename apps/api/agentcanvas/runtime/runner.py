@@ -434,6 +434,9 @@ class Runner:
                 if resume is not None:
                     decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
                 await s.commit()
+        except IntegrityError as exc:  # another replica created this new thread a moment earlier (R-6)
+            self.active_by_thread.pop(thread_id, None)
+            raise Conflict(f"thread '{thread_id}' already has an active run") from exc
         except BaseException:
             self.active_by_thread.pop(thread_id, None)
             raise
