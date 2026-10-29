@@ -160,7 +160,7 @@ def _method(wf: Workflow, n: Node, fns: dict[str, str], body: str, defined: set[
         *([f"    @{deco}({when})"] if when else []),
         f"    @rt.step({step_args})",
         f"    async def {fns[n.id]}(self, run: rt.Run) -> {returns}:",
-        *[f"        {line}" if line else "" for line in body.split("\n")],
+        *[f"        {line}" if line else "" for line in body.split("\n")],  # so strings in a body are one-line (`_py`)
     ]
     return "\n".join(lines)
 
@@ -192,7 +192,7 @@ def _step(wf: Workflow, n: Node, fn: str, names: _Names) -> tuple[str, str, str]
         return "", '"""Waits for every branch before going on."""\nreturn {}', ""
     if n.type == "core.set":
         items = ", ".join(
-            f"{_py(k)}: " + (f"rt.render({_lit(v)}, self.state)" if isinstance(v, str) else _py(v))
+            f"{_py(k)}: " + (f"rt.render({_py(v)}, self.state)" if isinstance(v, str) else _py(v))
             for k, v in (c.get("values") or {}).items()
         )
         return "", f"return {{{items}}}", ""
@@ -209,7 +209,7 @@ def _step(wf: Workflow, n: Node, fn: str, names: _Names) -> tuple[str, str, str]
         return "", f"return run.approval(show={_py(c['show'])}, output={_py(c['output'])})", ""
     if n.type == "core.human_input":
         schema = f", schema={_py(c['response_schema'])}" if c.get("response_schema") else ""
-        return "", f"return run.ask(prompt={_lit(c['prompt'])}, output={_py(c['output'])}{schema})", ""
+        return "", f"return run.ask(prompt={_py(c['prompt'])}, output={_py(c['output'])}{schema})", ""
     if n.type == "core.script":
         return "", f"return await run.script({_py(c['import_path'])})", ""
     if n.type == "knowledge.search":
@@ -220,7 +220,7 @@ def _step(wf: Workflow, n: Node, fn: str, names: _Names) -> tuple[str, str, str]
         kw += [f"sources_output={_py(c['sources_output'])}"] if c.get("sources_output") else []
         query = c.get("query", "{{ state.question }}")
         return "", (
-            f"return await run.search(\n    {_py(c['knowledge_base'])}, rt.render({_lit(query)}, self.state), "
+            f"return await run.search(\n    {_py(c['knowledge_base'])}, rt.render({_py(query)}, self.state), "
             + ", ".join(kw) + ",\n)"
         ), ""  # fmt: skip
     if n.type in ("crewai.crew", "crewai.task"):

@@ -29,16 +29,7 @@ _TAKEN = {"rt", "Agent", "ModelSettings", "BaseModel", "Field", "Any", "Literal"
 
 def _lit(value: Any) -> str:
     """A Python literal for a JSON value (strings with line breaks as triple-quoted text when that reads better)."""
-    if (
-        isinstance(value, str)
-        and "\n" in value
-        and '"""' not in value
-        and "\\" not in value
-        and "\r" not in value
-        and value[-1:] != '"'
-    ):
-        return '"""' + value + '"""'
-    return _py(value)
+    return designs.literal(value) if isinstance(value, str) else _py(value)
 
 
 def _py(value: Any) -> str:

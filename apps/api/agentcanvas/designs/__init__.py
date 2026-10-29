@@ -245,6 +245,24 @@ def article(label: str) -> str:
     return "an" if label[:1] in "AEIOU" else "a"
 
 
+def literal(text: str) -> str:
+    """A Python string literal that reads back as exactly `text`, for every code generator: triple quotes for
+    multi-line text when nothing in it would change on the way back (a backslash escape, a `\\r` the tokenizer turns
+    into `\\n`, a quote that ends it, a control character), else one double-quoted line.
+
+    Triple-quoted text keeps its lines as they are, so it belongs at module level or in code that is never
+    re-indented: a generator that indents a body line by line must use the one-line form there."""
+    if (
+        "\n" in text
+        and '"""' not in text
+        and "\\" not in text
+        and not text.endswith('"')
+        and text.replace("\n", "").replace("\t", "").isprintable()
+    ):
+        return '"""' + text + '"""'
+    return json.dumps(text, ensure_ascii=False)
+
+
 def _string(text: str) -> str:
     """A readable Python literal for `text` (triple quotes for multi-line text)."""
     if "\n" in text and '"""' not in text and "\\" not in text and not text.endswith('"'):
