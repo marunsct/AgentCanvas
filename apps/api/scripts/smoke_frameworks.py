@@ -357,6 +357,7 @@ def check_bridge(target: str) -> None:
     import subprocess
 
     from agentcanvas import bridges
+    from agentcanvas.errors import InvalidInput
     from agentcanvas.ir.models import Workflow
     from agentcanvas.services.workflows import TEMPLATES
 
@@ -364,6 +365,11 @@ def check_bridge(target: str) -> None:
     for path in sorted(TEMPLATES.glob("*.ir.json")):
         wf = Workflow.model_validate(json.loads(path.read_text()))
         name = path.name.removesuffix(".ir.json")
+        try:
+            bridges.export_files(wf, target)
+        except InvalidInput as exc:  # a shape the bridge does not take (a subflow): the export says so, as the API
+            print(f"bridge {target}: {name} not exported ({exc})")
+            continue
         runs = not any(g.blocks for g in bridges.gaps(wf, target))
         with tempfile.TemporaryDirectory() as out:
             files = bridges.export_files(wf, target)
