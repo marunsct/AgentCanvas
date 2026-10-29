@@ -112,7 +112,7 @@ def test_blast_radius_respects_the_mcp_tool_filter():
 def test_dry_run_stubs_mcp_tools_that_announce_destructive_hint():
     from langchain_core.tools import StructuredTool
 
-    from agentcanvas.adapters.langchain.nodes import Resources, _config_key
+    from agentcanvas.adapters.langchain.nodes import Resources
 
     def make(name: str, destructive: bool) -> StructuredTool:
         t = StructuredTool.from_function(func=lambda: "called", name=name, description=name)
@@ -122,7 +122,7 @@ def test_dry_run_stubs_mcp_tools_that_announce_destructive_hint():
     wipe, lookup = make("wipe", True), make("lookup", False)
     config = {"url": "https://mcp.example.com/mcp"}  # nothing cached by "Browse tools"
     resources = Resources()
-    resources._mcp[("crm", _config_key(config))] = [wipe, lookup]
+    resources._mcp[("crm", resources._key(config))] = [wipe, lookup]
     stubbed = resources.with_dry_run(set()).tool("crm", config, "mcp.server")
     assert stubbed[0] is not wipe and stubbed[0].name == "wipe" and stubbed[1] is lookup
 
