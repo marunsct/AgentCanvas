@@ -8,6 +8,10 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- In the hosted edition, an MCP server's address was checked by name and then connected to by name again, so a DNS
+  answer that changed in between (rebinding) could reach the cloud metadata service or the cluster; a model's own
+  base URL was not checked at all. MCP clients and OpenAI-compatible model clients there now resolve, check and
+  connect to the same public address (HARDENING S-5).
 - **Calls of different projects ran side by side as one user in the sandbox service**, so one call's code could read
   another's files under `/tmp`, and a process it left running could watch the next call. Each sandbox container now
   runs one call at a time and, after it, stops everything the code started (a daemon that forked away included) and

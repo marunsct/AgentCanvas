@@ -476,6 +476,10 @@ class Resources:
             return self._cache[key]
         params = {k: self._resolve(v) for k, v in config.items() if k not in ("model", *GATEWAY_KEYS)}
         model_id, args = chat_model_args(config["model"], params, self._secrets)
+        if self.public_only and args.get("base_url") and model_id.startswith("openai:"):
+            from agentcanvas.adapters.langchain.pinned import public_async_client
+
+            args["http_async_client"] = public_async_client()  # hosted: a model's own address must be public (S-5)
         shared = {k: v for k, v in params.items() if k in BACKUP_KEYS}  # backups use their provider's own key
 
         def backup(model: str) -> BaseChatModel:
@@ -627,7 +631,7 @@ class Resources:
                 del self._mcp[old]
             target = self._overrides.get(name)
             if target is None:
-                target = mcp_target(config, self._resolve)
+                target = mcp_target(config, self._resolve, public_only=self.public_only)
                 if self.public_only and config.get("transport", "http") != "stdio":
                     parts = urlsplit(config["url"])  # e.g. never the cloud metadata address
                     await _public_address(parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80))
@@ -770,15 +774,21 @@ def _config_key(config: dict[str, Any]) -> str:
     return json.dumps(config, sort_keys=True, default=str)
 
 
-def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v) -> Any:
+def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v, public_only: bool = False) -> Any:
     """FastMCP transport for an `mcp.server` resource. Strings are never passed through: a string naming a file
-    would launch it (langchain.mcp rejects that too); stdio is explicit and admin-gated (E042)."""
+    would launch it (langchain.mcp rejects that too); stdio is explicit and admin-gated (E042). `public_only`
+    (the hosted edition): connections go to public addresses only, checked as they are made (S-5)."""
     from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
     if config.get("transport", "http") == "stdio":
         env = {k: str(resolve(v)) for k, v in (config.get("env") or {}).items()}
         return StdioTransport(command=config["command"], args=list(config.get("args") or []), env=env or None)
     headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
+    if public_only:
+        from agentcanvas.adapters.langchain.pinned import public_mcp_client_factory
+
+        return StreamableHttpTransport(config["url"], headers=headers or None,
+                                       httpx_client_factory=public_mcp_client_factory)  # fmt: skip
     return StreamableHttpTransport(config["url"], headers=headers or None)
 
 
