@@ -20,7 +20,7 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.db.models import EvalAlert, Evaluator, OnlineEvaluator, Run, RunScore, WorkflowRow, WorkflowVersion
@@ -356,26 +356,34 @@ class OnlineScorer:
                 log.info("online.alert_resolved", deployment_id=online.deployment_id, evaluator=evaluator, kind=kind)
 
 
-def buckets(rows: list[tuple[datetime, str, float | None, bool, float]], hours: int) -> list[dict[str, Any]]:
-    """Scores grouped by evaluator and time bucket (`hours` long, aligned to UTC midnight)."""
-    out: dict[tuple[datetime, str], dict[str, Any]] = {}
-    for created, evaluator, value, passed, cost in rows:
-        t = _utc(created)
-        day = t.replace(hour=0, minute=0, second=0, microsecond=0)
-        start = day + timedelta(hours=(t.hour // hours) * hours)
-        b = out.setdefault((start, evaluator), {"start": start, "evaluator": evaluator, "runs": 0, "values": [],
-                                                "passed": 0, "judge_cost_usd": 0.0})  # fmt: skip
-        b["runs"] += 1
-        b["passed"] += bool(passed)
-        b["judge_cost_usd"] += cost or 0.0
-        if value is not None:
-            b["values"].append(value)
-    result = []
-    for b in sorted(out.values(), key=lambda b: (b["start"], b["evaluator"])):
-        values = b.pop("values")
-        b["scored"] = len(values)
-        b["mean"] = round(sum(values) / len(values), 4) if values else None
-        b["pass_rate"] = round(b.pop("passed") / b["runs"], 4)
-        b["judge_cost_usd"] = round(b["judge_cost_usd"], 6)
-        result.append(b)
-    return result
+async def buckets(s: Any, deployment_id: str, since: datetime, hours: int) -> list[dict[str, Any]]:
+    """Online scores of a deployment grouped by evaluator and time bucket (an hour or a UTC day: `hours` 1 or 24),
+    counted by the database rather than read row by row."""
+    if s.bind.dialect.name == "postgresql":
+        start: Any = func.date_trunc("hour" if hours == 1 else "day", func.timezone("UTC", RunScore.created_at))
+    else:  # SQLite keeps UTC text
+        start = func.strftime("%Y-%m-%d %H:00:00" if hours == 1 else "%Y-%m-%d 00:00:00", RunScore.created_at)
+    start = start.label("start")
+    q = (
+        select(
+            start,
+            RunScore.evaluator,
+            func.count(),
+            func.count(RunScore.score),
+            func.avg(RunScore.score),
+            func.sum(case((RunScore.passed, 1), else_=0)),
+            func.coalesce(func.sum(RunScore.judge_cost_usd), 0.0),
+        )
+        .where(RunScore.deployment_id == deployment_id, RunScore.source == "online", RunScore.created_at >= since)
+        .group_by(start, RunScore.evaluator)
+        .order_by(start, RunScore.evaluator)
+    )
+    out = []
+    for when, evaluator, runs, scored, mean, passed, cost in (await s.execute(q)).all():
+        at = _utc(when if isinstance(when, datetime) else datetime.fromisoformat(when))
+        out.append({
+            "start": at, "evaluator": evaluator, "runs": runs, "scored": scored,
+            "mean": round(float(mean), 4) if mean is not None else None,
+            "pass_rate": round(int(passed or 0) / runs, 4), "judge_cost_usd": round(float(cost or 0.0), 6),
+        })  # fmt: skip
+    return out

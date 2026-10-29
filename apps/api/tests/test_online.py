@@ -10,7 +10,7 @@ from test_publish import bearer, make_greeter, set_greeting
 
 from agentcanvas import observability
 from agentcanvas.api.deps import current_user
-from agentcanvas.services.online import buckets, judge_cost, matches, sampled
+from agentcanvas.services.online import judge_cost, matches, sampled
 
 GREETS = {"channel": "out", "pattern": r"^Hello \w+$"}
 
@@ -171,7 +171,7 @@ async def test_online_evaluators_are_org_scoped(app, api_client, org_b):  # noqa
         app.dependency_overrides.pop(current_user)
 
 
-def test_sampling_filters_costs_and_buckets(monkeypatch):
+def test_sampling_filters_and_costs(monkeypatch):
     assert sampled("run_1", "oev_1", 1.0) and not sampled("run_1", "oev_1", 0.0)
     hits = sum(sampled(f"run_{i}", "oev_1", 0.25) for i in range(4000))
     assert 900 < hits < 1100 and sampled("run_7", "oev_1", 0.5) == sampled("run_7", "oev_1", 0.5)
@@ -190,9 +190,4 @@ def test_sampling_filters_costs_and_buckets(monkeypatch):
     assert online.unpriced({"nobody:nothing": {"input_tokens": 5}}) == ["nobody:nothing"]
     assert online.unpriced({"nobody:nothing": {}}) == []  # never called
 
-    t = datetime(2026, 10, 6, 13, 30, tzinfo=UTC)
-    rows = [(t, "a", 1.0, True, 0.01), (t.replace(hour=14), "a", 0.0, False, 0.0), (t, "a", None, False, 0.0)]
-    hourly = buckets(rows, 1)
-    assert [(b["start"].hour, b["runs"], b["scored"], b["mean"]) for b in hourly] == [(13, 2, 1, 1.0), (14, 1, 1, 0.0)]
-    [daily] = buckets(rows, 24)
-    assert daily["start"].hour == 0 and daily["runs"] == 3 and daily["mean"] == 0.5 and daily["pass_rate"] == 0.3333
+    # the hourly and daily buckets: test_efficiency.py, through the endpoint (the database groups them)

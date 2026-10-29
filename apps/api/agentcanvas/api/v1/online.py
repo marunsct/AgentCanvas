@@ -213,11 +213,7 @@ async def score_summary(
     """Online scores per evaluator, by hour or day, over the last `days` days."""
     await _deployment(session, dep_id)
     since = datetime.now(UTC) - timedelta(days=days)
-    q = select(RunScore.created_at, RunScore.evaluator, RunScore.score, RunScore.passed, RunScore.judge_cost_usd).where(
-        RunScore.deployment_id == dep_id, RunScore.source == "online", RunScore.created_at >= since
-    )
-    rows = [tuple(r) for r in (await session.execute(q.limit(100_000))).all()]
-    return [BucketOut(**b) for b in buckets(rows, 1 if bucket == "hour" else 24)]  # type: ignore[arg-type]
+    return [BucketOut(**b) for b in await buckets(session, dep_id, since, 1 if bucket == "hour" else 24)]
 
 
 @router.get("/deployments/{dep_id}/scored-runs", response_model=list[ScoredRunOut])
