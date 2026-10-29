@@ -8,8 +8,7 @@ general-purpose sub-agent for side questions (`task`), a scratch filesystem hold
 ours: the tools (`copilot.tools`, the working copy, the proposal), the instructions and the events the panel reads.
 The shell tool the harness offers is never shown to the model.
 
-Selected with `AGENTCANVAS_COPILOT_ENGINE=deepagents`; the loop stays the default until this one has passed the same
-suite and the real-model evaluation.
+The default engine; `AGENTCANVAS_COPILOT_ENGINE=loop` selects our own loop (`copilot.service.CopilotTurn`) instead.
 """
 
 from __future__ import annotations

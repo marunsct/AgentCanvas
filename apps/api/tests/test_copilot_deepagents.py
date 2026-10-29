@@ -16,6 +16,16 @@ from test_copilot import ask, new_workflow, of
 from agentcanvas.testing import DemoResources
 
 
+def test_deep_agents_is_the_default_engine_and_the_loop_stays_one_setting_away():
+    from agentcanvas.adapters.langchain.copilot import DeepAgentTurn
+    from agentcanvas.api.v1.copilot import _engine
+    from agentcanvas.copilot.service import CopilotTurn
+    from agentcanvas.settings import Settings
+
+    assert _engine(Settings(env="test")) is DeepAgentTurn
+    assert _engine(Settings(env="test", copilot_engine="loop")) is CopilotTurn
+
+
 class Streamer(BaseChatModel):
     """Scripted replies, streamed word by word; remembers the tools it was offered and the messages it was sent."""
 

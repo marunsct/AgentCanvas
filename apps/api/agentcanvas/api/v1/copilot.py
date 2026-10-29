@@ -116,7 +116,7 @@ class SettingsOut(CopilotSettings):
 
 
 def _engine(settings: Settings) -> type[CopilotTurn]:
-    """The loop (default) or the Deep Agents harness (AGENTCANVAS_COPILOT_ENGINE=deepagents)."""
+    """The Deep Agents harness (default) or the loop (AGENTCANVAS_COPILOT_ENGINE=loop)."""
     if settings.copilot_engine == "deepagents":
         from agentcanvas.adapters.langchain.copilot import DeepAgentTurn
 

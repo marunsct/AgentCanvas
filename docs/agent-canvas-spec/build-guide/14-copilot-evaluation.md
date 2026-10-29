@@ -32,8 +32,9 @@ tools, builds good workflows. Quality can slip without any of our tests failing:
 - **The block catalogue grows.** New blocks and templates make the Copilot's choices harder.
 
 The nightly run catches these within a day, with a concrete list of the requests that now fail, instead of a user
-noticing weeks later. It also answers one open decision with data: Deep Agents becomes the default engine once it
-does at least as well as the loop (see `decisions.md`, "The Copilot work so far").
+noticing weeks later. It also keeps the choice of engine honest: Deep Agents is the default engine (set
+`AGENTCANVAS_COPILOT_ENGINE=loop` to use the built-in loop instead), and the two runs side by side show whether it
+still does at least as well as the loop (see `decisions.md`, "The Copilot work so far").
 
 ## How to turn it on
 

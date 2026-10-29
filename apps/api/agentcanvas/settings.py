@@ -80,9 +80,9 @@ class Settings(BaseSettings):
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)
     recursion_limit: int = 50
-    # the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (PLAN.md section 2; the loop stays the
-    # default until Deep Agents has passed the same suite and the real-model evaluation)
-    copilot_engine: Literal["loop", "deepagents"] = "loop"
+    # the Copilot's engine: LangChain's Deep Agents harness (default), or our own tool loop (PLAN.md section 2); the
+    # loop stays as the fallback and as the second engine of the nightly evaluation
+    copilot_engine: Literal["loop", "deepagents"] = "deepagents"
     cors_origins: list[str] = ["http://localhost:5173"]
     # networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so
     # workspace code there cannot call the API from inside

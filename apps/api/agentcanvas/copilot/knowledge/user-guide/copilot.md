@@ -136,6 +136,9 @@ do. The Copilot refuses to put API keys or passwords into settings and uses secr
 
 ## For administrators
 
+- The Copilot runs on LangChain's Deep Agents harness. `AGENTCANVAS_COPILOT_ENGINE=loop` on the server switches to
+  the simpler built-in loop (no plan checklist, text per step instead of per word, conversation cut to the last 24
+  messages); everything else, the tools and the proposals, is the same.
 - `GET/PUT /v1/projects/{id}/copilot-settings` turns the Copilot on or off and sets its model and token limit.
 - `GET /v1/workflows/{id}/copilot` returns your conversation, its brief and any open proposal;
   `POST …/copilot/messages` streams an answer (Server-Sent Events); `POST …/copilot/stop` ends it (Stop);
