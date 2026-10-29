@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### Claude Managed Agents and Git sync: built from the reference docs, not run against the services
+The Managed Agents export (`ant apply` bundle: `agent.md`, `environment.yaml`, optional `vault.yaml`, skills) follows the
+file shapes in the claude-api reference; the Git round trip uses the GitHub REST API through httpx. Neither has been run
+against the real service (tests use golden files and a stateful mock transport), so a first real `ant apply` or pull
+request may need a small fix. Settings with no Managed Agents counterpart (temperature, max tokens, add-ons, a
+forced answer shape) are listed under "did not carry over" rather than guessed. Git sync's conflict rule: the draft is
+replaced from the branch only when the draft and the branch have not both changed since the last sync.
+
 ### Knowledge and memory at scale: what was built, what was not
 Knowledge search on Postgres uses pgvector and full-text search (1,000,000 chunks per base); SQLite keeps the in-process
 engine (50,000). Memory's semantic index is a **server** setting (`AGENTCANVAS_MEMORY_EMBEDDING`), not per project: the

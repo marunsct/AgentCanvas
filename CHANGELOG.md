@@ -413,6 +413,12 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- A workflow can be connected to a GitHub branch: each publish (or saved version, or on demand) opens or updates a
+  pull request with the export, the workflow diff in the description and a CI check that runs the export's tests,
+  and Import from branch brings the merged workflow back into the draft, refusing to overwrite changes made on
+  either side. (HARDENING G-14).
+- An AI agent can be designed for Claude Managed Agents and exported as the files the ant CLI applies: the agent,
+  its environment, skills and MCP servers, with a session runner, make doctor and tests. (HARDENING G-12).
 - Long-term memory can be searched by meaning: set the memory embedding model on the server and Recall returns the
   best matches directly from the database instead of scanning up to 1000 memories. (HARDENING F-7).
 - A knowledge base can add a sitemap and fetch its web pages again every few hours or on demand, so changed pages
