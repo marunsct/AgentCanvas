@@ -102,7 +102,15 @@ export function Inspector() {
       {res && el.type === "model.chat" && <MockPanel resource={el} key={`mock-${el.name}`} />}
       {!res && <PoliciesEditor node={el} />}
       <button type="button" className="danger"
-        onClick={() => { dispatch([res ? { op: "RemoveResource", id: el.id } : { op: "RemoveNode", id: el.id }]); useEditor.getState().select(null); }}>
+        onClick={() => {
+          dispatch([res ? { op: "RemoveResource", id: el.id } : { op: "RemoveNode", id: el.id }]);
+          const st = useEditor.getState();
+          st.select(null);
+          // it can be undone, so it is not asked first: say so (a refused delete says why instead)
+          if (!st.notice && st.wf && !findElement(st.wf, el.id)) {
+            st.setNotice({ kind: "info", text: `Deleted ${el.name}. Undo with Ctrl/⌘+Z.` });
+          }
+        }}>
         Delete {res ? "resource" : "node"}
       </button>
     </div>

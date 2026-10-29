@@ -99,12 +99,17 @@ function DeploymentScores({ wfId, dep }: { wfId: string; dep: DeploymentOut }) {
                 <td>{pct(o.sampling ?? 1)}</td>
                 <td className="small">{describe(o)}</td>
                 <td className="small">{rules(o)} <span className="muted">({o.window_minutes} min, ≥ {o.min_samples} runs)</span></td>
-                <td>{can("builder") && <button type="button" className="link small" onClick={() => remove.mutate(o.id)}>Remove</button>}</td>
+                <td>{can("builder") && (
+                  <button type="button" className="link small" onClick={() => {
+                    if (window.confirm(`Stop scoring ${dep.environment} runs with ${o.evaluator}?`)) remove.mutate(o.id);
+                  }}>Remove</button>
+                )}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {remove.error && <p role="alert" className="error-text">{errorText(remove.error)}</p>}
       {can("builder") && (
         <form className="policy-form" onSubmit={(e) => { e.preventDefault(); add.mutate(); }} data-testid="online-form">
           <div className="row gap">

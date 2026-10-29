@@ -27,13 +27,20 @@ export function TriggersSection({ wfId }: { wfId: string }) {
       setError((e as Error).message);
     }
   };
-  const toggle = async (t: TriggerOut) => {
-    await apiFetch(`/triggers/${t.id}`, { method: "PATCH", json: { enabled: !t.enabled } });
-    void qc.invalidateQueries({ queryKey: key });
+  // a failure is shown, not dropped (these were fire and forget)
+  const act = async (call: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await call();
+      void qc.invalidateQueries({ queryKey: key });
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
-  const remove = async (t: TriggerOut) => {
-    await apiFetch(`/triggers/${t.id}`, { method: "DELETE" });
-    void qc.invalidateQueries({ queryKey: key });
+  const toggle = (t: TriggerOut) => act(() => apiFetch(`/triggers/${t.id}`, { method: "PATCH", json: { enabled: !t.enabled } }));
+  const remove = (t: TriggerOut) => {
+    if (!window.confirm(`Delete this ${t.kind} trigger? ${t.kind === "webhook" ? "Calls to its address" : "Its schedule"} will no longer start runs.`)) return;
+    return act(() => apiFetch(`/triggers/${t.id}`, { method: "DELETE" }));
   };
   return (
     <section aria-label="triggers">

@@ -516,7 +516,7 @@ function Comparison({ before, after }: { before: ExperimentOut; after: Experimen
 }
 
 // ------------------------------------------------------------------------------------------- release gates ----
-function Gates({ wfId }: { wfId: string }) {
+export function Gates({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
   const key = ["gates", wfId];
   const list = useQuery({ queryKey: key, queryFn: () => apiFetch<GateOut[]>(`/workflows/${wfId}/gates`) });
@@ -558,12 +558,17 @@ function Gates({ wfId }: { wfId: string }) {
                 <td>{name(g.dataset_id)}{g.dataset_version != null && ` v${g.dataset_version}`}{g.evaluators && <span className="muted small"> · {g.evaluators.join(", ")}</span>}</td>
                 <td className="small">{Object.entries(g.min_scores ?? {}).map(([k, v]) => `${k} ≥ ${v}`).join(", ") || "each evaluator's threshold"}</td>
                 <td>{g.max_regression == null ? "—" : pct(g.max_regression)}</td>
-                <td>{can("admin") && <button type="button" className="link small" onClick={() => remove.mutate(g.environment)}>Remove</button>}</td>
+                <td>{can("admin") && (
+                  <button type="button" className="link small" onClick={() => {
+                    if (window.confirm(`Remove the release gate on ${g.environment}? Publishing there will need no evaluation.`)) remove.mutate(g.environment);
+                  }}>Remove</button>
+                )}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {remove.error && <p role="alert" className="error-text">{errorText(remove.error)}</p>}
       {can("admin") && (
         <form className="policy-form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }} data-testid="gate-form">
           <div className="row gap">
