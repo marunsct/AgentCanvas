@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { applyAll } from "../ir/commands";
+import type { WF } from "../ir/model";
 import { manifests, triage } from "../test/fixtures";
-import { checkConnection } from "./connect";
+import { checkConnection, routeEdgeChanges } from "./connect";
 
 const c = (source: string, sourceHandle: string | null, target: string, targetHandle: string | null) =>
   ({ source, sourceHandle, target, targetHandle });
@@ -29,5 +31,33 @@ describe("checkConnection (M2-T6)", () => {
     expect(checkConnection(wf, manifests, c("n_cls", "next", "START", null)).ok).toBe(false);
     expect(checkConnection(wf, manifests, c("n_rt", "route:high", "n_ag", "in")).reason).toMatch(/already has a target/);
     expect(checkConnection(wf, manifests, c("n_esc", "next", "END", "in"))).toEqual({ ok: true, kind: "flow" });
+  });
+});
+
+describe("routeEdgeChanges (W-6)", () => {
+  // the triage router: cases [{route: "high"}], default "normal"; e3 leaves route:high, e4 route:normal
+  const router = (wf: WF) => wf.nodes.find((n) => n.id === "n_rt")!;
+  const when = 'state.urgency == "high"';
+
+  it("removes the arrow of a removed path in the same edit", () => {
+    const wf = triage();
+    expect(routeEdgeChanges(wf, router(wf), { cases: [], default: "normal" })).toEqual([{ op: "Disconnect", id: "e3" }]);
+  });
+
+  it("moves the arrow of a renamed path to the new name, in its place", () => {
+    const wf = triage();
+    const cmds = routeEdgeChanges(wf, router(wf), { cases: [{ when, route: "urgent" }], default: "rest" });
+    const e3 = wf.edges.find((e) => e.id === "e3")!, e4 = wf.edges.find((e) => e.id === "e4")!;
+    expect(cmds).toEqual([
+      { op: "Disconnect", id: "e3" }, { op: "Connect", edge: { ...e3, source: { node: "n_rt", port: "route:urgent" } }, index: 2 },
+      { op: "Disconnect", id: "e4" }, { op: "Connect", edge: { ...e4, source: { node: "n_rt", port: "route:rest" } }, index: 3 },
+    ]);
+    expect(applyAll(wf, cmds).edges.map((e) => e.id)).toEqual(wf.edges.map((e) => e.id));
+  });
+
+  it("keeps the arrow while a path name is cleared to be retyped, and leaves other paths alone", () => {
+    const wf = triage();
+    expect(routeEdgeChanges(wf, router(wf), { cases: [{ when, route: "" }], default: "normal" })).toEqual([]);
+    expect(routeEdgeChanges(wf, router(wf), { cases: [{ when, route: "high" }, { when: "true", route: "x" }], default: "normal" })).toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import { BUTTON_TEMPLATES, withItemDefaults } from "../ui/rjsfTemplates";
 import { validator } from "../ui/validator";
 import { useMemo } from "react";
 import type { NodeManifest } from "../api/types";
+import { routeEdgeChanges } from "../canvas/connect";
 import { useEditor } from "../editor/store";
 import type { IRNode, IRResource } from "../ir/model";
 import { JsonSchemaField } from "./JsonSchemaField";
@@ -28,12 +29,16 @@ export function ConfigForm({ element, manifest, isResource }: {
       templates={{ ButtonTemplates: BUTTON_TEMPLATES }}
       liveValidate showErrorList={false} noHtml5Validate idPrefix={`cfg_${element.id}`}
       onChange={(e) => {
-        const patch = diffToMergePatch(config, (e.formData ?? {}) as Record<string, unknown>);
+        const next = (e.formData ?? {}) as Record<string, unknown>;
+        const patch = diffToMergePatch(config, next);
         if (!Object.keys(patch).length) return;
         const cmd = isResource
           ? { op: "UpdateResource" as const, id: element.id, patch: { config: patch } }
           : { op: "UpdateNode" as const, id: element.id, patch: { config: patch } };
-        dispatch([cmd], { debounceMs: 400 });
+        // a router's arrows follow its renamed paths and go with its removed ones, in the same undo step
+        const wf = useEditor.getState().wf;
+        const edges = !isResource && manifest.dynamic_outputs === "routes" && wf ? routeEdgeChanges(wf, element as IRNode, next) : [];
+        dispatch([cmd, ...edges], { debounceMs: 400 });
       }}
     />
   );

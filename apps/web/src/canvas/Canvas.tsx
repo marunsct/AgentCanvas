@@ -175,6 +175,13 @@ export function Canvas() {
 
   useEffect(() => {
     setFocusNode((id) => {
+      const edge = rf.getEdge(id);
+      if (edge) { // an arrow (from the Problems dock): select it and show both ends
+        setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
+        setEdges((es) => es.map((e) => ({ ...e, selected: e.id === id })));
+        void rf.fitView({ nodes: [{ id: edge.source }, { id: edge.target }], duration: 300, maxZoom: 1.2 });
+        return;
+      }
       setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id }))); // focusing from elsewhere: only this one
       select(id);
       void rf.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 });

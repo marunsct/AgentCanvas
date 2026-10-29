@@ -1,7 +1,8 @@
 /** Connection rules (M2-T6): which handles may be wired, and *why not* when refused. */
 import type { Connection } from "@xyflow/react";
 import type { NodeManifest } from "../api/types";
-import { inputPort, outputPort, type WF } from "../ir/model";
+import type { Command } from "../ir/commands";
+import { inputPort, type IRNode, outputPort, routesOf, type WF } from "../ir/model";
 import { aType, typeName } from "../help/glossary";
 
 export interface Verdict {
@@ -59,6 +60,37 @@ export function checkConnection(wf: WF, manifests: Map<string, NodeManifest>, c:
 /** IR `source.port` of a flow edge: null for the default "next" output, else the named output (route:x, each…). */
 export function flowPort(sourceHandle: string | null | undefined): string | null {
   return sourceHandle && sourceHandle !== "next" ? sourceHandle : null;
+}
+
+const caseRoutes = (config: Record<string, unknown> | undefined) =>
+  (Array.isArray(config?.cases) ? (config.cases as { route?: unknown }[]) : []).map((c) => (typeof c.route === "string" ? c.route : ""));
+const defaultRoute = (config: Record<string, unknown> | undefined) => (typeof config?.default === "string" ? config.default : "default");
+
+/**
+ * The commands that keep a router's arrows on its paths when its config becomes `config`: an arrow leaves a path
+ * that was renamed (same rule, new name) from the new name, and one from a path that is gone is removed. Such an
+ * arrow used to stay in the workflow with no dot to leave from: invisible on the canvas, so it could not be deleted.
+ * A path name cleared to be retyped keeps its arrow.
+ */
+export function routeEdgeChanges(wf: WF, node: IRNode, config: Record<string, unknown>): Command[] {
+  const before = routesOf(node), after = routesOf({ ...node, config });
+  const renamed = new Map<string, string>();
+  const was = caseRoutes(node.config), now = caseRoutes(config);
+  if (was.length === now.length) was.forEach((r, i) => { if (r && r !== now[i]) renamed.set(r, now[i]); });
+  if (defaultRoute(node.config) !== defaultRoute(config)) renamed.set(defaultRoute(node.config), defaultRoute(config));
+  const out: Command[] = [];
+  wf.edges.forEach((e, index) => {
+    const port = e.source.port;
+    if (e.source.node !== node.id || !port?.startsWith("route:")) return;
+    const route = port.slice(6);
+    if (after.includes(route) || !before.includes(route)) return;
+    const to = renamed.get(route);
+    if (to === "") return;
+    out.push({ op: "Disconnect", id: e.id });
+    // put back where it was: arrows are tried in order
+    if (to && after.includes(to)) out.push({ op: "Connect", edge: { ...e, source: { ...e.source, port: `route:${to}` } }, index });
+  });
+  return out;
 }
 
 /** `order` for a new wiring edge into an ordered port (appended after the existing ones). */
