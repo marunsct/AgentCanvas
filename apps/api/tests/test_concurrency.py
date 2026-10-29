@@ -9,7 +9,9 @@ from __future__ import annotations
 import asyncio
 
 from test_frameworks import greeter
+from test_publish import make_greeter
 from test_runs_v1 import events, triage_api  # noqa: F401 - `triage_api` is a fixture
+from test_versions import new_triage
 
 from agentcanvas.errors import Conflict
 from agentcanvas.ir.models import Workflow
@@ -96,3 +98,21 @@ async def test_a_second_cancel_while_a_run_saves_itself_leaves_its_thread_free(a
     await asyncio.wait_for(h.done.wait(), 5)
     assert (await api_client.get("/v1/threads/th_twice")).json()["status"] == "idle"
     assert h.status == "cancelled"
+
+
+async def test_two_snapshots_of_one_draft_make_one_version_and_the_other_is_told(api_client):
+    wf = await new_triage(api_client)
+    base = f"/v1/workflows/{wf['id']}/versions"
+    first, second = await asyncio.gather(api_client.post(base, json={}), api_client.post(base, json={}))
+    assert sorted([first.status_code, second.status_code]) == [201, 409], (first.text[:200], second.text[:200])
+    assert [v["semver"] for v in (await api_client.get(base)).json()] == ["1.0.0"]
+
+
+async def test_two_publishes_of_one_draft_pin_the_same_version(api_client):
+    wf = await make_greeter(api_client)
+    first, second = await asyncio.gather(
+        api_client.post(f"/v1/workflows/{wf}/publish", json={}), api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    )
+    assert first.status_code == second.status_code == 200, (first.text[:200], second.text[:200])
+    assert len({r.json()["deployment"]["version_id"] for r in (first, second)}) == 1
+    assert [v["semver"] for v in (await api_client.get(f"/v1/workflows/{wf}/versions")).json()] == ["1.0.0"]

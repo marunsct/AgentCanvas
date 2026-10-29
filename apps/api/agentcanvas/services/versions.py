@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import AppUser, CopilotConversation, WorkflowRow, WorkflowVersion
@@ -71,31 +72,41 @@ class VersionService:
         created_by: str | None = None,
         reuse_unchanged: bool = False,
     ) -> tuple[WorkflowVersion, bool]:
-        """Snapshot the draft. Returns (version, created); an unchanged draft is refused (or reused when asked)."""
-        row = await self.workflows.require(wf_id)
-        latest = await self.latest(wf_id)
-        if latest is not None and latest.ir_hash == row.ir_hash and latest.workspace_commit == workspace_commit:
-            if reuse_unchanged:
-                return latest, False
-            raise Conflict(f"nothing changed since v{latest.semver}", version_id=latest.id, semver=latest.semver)
-        now = datetime.now(UTC)  # to the microsecond (SQLite's own clock is to the second): changes are credited once
-        version = WorkflowVersion(
-            id=new_id("ver"),
-            workflow_id=wf_id,
-            semver=next_semver(latest.semver if latest else None, bump),
-            ir=row.draft_ir,
-            layout=row.layout or {},
-            ir_hash=row.ir_hash,
-            workspace_commit=workspace_commit,
-            message=message,
-            copilot_changes=await self._copilot_changes(wf_id, _utc(latest.created_at) if latest else None, now),
-            created_by=created_by,
-            created_at=now,
-        )
-        self.s.add(version)
-        await self.s.commit()
-        await self.s.refresh(version)
-        return version, True
+        """Snapshot the draft. Returns (version, created); an unchanged draft is refused (or reused when asked).
+        Two snapshots at once both compute the next semver: the loser reads the winner's and tries once more."""
+        for attempt in range(2):
+            row = await self.workflows.require(wf_id)
+            latest = await self.latest(wf_id)
+            if latest is not None and latest.ir_hash == row.ir_hash and latest.workspace_commit == workspace_commit:
+                if reuse_unchanged:
+                    return latest, False
+                raise Conflict(f"nothing changed since v{latest.semver}", version_id=latest.id, semver=latest.semver)
+            now = datetime.now(UTC)  # to the microsecond (SQLite's own clock is to the second): changes credited once
+            since = _utc(latest.created_at) if latest else None
+            version = WorkflowVersion(
+                id=new_id("ver"),
+                workflow_id=wf_id,
+                semver=next_semver(latest.semver if latest else None, bump),
+                ir=row.draft_ir,
+                layout=row.layout or {},
+                ir_hash=row.ir_hash,
+                workspace_commit=workspace_commit,
+                message=message,
+                copilot_changes=await self._copilot_changes(wf_id, since, now),
+                created_by=created_by,
+                created_at=now,
+            )
+            self.s.add(version)
+            try:
+                await self.s.commit()
+            except IntegrityError:  # another snapshot took this semver first
+                await self.s.rollback()
+                if attempt:
+                    raise Conflict("another version was saved at the same moment; try again") from None
+                continue
+            await self.s.refresh(version)
+            return version, True
+        raise AssertionError("unreachable")
 
     async def _copilot_changes(self, wf_id: str, since: datetime | None, until: datetime) -> list[dict[str, Any]]:
         """The Copilot proposals accepted after the version before (FR-COP-07), oldest first, with who accepted them;
