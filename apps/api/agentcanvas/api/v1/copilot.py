@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -48,7 +49,8 @@ from agentcanvas.validation.policies import Policy
 router = APIRouter(tags=["copilot"])
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 LEASE = timedelta(minutes=15)  # a turn holds its conversation this long at most (a crashed server's lease expires)
-_packs: dict[str, Pack] = {}  # registry + templates fingerprint -> pack
+PACKS = 16  # knowledge packs kept, least recently used dropped first
+_packs: OrderedDict[str, Pack] = OrderedDict()
 
 
 class MessageIn(BaseModel):
@@ -111,9 +113,12 @@ def _service(request: Request, session: AsyncSession, settings: Settings) -> Wor
 
 def _pack(registry: Registry, templates: dict[str, dict[str, Any]]) -> Pack:
     key = json.dumps([[m.type, m.version, m.provenance] for m in registry.all()] + sorted(templates))
-    if key not in _packs:
-        _packs.clear()  # one live entry per registry shape is enough
-        _packs[key] = build_pack(registry, templates)
+    if key in _packs:
+        _packs.move_to_end(key)
+        return _packs[key]
+    _packs[key] = build_pack(registry, templates)
+    while len(_packs) > PACKS:  # one per registry shape in use: projects with their own blocks no longer evict
+        _packs.popitem(last=False)  # each other on every request (F-5)
     return _packs[key]
 
 

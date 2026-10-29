@@ -608,6 +608,10 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- Faster Copilot and evaluation: the Copilot keeps the knowledge pack of each project shape (two projects with their
+  own blocks rebuilt it on alternate requests), the guide search computes its statistics once, a composite evaluator
+  scores its parts side by side, and adding a document to a knowledge base embeds it before locking the base, so
+  other adds no longer wait behind the embedding provider (HARDENING F-5).
 - The Runs list and a conversation's runs no longer load each run's recording (every model reply and tool output) to
   sum its tokens, and the Inbox reads each workflow once rather than once per waiting item (HARDENING F-2).
 - Masking secrets in a run's events no longer copies every event through JSON: an event without a secret (nearly

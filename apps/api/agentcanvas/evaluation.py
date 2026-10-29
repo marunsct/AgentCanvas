@@ -434,7 +434,8 @@ async def _composite(
         return done(None, f"no longer an evaluator of the workflow: {', '.join(missing)}")
     if any(p.kind in ("composite", *ONLY_IN_EXPERIMENTS) for p in parts.values()):
         return done(None, "a composite combines plain evaluators only")
-    scores = {n: await score(parts[n], obs, complete, script, fingerprint) for n in cfg.evaluators}
+    results = await asyncio.gather(*(score(parts[n], obs, complete, script, fingerprint) for n in cfg.evaluators))
+    scores = dict(zip(cfg.evaluators, results, strict=True))  # judges side by side, not one after another (F-5)
     summary = ", ".join(f"{n} {'—' if s.score is None else f'{s.score:.2f}'}" for n, s in scores.items())
     if cfg.mode == "all":
         return done(float(all(s.passed for s in scores.values())), summary)

@@ -63,16 +63,22 @@ def sections(root: str | None = None) -> tuple[Section, ...]:
     return tuple(out)
 
 
+@cache
+def _index(root: str | None = None) -> tuple[float, Counter[str], tuple[Counter[str], ...]]:
+    """The guide's BM25 statistics, once: average length, document frequencies, each section's term counts (F-5)."""
+    docs = sections(root)
+    avg = sum(len(d.words) for d in docs) / len(docs) if docs else 0.0
+    return avg, Counter(t for d in docs for t in set(d.words)), tuple(Counter(d.words) for d in docs)
+
+
 def search(query: str, limit: int = 4, root: str | None = None) -> list[dict[str, str]]:
     docs = sections(root)
     terms = _words(query)
     if not docs or not terms:
         return []
-    avg = sum(len(d.words) for d in docs) / len(docs)
-    df = Counter(t for d in docs for t in set(d.words))
+    avg, df, tfs = _index(root)
     scored = []
-    for d in docs:
-        tf = Counter(d.words)
+    for d, tf in zip(docs, tfs, strict=True):
         score = 0.0
         for t in terms:
             if tf[t]:

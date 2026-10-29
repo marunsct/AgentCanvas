@@ -238,3 +238,69 @@ async def test_run_lists_do_not_read_recordings_and_the_inbox_reads_each_workflo
         inbox = (await api_client.get("/v1/inbox")).json()
     assert len(inbox) == 3 and all(i["node_label"] for i in inbox)
     assert len([st for st in seen if "draft_ir" in st]) == 1
+
+
+# ------------------------------------------------------------------------------------------------- F-5 ----
+async def test_a_composites_parts_score_side_by_side():
+    """F-5: a composite awaited its parts one after another, so three AI judges took three times one judge."""
+    import asyncio
+    import time
+
+    from agentcanvas.evaluation import Observation, Spec, score
+
+    async def slow(_obs):
+        await asyncio.sleep(0.2)
+        return 1.0
+
+    parts = [Spec(name=f"c{i}", kind="code", config={"function": f"scripts.e:c{i}"}) for i in range(3)]
+    config = {"evaluators": [p.name for p in parts], "parts": [p.model_dump() for p in parts]}
+    composite = Spec(name="all", kind="composite", config=config)
+    started = time.perf_counter()
+    result = await score(composite, Observation(), script=lambda _path: slow)
+    assert result.score == 1.0 and time.perf_counter() - started < 0.45
+
+
+def test_the_guides_search_statistics_are_computed_once():
+    from agentcanvas.copilot import docs
+
+    docs._index.cache_clear()
+    docs.search("knowledge base")
+    docs.search("secrets")
+    assert docs._index.cache_info().misses == 1
+
+
+def test_knowledge_packs_of_several_projects_stay_cached(monkeypatch):
+    from agentcanvas.api.v1 import copilot
+    from agentcanvas.registry import default_registry
+
+    built: list[int] = []
+    monkeypatch.setattr(copilot, "build_pack", lambda reg, templates: built.append(1) or object())
+    monkeypatch.setattr(copilot, "_packs", copilot.OrderedDict())
+    one, two = default_registry(), default_registry().with_manifests([])  # two shapes: built-in only, and a copy
+    for _ in range(3):
+        copilot._pack(one, {"a": {}})
+        copilot._pack(two, {"a": {}, "b": {}})
+    assert len(built) == 2  # once each, not on every alternate request
+
+
+async def test_a_document_is_embedded_before_the_base_is_locked(app, api_client, monkeypatch):
+    """F-5: adding a document held the knowledge base's lock while the embedding provider answered, so every other
+    add to that base waited behind the network. It embeds first, then locks to check and write; a base whose
+    embedding model changed in between is refused rather than given vectors of the old model."""
+    from agentcanvas.db.models import KnowledgeBase
+    from agentcanvas.services import knowledge as kmod
+
+    kb = (await api_client.post(f"{P}/knowledge", json={"name": "race"})).json()
+    real = kmod.KnowledgeService._embed
+
+    async def embed_then_change(self, base, texts):
+        out = await real(self, base, texts)
+        async with app.state.db.sessionmaker() as other:  # someone switches the model while this one embeds
+            row = await other.get(KnowledgeBase, kb["id"])
+            row.embedding = {"model": "openai:text-embedding-3-small"}
+            await other.commit()
+        return out
+
+    monkeypatch.setattr(kmod.KnowledgeService, "_embed", embed_then_change)
+    r = await api_client.post(f"/v1/knowledge/{kb['id']}/documents/text", json={"title": "t", "text": "Some text."})
+    assert r.status_code == 409 and "changed meanwhile" in r.json()["detail"]

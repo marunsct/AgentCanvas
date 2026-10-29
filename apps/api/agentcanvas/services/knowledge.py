@@ -490,27 +490,32 @@ class KnowledgeService:
     ) -> KnowledgeDocument:
         """Add a document: keep its text, chunk and embed it. The same text twice is refused. `commit=False` leaves
         the commit (and the version bump) to the caller, which adds more in the same transaction."""
-        kb = await self._lock(kb_id)
+        seen = await self.get(kb_id)
+        settings = (dict(seen.chunking or {}), dict(seen.embedding or {}))
         text = text.replace("\x00", "").strip()
         if not text:
             raise InvalidInput(f"'{name or title}' has no text to search (a scanned PDF needs OCR first)")
         if len(text) > MAX_TEXT_CHARS:
             raise InvalidInput(f"'{name or title}' has more than {MAX_TEXT_CHARS:,} characters of text; split it")
         digest = hashlib.sha256(text.encode()).hexdigest()
-        if same := await self.s.scalar(
-            select(KnowledgeDocument.name).where(KnowledgeDocument.kb_id == kb_id, KnowledgeDocument.sha256 == digest)
-        ):
-            raise Conflict(f"this knowledge base already has the same text ('{same}')")
         doc = KnowledgeDocument(
             id=new_id("kdoc"), kb_id=kb_id, name=(name or title)[:300], source=kind, url=url, content=text,
             sha256=digest, created_by=user_id,
         )  # fmt: skip
         title = self._title(doc)[:300]  # the title search shows and cites, so the vectors match what is shown
-        pieces = await asyncio.to_thread(self._chunks, kb, text, title)
+        pieces = await asyncio.to_thread(self._chunks, seen, text, title)
+        # embedding waits on a provider: done before the lock, so other adds of this base do not wait behind it (F-5)
+        vectors = await self._embed(seen, [ks.embed_text({**p, "title": title}) for p in pieces])
+        kb = await self._lock(kb_id)
+        if (dict(kb.chunking or {}), dict(kb.embedding or {})) != settings:
+            raise Conflict("the knowledge base's chunking or embedding model changed meanwhile; add the document again")
+        if same := await self.s.scalar(
+            select(KnowledgeDocument.name).where(KnowledgeDocument.kb_id == kb_id, KnowledgeDocument.sha256 == digest)
+        ):
+            raise Conflict(f"this knowledge base already has the same text ('{same}')")
         _, total = await self.counts(kb_id)
         if total + len(pieces) > MAX_CHUNKS:
             raise InvalidInput(f"a knowledge base holds at most {MAX_CHUNKS:,} chunks; this adds {len(pieces)}")
-        vectors = await self._embed(kb, [ks.embed_text({**p, "title": title}) for p in pieces])
         self.s.add(doc)
         await self.s.flush()
         for i, (p, v) in enumerate(zip(pieces, vectors, strict=True)):
