@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
 from test_publish import make_greeter
 
@@ -117,6 +118,24 @@ async def test_llm_judge_scores_with_the_model(app, api_client):
     judge_says("no idea")
     broken = await attempt(api_client, judge, output={"out": "?"})
     assert broken["score"] is None and "no score" in broken["comment"]
+
+
+def test_the_judge_score_is_read_only_where_the_judge_gave_one():
+    """E-7: any stray 0 or 1 in the judge's reply was taken as the score, "8/10" gave none, and a greedy match
+    across two JSON objects failed to parse."""
+    from agentcanvas.evaluation import _grade
+
+    for reply in ("It lists 1 item then fails badly.", "Uses version 1.0.2 of the API; poor answer.", "no idea"):
+        with pytest.raises(ValueError, match="no score"):
+            _grade(reply)
+    assert _grade("Solid answer, 8/10.")[0] == 0.8
+    assert _grade("Score: 80%")[0] == 0.8
+    assert _grade("score = 3 out of 5")[0] == 0.6
+    assert _grade("The score is 0.25.")[0] == 0.25
+    assert _grade("I'd say 0.4 at most.")[0] == 0.4
+    two = 'Example: {"score": 1, "reasoning": "x"}. My verdict: {"score": 0.3, "reasoning": "rude"}'
+    assert _grade(two) == (0.3, "rude")
+    assert _grade('```json\n{"score": 0.5, "reasoning": "ok", "notes": {"tone": "flat"}}\n```') == (0.5, "ok")
 
 
 async def test_code_evaluator_runs_workspace_code(api_client):

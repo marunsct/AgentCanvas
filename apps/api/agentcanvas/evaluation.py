@@ -263,19 +263,54 @@ def _text(value: Any) -> str:
     return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
-def _grade(reply: str) -> tuple[float, str]:
-    """The judge's score and reasoning from its reply (JSON, or a number somewhere in the text)."""
-    match = re.search(r"\{.*\}", reply, re.S)
-    if match:
+def _json_object(reply: str, key: str) -> dict[str, Any] | None:
+    """The last JSON object in a reply that has `key` (a judge may think aloud, or quote an example first)."""
+    decoder, found, i = json.JSONDecoder(), None, reply.find("{")
+    while i != -1:
         try:
-            data = json.loads(match.group(0))
+            value, end = decoder.raw_decode(reply, i)
+        except ValueError:
+            i = reply.find("{", i + 1)
+            continue
+        if isinstance(value, dict) and key in value:
+            found = value
+        i = reply.find("{", end)
+    return found
+
+
+_LABELLED = re.compile(
+    r"\bscore\b[^0-9\n]{0,12}?(\d+(?:\.\d+)?)\s*(?:(%)|(?:/|out of)\s*(\d+(?:\.\d+)?))?", re.I
+)  # "score: 0.8", "Score = 8/10", "score of 80%", "score 7 out of 10"
+_FRACTION = re.compile(r"(?<![\d./])(\d+(?:\.\d+)?)\s*(?:/|out of)\s*(10|5|100)(?!\.?\d|/)")  # "8/10", "4 out of 5"
+_DECIMAL = re.compile(r"(?<![\d.])(0\.\d+|1\.0+)(?!\.?\d)")  # 0.4 or 1.0, not part of 1.0.2
+
+
+def _grade(reply: str) -> tuple[float, str]:
+    """The judge's score and reasoning from its reply: its JSON, else a labelled score ("score: 0.8", "score: 8/10",
+    "score: 80%"), a rating such as "8/10", or the reply's only decimal from 0 to 1. A stray "1" or a version number
+    in the text is not a score."""
+    data = _json_object(reply, "score")
+    if data is not None:
+        try:
             return float(data["score"]), str(data.get("reasoning", ""))
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, TypeError):
             pass
-    number = re.search(r"\b(0(?:\.\d+)?|1(?:\.0+)?)\b", reply)
-    if number is None:
+    value: float | None = None
+    if labelled := _LABELLED.search(reply):
+        number, percent, out_of = labelled.groups()
+        if percent:
+            value = float(number) / 100
+        elif out_of:
+            value = float(number) / float(out_of) if float(out_of) else None
+        else:
+            value = float(number) if float(number) <= 1 else None  # "score: 7" without a scale is ambiguous
+    elif fraction := _FRACTION.search(reply):
+        value = float(fraction.group(1)) / float(fraction.group(2))
+    elif len(decimals := _DECIMAL.findall(reply)) == 1:  # "I'd say 0.4": the one number written as a score
+        value = float(decimals[0])
+    if value is None or value > 1:
         raise ValueError(f"the judge's reply has no score: {reply[:200]!r}")
-    return float(number.group(1)), reply.strip()[:500]
+    return value, reply.strip()[:500]
 
 
 async def score(
@@ -442,8 +477,7 @@ async def pairwise(spec: Spec, input: dict[str, Any], a: Observation, b: Observa
                 f"Output A:\n{shown(first)}\n\nOutput B:\n{shown(second)}"
             )
             reply = await asyncio.wait_for(complete(PAIRWISE_SYSTEM, prompt, cfg.model), JUDGE_TIMEOUT_S)
-            match = re.search(r"\{.*\}", reply, re.S)
-            data = json.loads(match.group(0)) if match else {}
+            data = _json_object(reply, "winner") or {}
             winner = str(data.get("winner", "")).strip().upper()
             if winner not in ("A", "B", "TIE"):
                 raise ValueError(f"the judge named no winner: {reply[:200]!r}")
