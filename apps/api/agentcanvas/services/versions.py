@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import select
@@ -110,18 +110,24 @@ class VersionService:
 
     async def _copilot_changes(self, wf_id: str, since: datetime | None, until: datetime) -> list[dict[str, Any]]:
         """The Copilot proposals accepted after the version before (FR-COP-07), oldest first, with who accepted them;
-        kept on the version, since the conversations that held them may be archived or expire."""
-        convs = await self.s.scalars(select(CopilotConversation).where(CopilotConversation.workflow_id == wf_id))
+        kept on the version, since the conversations that held them may be archived or expire. Only the
+        conversations changed since then are read (deciding a proposal changes its conversation), and only their
+        proposals, not their messages."""
+        q = select(CopilotConversation.user_id, CopilotConversation.proposals).where(
+            CopilotConversation.workflow_id == wf_id
+        )
+        if since is not None:  # with an hour's margin for the database's clock (`updated_at` is its time)
+            q = q.where(CopilotConversation.updated_at >= since - timedelta(hours=1))
         found: list[dict[str, Any]] = []
-        for conv in convs:
-            for p in conv.proposals or []:
+        for user_id, proposals in (await self.s.execute(q)).all():
+            for p in proposals or []:
                 at = _parse(p.get("decided_at"))
                 if p.get("status") != "accepted" or at is None or at > until or (since is not None and at <= since):
                     continue
                 kept = p.get("accepted_commands")
                 found.append({
                     "summary": p.get("summary") or "Changes to the workflow",
-                    "accepted_by": p.get("decided_by") or conv.user_id,
+                    "accepted_by": p.get("decided_by") or user_id,
                     "accepted_at": p["decided_at"],
                     "changes": len(kept) if kept is not None else len(p.get("commands") or []),
                 })  # fmt: skip

@@ -43,6 +43,32 @@ async def test_the_knowledge_list_counts_every_base_in_one_query(app, api_client
     assert len(touching(seen, "knowledge_document")) == 1, touching(seen, "knowledge_document")
 
 
+async def test_a_snapshot_reads_only_the_copilot_proposals_decided_since_the_version_before(app, api_client):
+    from datetime import UTC, datetime, timedelta
+
+    from test_publish import make_greeter, set_greeting
+
+    from agentcanvas.db.models import CopilotConversation
+
+    wf = await make_greeter(api_client)
+    long_ago = datetime.now(UTC) - timedelta(days=30)
+    accepted = {"id": "prp_old", "status": "accepted", "summary": "Old", "commands": [{}], "decided_by": "usr_dev"}
+    async with app.state.db.sessionmaker() as s:
+        s.add(CopilotConversation(
+            id="cc_old", workflow_id=wf, user_id="usr_dev", messages=[{"role": "user", "content": "x" * 50_000}],
+            proposals=[{**accepted, "decided_at": long_ago.isoformat()}], archived_at=long_ago, updated_at=long_ago,
+        ))  # fmt: skip
+        await s.commit()
+    first = (await api_client.post(f"/v1/workflows/{wf}/versions", json={})).json()
+    assert [c["summary"] for c in first["copilot_changes"]] == ["Old"]  # the first version credits everything
+    await set_greeting(api_client, wf, "Hey")
+    with statements(app) as seen:
+        second = (await api_client.post(f"/v1/workflows/{wf}/versions", json={})).json()
+    assert second["copilot_changes"] == []
+    [read] = touching(seen, "copilot_conversation")
+    assert "copilot_conversation.messages" not in read and "copilot_conversation.updated_at >=" in read, read
+
+
 async def test_the_contract_reads_every_deployment_with_its_version_in_one_query(app, api_client):
     from test_publish import make_greeter, set_greeting
 
