@@ -1,0 +1,35 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RunEvent } from "./events";
+
+/** What the fake stream delivers before it ends. */
+let events: RunEvent[] = [];
+vi.mock("./sse", () => ({
+  postStream: vi.fn(async (_path: string, _body: unknown, onEvent: (e: RunEvent) => void) => {
+    for (const e of events) onEvent(e);
+  }),
+}));
+vi.stubGlobal("requestAnimationFrame", (fn: () => void) => setTimeout(fn, 0) as unknown as number);
+vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
+
+const { continueRun } = await import("./session");
+const { useRun } = await import("./runStore");
+
+describe("run stream (W-2)", () => {
+  beforeEach(() => useRun.setState({ threadId: "t1", running: false, error: null }));
+
+  it("ends the run when the stream closes without RUN_FINISHED or RUN_ERROR", async () => {
+    events = [{ type: "RUN_STARTED", threadId: "t1", workflowId: "wf_1" }]; // then the connection drops
+    await continueRun();
+    expect(useRun.getState().running).toBe(false); // it used to stay "Running…" until a reload
+    expect(useRun.getState().error).toMatch(/Connection lost/);
+  });
+
+  it("says nothing when the stream ended the run itself", async () => {
+    events = [
+      { type: "RUN_STARTED", threadId: "t1", workflowId: "wf_1" },
+      { type: "RUN_FINISHED", threadId: "t1", outcome: "success" },
+    ];
+    await continueRun();
+    expect(useRun.getState()).toMatchObject({ running: false, error: null });
+  });
+});

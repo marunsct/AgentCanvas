@@ -48,7 +48,14 @@ async function stream(path: string, body: unknown): Promise<void> {
     if (!mine.signal.aborted) b.push({ type: "RUN_ERROR", message: e instanceof ApiError ? e.message : String(e) });
   } finally {
     b.flush();
-    if (active === mine) active = null;
+    if (active === mine) {
+      active = null;
+      // the stream ended without RUN_FINISHED or RUN_ERROR (API restart, proxy idle timeout): the panel used to stay
+      // "Running…" with Run, chat and Stop dead until a reload
+      if (useRun.getState().running) {
+        run.apply({ type: "RUN_ERROR", message: "Connection lost — the run goes on on the server. Reopen the workflow to see how it ended." });
+      }
+    }
   }
 }
 
