@@ -9,7 +9,9 @@ from typing import Any
 from agentcanvas.ir.models import Node
 from agentcanvas.registry import NodeManifest
 
-STATE_REF = re.compile(r"\bstate\.([a-z][a-z0-9_]*)")
+STATE_REF = re.compile(r"\bstate\.([a-z][a-z0-9_]*)\b(?!\s*\()")  # `state.get(…)` is a method, not a channel
+JINJA_BLOCK = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.S)
+TEMPLATE_FORMATS = frozenset({"prompt", "template", "url_template"})  # text with {{ … }}: only those parts run
 
 
 def iter_strings(value: Any, path: str = "config") -> Iterator[tuple[str, str]]:
@@ -22,6 +24,30 @@ def iter_strings(value: Any, path: str = "config") -> Iterator[tuple[str, str]]:
     elif isinstance(value, list):
         for i, v in enumerate(value):
             yield from iter_strings(v, f"{path}[{i}]")
+
+
+def iter_typed_strings(schema: Any, value: Any, path: str = "config") -> Iterator[tuple[str, str | None, str]]:
+    """Yield (path, format or None, string) for every string nested in a config value."""
+    schema = schema if isinstance(schema, dict) else {}
+    if isinstance(value, str):
+        fmt = schema.get("format")
+        yield path, fmt if isinstance(fmt, str) else None, value
+    elif isinstance(value, dict):
+        props = schema.get("properties", {})
+        extra = schema.get("additionalProperties")
+        for k, v in value.items():
+            yield from iter_typed_strings(props.get(k) if k in props else extra, v, f"{path}.{k}")
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            yield from iter_typed_strings(schema.get("items"), v, f"{path}[{i}]")
+
+
+def state_refs(text: str, fmt: str | None = None) -> set[str]:
+    """The channels a config string reads as `state.<name>`: in a template or prompt only inside `{{ … }}` and
+    `{% … %}` (the rest is prose that never runs); in an expression or any other string, anywhere."""
+    if fmt in TEMPLATE_FORMATS:
+        text = " ".join(JINJA_BLOCK.findall(text))
+    return set(STATE_REF.findall(text))
 
 
 def iter_formatted(schema: dict[str, Any], value: Any, path: str = "config") -> Iterator[tuple[str, str, str]]:
@@ -68,8 +94,8 @@ def node_reads(node: Node, m: NodeManifest) -> set[str]:
         if isinstance(node.config.get(f), list):
             out.update(x for x in node.config[f] if isinstance(x, str))
     config = {k: v for k, v in node.config.items() if k != "workflow"}  # a subgraph's own state is not ours
-    for _, s in iter_strings(config):
-        out.update(STATE_REF.findall(s))
+    for _, fmt, s in iter_typed_strings(m.config_schema, config):
+        out.update(state_refs(s, fmt))
     return out
 
 

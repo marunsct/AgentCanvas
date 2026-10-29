@@ -135,6 +135,17 @@ def test_an_optional_channel_field_cleared_to_empty_is_not_an_unknown_channel(tr
     assert "E021" in codes(triage)
 
 
+def test_prose_and_method_calls_are_not_channel_reads(triage):
+    """E-4: a prompt saying "state.get is not a field" gave "reads unknown state channel 'get'"."""
+    triage.require_node("n_ag").config["system_prompt"] = "Remember: state.get is not a field. Use state.nothing."
+    triage.require_node("n_cls").config["prompt"] = "Classify {{ state.get('ticket') }} ({{ state.ticket }})"
+    assert "E023" not in codes(triage)
+    triage.require_node("n_cls").config["prompt"] = "Classify {{ state.ticket }} {% if state.missing %}!{% endif %}"
+    triage.require_node("n_rt").config["cases"][0]["when"] = 'state.ghost == "high"'  # an expression: all of it
+    unknown = [d.message for d in validate(triage) if d.code == "E023"]
+    assert len(unknown) == 2 and "'missing'" in unknown[0] + unknown[1] and "'ghost'" in unknown[0] + unknown[1]
+
+
 def test_settings_reference_unknown_channel(triage):
     triage.settings.output_channels = ["urgency", "ghost"]
     assert "E021" in codes(triage)
