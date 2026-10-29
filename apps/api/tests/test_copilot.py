@@ -271,6 +271,44 @@ async def test_model_choice_policy_and_token_cap(app, api_client):
     assert r.status_code == 403
 
 
+async def test_the_stream_ends_with_done_when_the_proposal_cannot_be_checked(app, api_client, monkeypatch):
+    """E-10: the proposal's check and diff ran outside the turn's error handling, so a failure there ended the stream
+    with neither `error` nor `done` (the editor showed its generic reload notice)."""
+    from agentcanvas.copilot import service
+
+    def broken(before, after):
+        raise RuntimeError("diff failed")
+
+    monkeypatch.setattr(service, "diff", broken)
+    await api_client.put(SETTINGS, json={"source": "separate", "model": "anthropic:claude-haiku-4-5"})
+    wf_id = (await new_workflow(api_client))["id"]
+    script(app, call("propose_changes", summary="Add a greeter", commands=GREETER), "Done.")
+    events = await ask(api_client, wf_id, "build it")
+    assert any("diff failed" in e["message"] for e in of(events, "error")) and events[-1]["type"] == "done"
+    assert not of(events, "proposal")
+    conv = (await api_client.get(f"/v1/workflows/{wf_id}/copilot")).json()
+    assert conv["proposals"] == [] and conv["pending"] is None  # nothing stored that the stream did not show
+
+
+def test_a_large_workflow_loses_whole_blocks_in_the_turn_context():
+    """E-10: the workflow JSON was cut at 30,000 characters mid-token, with nothing telling the model so."""
+    from agentcanvas.copilot.service import workflow_text
+    from agentcanvas.ir.models import Edge, Endpoint, Node, Workflow
+
+    nodes = [Node(id=f"n_{i}", type="core.set", name=f"s{i}", config={"values": {"a": "x" * 200}}) for i in range(60)]
+    edges = [
+        Edge(id=f"e_{i}", kind="flow", source=Endpoint(node=f"n_{i}"), target=Endpoint(node=f"n_{i + 1}"))
+        for i in range(59)
+    ]
+    wf = Workflow(id="wf_big", name="big", nodes=nodes, edges=edges)
+    text = workflow_text(wf, limit=5_000)
+    doc = json.loads(text)  # whole JSON, not cut
+    assert len(text) <= 5_000 and 0 < len(doc["nodes"]) < 60 and "of 60 blocks" in doc["truncated"]
+    kept = {n["id"] for n in doc["nodes"]}
+    assert all({e["source"]["node"], e["target"]["node"]} <= kept for e in doc["edges"])
+    assert "truncated" not in json.loads(workflow_text(wf))
+
+
 @pytest.mark.parametrize("steps", [17])
 async def test_a_runaway_loop_stops(app, api_client, steps):
     wf_id = (await new_workflow(api_client, template="ticket_triage"))["id"]
@@ -556,6 +594,9 @@ async def test_a_proposal_can_carry_workspace_code_written_only_when_accepted(ap
     assert proposal["files"][0]["before"] is None and not (ws.root / path).exists()  # nothing written yet
 
     url = f"/v1/workflows/{wf}/copilot/proposals/{proposal['id']}"
+    for wrong in ({"files": [0, 3]}, {"tests": [1]}):  # E-10: out-of-range indices were silently dropped
+        r = await api_client.post(url, json={"status": "accepted", **wrong})
+        assert r.status_code == 422 and "keep indices" in r.json()["detail"]
     assert (await api_client.post(url, json={"status": "accepted", "files": [0]})).status_code == 204
     assert (ws.root / path).read_text() == tidy
     log = ws._git("log", "-1", "--format=%s").stdout

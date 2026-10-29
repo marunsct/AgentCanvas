@@ -221,11 +221,8 @@ class DeepAgentTurn(CopilotTurn):
             yield event
         if streamed.strip() and (not said or said[-1] != streamed.strip()):  # stopped while a reply was streaming
             said.append(streamed.strip())
-        proposal = await self._proposal()
-        if proposal is not None:
-            yield {"type": "proposal", "proposal": proposal}
-        self.history.append(self._answer(said, proposal))
-        yield {"type": "done", "usage": dict(self.usage), "cap": self.token_cap}
+        async for event in self._end(said):
+            yield event
 
     def _count(self, meter: _Meter, before: dict[str, int]) -> None:
         """This turn's tokens (every model call, sub-agents' too) on top of what the conversation had used."""

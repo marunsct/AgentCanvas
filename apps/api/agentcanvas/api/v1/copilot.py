@@ -367,6 +367,7 @@ async def _start_turn(
             await s.commit()
 
     async def stream() -> AsyncIterator[str]:
+        done = False
         try:
             async for raw in turn.run(body.text.strip(), body.mode):
                 event = raw
@@ -380,7 +381,14 @@ async def _start_turn(
                     for p in turn.proposals[:-1]:
                         if p.get("status") == "pending":
                             p["status"] = "superseded"
+                done = done or event["type"] == "done"
                 yield f"data: {json.dumps(event, default=str)}\n\n"
+        except Exception as exc:  # the stream still ends with `error` and `done`, never just stops
+            if done:
+                raise
+            failed = {"type": "error", "message": f"the Copilot failed: {type(exc).__name__}: {exc}"[:300]}
+            yield f"data: {json.dumps(failed)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'usage': dict(turn.usage), 'cap': turn.token_cap})}\n\n"
         finally:
             await asyncio.shield(save())
 
@@ -407,10 +415,12 @@ async def decide_proposal(
         raise Conflict(f"proposal '{proposal_id}' is already {match['status']}")
     match["status"] = body.status
     match["decided_by"], match["decided_at"] = user.id, datetime.now(UTC).isoformat()  # a version credits it
+    for what, kept, noun in (("commands", body.commands, "changes"), ("tests", body.tests, "tests"),
+                             ("files", body.files, "files")):  # fmt: skip
+        total = len(match.get(what) or [])
+        if body.status == "accepted" and kept is not None and any(not 0 <= i < total for i in kept):
+            raise InvalidInput(f"the proposal has {total} {noun}; keep indices from 0 to {total - 1}")
     if body.status == "accepted" and body.commands is not None:  # partly accepted: what was kept, for the record
-        total = len(match.get("commands") or [])
-        if any(not 0 <= i < total for i in body.commands):
-            raise InvalidInput(f"the proposal has {total} changes; keep indices from 0 to {total - 1}")
         match["accepted_commands"] = sorted(set(body.commands))
     kept_tests = list(match.get("tests") or [])
     if body.tests is not None:
