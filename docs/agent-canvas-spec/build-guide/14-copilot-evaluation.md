@@ -80,6 +80,25 @@ uv run python -m agentcanvas.copilot.evals --model ollama:qwen3 --engine loop --
 uv run python -m agentcanvas.copilot.evals --model ollama:qwen3 --case greeter     # one case
 ```
 
+The shortcut for all of this is one command from the repository root:
+
+```
+make copilot-evals                                             # Ollama qwen3, both suites, the loop engine
+make copilot-evals MODEL=ollama:llama3.3 ENGINE=deepagents     # another local model, the other engine
+make copilot-evals MODEL=anthropic:claude-sonnet-5-5 OUT=sonnet.json   # a hosted model (its key in the environment)
+```
+
+It runs the `build` and `debug` suites one after the other and writes one JSON report to `OUT` (default
+`copilot-evals.json` in the repository root, which Git ignores): `{"model", "engine", "build": [...], "debug": [...]}`
+with the same per-case fields as the nightly artifacts. `MODEL` defaults to `ollama:qwen3`.
+
+When the model cannot be reached (Ollama is not running, or the hosted model's API key is not set) the command says
+so in a `NOTE:` line and runs the **offline demo Copilot** instead, so the target always finishes. The demo Copilot
+builds a one-step greeter and nothing else: expect about 2 of 10 build cases and none of the debug cases to pass. That
+shows the harness works from end to end on your machine; it is not a score for any model. Calling the harness
+directly (`uv run python -m agentcanvas.copilot.evals`) never falls back unless you pass `--fallback-to-demo`, so a
+nightly run with a missing key stays red instead of passing on the demo.
+
 Local models are slower, especially without a GPU, and small ones often fail both engines on tool use. Their
 results tell you how the Copilot copes with that model, which matters if your users run local models, but they
 are not a fair stand-in for the hosted models most people choose.

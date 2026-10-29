@@ -1,0 +1,64 @@
+"""`make copilot-evals`: the harness on this computer, with the offline demo Copilot when no model can be reached."""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from agentcanvas.copilot import evals
+
+ROOT = Path(__file__).parents[3]
+
+
+def test_a_model_that_cannot_be_reached_says_why(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    assert evals.unusable("anthropic:claude-haiku-4-5") == "ANTHROPIC_API_KEY is not set"
+    assert "not a model provider" in (evals.unusable("nope:x") or "")
+    assert "not running" in (evals.unusable("ollama:qwen3", ollama_up=lambda: False) or "")
+    assert evals.unusable("ollama:qwen3", ollama_up=lambda: True) is None
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    assert evals.unusable("anthropic:claude-haiku-4-5") is None
+    assert evals.unusable(evals.DEMO) is None
+
+
+def test_the_harness_runs_offline_on_the_demo_model_and_writes_one_report(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(evals, "_ollama_up", lambda: False)
+    out = tmp_path / "report.json"
+    argv = ["evals", "--model", "ollama:qwen3", "--suite", "both", "--case", "greeter", "--out", str(out)]
+    monkeypatch.setattr("sys.argv", [*argv, "--fallback-to-demo"])
+    evals.main()
+    said = capsys.readouterr().out
+    assert "ollama:qwen3 is not available" in said and "offline demo Copilot" in said
+    report = json.loads(out.read_text())
+    assert report["model"] == "demo" and report["engine"] == "loop"
+    assert [r["id"] for r in report["build"]] == ["greeter"] and report["build"][0]["passed"]  # the demo's greeter
+    assert report["debug"] == []  # no debug case is called greeter
+
+    monkeypatch.setattr("sys.argv", argv)  # without the flag a missing model is an error, never a silent demo
+    with pytest.raises(SystemExit, match="cannot use ollama:qwen3: Ollama is not running"):
+        evals.main()
+
+
+def test_a_single_suite_keeps_the_list_the_nightly_job_writes(monkeypatch, tmp_path):
+    out = tmp_path / "build.json"
+    monkeypatch.setattr("sys.argv", ["evals", "--model", "demo", "--case", "greeter", "--out", str(out)])
+    evals.main()
+    assert isinstance(json.loads(out.read_text()), list)
+
+
+def test_min_pass_fails_a_suite_below_it(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["evals", "--model", "demo", "--case", "triage", "--min-pass", "0.5"])
+    with pytest.raises(SystemExit, match=r"build: 0%"):
+        evals.main()
+
+
+def test_the_make_target_is_documented_and_runs_both_suites():
+    out = subprocess.run(["make", "-n", "copilot-evals"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    assert re.search(r"--suite both .*--fallback-to-demo", out) and "ollama:qwen3" in out
+    pages = [ROOT / "docs/user-guide/copilot.md", ROOT / "docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md"]
+    assert all("make copilot-evals" in p.read_text() for p in pages)

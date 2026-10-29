@@ -1,13 +1,14 @@
 """Copilot eval harness (S14): build workflows from plain requests with a real model and check the results.
 
-    uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5 [--suite debug] [--case greeter]
-        [--engine deepagents] [--min-pass 0.8] [--out results.json]
+    uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5 [--case greeter]
+        [--suite build|debug|both] [--engine deepagents] [--min-pass 0.8] [--out results.json] [--fallback-to-demo]
 
 Each case starts from an empty workflow, sends the request in Build mode, answers a brief with "Yes, build it",
 then checks the proposal: it applies, has no validation errors, and uses the expected blocks. The model's key comes
 from the usual environment variable (e.g. ANTHROPIC_API_KEY). CI runs the harness with a scripted model on every
 change, and with a real model nightly when the repository has a key (`.github/workflows/copilot-evals.yml`);
-`--min-pass` fails a run below a pass rate.
+`--min-pass` fails a run below a pass rate. `make copilot-evals` runs both suites on your computer (Ollama by default,
+the offline demo Copilot when no model can be reached).
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -174,12 +177,54 @@ def engine_class(name: str) -> type[CopilotTurn]:
     return CopilotTurn
 
 
-async def run(model: str, only: str | None = None, suite: str = "build", engine: str = "loop") -> list[CaseResult]:
+DEMO = "demo"  # the key-less demo Copilot: it proves the harness runs, it says nothing about a real model
+
+
+def _ollama_up() -> bool:
+    import urllib.request
+
+    host = os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST") or "localhost"
+    try:
+        with urllib.request.urlopen(f"http://{host}:11434/api/tags", timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+def unusable(
+    model: str, registry: Registry | None = None, *, ollama_up: Callable[[], bool] | None = None
+) -> str | None:
+    """Why `model` cannot be used from here (no server running, no API key), or None when it can."""
+    if model == DEMO:
+        return None
+    provider = model.partition(":")[0]
+    info = (registry or default_registry()).provider(provider)
+    if info is None:
+        return f"'{provider}' is not a model provider this AgentCanvas knows"
+    if provider == "ollama":
+        return (
+            None if (ollama_up or _ollama_up)() else "Ollama is not running on this computer (http://localhost:11434)"
+        )
+    if info.local:
+        return None  # another local server: the run reports its own connection error
+    if info.key_env and not os.environ.get(info.key_env):
+        return f"{info.key_env} is not set"
+    return None
+
+
+async def run(
+    model: str, only: str | None = None, suite: str = "build", engine: str = "loop", settings: Settings | None = None
+) -> list[CaseResult]:
     from agentcanvas.adapters import get_adapter, model_service
 
-    resources = get_adapter().new_resources()
+    if model == DEMO:
+        from agentcanvas.adapters.langchain.testing import DemoResources
+
+        resources = get_adapter().new_resources(resources_class=DemoResources)
+    else:
+        resources = get_adapter().new_resources()
     resolved = ResolvedModel(model=model, origin="eval")
-    settings = Settings(env="prod")
+    settings = settings or Settings(env="prod")
     registry = default_registry()
     pool = CASES if suite == "build" else debug_cases(settings, registry)
     cases = [c for c in pool if only in (None, c["id"])]
@@ -187,27 +232,59 @@ async def run(model: str, only: str | None = None, suite: str = "build", engine:
     return [await run_case(c, model_service(), resources, resolved, registry, settings, turn) for c in cases]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Copilot eval harness")
-    parser.add_argument("--model", required=True, help="provider:model")
-    parser.add_argument("--case", help="run one case by id")
-    parser.add_argument("--suite", choices=["build", "debug"], default="build", help="debug: ~100 planted bugs")
-    parser.add_argument("--engine", choices=["loop", "deepagents"], default="loop", help="the Copilot's engine")
-    parser.add_argument("--min-pass", type=float, default=0.0, help="exit 1 when fewer cases pass (0-1)")
-    parser.add_argument("--out", help="write the results as JSON")
-    args = parser.parse_args()
-    results = asyncio.run(run(args.model, args.case, args.suite, args.engine))
+def report(results: list[CaseResult], engine: str, model: str, suite: str) -> int:
     for r in results:
         status = "PASS" if r.passed else "FAIL"
         detail = r.problem or "; ".join(r.errors + [f"missing {t}" for t in r.missing_types])
         print(f"{status} {r.id:12} {r.tokens:>7} tok {r.seconds:>5}s {detail}")
     passed = sum(r.passed for r in results)
-    print(f"{passed}/{len(results)} passed ({args.engine}, {args.model}, {args.suite})")
+    print(f"{passed}/{len(results)} passed ({engine}, {model}, {suite})")
+    return passed
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Copilot eval harness")
+    parser.add_argument("--model", required=True, help=f"provider:model, or {DEMO} (the key-less demo Copilot)")
+    parser.add_argument("--case", help="run one case by id")
+    parser.add_argument(
+        "--suite", choices=["build", "debug", "both"], default="build", help="debug: ~100 planted bugs; both: the two"
+    )
+    parser.add_argument("--engine", choices=["loop", "deepagents"], default="loop", help="the Copilot's engine")
+    parser.add_argument("--min-pass", type=float, default=0.0, help="exit 1 when fewer cases pass (0-1)")
+    parser.add_argument("--out", help="write the results as JSON (both suites: one object with a list for each)")
+    parser.add_argument(
+        "--fallback-to-demo", action="store_true",
+        help="when the model cannot be reached (no Ollama running, no API key), say so and use the demo Copilot",
+    )  # fmt: skip
+    args = parser.parse_args()
+    model = args.model
+    if why := unusable(model):
+        if not args.fallback_to_demo:
+            raise SystemExit(f"cannot use {model}: {why}")
+        print(f"NOTE: {model} is not available ({why}); running the offline demo Copilot instead.")
+        model = DEMO
+    if model == DEMO:
+        print(
+            "NOTE: the demo Copilot only builds a one-step greeter, so most cases fail by design. It shows the harness "
+            "runs end to end and says nothing about a real model; set MODEL=provider:model for a score."
+        )
+    suites = ["build", "debug"] if args.suite == "both" else [args.suite]
+    done: dict[str, list[CaseResult]] = {}
+    low: list[str] = []
+    for suite in suites:
+        done[suite] = results = asyncio.run(run(model, args.case, suite, args.engine))
+        passed = report(results, args.engine, model, suite)
+        if results and passed / len(results) < args.min_pass:
+            low.append(f"{suite}: {passed / len(results):.0%}")
     if args.out:
+        body: Any = {"model": model, "engine": args.engine, **{s: [asdict(r) for r in rs] for s, rs in done.items()}}
+        if args.suite != "both":
+            body = body[suites[0]]  # one suite keeps the list the nightly job has always written
         with open(args.out, "w") as f:
-            json.dump([asdict(r) for r in results], f, indent=2)
-    if results and passed / len(results) < args.min_pass:
-        raise SystemExit(f"pass rate {passed / len(results):.0%} is below {args.min_pass:.0%}")
+            json.dump(body, f, indent=2)
+        print(f"results written to {args.out}")
+    if low:
+        raise SystemExit(f"pass rate below {args.min_pass:.0%} ({'; '.join(low)})")
 
 
 if __name__ == "__main__":

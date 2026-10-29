@@ -21,3 +21,4 @@ infra/.env.local
 site/
 .ci-tmp/
 .claude/worktrees/
+copilot-evals.json

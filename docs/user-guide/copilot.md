@@ -139,6 +139,10 @@ do. The Copilot refuses to put API keys or passwords into settings and uses secr
 - `GET /v1/workflows/{id}/copilot` returns your conversation, its brief and any open proposal;
   `POST …/copilot/messages` streams an answer (Server-Sent Events); `POST …/copilot/proposals/{id}` records
   accept or reject; `DELETE …/copilot` starts a new chat. Conversations are per person and per workflow.
+- `make copilot-evals` (from the repository root) measures the Copilot with a model of your choice on your own
+  computer: `MODEL=ollama:qwen3` (the default) or any `provider:model`, `ENGINE=loop` or `deepagents`, and
+  `OUT=report.json` for the results. It runs both suites below; without a reachable model it says so and runs an
+  offline demo Copilot, whose score means nothing but shows the harness works.
 - Developers can measure a model's building quality with the eval harness:
   `uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5` builds ten workflows from plain
   requests and checks each one validates and uses the expected blocks; `--suite debug` plants over a hundred bugs in the
