@@ -12,6 +12,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
 import { EmptyState } from "../ui/EmptyState";
+import { AddToDataset } from "./AddToDataset";
 import { Activity } from "lucide-react";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -34,6 +35,7 @@ export function RunsPage() {
   const workflows = useWorkflows();
   const canBuild = useCan("builder");
   const qc = useQueryClient();
+  const [picked, setPicked] = useState<string[]>([]); // conversations ticked to become dataset examples
   const threads = useInfiniteQuery({
     queryKey: ["threads", PROJECT_ID, status, workflow],
     initialPageParam: "",
@@ -52,19 +54,22 @@ export function RunsPage() {
   });
   // a page of another shape (a server of another version) shows as nothing, not a crash
   const items = threads.data?.pages.flatMap((p) => (Array.isArray(p?.items) ? p.items : [])) ?? [];
+  const chosen = items.filter((t) => picked.includes(t.id));
+  const pick = (id: string, on: boolean) => setPicked((p) => (on ? [...p, id] : p.filter((x) => x !== id)));
   return (
     <div className="page runs-page">
       <PageHeader title="Runs" description="Every conversation with this project's workflows: from the editor, the API, triggers and share links." />
       <div className="row gap wrap list-tools">
-        <select aria-label="filter by status" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select aria-label="filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPicked([]); }}>
           <option value="">Any status</option>
           {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <select aria-label="filter by workflow" value={workflow} onChange={(e) => setWorkflow(e.target.value)}>
+        <select aria-label="filter by workflow" value={workflow} onChange={(e) => { setWorkflow(e.target.value); setPicked([]); }}>
           <option value="">Every workflow</option>
           {workflows.data?.items.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
       </div>
+      {canBuild && chosen.length > 0 && <AddToDataset threads={chosen} onDone={() => setPicked([])} />}
       <QueryStatus q={threads} what="the runs" />
       {threads.data && items.length === 0 && (
         status || workflow
@@ -73,12 +78,14 @@ export function RunsPage() {
       )}
       {items.length > 0 && (
         <table className="table runs-table" data-testid="runs">
-          <thead><tr><th>Status</th><th>Workflow</th><th>From</th><th>Started</th><th>Took</th><th>Runs</th><th>Cost</th><th aria-label="actions" /></tr></thead>
+          <thead><tr>{canBuild && <th aria-label="select" />}<th>Status</th><th>Workflow</th><th>From</th><th>Started</th><th>Took</th><th>Runs</th><th>Cost</th><th aria-label="actions" /></tr></thead>
           <tbody>
             {items.map((t) => {
               const s = STATUS[t.status] ?? { label: t.status, cls: "" };
               return (
                 <tr key={t.id}>
+                  {canBuild && <td><input type="checkbox" aria-label={`select conversation ${t.id}`} checked={picked.includes(t.id)}
+                    onChange={(e) => pick(t.id, e.target.checked)} /></td>}
                   <td><span className={`badge ${s.cls}`}>{s.label}</span></td>
                   <td>
                     <Link to={`/workflows/${t.workflow_id}?thread=${t.id}`} title="Open in the editor's timeline">{t.workflow_name ?? t.workflow_id}</Link>

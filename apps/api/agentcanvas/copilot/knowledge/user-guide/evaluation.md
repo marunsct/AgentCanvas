@@ -13,7 +13,9 @@ dataset**, then fill it by:
 
 - **Add example** by hand,
 - **Add the saved test cases** of the workflow,
-- adding past runs (from the run list or an annotation queue),
+- adding past runs: tick conversations on the **Runs** page (one workflow's, so pick that workflow in the filter
+  first), choose the dataset and press **Add these runs as examples** (each conversation's last finished run: its
+  input, and its answer as the reference), or add them from an annotation queue,
 - **Import CSV or JSONL**.
 
 Every change creates a new **version**, so an experiment always knows exactly which examples it used. Examples

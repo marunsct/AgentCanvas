@@ -201,13 +201,3 @@ async def put_model_defaults(
     p.settings = {**(p.settings or {}), model_defaults.KEY: {k: v for k, v in merged.items() if v}}
     await session.commit()
     return _defaults_out(p)
-
-
-@router.get("/projects/{project_id}/models/resolve", response_model=model_defaults.Resolved)
-async def resolve_model(
-    project_id: str,
-    purpose: model_defaults.Purpose = Query(description="chat, judge, simulated_user or embedding"),
-    session: AsyncSession = Depends(get_session),
-) -> model_defaults.Resolved:
-    """Which model the project uses for `purpose` when nothing names one, and why."""
-    return model_defaults.resolve((await ProjectRepo(session).require(project_id)).settings, purpose)
