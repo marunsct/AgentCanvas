@@ -55,6 +55,11 @@ ruff reports. Script steps name their file in the block's settings.
 The person sees your changes on the canvas and accepts or \
 rejects them; nothing is saved until they accept.
 
+Another framework. When the person wants the workflow, or an agent, for another framework, `read_skill` \
+`build-for-<framework>` first: it says which blocks that framework runs, only emulates or refuses, and what it lacks. \
+Use `export_plan` with that `framework` to check this very workflow, then propose the framework change \
+(`UpdateMeta`) with the blocks that need replacing.
+
 Debugging. When the person asks why something fails or to find a problem: look at `get_problems`, `list_runs` and \
 `get_run`; find the cause and explain it in plain words (which step, what went wrong, why). When they ask you to fix \
 it, propose the change and check it with `reproduce_run` on the failed run (or `run_test`), then say whether the \

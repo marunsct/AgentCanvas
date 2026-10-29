@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -28,12 +27,11 @@ from langchain_core.outputs import LLMResult
 from langchain_core.tools import StructuredTool
 from langgraph.errors import GraphRecursionError
 
-from agentcanvas import copilot as copilot_package
 from agentcanvas.copilot.service import MAX_ERROR, MAX_STEPS, ROLE, CopilotTurn, Mode, _now
+from agentcanvas.copilot.skillbook import skills
 from agentcanvas.copilot.tools import READ_ONLY, TOOLS, compact_workflow, result_text, run_tool
 from agentcanvas.registry import token_counts
 
-SKILLS = Path(copilot_package.__file__).with_name("skills")  # one folder per skill, each with a SKILL.md
 SHELL = "execute"  # the harness's shell tool: the Copilot has no shell
 STEPS_PER_TURN = MAX_STEPS * 8  # graph steps (model, tools and middleware nodes): a backstop behind the call limit
 LIMIT = "ModelCallLimitMiddleware"
@@ -69,6 +67,7 @@ SUBAGENTS: list[dict[str, Any]] = [
             "list_secrets",
             "list_knowledge_bases",
             "export_plan",
+            "read_skill",
         ],
     },
 ]
@@ -138,8 +137,8 @@ class DeepAgentTurn(CopilotTurn):
             return {"content": text.splitlines(), "created_at": _now(), "modified_at": _now()}
 
         files = {"/workflow.json": file(json.dumps(compact_workflow(self.before), indent=1))}
-        for skill in sorted(SKILLS.glob("*/SKILL.md")):
-            files[f"/skills/{skill.parent.name}/SKILL.md"] = file(skill.read_text())
+        for name, text in skills().items():  # a framework skill's facts come from the running manifests
+            files[f"/skills/{name}/SKILL.md"] = file(text)
         return files
 
     async def run(self, text: str, mode: Mode) -> AsyncIterator[dict[str, Any]]:
