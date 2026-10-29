@@ -20,6 +20,7 @@ import copy
 import math
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -173,7 +174,8 @@ class TargetSummary(BaseModel):
     )
 
 
-def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSummary]:
+def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
+    """Per target: completion, scores, latency and cost. `results`: result rows, or rows of `SUMMARY_COLUMNS`."""
     out = []
     for i, target in enumerate(exp.targets):
         mine = [r for r in results if r.target == i]
@@ -213,6 +215,13 @@ def summary(exp: Experiment, results: list[ExperimentResult]) -> list[TargetSumm
             )
         )
     return out
+
+
+SUMMARY_COLUMNS = (
+    ExperimentResult.experiment_id, ExperimentResult.target, ExperimentResult.status, ExperimentResult.run_status,
+    ExperimentResult.scores, ExperimentResult.latency_ms, ExperimentResult.tokens_in, ExperimentResult.tokens_out,
+    ExperimentResult.cost_usd,
+)  # fmt: skip  # what `summary` reads: not outputs, trajectories or errors
 
 
 class ExperimentService:
@@ -276,17 +285,29 @@ class ExperimentService:
             raise NotFound(f"experiment '{exp_id}' not found")
         return exp
 
-    async def list(self, wf_id: str) -> list[Experiment]:
-        q = select(Experiment).where(Experiment.workflow_id == wf_id).order_by(Experiment.id.desc())
-        return list((await self.s.scalars(q)).all())
+    async def list(self, wf_id: str, limit: int | None = None, before: str | None = None) -> list[Experiment]:
+        """Newest first; a page of `limit` older than the experiment `before`."""
+        q = select(Experiment).where(Experiment.workflow_id == wf_id)
+        if before is not None:
+            q = q.where(Experiment.id < before)
+        return list((await self.s.scalars(q.order_by(Experiment.id.desc()).limit(limit))).all())
 
-    async def results(self, exp_id: str) -> list[ExperimentResult]:
+    async def results(self, exp_id: str, limit: int | None = None, offset: int = 0) -> list[ExperimentResult]:
         q = (
             select(ExperimentResult)
             .where(ExperimentResult.experiment_id == exp_id)
             .order_by(ExperimentResult.position, ExperimentResult.target)
         )
-        return list((await self.s.scalars(q)).all())
+        return list((await self.s.scalars(q.offset(offset).limit(limit))).all())
+
+    async def summaries(self, exps: list[Experiment]) -> dict[str, list[TargetSummary]]:
+        """Each experiment's summary, from one query over the columns it needs."""
+        rows: dict[str, list[Any]] = {e.id: [] for e in exps}
+        if exps:
+            q = select(*SUMMARY_COLUMNS).where(ExperimentResult.experiment_id.in_(list(rows)))
+            for r in (await self.s.execute(q)).all():
+                rows[r.experiment_id].append(r)
+        return {e.id: summary(e, rows[e.id]) for e in exps}
 
     async def delete(self, exp_id: str) -> None:
         exp = await self.get(exp_id)

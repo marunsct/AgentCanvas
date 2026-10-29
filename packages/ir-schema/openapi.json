@@ -14930,6 +14930,7 @@
     },
     "/v1/experiments/{exp_id}/results": {
       "get": {
+        "description": "The results by example, then target, a page at a time (an experiment has up to 5000).",
         "operationId": "experiment_results_v1_experiments__exp_id__results_get",
         "parameters": [
           {
@@ -14939,6 +14940,29 @@
             "schema": {
               "title": "Exp Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
             }
           },
           {
@@ -25825,6 +25849,7 @@
     },
     "/v1/workflows/{wf_id}/experiments": {
       "get": {
+        "description": "The workflow's experiments, newest first, a page at a time.",
         "operationId": "list_experiments_v1_workflows__wf_id__experiments_get",
         "parameters": [
           {
@@ -25834,6 +25859,36 @@
             "schema": {
               "title": "Wf Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the id of the last experiment of the previous page",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the id of the last experiment of the previous page",
+              "title": "Before"
             }
           },
           {

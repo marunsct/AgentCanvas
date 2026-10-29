@@ -106,6 +106,49 @@ async def test_deployment_scores_are_bucketed_by_the_database(app, api_client):
     assert daily["start"].endswith("T00:00:00Z") and daily["runs"] == 201 and daily["mean"] == 0.75
 
 
+async def test_the_experiment_list_summarises_every_experiment_in_one_light_query_a_page_at_a_time(app, api_client):
+    """The list (polled every second while one runs) read each experiment's results, outputs and all, one query
+    per experiment."""
+    from test_experiments import finished, setup
+
+    wf, ds = await setup(api_client)
+    ids = []
+    for _ in range(3):
+        r = await api_client.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"], "targets": [{}]})
+        assert r.status_code == 202, r.text
+        ids.append(r.json()["id"])
+        await finished(app, api_client, ids[-1])
+    with statements(app) as seen:
+        listed = (await api_client.get(f"/v1/workflows/{wf}/experiments")).json()
+    assert [e["id"] for e in listed] == ids[::-1]
+    assert all(e["summary"][0]["completed"] == 3 and e["summary"][0]["pass_rate"] is not None for e in listed)
+    [read] = touching(seen, "experiment_result")
+    assert "experiment_result.output" not in read and "experiment_result.trajectory" not in read, read
+    page = (await api_client.get(f"/v1/workflows/{wf}/experiments", params={"limit": 2})).json()
+    assert [e["id"] for e in page] == ids[:0:-1]
+    rest = (await api_client.get(f"/v1/workflows/{wf}/experiments", params={"before": page[-1]["id"]})).json()
+    assert [e["id"] for e in rest] == ids[:1]
+    one = (await api_client.get(f"/v1/experiments/{ids[0]}")).json()
+    assert one["summary"] == listed[-1]["summary"]
+
+
+async def test_experiment_results_come_a_page_at_a_time(app, api_client):
+    from test_experiments import finished, setup
+
+    wf, ds = await setup(api_client)
+    exp = (
+        await api_client.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"], "targets": [{}, {}]})
+    ).json()
+    await finished(app, api_client, exp["id"])
+    url = f"/v1/experiments/{exp['id']}/results"
+    everything = (await api_client.get(url)).json()
+    assert len(everything) == 6
+    first = (await api_client.get(url, params={"limit": 4})).json()
+    second = (await api_client.get(url, params={"limit": 4, "offset": 4})).json()
+    assert [r["id"] for r in first + second] == [r["id"] for r in everything] and len(first) == 4
+    assert (await api_client.get(url, params={"limit": 100_000})).status_code == 422
+
+
 async def test_the_contract_reads_every_deployment_with_its_version_in_one_query(app, api_client):
     from test_publish import make_greeter, set_greeting
 

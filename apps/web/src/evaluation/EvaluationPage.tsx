@@ -393,10 +393,21 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
   );
 }
 
+const RESULTS_PAGE = 1000; // the API's largest page; an experiment has up to 5000 results
+
+async function allResults(expId: string): Promise<ExperimentResultOut[]> {
+  const out: ExperimentResultOut[] = [];
+  for (;;) {
+    const page = await apiFetch<ExperimentResultOut[]>(`/experiments/${expId}/results?limit=${RESULTS_PAGE}&offset=${out.length}`);
+    out.push(...page);
+    if (page.length < RESULTS_PAGE) return out;
+  }
+}
+
 function useResults(exp: ExperimentOut) {
   return useQuery({
     queryKey: ["experiment-results", exp.id, exp.status, exp.summary.map((s) => s.completed).join()],
-    queryFn: () => apiFetch<ExperimentResultOut[]>(`/experiments/${exp.id}/results`),
+    queryFn: () => allResults(exp.id),
   });
 }
 

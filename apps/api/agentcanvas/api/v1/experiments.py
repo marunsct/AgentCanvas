@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,6 @@ from agentcanvas.services.experiments import (
     TargetIn,
     TargetSummary,
     apply_overrides,
-    summary,
 )
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.simulation import Simulation, is_chat
@@ -98,7 +97,7 @@ class ExperimentResultOut(BaseModel):
     latency_ms: int | None
 
 
-def _out(exp: Experiment, results: list[ExperimentResult]) -> ExperimentOut:
+def _out(exp: Experiment, summary: list[TargetSummary]) -> ExperimentOut:
     return ExperimentOut(
         id=exp.id, workflow_id=exp.workflow_id, name=exp.name, dataset_id=exp.dataset_id,
         dataset_version=exp.dataset_version, split=exp.split,
@@ -107,7 +106,7 @@ def _out(exp: Experiment, results: list[ExperimentResult]) -> ExperimentOut:
         evaluators=[e["name"] for e in exp.evaluators],
         pairwise=[e["name"] for e in exp.evaluators if e["kind"] == "pairwise"], concurrency=exp.concurrency,
         simulation=Simulation.model_validate(exp.simulation) if exp.simulation else None, status=exp.status,
-        error=exp.error, created_at=exp.created_at, ended_at=exp.ended_at, summary=summary(exp, results),
+        error=exp.error, created_at=exp.created_at, ended_at=exp.ended_at, summary=summary,
     )  # fmt: skip
 
 
@@ -199,29 +198,45 @@ async def start_experiment(
         workspace_commit=await workspace_commit(request, session, wf_id),
         simulation=body.simulation.model_dump() if body.simulation else None,
     )
-    results = await ExperimentService(session).results(exp.id)
-    out = _out(exp, results)
+    out = (await _summarised(ExperimentService(session), [exp]))[0]
     request.app.state.experiments.launch(exp.id)
     return out
 
 
+async def _summarised(svc: ExperimentService, exps: list[Experiment]) -> list[ExperimentOut]:
+    summaries = await svc.summaries(exps)
+    return [_out(e, summaries[e.id]) for e in exps]
+
+
 @router.get("/workflows/{wf_id}/experiments", response_model=list[ExperimentOut])
-async def list_experiments(wf_id: str, session: AsyncSession = Depends(get_session)) -> list[ExperimentOut]:
+async def list_experiments(
+    wf_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    before: str | None = Query(None, description="the id of the last experiment of the previous page"),
+    session: AsyncSession = Depends(get_session),
+) -> list[ExperimentOut]:
+    """The workflow's experiments, newest first, a page at a time."""
     svc = ExperimentService(session)
-    return [_out(e, await svc.results(e.id)) for e in await svc.list(wf_id)]
+    return await _summarised(svc, await svc.list(wf_id, limit, before))
 
 
 @router.get("/experiments/{exp_id}", response_model=ExperimentOut)
 async def get_experiment(exp_id: str, session: AsyncSession = Depends(get_session)) -> ExperimentOut:
     svc = ExperimentService(session)
-    return _out(await svc.get(exp_id), await svc.results(exp_id))
+    return (await _summarised(svc, [await svc.get(exp_id)]))[0]
 
 
 @router.get("/experiments/{exp_id}/results", response_model=list[ExperimentResultOut])
-async def experiment_results(exp_id: str, session: AsyncSession = Depends(get_session)) -> list[ExperimentResultOut]:
+async def experiment_results(
+    exp_id: str,
+    limit: int = Query(1000, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+) -> list[ExperimentResultOut]:
+    """The results by example, then target, a page at a time (an experiment has up to 5000)."""
     svc = ExperimentService(session)
     await svc.get(exp_id)
-    return [_result(r) for r in await svc.results(exp_id)]
+    return [_result(r) for r in await svc.results(exp_id, limit, offset)]
 
 
 @router.post("/experiments/{exp_id}/cancel", response_model=ExperimentOut)
@@ -232,7 +247,7 @@ async def cancel_experiment(
     await svc.get(exp_id)
     await request.app.state.experiments.cancel(exp_id)
     session.expire_all()
-    return _out(await svc.get(exp_id), await svc.results(exp_id))
+    return (await _summarised(svc, [await svc.get(exp_id)]))[0]
 
 
 @router.delete("/experiments/{exp_id}", status_code=204)
