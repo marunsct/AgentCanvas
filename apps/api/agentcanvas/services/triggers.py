@@ -294,7 +294,12 @@ class CronScheduler:
             rows = (await s.scalars(select(Trigger).where(Trigger.kind == "cron", Trigger.enabled))).all()
             svc = TriggerService(s, self.keyring)
             for trig in rows:
-                if not Cron(trig.config["schedule"]).matches(now) or not await self._claim(s, trig.id, minute):
+                try:  # one schedule that no longer parses must not stop every other trigger
+                    due = Cron(trig.config["schedule"]).matches(now)
+                except Exception as exc:  # noqa: BLE001 - also a missing or non-text schedule
+                    log.warning("cron.bad_schedule", trigger=trig.id, error=str(exc))
+                    continue
+                if not due or not await self._claim(s, trig.id, minute):
                     continue
                 try:
                     wf, kw = await svc.target(trig)
