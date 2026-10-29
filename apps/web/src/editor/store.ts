@@ -160,6 +160,20 @@ export function coalesce(pending: Command[], cmd: Command): Command[] {
   return [...pending, cmd];
 }
 
+/**
+ * Which edit the server refused and why, e.g. "RenameNode 'n1': id 'x' already exists." (the server names it as
+ * `command #i (Op): …`, an index into the batch).
+ */
+export function describeRefused(batch: Command[], message: string): string {
+  const m = /^command #(\d+) \(\w+\): /.exec(message);
+  const cmd = m ? batch[Number(m[1])] : batch.length === 1 ? batch[0] : undefined;
+  const target = !cmd ? undefined
+    : "id" in cmd ? cmd.id : "node" in cmd ? cmd.node.id : "resource" in cmd ? cmd.resource.id : "edge" in cmd ? cmd.edge.id : undefined;
+  const reason = m ? message.slice(m[0].length) : message;
+  const text = cmd ? `${cmd.op}${target ? ` '${target}'` : ""}: ${reason}` : reason;
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 /** Send the queued edits as one commands request. */
 async function save(workflowId: string): Promise<void> {
   const get = useEditor.getState, set = useEditor.setState;
@@ -186,14 +200,15 @@ async function save(workflowId: string): Promise<void> {
   } catch (e) {
     if (get().workflowId !== workflowId) return;
     const conflict = e instanceof ApiError && e.status === 409;
-    const mine = conflict ? [...batch, ...get().pending] : []; // the edits not on the server
+    // the edits not on the server: on a conflict the whole batch; on a refusal the edits typed after it (a refusal
+    // used to drop those too)
+    const mine = conflict ? [...batch, ...get().pending] : get().pending;
+    const refused = conflict ? null : `Edit rejected: ${describeRefused(batch, (e as Error).message)}`;
     set({ pending: [] });
     const reloaded = await get().load(workflowId).then(() => true, () => false);
     if (get().workflowId !== workflowId) return;
-    if (!conflict) {
-      set({ notice: { kind: "error", text: `Edit rejected: ${(e as Error).message}` } });
-    } else if (!mine.length) {
-      set({ notice: { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
+    if (!mine.length) {
+      set({ notice: refused ? { kind: "error", text: refused } : { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
     } else {
       // a 409 used to drop the person's edits: put them back on top of the latest version and save them again
       const latest = get().wf;
@@ -201,12 +216,19 @@ async function save(workflowId: string): Promise<void> {
         if (!latest || !reloaded) throw new CommandError("the workflow did not reload");
         set({
           wf: applyAll(latest, mine), pending: mine,
-          notice: { kind: "info", text: "Updated elsewhere — your edits were applied to the latest version." },
+          notice: refused ? { kind: "error", text: refused }
+            : { kind: "info", text: "Updated elsewhere — your edits were applied to the latest version." },
         });
         if (flushTimer) clearTimeout(flushTimer);
         flushTimer = setTimeout(() => void get().flush(), 0);
       } catch {
-        set({ notice: { kind: "error", text: "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again." } });
+        set({
+          notice: {
+            kind: "error",
+            text: refused ? `${refused} The edits made after it no longer fit and were not saved.`
+              : "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again.",
+          },
+        });
       }
     }
   } finally {
@@ -233,11 +255,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
     // the editor reads blocks, models and settings of the app's project: open another project's workflow in it
     if (out.project_id !== PROJECT_ID && followProject(out.project_id)) return;
+    const { workflowId, version, undoStack, redoStack } = get();
+    const same = workflowId === id && version === out.version; // a reload after a refused edit keeps the history
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
       diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
       pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}), drill: [],
-      undoStack: [], redoStack: [], // inverses from another version no longer apply
+      // inverses from another version no longer apply
+      undoStack: same ? undoStack : [], redoStack: same ? redoStack : [],
     });
   },
 
