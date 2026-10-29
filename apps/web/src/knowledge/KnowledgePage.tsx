@@ -2,10 +2,12 @@
  * (files, web pages, text), see how they were split, and try searches before wiring them into a workflow. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
+import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import type { ChunkOut, DocumentOut, KnowledgeBaseOut, SearchOut } from "../api/generated";
-import { PROJECT_ID } from "../api/queries";
+import { PROJECT_ID, useEmbeddingModels } from "../api/queries";
 import { can } from "../api/session";
+import { ModelSelect } from "../ui/ModelSelect";
 import { QueryStatus } from "../ui/QueryStatus";
 import {
   ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, embeddingLabel, MODES, type Mode, NAME_PATTERN, STRATEGIES,
@@ -116,9 +118,11 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   });
   const reindex = useMutation({ mutationFn: () => apiFetch(`${base}/reindex`, { method: "POST" }), onSuccess: done });
   const settings = useMutation({
-    mutationFn: (chunking: Record<string, unknown>) => apiFetch(base, { method: "PATCH", json: { chunking } }),
+    mutationFn: (patch: { chunking?: Record<string, unknown>; embedding?: { model: string } }) =>
+      apiFetch(base, { method: "PATCH", json: patch }),
     onSuccess: done,
   });
+  const embedders = useEmbeddingModels();
   const drop = useMutation({ mutationFn: () => apiFetch(base, { method: "DELETE" }), onSuccess: onDeleted });
   const failure = [upload, addUrl, addText, remove, reindex, settings, drop].find((m) => m.isError)?.error;
 
@@ -184,16 +188,22 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
           <div className="row gap wrap small">
             <span>Split documents</span>
             <select aria-label="chunking strategy" value={kb.chunking.strategy}
-              onChange={(e) => settings.mutate({ ...kb.chunking, strategy: e.target.value })}>
+              onChange={(e) => settings.mutate({ chunking: { ...kb.chunking, strategy: e.target.value } })}>
               {STRATEGIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
             <span>about</span>
             <select aria-label="chunk size" value={size}
-              onChange={(e) => settings.mutate({ ...kb.chunking, size: Number(e.target.value) })}>
+              onChange={(e) => settings.mutate({ chunking: { ...kb.chunking, size: Number(e.target.value) } })}>
               {[200, 400, 800, 1200, 2000].map((n) => <option key={n} value={n}>{n}</option>)}
               {![200, 400, 800, 1200, 2000].includes(size) && <option value={size}>{size}</option>}
             </select>
             <span>characters each</span>
+          </div>
+          <div className="row gap wrap small">
+            <span>Embed with</span>
+            <ModelSelect label="embedding model" options={embedders.data} loading={embedders.isPending}
+              value={String(kb.embedding.model ?? "builtin")} onChange={(model) => settings.mutate({ embedding: { model } })} />
+            <Link className="small" to="/settings/models">Set up more models…</Link>
           </div>
         </details>
       )}

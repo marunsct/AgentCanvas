@@ -58,7 +58,11 @@ test("default models by purpose: set the judges' model and see what each purpose
   await page.goto("/settings/models");
   const card = page.getByRole("region", { name: "Models by purpose" });
   await expect(card).toContainText("choose a model for judge evaluators");
-  await card.getByLabel("default model for Judge evaluators").fill("anthropic:claude-haiku-4-5");
+  // a choice among the models set up to answer, not free text; knowledge bases get embedding models only
+  await expect(card.getByLabel("default model for Knowledge embeddings")).toHaveValue("builtin");
+  await expect(card.getByLabel("default model for Knowledge embeddings").locator("option", { hasText: "Claude" })).toHaveCount(0);
+  await expect(card.getByTestId("models-not-listed").getByRole("link", { name: "Secrets" })).toHaveAttribute("href", "/settings/secrets");
+  await card.getByLabel("default model for Judge evaluators").selectOption("anthropic:claude-haiku-4-5");
   await card.getByRole("button", { name: "Save default models" }).click();
   await expect(page.getByTestId("toasts")).toContainText("Saved the default models");
   await expect(card).toContainText("the project's default for judge evaluators");

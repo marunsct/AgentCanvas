@@ -15,6 +15,7 @@ setting (`copilot/settings.py`), which follows the same order with the workflow'
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,16 @@ PURPOSES: dict[str, str] = {
 }
 KEY = "model_defaults"  # in the project's settings: {purpose: "provider:model"}
 BUILTIN_EMBEDDING = "builtin"
+# hosted embedding models offered when their provider's key is set (the catalogue lists chat models only)
+HOSTED_EMBEDDINGS: dict[str, str] = {
+    "openai:text-embedding-3-small": "text-embedding-3-small",
+    "openai:text-embedding-3-large": "text-embedding-3-large",
+    "mistralai:mistral-embed": "Mistral Embed",
+    "google_genai:models/gemini-embedding-001": "Gemini Embedding",
+}
+# a local server's model that embeds, by its name (servers do not say which of their models are embedding models):
+# nomic-embed-text, mxbai-embed-large, text-embedding-nomic-embed-text-v1.5, bge-m3, all-minilm, e5-large, gte-base
+EMBEDDING_NAME = re.compile(r"embed|bge|minilm|(^|[/_:-])(multilingual-)?e5[-_]|(^|[/_:-])gte[-_]", re.IGNORECASE)
 
 
 class Resolved(BaseModel):

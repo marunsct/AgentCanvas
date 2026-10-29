@@ -39,6 +39,8 @@ test("load the sample knowledge base, search it, add a document and reindex", as
   await mine.getByRole("button", { name: "Office plants", exact: true }).click();
   await expect(mine.getByTestId("kb-chunks")).toContainText("Water the ferns");
 
+  await expect(mine.getByLabel("embedding model")).toHaveValue("builtin"); // only models that embed are offered
+  await expect(mine.getByRole("link", { name: "Set up more models…" })).toHaveAttribute("href", "/settings/models");
   await mine.getByLabel("chunking strategy").selectOption("sentences");
   await expect(mine.getByTestId("kb-stale")).toBeVisible();
   await mine.getByRole("button", { name: "Reindex" }).click();

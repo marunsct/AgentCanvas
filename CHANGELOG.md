@@ -5,6 +5,14 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **A local embedding model could not be chosen for knowledge, and every model choice offered models that could
+  not answer**: Settings › Models › By purpose took free text with the chat catalogue as suggestions, so a local
+  server's models never appeared and a chat model could be saved as the embedding model. Every choice (judges,
+  simulated users, knowledge embeddings, the Copilot's menu) now lists only models set up to answer
+  (`GET /v1/projects/{id}/chat-models` and `/embedding-models`): hosted ones with their key, what a running local
+  server lists, and, for embeddings, only models that embed. A knowledge base can switch its embedding model under
+  **Add documents › Embed with**. An LM Studio, vLLM or llama.cpp embedding model now works (it was sent OpenAI's
+  token ids, which those servers refuse), and one on the project model's server uses its address and key.
 - **The Copilot's model menu offered models that could not answer**: it listed the whole catalogue, so picking a
   provider without a key (or a local server that was not running) failed on the next message. The menu now lists
   only models set up to answer (`GET /v1/workflows/{id}/copilot/models`: hosted ones whose key is a project secret

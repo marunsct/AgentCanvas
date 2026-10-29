@@ -44,8 +44,11 @@ Documents are split into **chunks** of about the size you choose (800 characters
 
 Each chunk gets an **embedding**. The built-in embedder works offline and needs no key: it matches word forms
 and close spellings ("reimbursed" finds "reimbursement"), not synonyms. For meaning across different words, use
-a provider's embedding model through the API (`embedding: {"model": "openai:text-embedding-3-small"}`, with the
-key as a project secret such as `OPENAI_API_KEY`).
+a provider's embedding model: pick it under **Add documents › Embed with**, or set the default for new knowledge
+bases in **Settings › Models › By purpose**. The list shows only embedding models that can answer: OpenAI's,
+Mistral's or Gemini's when their key is a project secret, and the embedding models your local server lists (for
+example `text-embedding-nomic-embed-text-v1.5` in LM Studio or `nomic-embed-text` in Ollama; a chat model cannot
+embed). An embedding model on the same server as the project's model uses the same address and key.
 
 Changing the chunking or the embedding model marks the knowledge base **stale**; click **Reindex** to split and
 embed every document again.

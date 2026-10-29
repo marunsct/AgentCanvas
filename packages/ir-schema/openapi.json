@@ -1210,36 +1210,6 @@
         "title": "ChatModelIn",
         "type": "object"
       },
-      "ChatModelOption": {
-        "properties": {
-          "id": {
-            "description": "provider:model",
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "local": {
-            "default": false,
-            "title": "Local",
-            "type": "boolean"
-          },
-          "provider": {
-            "description": "the provider's name, e.g. LM Studio",
-            "title": "Provider",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "label",
-          "provider"
-        ],
-        "title": "ChatModelOption",
-        "type": "object"
-      },
       "ChatOut": {
         "properties": {
           "model": {
@@ -6292,6 +6262,36 @@
           }
         },
         "title": "ModelInfoOut",
+        "type": "object"
+      },
+      "ModelOption": {
+        "properties": {
+          "id": {
+            "description": "provider:model, or 'builtin' for the built-in embedding",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "local": {
+            "default": false,
+            "title": "Local",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "the provider's name, e.g. LM Studio (local)",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "provider"
+        ],
+        "title": "ModelOption",
         "type": "object"
       },
       "NamespaceOut": {
@@ -18272,6 +18272,76 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/chat-models": {
+      "get": {
+        "description": "The chat models set up to answer in this project (judges, simulated users, AI blocks).",
+        "operationId": "chat_models_v1_projects__project_id__chat_models_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelOption"
+                  },
+                  "title": "Response Chat Models V1 Projects  Project Id  Chat Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chat Models",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/copilot-settings": {
       "get": {
         "operationId": "get_copilot_settings_v1_projects__project_id__copilot_settings_get",
@@ -18408,6 +18478,76 @@
         "summary": "Put Copilot Settings",
         "tags": [
           "copilot"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/embedding-models": {
+      "get": {
+        "description": "The embedding models a knowledge base can use here (chat models cannot embed, so they are left out).",
+        "operationId": "embedding_models_v1_projects__project_id__embedding_models_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelOption"
+                  },
+                  "title": "Response Embedding Models V1 Projects  Project Id  Embedding Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Embedding Models",
+        "tags": [
+          "catalog"
         ]
       }
     },
@@ -24684,7 +24824,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/ChatModelOption"
+                    "$ref": "#/components/schemas/ModelOption"
                   },
                   "title": "Response Chat Models V1 Workflows  Wf Id  Copilot Models Get",
                   "type": "array"

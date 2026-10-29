@@ -143,6 +143,17 @@ async def _project_settings(s: KnowledgeService, project_id: str) -> dict:
     return (await ProjectRepo(s.s).require(project_id)).settings or {}
 
 
+def _on_project_server(embedding: Embedding | None, project_settings: dict) -> Embedding | None:
+    """An embedding model of the provider the project's model is on (an LM Studio embedding model beside an LM Studio
+    chat model) is reached at the same address with the same key, unless it names its own."""
+    default = project_settings.get("default_model") or {}
+    if embedding is None or embedding.base_url or embedding.api_key:
+        return embedding
+    if embedding.model.partition(":")[0] != str(default.get("model", "")).partition(":")[0]:
+        return embedding
+    return embedding.model_copy(update={"base_url": default.get("base_url"), "api_key": default.get("api_key")})
+
+
 @router.post("/projects/{project_id}/knowledge", response_model=KnowledgeBaseOut, status_code=201)
 async def create_knowledge_base(
     project_id: str,
@@ -156,10 +167,10 @@ async def create_knowledge_base(
         kb = await s.sample(project_id, body.sample, user.id)
     else:
         embedding = body.embedding
-        if embedding is None and (
-            own := model_defaults.stored(await _project_settings(s, project_id)).get("embedding")
-        ):
+        project_settings = await _project_settings(s, project_id)
+        if embedding is None and (own := model_defaults.stored(project_settings).get("embedding")):
             embedding = Embedding(model=own)  # the project's embedding model (Settings > Models)
+        embedding = _on_project_server(embedding, project_settings)
         kb = await s.create(
             project_id, body.name, description=body.description, embedding=embedding, chunking=body.chunking,
             user_id=user.id,
@@ -178,8 +189,11 @@ async def update_knowledge_base(
     kb_id: str, body: KnowledgeBasePatch, s: KnowledgeService = Depends(svc)
 ) -> KnowledgeBaseOut:
     """A new embedding model or chunking marks the knowledge base stale until it is reindexed."""
+    embedding = body.embedding
+    if embedding is not None:
+        embedding = _on_project_server(embedding, await _project_settings(s, (await s.get(kb_id)).project_id))
     kb = await s.update(
-        kb_id, name=body.name, description=body.description, embedding=body.embedding, chunking=body.chunking
+        kb_id, name=body.name, description=body.description, embedding=embedding, chunking=body.chunking
     )
     return await _full(s, kb)
 

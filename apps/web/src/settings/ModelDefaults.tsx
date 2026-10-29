@@ -4,21 +4,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { ModelDefaultsOut } from "../api/generated";
-import { PROJECT_ID, useModels } from "../api/queries";
+import { Link } from "react-router";
+import { PROJECT_ID, useChatModels, useEmbeddingModels } from "../api/queries";
 import { useCan } from "../api/session";
 import { toast } from "../ui/dialog";
+import { ModelSelect } from "../ui/ModelSelect";
 import { QueryStatus } from "../ui/QueryStatus";
 
 const EDITABLE = [
   { purpose: "judge", label: "Judge evaluators", hint: "LLM-as-judge and pairwise evaluators saved without a model" },
   { purpose: "simulated_user", label: "Simulated users", hint: "the user a multi-turn experiment plays" },
-  { purpose: "embedding", label: "Knowledge embeddings", hint: "new knowledge bases; empty = the built-in offline embedding" },
+  { purpose: "embedding", label: "Knowledge embeddings", hint: "new knowledge bases: a model that embeds text, not a chat model" },
 ] as const;
 
 export function ModelDefaults() {
   const qc = useQueryClient();
   const canBuild = useCan("builder");
-  const models = useModels();
+  const chat = useChatModels();
+  const embedding = useEmbeddingModels();
   const url = `/projects/${PROJECT_ID}/model-defaults`;
   const q = useQuery({ queryKey: ["model-defaults", PROJECT_ID], queryFn: () => apiFetch<ModelDefaultsOut>(url) });
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -26,7 +29,7 @@ export function ModelDefaults() {
   const save = useMutation({
     mutationFn: () => apiFetch<ModelDefaultsOut>(url, {
       method: "PUT",
-      json: Object.fromEntries(EDITABLE.map(({ purpose }) => [purpose, draft[purpose]?.trim() || null])),
+      json: Object.fromEntries(EDITABLE.map(({ purpose }) => [purpose, (draft[purpose] === "builtin" ? "" : draft[purpose])?.trim() || null])),
     }),
     onSuccess: (out) => { qc.setQueryData(["model-defaults", PROJECT_ID], out); toast("Saved the default models"); },
   });
@@ -40,9 +43,6 @@ export function ModelDefaults() {
         then the project's model above. Defaults apply when something is saved, so results keep saying which model
         produced them.
       </p>
-      <datalist id="purpose-models">
-        {(models.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-      </datalist>
       <table className="table">
         <thead><tr><th>Purpose</th><th>Default</th><th>Used now</th></tr></thead>
         <tbody>
@@ -55,15 +55,25 @@ export function ModelDefaults() {
             <tr key={purpose}>
               <td>{label}<div className="muted small">{hint}</div></td>
               <td>
-                <input className="mono" list="purpose-models" aria-label={`default model for ${label}`} disabled={!canBuild}
-                  placeholder={purpose === "embedding" ? "builtin" : "the project's model"} value={draft[purpose] ?? ""}
-                  onChange={(e) => setDraft({ ...draft, [purpose]: e.target.value })} />
+                {purpose === "embedding"
+                  ? <ModelSelect label={`default model for ${label}`} disabled={!canBuild} options={embedding.data}
+                      loading={embedding.isPending} value={draft.embedding || "builtin"}
+                      onChange={(id) => setDraft({ ...draft, embedding: id })} />
+                  : <ModelSelect label={`default model for ${label}`} disabled={!canBuild} options={chat.data}
+                      loading={chat.isPending} value={draft[purpose] ?? ""} empty="the project's model"
+                      onChange={(id) => setDraft({ ...draft, [purpose]: id })} />}
               </td>
               <td><Used r={resolved[purpose]} /></td>
             </tr>
           ))}
         </tbody>
       </table>
+      <p className="muted small" data-testid="models-not-listed">
+        Only models that can answer here are listed. For another, add its provider's key in{" "}
+        <Link to="/settings/secrets">Secrets</Link> or choose it above; a local model appears while its server runs.
+        Knowledge bases need an embedding model (such as nomic-embed-text in Ollama or LM Studio), which a chat model
+        cannot replace.
+      </p>
       {canBuild
         ? <button type="button" className="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save default models</button>
         : <p className="muted small">Your role can see these; a builder or admin can change them.</p>}

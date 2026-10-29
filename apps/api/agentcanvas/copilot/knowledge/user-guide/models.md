@@ -121,3 +121,10 @@ otherwise the project's default for that purpose (judge evaluators, simulated us
 the project's model; otherwise nothing, and the page or the error says what to choose. The table shows, for each
 purpose, the model it comes to and why. A default is applied when something is saved, so a judge evaluator created
 without a model keeps the model it got even if the default changes later; edit the evaluator to change it.
+
+Each choice lists only models that can answer here: hosted models whose provider key is set (a project secret or a
+server variable), the models a local server (Ollama, LM Studio, vLLM, llama.cpp) lists while it runs, and the
+project's own OpenAI-compatible model. Knowledge embeddings list only models that embed text: the built-in one,
+OpenAI's and Mistral's and Gemini's embedding models when their key is set, and local models whose names say they
+embed (`nomic-embed-text`, `mxbai-embed-large`, `bge-m3`, …). A chat model such as `gpt-oss` cannot embed, so to
+use LM Studio or Ollama for knowledge, download an embedding model there too.

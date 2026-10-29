@@ -26,6 +26,7 @@ from agentcanvas.api.v1 import (
     knowledge,
     matura,
     memory,
+    model_choices,
     online,
     org,
     playground,
@@ -49,6 +50,7 @@ signed_in.include_router(auth.router)
 signed_in.include_router(catalog.router)
 signed_in.include_router(org.router)
 signed_in.include_router(projects.router)
+signed_in.include_router(model_choices.router)
 signed_in.include_router(workflows.router)
 signed_in.include_router(designs.router)
 signed_in.include_router(bridges.router)

@@ -403,6 +403,8 @@ def knowledge_embedder(
         else:
             params[k] = v
     model_id, params = chat_model_args(model, params, secrets)
+    if model.partition(":")[0] in OPENAI_COMPATIBLE:  # LM Studio and the like take text, not OpenAI's token ids
+        params.setdefault("check_embedding_ctx_length", False)
     embeddings = init_embeddings(model_id, **params)
 
     async def provider(texts: Sequence[str]) -> list[list[float]]:

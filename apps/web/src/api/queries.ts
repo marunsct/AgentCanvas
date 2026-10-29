@@ -5,7 +5,7 @@ import { maturaMode } from "./auth";
 import { apiFetch } from "./client";
 import { can } from "./session";
 import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
-import type { InterruptOut, McpConnector } from "./generated";
+import type { InterruptOut, McpConnector, ModelOption } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
@@ -149,6 +149,22 @@ export function useAgentFrameworks() {
 
 export function useModels() {
   return useQuery({ queryKey: ["models"], queryFn: () => apiFetch<ModelInfo[]>("/models"), staleTime: Infinity });
+}
+
+/** The chat models set up to answer in the current project (a key, or a local server that lists them). */
+export function useChatModels() {
+  return useQuery({
+    queryKey: ["chat-models", PROJECT_ID], staleTime: 30_000,
+    queryFn: () => apiFetch<ModelOption[]>(`/projects/${PROJECT_ID}/chat-models`),
+  });
+}
+
+/** The embedding models a knowledge base can use in the current project: built-in, keyed, or served locally. */
+export function useEmbeddingModels() {
+  return useQuery({
+    queryKey: ["embedding-models", PROJECT_ID], staleTime: 30_000,
+    queryFn: () => apiFetch<ModelOption[]>(`/projects/${PROJECT_ID}/embedding-models`),
+  });
 }
 
 /** Model providers (`provider:` prefixes), where each one's key comes from and whether the server has it installed. */

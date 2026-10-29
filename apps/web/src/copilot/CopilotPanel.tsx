@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { useModels } from "../api/queries";
-import type { ChatModelOption, CopilotThreadOut, GuidePageRef } from "../api/generated";
+import type { ModelOption, CopilotThreadOut, GuidePageRef } from "../api/generated";
 import { confirmDialog } from "../ui/dialog";
 import { Markdown, slug } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
@@ -379,7 +379,7 @@ function ModelChoices({ workflowId, chosen, busy, close, pick }: {
 }) {
   const ready = useQuery({
     queryKey: ["copilot-models", workflowId], staleTime: 30_000,
-    queryFn: () => apiFetch<ChatModelOption[]>(`/workflows/${workflowId}/copilot/models`),
+    queryFn: () => apiFetch<ModelOption[]>(`/workflows/${workflowId}/copilot/models`),
   });
   const choose = (id: string | null) => { close(); void pick(id); };
   const missing = chosen && ready.data && !ready.data.some((m) => m.id === chosen);
