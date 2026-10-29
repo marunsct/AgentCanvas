@@ -2,7 +2,7 @@
   "ir_version": "1.2",
   "id": "tpl_agent_network",
   "name": "Incident agent network",
-  "description": "An incident lead weighs what three agents find: the platform team's agent over A2A, a log analyst published as an MCP tool, and a change-history agent built with the OpenAI Agents SDK in your Workspace. It then checks the issue tracker through an app connector and opens an issue only after you approve. The addresses (agents.example.com, mcp.example.com) are placeholders: replace them with your own agents and servers, and set the secrets PLATFORM_AGENT_KEY and ISSUE_TRACKER_KEY.",
+  "description": "An incident lead weighs what three agents find (one over A2A, one over MCP, one built with the OpenAI Agents SDK), checks the issue tracker through an app connector and opens an issue after you approve. Replace the placeholder addresses (agents.example.com, mcp.example.com) and set the secrets PLATFORM_AGENT_KEY and ISSUE_TRACKER_KEY.",
   "state": {
     "channels": [
       {"name": "service", "io": "in", "description": "The service that is failing"},
