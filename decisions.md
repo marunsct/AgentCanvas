@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### Files and images: references in state, bytes in the project
+A file field is a channel typed `{"type":"object","format":"file"}` (optionally `contentMediaType`, e.g. `image/*`);
+runs and checkpoints hold only a reference (`fil_…`, name, media type, size), never bytes. Uploads are capped
+(10 MB per file, 1024 MB per project, configurable), checked by content, served attachment-only under a locked-down
+CSP, and removed by the retention job. Only the LangGraph runtime shows files to a model; every other framework's
+export lists a file field in GAPS.md as "carried as plain data". Not built: audio and video, OCR, file upload by
+deployment-key callers (they send inline `data`), files for Planning Agents, and downloads by share visitors.
+
 ### Half-finished features finished; `GET /projects/{id}/models/resolve` removed
 `GET model-defaults` already returns the resolved model for every purpose and the Settings page uses that, so the
 unused `models/resolve` route was removed (it had been released: **a breaking API change**; restore it from

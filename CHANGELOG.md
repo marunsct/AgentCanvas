@@ -417,6 +417,21 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- A LangGraph export now carries file and image fields (the service takes a file inline or by address, and the PDF
+  and Word readers are added to its dependencies). Exports to other frameworks list file fields in GAPS.md as not
+  shown to a model, and the editor warns (P008) when a workflow on another framework has them. (HARDENING G-5).
+- The share page now shows a visitor's conversation again after a reload (kept on the server under their browser's
+  id, until New conversation or the retention time). The chat widget takes postMessage commands (open, close,
+  prefill) and reports ready and reply events, with the link's allowed sites checked. (HARDENING G-15).
+- Ask AI and AI Agent steps now show the workflow's file and image fields to their model: images and PDFs as they
+  are to a model that can see them, a PDF's text to one that cannot, plus a warning (W025) when a file goes to a
+  model without vision. A step's Files to show the AI setting picks which fields it gets. (HARDENING G-5).
+- In the Run tab and on a share page, a workflow input typed file or image gets an Attach box (drag and drop or a
+  picker) that previews images and refuses files that are too large or the wrong kind. Visitors of a share link can
+  send a file with or without a message. (HARDENING G-5).
+- A workflow field can now be typed file or image; a person or an API caller uploads a file (up to 10 MB: images,
+  PDF, Word, text) and runs carry only a reference to it, never the bytes. Files are kept as long as conversations.
+  (HARDENING G-5).
 - On a phone, the Runs page shows each conversation as a card instead of a table that runs off the screen. The
   Inbox, a share page and Runs are checked at 390 px wide. (HARDENING section 5).
 - Tables, form fields and status badges share one look and behaviour across the Runs page, the workflow list and the
