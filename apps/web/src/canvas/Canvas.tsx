@@ -23,7 +23,7 @@ import { QueryStatus } from "../ui/QueryStatus";
 import { type Clip, copySelection, pasteCommands } from "./clipboard";
 import { checkConnection, flowPort, nextOrder } from "./connect";
 import { tidyLayout } from "./layout";
-import { type CanvasData, irToFlow } from "./irToFlow";
+import { type CanvasData, irToFlow, sameData } from "./irToFlow";
 import { Frames, frameSelection } from "./Frames";
 import { NODE_TYPES } from "./nodes";
 import { PortMenu } from "./PortMenu";
@@ -164,6 +164,9 @@ export function Canvas() {
         return {
           ...n, measured: old.measured, width: old.width, height: old.height, dragging: old.dragging,
           selected: Boolean(old.selected) || n.selected,
+          // the same object when nothing in it changed, so the memoised node does not re-render: a status or a
+          // streamed token on one node used to redraw every node
+          data: sameData(old.data, n.data) ? old.data : n.data,
         };
       });
     });
