@@ -45,6 +45,7 @@ from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
+from agentcanvas.services.answer_cache import DatabaseAnswerCache
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
@@ -184,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 lambda project_id: app.state.projects.secrets.get(project_id, {}),
                 transport=lambda: getattr(app.state, "knowledge_transport", None),
             )
+            app.state.projects.answer_cache = lambda project_id: DatabaseAnswerCache(db, project_id)
             runner = Runner(
                 db,
                 adapter,

@@ -43,6 +43,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "org_policy": ("org_id", None),
     "org_data_key": ("org_id", None),
     "audit_log": ("org_id", None),
+    "answer_cache": ("project_id", "project"),
     "workflow": ("project_id", "project"),
     "secret": ("project_id", "project"),
     "connection": ("project_id", "project"),

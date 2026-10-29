@@ -7,6 +7,7 @@ the IR — can resolve `scripts.`/`tools.`/`nodes.` imports from the right works
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,8 @@ class ProjectRegistry:
         self._catalogs: dict[str, tuple[str, Catalog, Registry]] = {}
         self.secrets: dict[str, dict[str, str]] = {}  # project id -> {name: value}, filled by the secrets service
         self.knowledge: Any = None  # services.knowledge.Searcher (S24), set at startup
+        # project id -> its answer cache; set at startup to the database's, so replicas share it (G-8)
+        self.answer_cache: Callable[[str], Any] | None = None
 
     def workspace(self, project_id: str) -> Workspace:
         if not _SAFE.match(project_id):
@@ -52,6 +55,8 @@ class ProjectRegistry:
             )
             if self.knowledge is not None:
                 self._resources[project_id].knowledge = self.knowledge.for_project(project_id)
+            if self.answer_cache is not None:
+                self._resources[project_id].answers = self.answer_cache(project_id)
         return self._resources[project_id]
 
     async def aclose(self) -> None:

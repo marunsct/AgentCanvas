@@ -86,8 +86,9 @@ OpenAI Agents SDK, CrewAI and Google ADK) and for every step and agent the block
   backup that repeats the model, W016). Cost is counted for the model that answered.
 - **Reuse answers for (s):** an identical request (same messages, tools and settings) within that many seconds gets
   the stored answer without calling the provider, at no cost. Good for steps whose answer should not change, such as
-  classifying or extracting; leave it empty for creative writing. Cached answers live in the server's memory, per
-  project, up to 1,000 of them, and are gone after a server restart.
+  classifying or extracting; leave it empty for creative writing. Cached answers are kept in the database, per
+  project, up to 1,000 of them: every server shares them, and they survive a restart. (A project exported as code
+  keeps them in the memory of the exported process.)
 
 The run panel and the workflow's **Spending** count cached answers and answers from backups. Exported LangGraph
 projects keep both settings; OpenAI Agents SDK exports keep the backup models but not the cache; CrewAI and Google ADK exports keep neither. The older **Backup

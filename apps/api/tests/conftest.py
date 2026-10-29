@@ -36,6 +36,7 @@ TABLES = [
     "audit_log",
     "interrupt_task",
     "a2a_reply",
+    "answer_cache",
     "run",
     "thread",
     "trigger",

@@ -307,6 +307,18 @@ class A2AReply(Base):
     )
 
 
+class AnswerCacheRow(Base):
+    """A model answer kept by the gateway's answer cache (`services/answer_cache.py`), shared by every replica (G-8)."""
+
+    __tablename__ = "answer_cache"
+    __table_args__ = (Index("answer_cache_expires_idx", "project_id", "expires_at"),)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), primary_key=True)
+    key: Mapped[str] = mapped_column(String, primary_key=True)  # the request's hash
+    answer: Mapped[dict[str, Any]] = mapped_column(Json)  # the AIMessage
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime())
+
+
 class Secret(Base):
     __tablename__ = "secret"
     __table_args__ = (UniqueConstraint("project_id", "name"),)
