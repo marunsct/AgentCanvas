@@ -19,6 +19,13 @@ brackets; it is what the saved workflow and the generated code use, and it never
 | **Planning Agent** (`agent.deep`) | A stronger agent for big, multi-step jobs: it writes a plan, keeps notes in files and can hand work to helper agents (`create_deep_agent`). |
 | **Helper Agent** *(add-on, `agent.subagent`)* | A specialist a Planning Agent can hand a task to with its `task` tool. Fill in **When to use it**. |
 
+**Files and images in AI steps.** When the workflow has [file or image fields](canvas.md#file-and-image-fields), **Ask AI**
+and **AI Agent** show them to the model together with the message: images and PDFs as they are to a model that can see
+them, and **Files to show the AI** limits a step to some of the fields (empty: all). A model that cannot see images gets a
+PDF's text instead (layout, tables and scans are lost), Word documents and text files as text, and a note where an image
+was left out; the editor warns about this (W025). Planning Agents do
+not receive file fields yet.
+
 ## AI models
 
 | Block | What it does |

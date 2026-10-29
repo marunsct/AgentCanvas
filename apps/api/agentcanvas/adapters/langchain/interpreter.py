@@ -176,7 +176,10 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         elif p.impl:
             fn = ac.custom_node(import_path=p.impl, config=cfg, resources=resources)
         elif n.type == "core.llm":
-            fn = ac.llm_node(model=wired("model")[0], prompt=cfg["prompt"], output=cfg["output"])
+            fn = ac.llm_node(
+                model=wired("model")[0], prompt=cfg["prompt"], output=cfg["output"],
+                files=ac.file_fields(plan.channels, cfg.get("files")), read_file=getattr(resources, "files", None),
+            )  # fmt: skip
         elif n.type == "core.agent" and n.engine in designs.AGENT_FRAMEWORKS:  # S21: designed for another framework
             fn = designed_agent(plan, n, wired("model")[0], wired("tools"))
         elif n.type == "core.agent":
@@ -188,6 +191,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
                 approve_tools=cfg.get("approve_tools"),
                 middleware=wired("middleware"),
                 response_format=cfg.get("response_format"),
+                files=ac.file_fields(plan.channels, cfg.get("files")),
+                read_file=getattr(resources, "files", None),
             )
         elif n.type == "agent.deep":
             fn = ac.deep_agent_node(

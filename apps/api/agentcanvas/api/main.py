@@ -50,6 +50,7 @@ from agentcanvas.services import routing
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
+from agentcanvas.services.files import FileStore
 from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.online import OnlineScorer
@@ -188,6 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 transport=lambda: getattr(app.state, "knowledge_transport", None),
             )
             app.state.projects.answer_cache = lambda project_id: DatabaseAnswerCache(db, project_id)
+            app.state.projects.files = FileStore(db)  # G-5: file fields are read from the project's files
             runner = Runner(
                 db,
                 adapter,

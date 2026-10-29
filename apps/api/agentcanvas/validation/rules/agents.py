@@ -260,6 +260,32 @@ def sampling_refused(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 
 @rule
+def files_to_blind_model(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W025: the workflow has file or image fields (G-5) and an AI step's model cannot see images. The step still
+    runs: a PDF is read as text (layout, tables as pictures and scans are lost), a Word document or text file is
+    read as text, and an image is not shown at all."""
+    from agentcanvas.filecontent import file_fields
+
+    channels = [c.model_dump(mode="json", exclude_defaults=True) for c in ctx.wf.state.channels]
+    for n in ctx.wf.nodes:
+        if n.disabled or n.type not in ("core.llm", "core.agent"):
+            continue
+        shown = file_fields(channels, n.config.get("files"))
+        models = ctx.wf.wired_into(n.id, "model")
+        info = ctx.registry.model(str(models[0].config.get("model", ""))) if models else None
+        if not shown or info is None or info.vision:
+            continue
+        yield warning(
+            "W025",
+            f"'{n.name}' shows {', '.join(shown)} to {info.label}, which cannot see images: images are left out and "
+            "PDFs are read as plain text (layout and pictures are lost)",
+            node_id=n.id,
+            path="config.files",
+            hint="pick a model that takes images, or narrow the step's files setting",
+        )
+
+
+@rule
 def retiring_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
     """W023: a model (or backup model) the provider stops serving on a known day; after it, every call fails."""
     from datetime import UTC, datetime

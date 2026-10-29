@@ -57,6 +57,7 @@ RUNTIME_FILES = [
     "adapters/langchain/parts.py",
     "adapters/langchain/testing.py",
     "expr.py",
+    "filecontent.py",
     "guardrails.py",
     "knowledge_search.py",
     "registry/models.json",  # which models take sampling settings (`sampling.py`)

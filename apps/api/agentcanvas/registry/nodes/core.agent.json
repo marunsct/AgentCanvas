@@ -60,6 +60,15 @@
         "title": "Structured output (JSON Schema)",
         "format": "json_schema",
         "description": "When set, the agent's final answer is validated against this schema and written to the `structured_response` channel."
+      },
+      "files": {
+        "type": "array",
+        "title": "Files to show the AI",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true,
+        "description": "Which file or image fields (state fields typed file or image) the AI is shown with the message. Leave empty to show all of them. Images and PDFs reach models that can see; other models get a PDF's text and are told they cannot see images."
       }
     }
   },

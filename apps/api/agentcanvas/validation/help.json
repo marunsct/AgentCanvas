@@ -248,6 +248,10 @@
       "what": "This model does not take a temperature (or top_p, top_k), so the setting is left out.",
       "fix": "Clear the setting. To make answers more varied or more exact, say so in the prompt."
     },
+    "W025": {
+      "what": "This step is shown a file or image field, but its model cannot see images. Images are left out and a PDF is read as plain text, so layout, tables and scans are lost.",
+      "fix": "Pick a model that takes images, or limit the step to the fields it needs under “Files to show the AI”."
+    },
     "W021": {
       "what": "A header or environment value that looks like a key is typed in as plain text. Runs work, but an export would write it into the code, so exports refuse it.",
       "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."

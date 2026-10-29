@@ -33,6 +33,7 @@ class ProjectRegistry:
         self.knowledge: Any = None  # services.knowledge.Searcher (S24), set at startup
         # project id -> its answer cache; set at startup to the database's, so replicas share it (G-8)
         self.answer_cache: Callable[[str], Any] | None = None
+        self.files: Any = None  # services.files.FileStore (G-5), set at startup
 
     def workspace(self, project_id: str) -> Workspace:
         if not _SAFE.match(project_id):
@@ -57,6 +58,8 @@ class ProjectRegistry:
                 self._resources[project_id].knowledge = self.knowledge.for_project(project_id)
             if self.answer_cache is not None:
                 self._resources[project_id].answers = self.answer_cache(project_id)
+            if self.files is not None:
+                self._resources[project_id].files = self.files.for_project(project_id)
         return self._resources[project_id]
 
     async def aclose(self) -> None:

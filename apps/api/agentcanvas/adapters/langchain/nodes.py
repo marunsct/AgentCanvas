@@ -56,6 +56,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPolicy, TracePolicy, interrupt
 from typing_extensions import TypedDict
 
+from agentcanvas import filecontent
 from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
@@ -462,6 +463,8 @@ class Resources:
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
         # the server's knowledge bases (S24): (name, query, mode=, top_k=, min_score=) -> results; None = files
         self.knowledge: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None
+        # the server's files (G-5): reads a file field's reference; None = the reference carries its bytes or url
+        self.files: filecontent.FileReader | None = None
         self._kb_files: dict[str, tuple[float, ks.Index, Callable[..., Awaitable[list[list[float]]]]]] = {}
 
     def _key(self, config: dict[str, Any]) -> str:
@@ -1236,15 +1239,63 @@ def deep_agent_node(
 
 
 # ------------------------------------------------------------------ nodes ----
-def llm_node(*, model: BaseChatModel, prompt: str, output: str) -> Callable:
-    """One model call: render prompt from state, write the text answer to `output`."""
+file_fields = filecontent.file_fields  # which state fields hold files (also used by the code generator)
+
+
+def llm_node(
+    *,
+    model: BaseChatModel,
+    prompt: str,
+    output: str,
+    files: Sequence[str] = (),
+    read_file: filecontent.FileReader | None = None,
+) -> Callable:
+    """One model call: render prompt from state, write the text answer to `output`. The file fields in `files`
+    (G-5) are shown to the model with the prompt: images and PDFs as content blocks when it can see, text otherwise."""
 
     async def run(state: Any) -> dict:
         text = render_template(prompt, state)
-        reply = await model.ainvoke([HumanMessage(text)])
+        blocks = await filecontent.attachment_blocks(state, files, read_file, filecontent.model_id_of(model))
+        message = HumanMessage(content=[{"type": "text", "text": text}, *blocks]) if blocks else HumanMessage(text)
+        reply = await model.ainvoke([message])
         return {output: reply.content}
 
     return run
+
+
+def files_middleware(names: Sequence[str], read_file: filecontent.FileReader | None = None) -> AgentMiddleware:
+    """Shows the file fields `names` of the workflow's state to an agent's model (G-5): the newest person message
+    gets the files as content blocks for each model call, without writing them to the conversation, so state and
+    checkpoints keep only the references."""
+    from typing import NotRequired
+
+    from langchain.agents.middleware.types import OmitFromOutput
+
+    fields = {
+        n: NotRequired[Annotated[Any, OmitFromOutput]] for n in names
+    }  # read from the workflow, never written back
+    FileState = TypedDict("FileState", fields, total=False)  # type: ignore[operator]
+
+    class Files(AgentMiddleware):
+        state_schema = FileState  # type: ignore[assignment]
+
+        async def awrap_model_call(self, request: Any, handler: Any) -> Any:
+            blocks = await filecontent.attachment_blocks(
+                request.state, names, read_file, filecontent.model_id_of(request.model)
+            )
+            last = next(
+                (i for i in range(len(request.messages) - 1, -1, -1) if request.messages[i].type == "human"), None
+            )
+            if not blocks or last is None:
+                return await handler(request)
+            human = request.messages[last]
+            text = human.content if isinstance(human.content, list) else [{"type": "text", "text": human.text}]
+            shown = HumanMessage(content=[*text, *blocks], id=human.id)
+            return await handler(
+                request.override(messages=[*request.messages[:last], shown, *request.messages[last + 1 :]])
+            )
+
+    return Files()
 
 
 def agent_node(
@@ -1256,15 +1307,20 @@ def agent_node(
     approve_tools: list[str] | None = None,
     middleware: Sequence[AgentMiddleware] = (),
     response_format: dict[str, Any] | None = None,
+    files: Sequence[str] = (),
+    read_file: filecontent.FileReader | None = None,
 ):
     """A tool-using agent (LangChain create_agent). Returns a compiled subgraph.
 
     The subgraph reads/writes the parent's `messages` channel, so the workflow
     state must contain a `messages` channel with reducer `add_messages`. With a
     `response_format` it also writes `structured_response`. Wired middleware runs in edge order,
-    the tool-approval middleware last.
+    the tool-approval middleware last. The file fields in `files` (G-5) are shown to the model with the newest
+    person message.
     """
     stack = list(middleware)
+    if files:
+        stack.insert(0, files_middleware(files, read_file))
     if approve_tools:
         stack.append(HumanInTheLoopMiddleware(interrupt_on=_hitl(approve_tools)))
     return create_agent(
