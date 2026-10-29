@@ -224,6 +224,16 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   );
 }
 
+/** A web page's host, or null when the stored address is not an http(s) URL (`new URL` threw: the error page). */
+function hostOf(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname : null;
+  } catch {
+    return null;
+  }
+}
+
 function DocumentRow({ doc, base, open, builder, onToggle, onRemove }: {
   doc: DocumentOut; base: string; open: boolean; builder: boolean; onToggle: () => void; onRemove: () => void;
 }) {
@@ -232,11 +242,14 @@ function DocumentRow({ doc, base, open, builder, onToggle, onRemove }: {
     queryFn: () => apiFetch<ChunkOut[]>(`${base}/documents/${doc.id}/chunks`),
     enabled: open,
   });
+  const host = doc.url ? hostOf(doc.url) : null;
   return (
     <>
       <tr data-testid="kb-document">
         <td><button type="button" className="link" aria-expanded={open} onClick={onToggle}>{doc.name}</button></td>
-        <td className="muted small">{doc.url ? <a href={doc.url} target="_blank" rel="noreferrer">{new URL(doc.url).hostname}</a> : doc.source}</td>
+        <td className="muted small">
+          {host ? <a href={doc.url!} target="_blank" rel="noreferrer">{host}</a> : doc.url || doc.source}
+        </td>
         <td>{doc.chunks}</td>
         <td>{builder && <button type="button" aria-label={`remove ${doc.name}`} onClick={onRemove}>Remove</button>}</td>
       </tr>
