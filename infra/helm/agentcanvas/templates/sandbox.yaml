@@ -34,6 +34,9 @@ spec:
           ports:
             - { name: http, containerPort: 8090 }
           env:
+            # one call at a time per pod, and after each nothing it started or wrote is left (S-2); scale with replicas
+            - name: AGENTCANVAS_SANDBOX_SWEEP
+              value: "1"
             - name: AGENTCANVAS_SANDBOX_TOKEN
               valueFrom:
                 secretKeyRef:

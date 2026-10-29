@@ -56,7 +56,7 @@ api:
 # and, with networkPolicy.enabled, no route in except from the API and none out.
 sandbox:
   enabled: true
-  replicas: 2
+  replicas: 4  # each pod runs one call at a time (calls of different projects never share a pod at once)
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }

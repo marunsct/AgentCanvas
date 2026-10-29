@@ -8,6 +8,11 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- **Calls of different projects ran side by side as one user in the sandbox service**, so one call's code could read
+  another's files under `/tmp`, and a process it left running could watch the next call. Each sandbox container now
+  runs one call at a time and, after it, stops everything the code started (a daemon that forked away included) and
+  removes what it wrote; more calls at once come from more containers (`SANDBOX_REPLICAS`, 4 by default in
+  production, `sandbox.replicas` in Helm) (HARDENING S-2).
 - **One call's workspace code could read another's egress credential in a shared sandbox**: the signed proxy address
   was in each child's environment, readable through `/proc/<pid>/environ` by any process of the same user. It now
   reaches the child on stdin, and the child marks itself not dumpable, so other processes cannot read its

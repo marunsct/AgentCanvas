@@ -20,8 +20,11 @@ import hmac
 import io
 import os
 import shutil
+import signal
+import sys
 import tarfile
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -101,13 +104,78 @@ class RunIn(BaseModel):
 DISCONNECT_POLL_S = 0.5  # how soon a call whose caller went away is stopped
 
 
+def _become_subreaper() -> None:
+    """Linux: processes a call's code starts and abandons (a daemon that forks away) become this service's
+    children rather than init's, so `sweep` finds them."""
+    if sys.platform != "linux":
+        return
+    try:
+        import ctypes
+
+        ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER
+    except (OSError, AttributeError):
+        pass
+
+
+def _descendants(root: int) -> list[int]:
+    children: dict[int, list[int]] = {}
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            ppid = int((entry / "stat").read_text().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        children.setdefault(ppid, []).append(int(entry.name))
+    out, stack = [], list(children.get(root, []))
+    while stack:
+        pid = stack.pop()
+        out.append(pid)
+        stack.extend(children.get(pid, []))
+    return out
+
+
+def sweep(since: float, tmp: Path | None = None) -> tuple[int, int]:
+    """After a call (one at a time): kill every process it left behind and remove what it wrote to the temporary
+    folder, so the next call, perhaps another project's, finds nothing of it (2026-10-29 review, S-2). Returns
+    (processes killed, entries removed)."""
+    killed = []
+    for pid in _descendants(os.getpid()):
+        try:
+            os.kill(pid, signal.SIGKILL)
+            killed.append(pid)
+        except (ProcessLookupError, PermissionError):
+            pass
+    for pid in killed:  # orphans became this process's children (subreaper): collect them, or they stay zombies
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+    removed = 0
+    tmp = tmp or Path(tempfile.gettempdir())
+    for entry in tmp.iterdir() if tmp.is_dir() else []:
+        try:
+            if entry.lstat().st_mtime >= since - 1:
+                shutil.rmtree(entry) if entry.is_dir() and not entry.is_symlink() else entry.unlink()
+                removed += 1
+        except OSError:
+            pass
+    return len(killed), removed
+
+
 def create_service(token: str | None = None, run: Callable[..., Any] = _exchange) -> FastAPI:
     secret = token if token is not None else os.environ.get("AGENTCANVAS_SANDBOX_TOKEN", "")
     if len(secret) < 16:
         raise RuntimeError(
             "AGENTCANVAS_SANDBOX_TOKEN (16+ characters) is required: it is what lets the API call this service"
         )
-    slots = asyncio.Semaphore(int(os.environ.get("AGENTCANVAS_SANDBOX_CONCURRENCY", "8")))
+    # one call at a time by default: calls of different projects then never run side by side as the same user, and
+    # the sweep after each (AGENTCANVAS_SANDBOX_SWEEP, set in the containers) leaves nothing for the next to find
+    concurrency = int(os.environ.get("AGENTCANVAS_SANDBOX_CONCURRENCY", "1"))
+    slots = asyncio.Semaphore(concurrency)
+    sweeping = os.environ.get("AGENTCANVAS_SANDBOX_SWEEP") == "1" and concurrency == 1
+    if sweeping:
+        _become_subreaper()
     app = FastAPI(title="AgentCanvas sandbox", docs_url=None, redoc_url=None, openapi_url=None)
 
     def authorised(request: Request) -> None:
@@ -130,6 +198,7 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         async with slots:
+            started = time.time()
             work = Path(tempfile.mkdtemp(prefix="ac-run-"))
             job: asyncio.Future[Any] | None = None
             try:
@@ -156,6 +225,8 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
                     job.cancel()  # `_exchange` kills the child on the way out
                     await asyncio.gather(job, return_exceptions=True)
                 shutil.rmtree(work, ignore_errors=True)
+                if sweeping:
+                    await asyncio.to_thread(sweep, started)
 
     return app
 

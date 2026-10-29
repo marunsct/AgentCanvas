@@ -49,7 +49,12 @@ services:
     command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
       AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:?set AGENTCANVAS_SANDBOX_TOKEN (32+ random characters)}
+      # one call at a time per container, and after each nothing it started or wrote is left (S-2); more
+      # calls at once come from more replicas
+      AGENTCANVAS_SANDBOX_SWEEP: "1"
     networks: [sandbox, sandbox-control]       # the API calls it on sandbox-control, and refuses calls back
+    deploy:
+      replicas: ${SANDBOX_REPLICAS:-4}
     read_only: true
     tmpfs: ["/tmp:size=512m,mode=1777"]
     cap_drop: [ALL]

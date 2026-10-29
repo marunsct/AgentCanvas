@@ -174,3 +174,40 @@ async def test_a_call_whose_caller_went_away_stops_its_code(remote, tmp_path):
     await asyncio.wait_for(service(scope, receive, send), 20)
     with pytest.raises(ProcessLookupError):
         os.kill(int(pid_file.read_text()), 0)
+
+
+SWEEP_PROBE = """
+import os, subprocess, sys, time
+from pathlib import Path
+from agentcanvas.sandbox import service
+
+service._become_subreaper()
+tmp = Path(sys.argv[1])
+started = time.time()
+(tmp / "left-behind.txt").write_text("another project's data")
+# code that forks a daemon away (double fork): without a subreaper it would belong to init and live on
+child = subprocess.Popen([sys.executable, "-c",
+    "import os, subprocess, sys; subprocess.Popen(['sleep', '300'], start_new_session=True,"
+    " stdout=open(sys.argv[1], 'w')); os._exit(0)", str(tmp / 'pid')])
+child.wait()
+time.sleep(0.3)
+orphans = service._descendants(os.getpid())
+killed, removed = service.sweep(started, tmp)
+time.sleep(0.2)
+print(len(orphans), killed, removed, len(service._descendants(os.getpid())), (tmp / "left-behind.txt").exists())
+"""
+
+
+@pytest.mark.skipif(not __import__("sys").platform.startswith("linux"), reason="the sweep reads /proc")
+def test_the_sweep_after_a_call_leaves_nothing_for_the_next(tmp_path):
+    """S-2: calls of different projects share the sandbox container's user. One call at a time, and after each the
+    service kills what the code left running (a daemon included) and removes what it wrote to the temporary folder."""
+    import subprocess
+    import sys
+
+    probe = subprocess.run([sys.executable, "-c", SWEEP_PROBE, str(tmp_path)], capture_output=True, text=True,
+                           timeout=30, check=False)  # fmt: skip
+    assert probe.returncode == 0, probe.stderr
+    orphans, killed, removed, left, file_left = probe.stdout.split()
+    assert int(orphans) >= 1 and int(killed) >= 1 and left == "0"  # the daemon was this service's, and is gone
+    assert int(removed) >= 1 and file_left == "False"
