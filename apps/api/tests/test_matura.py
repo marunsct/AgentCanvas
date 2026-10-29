@@ -149,6 +149,16 @@ async def test_personal_tokens_work_in_matura_mode_within_the_token_organisation
     assert (await client.get("/v1/me", headers={**h, "X-Org-Id": GLOBEX})).status_code == 403
 
 
+async def test_groups_do_not_map_to_roles_in_matura_mode(client):
+    """G-13: roles come from Matura; a groups table (an OIDC-mode setting) is refused, and a groups claim is ignored."""
+    admin = as_user(ANA, ACME, "admin")
+    r = await client.put("/v1/org/settings", json={"sso_groups": {"roles": {"eng": "admin"}}}, headers=admin)
+    assert r.status_code == 409 and "OpenID Connect" in r.json()["detail"]
+    assert (await client.get("/v1/org/settings", headers=admin)).json()["sso_groups_editable"] is False
+    viewer = as_user(BEN, ACME, "viewer", groups=["eng"])
+    assert (await client.get("/v1/me", headers=viewer)).json()["role"] == "viewer"
+
+
 async def test_refusals(client):
     no_tenant = {"Authorization": f"Bearer {ISSUER.token(ANA, perms=['canvas.read'])}"}
     r = await client.get("/v1/me", headers=no_tenant)

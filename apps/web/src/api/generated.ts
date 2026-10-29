@@ -1096,6 +1096,14 @@ export type TokenSecret2 = string;
 export type Error4 = string | null;
 export type PrNumber1 = number | null;
 export type PrUrl1 = string | null;
+/**
+ * the token's claim; a.b reaches a nested one
+ */
+export type Claim = string;
+/**
+ * a token with none of these groups: keep the person's role, or remove them
+ */
+export type Unmatched = "keep" | "remove";
 export type Markdown = string;
 export type Page1 = string;
 export type Title2 = string;
@@ -1661,6 +1669,10 @@ export type NameEditable = boolean;
  */
 export type OfferedEnvironments = string[];
 export type RetentionDays1 = number | null;
+/**
+ * false in Matura mode, where roles come from Matura
+ */
+export type SsoGroupsEditable = boolean;
 /**
  * shown with every violation
  */
@@ -3038,6 +3050,7 @@ export interface ApiSchemas {
   GitLinkIn?: GitLinkIn;
   GitLinkOut?: GitLinkOut;
   GitSyncOut?: GitSyncOut;
+  GroupMapping?: GroupMapping;
   GuidePage?: GuidePage;
   GuidePageRef?: GuidePageRef;
   HTTPValidationError?: HTTPValidationError;
@@ -4983,6 +4996,23 @@ export interface GitSyncOut {
   pr_url?: PrUrl1;
 }
 /**
+ * An organisation's groups claim and its table of group -> role.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "GroupMapping".
+ */
+export interface GroupMapping {
+  claim?: Claim;
+  roles?: Roles;
+  unmatched?: Unmatched;
+}
+/**
+ * group name -> the role it gives
+ */
+export interface Roles {
+  [k: string]: "admin" | "builder" | "reviewer" | "viewer";
+}
+/**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "GuidePage".
  */
@@ -5700,6 +5730,10 @@ export interface OrgSettings {
   limits?: OrgLimits | null;
   name?: Name41;
   retention_days?: RetentionDays;
+  /**
+   * OIDC groups claim -> roles, applied at sign-in; null: roles are set by hand
+   */
+  sso_groups?: GroupMapping | null;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5715,6 +5749,11 @@ export interface OrgSettingsOut {
   name_editable: NameEditable;
   offered_environments: OfferedEnvironments;
   retention_days: RetentionDays1;
+  /**
+   * the groups claim -> roles table, or null
+   */
+  sso_groups: GroupMapping | null;
+  sso_groups_editable: SsoGroupsEditable;
 }
 /**
  * the settings an organisation may override, and what applies

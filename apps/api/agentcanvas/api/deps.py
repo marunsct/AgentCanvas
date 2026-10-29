@@ -17,7 +17,7 @@ from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
 from agentcanvas.security.auth import Authenticator
-from agentcanvas.services import matura, tokens
+from agentcanvas.services import matura, sso_groups, tokens
 from agentcanvas.settings import Settings
 
 
@@ -102,18 +102,20 @@ async def current_user(
     # only a verified email is stored: invitations and the admin bootstrap match people by it
     email = identity.email if identity.email_verified else ""
     user, created = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
-    memberships = await repo.memberships(user.id)
+    uid, user_email = user.id, user.email  # read before anything below commits or rolls back
+    await sso_groups.apply(session, uid, identity.claims)  # the provider's groups decide roles (G-13)
+    memberships = await repo.memberships(uid)
     if (  # bootstrap happens once, at the first sign-in: removing a bootstrap admin later sticks
         created
         and not memberships
         and identity.email_verified
         and identity.email.lower() in {e.lower() for e in settings.bootstrap_admin_emails}
     ):
-        memberships = await repo.bootstrap_admin(user.id, DEV_ORG)
-    if not memberships and (invited := await repo.invitations(user.id)):
+        memberships = await repo.bootstrap_admin(uid, DEV_ORG)
+    if not memberships and (invited := await repo.invitations(uid)):
         # nowhere else to be: the first invitation needs no acceptance (it does when it would move them)
-        await repo.answer(user.id, invited[0][0].id, accept=True)
-        memberships = await repo.memberships(user.id)
+        await repo.answer(uid, invited[0][0].id, accept=True)
+        memberships = await repo.memberships(uid)
     if not memberships:
         raise Forbidden("you are not a member of any organisation; ask an admin to invite you")
     default = next(iter(memberships))  # the organisation used last
@@ -121,8 +123,8 @@ async def current_user(
     if org_id not in memberships:
         raise Forbidden(f"you are not a member of organisation '{org_id}'")
     if org_id != default:
-        await repo.used(user.id, org_id)  # choosing another organisation makes it the default
-    return CurrentUser(id=user.id, org_id=org_id, role=memberships[org_id], email=user.email, memberships=memberships)
+        await repo.used(uid, org_id)  # choosing another organisation makes it the default
+    return CurrentUser(id=uid, org_id=org_id, role=memberships[org_id], email=user_email, memberships=memberships)
 
 
 # path/query parameters that name a resource, and its kind (M7-T2)

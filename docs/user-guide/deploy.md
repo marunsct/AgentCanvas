@@ -72,6 +72,10 @@ Migrations run as a Helm hook Job before the API starts.
 The API checks every token against the provider's keys. `AGENTCANVAS_AUTH_MODE=dev` (no sign-in) is refused in
 `staging` and `prod`.
 
+To give roles by group (see [Roles from groups](accounts.md#roles-from-groups)), add
+the groups to the **access token** the SPA sends, as a claim in your provider (a "groups" mapper in Keycloak, a
+groups claim in Okta or Entra ID). The API reads the claim from that token only.
+
 ### Sign-in through Matura
 
 [Matura](https://github.com/marunsct/Platform) manages sign-in, organisations, members and roles for several apps.

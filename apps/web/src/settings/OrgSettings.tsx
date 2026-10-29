@@ -7,6 +7,7 @@ import type { OrgSettingsOut } from "../api/generated";
 import { useCan } from "../api/session";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
+import { SsoGroups } from "./SsoGroups";
 
 const days = (n: number) => (n === 0 ? "kept forever" : `${n} days`);
 
@@ -79,6 +80,8 @@ export function OrgSettings() {
             onClick={() => { setEnvs([...envs, newEnv]); setNewEnv(""); }}>Add</button>
         </div>
       )}
+
+      <SsoGroups data={d} admin={admin} />
 
       {admin
         ? <button type="button" className="primary" disabled={save.isPending || (mode === "days" && !(n >= 1))} onClick={() => save.mutate()}>Save</button>

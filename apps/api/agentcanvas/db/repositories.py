@@ -223,6 +223,24 @@ class MemberRepo:
         await self.s.commit()
         return user, role
 
+    async def assign(self, org_id: str, user_id: str, role: str) -> str | None:
+        """Give an existing user this role in the organisation (joining it if need be, without an invitation to
+        accept: an identity provider's group put them there). Returns the role they had, None when they were not a
+        member. Raises `Conflict` rather than leave the organisation without a signed-in admin."""
+        await self._lock(org_id)
+        m = await self.s.get(Membership, (org_id, user_id))
+        before = m.role if m is not None and m.accepted else None
+        if m is None:
+            self.s.add(Membership(org_id=org_id, user_id=user_id, role=role, accepted=True))
+        elif m.role != role or not m.accepted:
+            m.role, m.accepted = role, True
+        else:
+            await self.s.commit()  # nothing to change: release the lock
+            return before
+        await self._keep_an_admin(org_id)
+        await self.s.commit()
+        return before
+
     async def remove(self, org_id: str, user_id: str) -> None:
         await self._lock(org_id)
         m = await self.s.get(Membership, (org_id, user_id))

@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field, StringConstraints
+from sqlalchemy import null
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
@@ -19,6 +20,7 @@ from agentcanvas.expr import ExpressionError
 from agentcanvas.services import matura, org_settings
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spending import spending
+from agentcanvas.services.sso_groups import GroupMapping
 from agentcanvas.validation.policies import check_policy
 
 router = APIRouter(prefix="/org", tags=["organisation"])
@@ -175,6 +177,9 @@ class OrgSettings(BaseModel):
     limits: OrgLimits | None = Field(
         None, description="local MCP, rate limits, audit and memory retention: what is sent changes, null clears"
     )
+    sso_groups: GroupMapping | None = Field(
+        None, description="OIDC groups claim -> roles, applied at sign-in; null: roles are set by hand"
+    )
 
 
 DEFAULT_ENVIRONMENTS = ["dev", "staging", "prod"]
@@ -196,6 +201,8 @@ class OrgSettingsOut(BaseModel):
     environments: list[str] | None = Field(description="the organisation's list, or null when none is set")
     offered_environments: list[str] = Field(description="what the web app offers when publishing")
     limits: OrgLimitsOut = Field(description="the settings an organisation may override, and what applies")
+    sso_groups: GroupMapping | None = Field(description="the groups claim -> roles table, or null")
+    sso_groups_editable: bool = Field(description="false in Matura mode, where roles come from Matura")
 
 
 async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
@@ -214,6 +221,8 @@ async def _settings_out(session: AsyncSession, request: Request, org_id: str) ->
             server={k: getattr(server, k) for k in org_settings.FIELDS},
             effective=org_settings.effective(server, org.settings),
         ),
+        sso_groups=GroupMapping.model_validate(org.sso_groups) if org.sso_groups else None,
+        sso_groups_editable=server.auth_mode == "oidc",
     )  # fmt: skip
 
 
@@ -254,7 +263,12 @@ async def put_org_settings(
         merged = {**org_settings.stored(org.settings), **changes}
         org.settings = {k: v for k, v in merged.items() if v is not None} or None
         request.app.state.org_settings.forget()  # this replica reads the new values at once
+    if "sso_groups" in body.model_fields_set:
+        if request.app.state.settings.auth_mode != "oidc":
+            raise Conflict("groups map to roles only when people sign in with OpenID Connect (AUTH_MODE=oidc)")
+        org.sso_groups = body.sso_groups.model_dump() if body.sso_groups else null()
     await session.commit()
+    await session.refresh(org)  # an attribute set to SQL NULL is reloaded
     note(request, target=f"org_id={user.org_id}", **body.model_dump(exclude_unset=True))
     return await _settings_out(session, request, user.org_id)
 

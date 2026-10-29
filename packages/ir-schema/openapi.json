@@ -5055,6 +5055,44 @@
         "title": "GitSyncOut",
         "type": "object"
       },
+      "GroupMapping": {
+        "description": "An organisation's groups claim and its table of group -> role.",
+        "properties": {
+          "claim": {
+            "default": "groups",
+            "description": "the token's claim; a.b reaches a nested one",
+            "pattern": "^[A-Za-z0-9_:/.\\-]{1,100}$",
+            "title": "Claim",
+            "type": "string"
+          },
+          "roles": {
+            "additionalProperties": {
+              "enum": [
+                "admin",
+                "builder",
+                "reviewer",
+                "viewer"
+              ],
+              "type": "string"
+            },
+            "description": "group name -> the role it gives",
+            "title": "Roles",
+            "type": "object"
+          },
+          "unmatched": {
+            "default": "keep",
+            "description": "a token with none of these groups: keep the person's role, or remove them",
+            "enum": [
+              "keep",
+              "remove"
+            ],
+            "title": "Unmatched",
+            "type": "string"
+          }
+        },
+        "title": "GroupMapping",
+        "type": "object"
+      },
       "GuidePage": {
         "properties": {
           "markdown": {
@@ -7721,6 +7759,17 @@
             ],
             "description": "days a conversation is kept after its last activity; null = the server default, 0 = forever",
             "title": "Retention Days"
+          },
+          "sso_groups": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupMapping"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OIDC groups claim -> roles, applied at sign-in; null: roles are set by hand"
           }
         },
         "title": "OrgSettings",
@@ -7789,6 +7838,22 @@
               }
             ],
             "title": "Retention Days"
+          },
+          "sso_groups": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupMapping"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the groups claim -> roles table, or null"
+          },
+          "sso_groups_editable": {
+            "description": "false in Matura mode, where roles come from Matura",
+            "title": "Sso Groups Editable",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7800,7 +7865,9 @@
           "memory_retention_days",
           "environments",
           "offered_environments",
-          "limits"
+          "limits",
+          "sso_groups",
+          "sso_groups_editable"
         ],
         "title": "OrgSettingsOut",
         "type": "object"

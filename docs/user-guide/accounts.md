@@ -62,6 +62,22 @@ curl -H "Authorization: Bearer act_…" https://<your AgentCanvas>/api/v1/projec
 Deployment keys are different: they belong to a published workflow and can only run it (see
 [Publish](publish.md)).
 
+## Roles from groups
+
+Where people sign in with OpenID Connect, an admin can let the identity provider decide roles. Under **Settings ›
+Organisation › General › Single sign-on groups** name the claim that carries the groups (`groups` by default; a dotted
+name such as `realm_access.roles` reaches a nested claim), and list which role each group gives. At every sign-in:
+
+- the strongest role among the person's mapped groups is their role, replacing one set by hand under Members;
+- someone in a mapped group who is not yet a member joins at once, with no invitation to accept;
+- a token with none of the mapped groups **keeps** the person's role (the default), or **removes** them from the
+  organisation if you choose that;
+- a change that would leave the organisation without an admin who has signed in is skipped, so the provider can
+  never lock you out of your own organisation.
+
+Each change is in the audit log (`sso_role_sync`, `sso_member_removed`). Clear the table to manage roles under Members
+again. In Matura mode roles come from Matura and this setting is not offered.
+
 ## Audit log
 
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a

@@ -71,6 +71,9 @@ class Organization(Base):
     environments: Mapped[list[str] | None] = mapped_column(Json, nullable=True)
     # its own values for server settings (services/org_settings.py): local MCP, rate limits, two retentions
     settings: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    # OIDC groups claim -> roles (G-13): {"claim", "roles": {"<group>": "<role>"}, "unmatched": "keep"|"remove"} (see
+    # services/sso_groups.py); SQL NULL: roles are managed by hand
+    sso_groups: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
     created_at: Mapped[datetime] = _now()
 
 
