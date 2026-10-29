@@ -19,6 +19,14 @@ describe("share links (S23)", () => {
     expect(seen.map((e) => e.type)).toEqual(["RUN_STARTED", "TEXT_MESSAGE_CONTENT"]);
   });
 
+  it("skips a malformed frame instead of ending the reply (W-12)", () => {
+    const seen: ShareEvent[] = [];
+    const rest = parseSse('data: {"type":"TEXT_MESSAGE_CONTENT","delta":"A"}\n\ndata: {not json\n\n' +
+      'data:{"type":"TEXT_MESSAGE_CONTENT","delta":"B"}\n\n', (e) => seen.push(e));
+    expect(rest).toBe("");
+    expect(seen.map((e) => (e as { delta?: string }).delta)).toEqual(["A", "B"]); // the bad frame used to throw
+  });
+
   it("explains failures in plain words and makes the embed snippet", () => {
     expect(friendly(404)).toMatch(/does not work any more/);
     expect(friendly(429)).toMatch(/wait a minute/);

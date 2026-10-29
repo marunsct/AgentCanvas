@@ -82,7 +82,12 @@ export function parseSse(buffer: string, onEvent: (e: ShareEvent) => void): stri
     const message = buffer.slice(0, sep);
     buffer = buffer.slice(sep + 2);
     for (const line of message.split("\n")) {
-      if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as ShareEvent);
+      if (!line.startsWith("data:")) continue;
+      try {
+        onEvent(JSON.parse(line.slice(5).trimStart()) as ShareEvent);
+      } catch {
+        /* one bad frame must not end the reply (as in run/sse.ts) */
+      }
     }
   }
   return buffer;
