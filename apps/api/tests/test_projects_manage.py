@@ -88,6 +88,8 @@ async def test_only_admins_rename_or_delete(app, api_client):
             act_as(app, role)
             assert (await api_client.patch(f"/v1/projects/{pid}", json={"name": "Mine"})).status_code == 403, role
             assert (await api_client.delete(f"/v1/projects/{pid}")).status_code == 403, role
+            moved = await api_client.put(f"/v1/projects/{pid}/workspace", json={"workspace_id": None})
+            assert moved.status_code == 403, (role, moved.text)  # where a project lives is the organisation's too
     finally:
         app.dependency_overrides.pop(current_user, None)
     assert (await api_client.get("/v1/projects")).status_code == 200

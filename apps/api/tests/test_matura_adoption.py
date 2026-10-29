@@ -82,11 +82,15 @@ class TestInMatura:
         assert names(await client.get("/v1/projects", params={"workspace_id": MAIN}, headers=ana)) == []
         assert {"Lab", "Plain"} <= set(names(await client.get("/v1/projects", headers=ana)))
 
-        # moved into the default workspace, then out again; viewers and other organisations cannot move it
+        # an admin moves it into the default workspace, then out again; builders, viewers and other organisations
+        # cannot move it (like renaming or deleting it)
         r = await client.put(f"/v1/projects/{lab}/workspace", json={"workspace_id": MAIN}, headers=ana)
+        assert r.status_code == 403
+        admin = as_user(ANA, ACME, "admin")
+        r = await client.put(f"/v1/projects/{lab}/workspace", json={"workspace_id": MAIN}, headers=admin)
         assert r.status_code == 200 and r.json()["workspace_id"] == MAIN
         assert names(await client.get("/v1/projects", params={"workspace_id": MAIN}, headers=ana)) == ["Lab"]
-        assert (await client.put(f"/v1/projects/{lab}/workspace", json={"workspace_id": None}, headers=ana)).json()[
+        assert (await client.put(f"/v1/projects/{lab}/workspace", json={"workspace_id": None}, headers=admin)).json()[
             "workspace_id"
         ] is None
         viewer = as_user(BEN, ACME, "viewer")

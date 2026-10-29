@@ -102,7 +102,7 @@ async def set_project_workspace(
     user: CurrentUser = Depends(current_user),
     settings: Settings = Depends(get_settings_dep),
 ) -> ProjectOut:
-    """Move a project into a Matura workspace, or out of one with `workspace_id: null`."""
+    """Move a project into a Matura workspace, or out of one with `workspace_id: null`. Admins only."""
     await _checked(session, settings, user, body.workspace_id)
     p = await ProjectRepo(session).require(project_id)
     p.workspace_id = body.workspace_id

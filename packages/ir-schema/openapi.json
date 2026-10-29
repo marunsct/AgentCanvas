@@ -21444,7 +21444,7 @@
     },
     "/v1/projects/{project_id}/workspace": {
       "put": {
-        "description": "Move a project into a Matura workspace, or out of one with `workspace_id: null`.",
+        "description": "Move a project into a Matura workspace, or out of one with `workspace_id: null`. Admins only.",
         "operationId": "set_project_workspace_v1_projects__project_id__workspace_put",
         "parameters": [
           {

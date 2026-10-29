@@ -175,6 +175,7 @@ ROLE_EXCEPTIONS = {
     ("POST", "/knowledge/{kb_id}/search"): "viewer",
     ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
     ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)
+    ("PUT", "/projects/{project_id}/workspace"): "admin",  # which Matura workspace a project lives in
 }
 
 
