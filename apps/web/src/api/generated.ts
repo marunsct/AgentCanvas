@@ -1516,7 +1516,7 @@ export type Message10 = string;
  */
 export type OverrideReason = string | null;
 /**
- * shown once, when the deployment is created
+ * shown once: when the deployment is created, or published again after an unpublish
  */
 export type ApiKey4 = string | null;
 export type Checklist = Check[];

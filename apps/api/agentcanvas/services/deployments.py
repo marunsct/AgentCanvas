@@ -131,6 +131,9 @@ class DeploymentService:
                 if dep is None:
                     raise
         if key is None:
+            if not dep.active:  # unpublished: its old key was meant to be revoked, so it does not come back
+                key = new_key()
+                dep.api_key_hash, dep.key_prefix = hash_key(key), key[:10]
             dep.version_id, dep.active = version.id, True
         await self.s.commit()
         await self.s.refresh(dep)

@@ -63,7 +63,9 @@ class DeploymentOut(BaseModel):
 
 class PublishOut(BaseModel):
     deployment: DeploymentOut
-    api_key: str | None = Field(None, description="shown once, when the deployment is created")
+    api_key: str | None = Field(
+        None, description="shown once: when the deployment is created, or published again after an unpublish"
+    )
     checklist: list[Check]
 
 

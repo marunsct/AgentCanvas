@@ -7911,7 +7911,7 @@
                 "type": "null"
               }
             ],
-            "description": "shown once, when the deployment is created",
+            "description": "shown once: when the deployment is created, or published again after an unpublish",
             "title": "Api Key"
           },
           "checklist": {
