@@ -32,6 +32,7 @@ from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
+from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
@@ -433,6 +434,7 @@ class Runner:
             dry_run=dry_run,
             mocks=mocks or {},
             org_id=org_id,
+            user_id=user_id,
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
@@ -494,6 +496,7 @@ class Runner:
 
     async def _pump(self, h: RunHandle, spec: RunSpec) -> None:
         started = time.perf_counter()
+        CURRENT.set(RunIdentity(spec.org_id, spec.user_id))  # app connectors that sign in read it per call (G-7)
         await self._emit(
             h,
             {

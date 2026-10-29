@@ -11,7 +11,9 @@ from agentcanvas.adapters.spi import McpAbility, require
 from agentcanvas.api.deps import get_settings_dep
 from agentcanvas.api.v1.runs import runner
 from agentcanvas.errors import Forbidden, UpstreamError
+from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.runner import Runner
+from agentcanvas.services.oauth import ConnectionRequired
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["tools"])
@@ -38,6 +40,8 @@ async def inspect_mcp(
     r: Runner = Depends(runner),
 ) -> list[McpToolInfo]:
     mcp = require(r.adapter, "mcp_inspect", McpAbility)
+    me = request.state.user
+    CURRENT.set(RunIdentity(me.org_id, me.id))  # a connector that signs in is browsed with your own connection
     cfg = body.config
     url = str(cfg.get("url") or "")
     local = cfg.get("transport") == "stdio" or not url.startswith(("http://", "https://"))
@@ -49,6 +53,20 @@ async def inspect_mcp(
         factory = getattr(request.app.state, "resources_factory", None)
         resources = factory("mcp-inspect", None) if factory else request.app.state.projects.resources(project_id)
         tools = await mcp.inspect_mcp(body.name, cfg, resources)
+    except ConnectionRequired:
+        raise
     except Exception as exc:  # network errors, protocol errors, auth failures
+        if (found := _connection_problem(exc)) is not None:
+            raise found from exc
         raise UpstreamError(f"could not list tools of '{body.name}': {type(exc).__name__}: {exc}") from exc
     return [McpToolInfo(**t) for t in tools]
+
+
+def _connection_problem(exc: BaseException) -> ConnectionRequired | None:
+    """The sign-in problem inside an error: the MCP client wraps what its transport raises in exception groups."""
+    if isinstance(exc, ConnectionRequired):
+        return exc
+    for inner in getattr(exc, "exceptions", ()):
+        if (found := _connection_problem(inner)) is not None:
+            return found
+    return _connection_problem(exc.__cause__) if exc.__cause__ is not None else None

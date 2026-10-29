@@ -71,8 +71,11 @@ def public_async_client(**kwargs: Any) -> Any:
     return httpx.AsyncClient(transport=_transport(httpx, httpcore), **kwargs)
 
 
-def public_mcp_client_factory(headers: dict[str, str] | None = None, timeout: Any = None, auth: Any = None) -> Any:
-    """The MCP client's `httpx_client_factory`, connecting to public addresses only."""
+def public_mcp_client_factory(
+    headers: dict[str, str] | None = None, timeout: Any = None, auth: Any = None, **_asked: Any
+) -> Any:
+    """The MCP client's `httpx_client_factory`, connecting to public addresses only. It asks for `follow_redirects=True`
+    among other things; a redirect could lead anywhere, so none is followed whatever it asks."""
     import httpcore2
     import httpx2
 

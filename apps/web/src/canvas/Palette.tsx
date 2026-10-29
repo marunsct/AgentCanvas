@@ -116,7 +116,7 @@ export function Palette() {
                 {c.description}
                 {(c.secrets ?? []).length > 0 && ` · needs ${(c.secrets ?? []).map((x) => x.name).join(", ")}`}
                 {c.local && " · local edition"}
-                {c.auth === "oauth" && " · sign-in not supported yet"}
+                {c.auth === "oauth" && " · you sign in with Connect"}
               </small>
             </div>
           ))}

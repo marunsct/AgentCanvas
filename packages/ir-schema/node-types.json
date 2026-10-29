@@ -3653,6 +3653,26 @@
             ]
           }
         },
+        "oauth": {
+          "type": "object",
+          "title": "Sign in with OAuth",
+          "additionalProperties": false,
+          "required": [
+            "identity"
+          ],
+          "description": "For apps that need each person to sign in. 'starter': the run uses the connection of the person who started it (Connect it in the editor). 'service': it uses the organisation's service connection, which an admin connects; use it for schedules, webhooks and deployments.",
+          "properties": {
+            "identity": {
+              "enum": [
+                "starter",
+                "service"
+              ],
+              "title": "Acts as",
+              "default": "starter",
+              "description": "starter = the person who started the run; service = the organisation's service connection"
+            }
+          }
+        },
         "command": {
           "type": "string",
           "title": "Command (stdio)"

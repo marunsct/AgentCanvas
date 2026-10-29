@@ -60,3 +60,9 @@ def test_the_hosted_edition_wires_them_in():
         inner = inner.model
     backend = inner.http_async_client._transport._pool._network_backend
     assert type(backend).__name__ == "PublicOnly"
+
+
+def test_the_mcp_client_may_ask_for_redirects_and_does_not_get_them():
+    """The MCP client calls its factory with `follow_redirects=True`, which the hosted factory did not accept."""
+    client = pinned.public_mcp_client_factory(headers={"X": "y"}, auth=None, follow_redirects=True)
+    assert client.follow_redirects is False and client.headers["X"] == "y"

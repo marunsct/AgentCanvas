@@ -189,6 +189,8 @@ async def test_seeded_dev_user_has_no_rights_with_sign_in_on(client):
 # routes reachable without signing in (S15); deployment and webhook routes check their own credentials
 PUBLIC = {
     ("GET", "/v1/auth/config"), ("GET", "/healthz"), ("GET", "/readyz"),
+    # G-7: our OAuth client metadata document, fetched by authorization servers (404 unless a public https URL is set)
+    ("GET", "/v1/oauth/client-metadata.json"),
     # S15: A2A clients read the card before they authenticate; the MCP GET only says "POST" (405)
     ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json"),
     ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent.json"),

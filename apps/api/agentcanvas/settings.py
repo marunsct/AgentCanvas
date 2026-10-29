@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # default until Deep Agents has passed the same suite and the real-model evaluation)
     copilot_engine: Literal["loop", "deepagents"] = "loop"
     cors_origins: list[str] = ["http://localhost:5173"]
+    # where people reach the web app, e.g. https://canvas.example.com: OAuth sign-ins to app connectors return to
+    # <public_url>/oauth/callback and (https only) authorization servers fetch our client metadata document from
+    # <public_url>/api/v1/oauth/client-metadata.json. Unset: the first CORS origin (the development server).
+    public_url: str | None = None
     # networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so
     # workspace code there cannot call the API from inside
     refuse_clients: list[str] = []

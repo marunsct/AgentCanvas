@@ -144,11 +144,33 @@ into an agent, and use **Browse tools** to pick tools.
   including `Bearer `.
 - **Local connectors** start a program on the AgentCanvas server (`npx` or `uvx`). They work only in the local
   edition, after an admin turns on *local MCP servers*, and need Node.js or uv on the server.
-- **Sign-in only.** A few apps accept only an interactive sign-in (OAuth). They are listed so you can find them,
-  but AgentCanvas cannot sign in to them yet.
+- **Sign-in only.** A few apps (Linear, Atlassian…) accept only an interactive sign-in (OAuth). Select the block and click
+  **Connect** to sign in with your own account; see [Sign-in per person](#sign-in-per-person).
 
 Each entry was checked against npm, PyPI or the official MCP registry when the gallery was built; its tooltip says
 what it needs.
+
+### Sign-in per person
+
+A connector that has the **Sign in with OAuth** setting (the apps above that accept only a sign-in come with it) does not use
+one shared key. Each person connects their own account, once:
+
+1. Select the connector's block and click **Connect**. You go to the app's own sign-in page and come back; the block then
+   shows *connected as you*. **Settings › You › Connections** lists your connections and lets you disconnect them.
+2. Set **Acts as** on the block, which says whose connection a run uses:
+   - **starter** (the default): the connection of the person who starts the run, or resumes it after an approval. A run
+     nobody started (a schedule, a webhook, a deployment call or a share link) has no connection of its own and stops
+     with a message saying so.
+   - **service**: the organisation's service connection, which an admin connects with **Connect the service account** on
+     the same block. Use it for schedules, webhooks and deployments, and when the app account should be shared on purpose.
+3. **Browse tools** uses your own connection (or the service one, when the block is set to it and you are an admin).
+
+Behind the scenes AgentCanvas follows the MCP authorization standard against whatever server the block points at: it finds
+the server's sign-in settings itself, uses the server's client-metadata-document support or registers itself with the
+server, and signs in with PKCE. Tokens are stored encrypted with the organisation's key and renewed as needed; if the app
+revokes access, the connection shows *expired* and runs say to connect it again. A server that supports neither client
+metadata documents nor dynamic registration cannot be used yet. The operator sets `AGENTCANVAS_PUBLIC_URL`
+([Deploy](deploy.md)). A workflow exported as code cannot sign in: connectors with this setting need the AgentCanvas server.
 
 ## Send traces to your observability tool
 

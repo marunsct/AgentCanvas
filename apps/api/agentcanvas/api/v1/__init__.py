@@ -14,6 +14,7 @@ from agentcanvas.api.v1 import (
     auth,
     bridges,
     catalog,
+    connections,
     copilot,
     datasets,
     deployments,
@@ -52,6 +53,7 @@ signed_in = APIRouter(dependencies=[Depends(current_user), Depends(role_policy),
 signed_in.include_router(auth.router)
 signed_in.include_router(catalog.router)
 signed_in.include_router(org.router)
+signed_in.include_router(connections.router)
 signed_in.include_router(tokens.router)
 signed_in.include_router(projects.router)
 signed_in.include_router(model_choices.router)
@@ -87,6 +89,7 @@ signed_in.include_router(guide.router)
 router = APIRouter(prefix="/v1")
 router.include_router(signed_in)
 router.include_router(auth.public_router)
+router.include_router(connections.public_router)  # our OAuth client metadata document: fetched by servers
 router.include_router(deployments.public_router)
 router.include_router(protocols.router)  # MCP and A2A, deployment keys
 router.include_router(triggers.public_router)

@@ -45,6 +45,7 @@ PREFIXES = {
     "fil",  # a file a person attached to a run (G-5)
     "tok",  # a person's API token (G-13)
     "sgr",  # a SCIM group (G-13)
+    "oac",  # an OAuth connection (G-7)
 }
 
 

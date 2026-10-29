@@ -19,6 +19,7 @@ const EvaluationPage = lazy(() => import("../evaluation/EvaluationPage").then((m
 const RunsPage = lazy(() => import("../runs/RunsPage").then((m) => ({ default: m.RunsPage })));
 const GuidePage = lazy(() => import("../guide/GuidePage").then((m) => ({ default: m.GuidePage })));
 const SettingsPage = lazy(() => import("../settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const OAuthCallback = lazy(() => import("../settings/OAuthCallback").then((m) => ({ default: m.OAuthCallback })));
 const SharePage = lazy(() => import("../share/SharePage").then((m) => ({ default: m.SharePage })));
 const PlaygroundPage = lazy(() => import("../playground/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })));
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
@@ -55,6 +56,7 @@ export function App() {
             <Route path="/workflows/:id/evaluation" element={<EvaluationPage />} />
             <Route path="/workflows/:id/workspace" element={<WorkspacePage />} />
             <Route path="/settings/:section?" element={<SettingsPage />} />
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
             <Route path="/playground" element={<PlaygroundPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/inbox" element={<InboxPage />} />

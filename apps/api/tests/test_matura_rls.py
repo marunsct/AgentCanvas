@@ -36,6 +36,7 @@ LATER = [
     MIGRATIONS / "20261029_a7c1e5b9d3f2_stored_files.py",
     MIGRATIONS / "20261029_b7d1f5a9c3e8_personal_tokens.py",
     MIGRATIONS / "20261029_d2f6b0c4e8a1_scim.py",
+    MIGRATIONS / "20261029_e5a9c1b7d3f2_oauth_connections.py",
 ]  # tables added after it, each with its own policy
 
 

@@ -20,6 +20,10 @@ PUBLIC = {
     ("GET", "/healthz"): "load balancer liveness",
     ("GET", "/readyz"): "load balancer readiness",
     ("GET", "/v1/auth/config"): "the sign-in page needs the issuer and client id before anyone has a token",
+    (
+        "GET",
+        "/v1/oauth/client-metadata.json",
+    ): "our OAuth client metadata document: authorization servers fetch it\n    unauthenticated by design (G-7)",
 }
 
 

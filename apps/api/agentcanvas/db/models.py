@@ -874,3 +874,66 @@ class ScimGroupMember(Base):
     __tablename__ = "scim_group_member"
     group_id: Mapped[str] = mapped_column(ForeignKey("scim_group.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+
+
+class OAuthConnection(Base):
+    """A sign-in to an MCP server that needs one (G-7): one person's (`owner` is their user id) or the organisation's
+    service identity (`owner = 'service'`). The tokens are encrypted with the organisation's data key."""
+
+    __tablename__ = "oauth_connection"
+    __table_args__ = (
+        UniqueConstraint("org_id", "owner", "resource"),
+        CheckConstraint("status IN ('active','reconnect')", name="oauth_connection_status"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), index=True)
+    owner: Mapped[str] = mapped_column(Text)
+    resource: Mapped[str] = mapped_column(Text)  # the MCP server's address, canonical
+    issuer: Mapped[str] = mapped_column(Text)
+    token_endpoint: Mapped[str] = mapped_column(Text)
+    revocation_endpoint: Mapped[str | None] = mapped_column(Text)
+    client_id: Mapped[str] = mapped_column(Text)
+    client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    access_token_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    refresh_token_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    scope: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"), default="active")
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
+class OAuthFlow(Base):
+    """A sign-in in progress: made when the browser is sent to the authorization server, used up by the first answer
+    that comes back (or discarded when it expires). `state_hash` is the SHA-256 of the `state` the browser carries."""
+
+    __tablename__ = "oauth_flow"
+    state_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(Text)  # who started it: only they can finish it
+    owner: Mapped[str] = mapped_column(Text)
+    resource: Mapped[str] = mapped_column(Text)
+    issuer: Mapped[str] = mapped_column(Text)
+    token_endpoint: Mapped[str] = mapped_column(Text)
+    revocation_endpoint: Mapped[str | None] = mapped_column(Text)
+    client_id: Mapped[str] = mapped_column(Text)
+    client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    iss_in_response: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    verifier_enc: Mapped[bytes] = mapped_column(LargeBinary)  # the PKCE code verifier
+    return_to: Mapped[str] = mapped_column(Text, server_default=text("'/'"), default="/")
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime())
+
+
+class OAuthClient(Base):
+    """AgentCanvas's registration at an authorization server (dynamic client registration), once per organisation."""
+
+    __tablename__ = "oauth_client"
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
+    issuer: Mapped[str] = mapped_column(Text, primary_key=True)
+    redirect_uri: Mapped[str] = mapped_column(Text, primary_key=True)
+    client_id: Mapped[str] = mapped_column(Text)
+    client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = _now()

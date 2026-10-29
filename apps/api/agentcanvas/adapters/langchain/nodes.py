@@ -781,6 +781,13 @@ def _config_key(config: dict[str, Any]) -> str:
     return json.dumps(config, sort_keys=True, default=str)
 
 
+# Set by the server (`services/oauth.install`): signs an app connector's requests with the connection of whoever the
+# run acts for (G-7). None outside the server: a connector that asks for it cannot run there.
+OAUTH_AUTH: Callable[[str, str], Any] | None = None
+# Tests only: the HTTP client factory the MCP client uses for http connectors (reaches an in-process ASGI server)
+MCP_CLIENT_FACTORY: Callable[..., Any] | None = None
+
+
 def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v, public_only: bool = False) -> Any:
     """FastMCP transport for an `mcp.server` resource. Strings are never passed through: a string naming a file
     would launch it (langchain.mcp rejects that too); stdio is explicit and admin-gated (E042). `public_only`
@@ -791,12 +798,17 @@ def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v:
         env = {k: str(resolve(v)) for k, v in (config.get("env") or {}).items()}
         return StdioTransport(command=config["command"], args=list(config.get("args") or []), env=env or None)
     headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
+    auth: Any = None
+    if oauth := config.get("oauth"):  # the connection of the person (or service) the run acts for, looked up per call
+        if OAUTH_AUTH is None:
+            raise RuntimeError("this app connector signs in with OAuth, which only the AgentCanvas server supports")
+        auth = OAUTH_AUTH(config["url"], oauth.get("identity", "starter"))
+    factory = MCP_CLIENT_FACTORY
     if public_only:
         from agentcanvas.adapters.langchain.pinned import public_mcp_client_factory
 
-        return StreamableHttpTransport(config["url"], headers=headers or None,
-                                       httpx_client_factory=public_mcp_client_factory)  # fmt: skip
-    return StreamableHttpTransport(config["url"], headers=headers or None)
+        factory = public_mcp_client_factory
+    return StreamableHttpTransport(config["url"], headers=headers or None, auth=auth, httpx_client_factory=factory)
 
 
 async def mcp_tools(target: Any) -> list[BaseTool]:

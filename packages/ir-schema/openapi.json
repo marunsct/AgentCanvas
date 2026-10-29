@@ -769,6 +769,48 @@
         "title": "AuthConfig",
         "type": "object"
       },
+      "AuthorizeIn": {
+        "properties": {
+          "return_to": {
+            "default": "/",
+            "description": "the page of this app to come back to",
+            "maxLength": 500,
+            "title": "Return To",
+            "type": "string"
+          },
+          "server_url": {
+            "description": "the app connector's server URL",
+            "maxLength": 2000,
+            "title": "Server Url",
+            "type": "string"
+          },
+          "service": {
+            "default": false,
+            "description": "connect the organisation's service identity (admins) instead of you",
+            "title": "Service",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "server_url"
+        ],
+        "title": "AuthorizeIn",
+        "type": "object"
+      },
+      "AuthorizeOut": {
+        "properties": {
+          "authorization_url": {
+            "description": "send the browser here",
+            "title": "Authorization Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_url"
+        ],
+        "title": "AuthorizeOut",
+        "type": "object"
+      },
       "BlastRadius": {
         "properties": {
           "nodes": {
@@ -1013,6 +1055,58 @@
           }
         },
         "title": "CachePolicySpec",
+        "type": "object"
+      },
+      "CallbackIn": {
+        "properties": {
+          "code": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "iss": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the server's issuer, when it sent one",
+            "title": "Iss"
+          },
+          "state": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "state"
+        ],
+        "title": "CallbackIn",
+        "type": "object"
+      },
+      "CallbackOut": {
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/ConnectionOut"
+          },
+          "return_to": {
+            "title": "Return To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection",
+          "return_to"
+        ],
+        "title": "CallbackOut",
         "type": "object"
       },
       "Capability": {
@@ -1831,6 +1925,79 @@
           "edge"
         ],
         "title": "Connect",
+        "type": "object"
+      },
+      "ConnectionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owner": {
+            "description": "'you', 'service', or (for admins) another person's id",
+            "title": "Owner",
+            "type": "string"
+          },
+          "resource": {
+            "description": "the MCP server's address",
+            "title": "Resource",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "status": {
+            "description": "'active', or 'reconnect' when the server no longer accepts it",
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "resource",
+          "host",
+          "owner",
+          "status",
+          "scope",
+          "expires_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConnectionOut",
         "type": "object"
       },
       "ConnectorSecret": {
@@ -13928,6 +14095,260 @@
         ]
       }
     },
+    "/v1/connections": {
+      "get": {
+        "description": "Your connections and the organisation's service connections (admins also see everyone's).",
+        "operationId": "list_connections_v1_connections_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionOut"
+                  },
+                  "title": "Response List Connections V1 Connections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Connections",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/authorize": {
+      "post": {
+        "description": "Start signing in to an app connector's server: the address to send the browser to.",
+        "operationId": "authorize_v1_connections_authorize_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Authorize",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/callback": {
+      "post": {
+        "description": "Finish signing in with what the browser brought back from the authorization server.",
+        "operationId": "callback_v1_connections_callback_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallbackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Callback",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/{connection_id}": {
+      "delete": {
+        "description": "Disconnect: the server is asked to revoke the tokens, which are deleted (yours; admins also the service's).",
+        "operationId": "delete_connection_v1_connections__connection_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Connection",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
     "/v1/datasets/{ds_id}": {
       "delete": {
         "operationId": "delete_dataset_v1_datasets__ds_id__delete",
@@ -19308,6 +19729,30 @@
         "summary": "Node Types",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/v1/oauth/client-metadata.json": {
+      "get": {
+        "description": "AgentCanvas's Client ID Metadata Document: authorization servers that support them fetch it from here (it is\nthis address that is the client id). Public by design; 404 unless the server's public https address is set.",
+        "operationId": "client_metadata_v1_oauth_client_metadata_json_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Client Metadata V1 Oauth Client Metadata Json Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Client Metadata",
+        "tags": [
+          "connections"
         ]
       }
     },

@@ -8,6 +8,7 @@ import { useState } from "react";
 import { findElement, isResource, type IRNode, type IRResource, nameProblem } from "../ir/model";
 import { ConfigForm } from "./ConfigForm";
 import { MockPanel, PinPanel } from "./DebugAids";
+import { ConnectPanel } from "./ConnectPanel";
 import { McpBrowser } from "./McpBrowser";
 import { ScriptPanel } from "./ScriptPanel";
 import { PoliciesEditor } from "./PoliciesEditor";
@@ -88,6 +89,7 @@ export function Inspector() {
           ))}
         </ul>
       )}
+      {res && el.type === "mcp.server" && (el.config as { oauth?: unknown } | undefined)?.oauth != null && <ConnectPanel resource={el} />}
       {res && el.type === "mcp.server" && <McpBrowser resource={el} />}
       {!res && el.type === "core.script" && <ScriptPanel node={el} />}
       {m && <ConfigForm element={el} manifest={m} isResource={res} />}

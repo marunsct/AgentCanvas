@@ -46,8 +46,8 @@ from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPa
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
+from agentcanvas.services import oauth, routing
 from agentcanvas.services import projects as projects_module
-from agentcanvas.services import routing
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
@@ -172,6 +172,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
             app.state.keyring = Keyring.from_settings(settings)
+            hosted = settings.edition == "hosted"
+            app.state.oauth = oauth.Connections(
+                app.state.keyring, settings.public_url or settings.cors_origins[0], public_only=hosted
+            )  # sign-ins to app connectors (G-7)
+            app.state.oauth_tokens = oauth.ConnectionTokens(db, app.state.keyring, public_only=hosted)
+            oauth.install(app.state.oauth_tokens)
             masking.provider = lambda: (  # traces: each secret and its encoded forms (S-9)
                 f for values in app.state.projects.secrets.values() for v in values.values() for f in encoded_forms(v)
             )
@@ -263,6 +269,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                oauth.install(None)
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.handover.stop()
                 await app.state.cron.stop()
