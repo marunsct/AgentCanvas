@@ -211,3 +211,27 @@ def test_the_sweep_after_a_call_leaves_nothing_for_the_next(tmp_path):
     orphans, killed, removed, left, file_left = probe.stdout.split()
     assert int(orphans) >= 1 and int(killed) >= 1 and left == "0"  # the daemon was this service's, and is gone
     assert int(removed) >= 1 and file_left == "False"
+
+
+async def test_a_busy_sandbox_says_so_instead_of_hanging(monkeypatch):
+    """One call at a time per sandbox (S-2): a call that cannot get the slot in time is answered 503, which the API
+    reports as "every sandbox was busy", rather than waiting past the API's own timeout."""
+    from agentcanvas.sandbox import service as svc
+
+    monkeypatch.setattr(svc, "QUEUE_WAIT_S", 0.2)
+    gate = asyncio.Event()
+
+    async def slow(*args, **kwargs):
+        await gate.wait()
+        return {"ok": True, "update": {}}
+
+    app = create_service(TOKEN, run=slow)
+    body = {"import_path": "scripts.hi:run", "payload": {"state": {}}, "workspace": base64.b64encode(
+        pack_workspace(__import__("pathlib").Path(__file__).parent / "importers")).decode()}  # fmt: skip
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://s",
+                                 headers={"Authorization": f"Bearer {TOKEN}"}) as c:  # fmt: skip
+        first = asyncio.create_task(c.post("/run", json=body))
+        await asyncio.sleep(0.05)
+        second = await c.post("/run", json=body)
+        gate.set()
+        assert second.status_code == 503 and (await first).status_code == 200

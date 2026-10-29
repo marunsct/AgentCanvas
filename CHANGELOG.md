@@ -8,6 +8,12 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- The egress proxy forwarded a sandbox's own `Host` header (reaching another site on an allowed address) and hop-by-
+  hop headers, accepted a request framed both by `Content-Length` and `Transfer-Encoding`, and honoured a call's
+  credential for a minute past its time limit. It now names the checked host, drops hop-by-hop headers, refuses
+  double framing, and each credential lives for its call (time limit plus the wait for a free sandbox) and names the
+  call in the proxy's log. A sandbox busy for a minute answers 503, reported as "every sandbox was busy" (HARDENING
+  S-7).
 - A deployment key could tell a thread id of another deployment or organisation from one that does not exist (404
   for unknown, 422 "not started by this deployment" otherwise). Both are now the same 404. nginx's per-visitor rate
   limit now covers each deployment's MCP and A2A endpoints (and its agent card) and the Matura webhook, as it did

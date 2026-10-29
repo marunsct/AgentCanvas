@@ -29,6 +29,9 @@ class ScriptError(RuntimeError):
     """The script raised, returned something invalid, or the sandbox failed."""
 
 
+QUEUE_WAIT_S = 60  # how long a call may wait for a free sandbox (each runs one call at a time, S-2)
+
+
 def _jsonable(v: Any) -> Any:
     if isinstance(v, dict):
         return {str(k): _jsonable(x) for k, x in v.items()}
@@ -222,7 +225,7 @@ async def _remote_exchange(
     }  # fmt: skip
     try:
         async with httpx.AsyncClient(
-            base_url=settings.sandbox_url, transport=REMOTE_TRANSPORT, timeout=timeout + 10,
+            base_url=settings.sandbox_url, transport=REMOTE_TRANSPORT, timeout=timeout + QUEUE_WAIT_S + 10,
             headers={"Authorization": f"Bearer {settings.sandbox_token}"},
         ) as client:  # fmt: skip
             r = await client.post("/run", json=body)
@@ -230,6 +233,8 @@ async def _remote_exchange(
         raise ScriptError(
             f"{import_path} failed: the sandbox service is not reachable ({type(exc).__name__})"
         ) from None
+    if r.status_code == 503:
+        raise ScriptError(f"{import_path} failed: every sandbox was busy for {QUEUE_WAIT_S} s; add sandbox replicas")
     if r.status_code != 200:
         raise ScriptError(f"{import_path} failed: the sandbox service answered {r.status_code}")
     result = r.json()
@@ -331,7 +336,8 @@ class SandboxRunner:
                     address = self.settings.egress_proxy or await docker_egress.ensure(self.settings)
                 except docker_egress.EgressUnavailable as exc:
                     raise ScriptError(f"sandbox.json allows network access, but {exc}") from None
-            return proxy_url(address, allow, secret, policy.timeout_s + 60)
+            # valid while the call may wait for a sandbox and run, and no longer (S-7); the call id is for the log
+            return proxy_url(address, allow, secret, policy.timeout_s + QUEUE_WAIT_S + 10)
         if self.settings.env in ("staging", "prod"):
             raise ScriptError(
                 f"sandbox.json allows network access, which script execution '{mode}' cannot restrict; "

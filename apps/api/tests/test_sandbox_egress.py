@@ -162,3 +162,46 @@ async def test_garbage_does_not_take_the_proxy_down(upstream):
         assert ok.status_code == 200
     finally:
         await proxy.close()
+
+
+async def test_plain_http_goes_to_the_checked_host_with_no_hop_by_hop_headers():
+    """S-7: the proxy forwarded the sandbox's own `Host` (another virtual host on the allowed address) and hop-by-hop
+    headers; it now names the checked host, and refuses a request framed two ways (request smuggling)."""
+    seen: list[bytes] = []
+
+    async def echo(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        seen.append(await reader.readuntil(b"\r\n\r\n"))
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(echo, "127.0.0.1", 0)
+    up = server.sockets[0].getsockname()[1]
+    proxy, port = await _proxy()
+    try:
+        user, password = sign([f"api.example.com:{up}"], SECRET, 60)
+        auth = base64.b64encode(f"{user}:{password}".encode()).decode()
+        for extra, expect in (("Host: internal-admin\r\nUpgrade: h2c\r\nTE: trailers\r\n", b"200 OK"),
+                              ("Content-Length: 2\r\nTransfer-Encoding: chunked\r\n", b"400")):  # fmt: skip
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(f"GET http://api.example.com:{up}/x HTTP/1.1\r\n{extra}Proxy-Authorization: Basic {auth}"
+                         "\r\n\r\n".encode())  # fmt: skip
+            await writer.drain()
+            assert expect in await reader.readuntil(b"\r\n\r\n")
+            writer.close()
+        [head] = seen  # the double-framed request never reached the upstream
+        assert f"Host: api.example.com:{up}".encode() in head
+        assert b"internal-admin" not in head and b"Upgrade" not in head and b"TE:" not in head
+    finally:
+        await proxy.close()
+        server.close()
+
+
+def test_a_credential_names_its_call_and_lives_for_the_call_only():
+    import json
+
+    from agentcanvas.sandbox.egress import _unb64
+
+    user, _ = sign(["a.example"], SECRET, 30)
+    claims = json.loads(_unb64(user))
+    assert len(claims["call"]) == 12 and claims["exp"] <= __import__("time").time() + 31

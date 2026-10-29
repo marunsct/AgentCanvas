@@ -32,7 +32,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from agentcanvas.sandbox.runners import MEMORY_MB, TIMEOUT_S, ScriptError, _exchange
+from agentcanvas.sandbox.runners import MEMORY_MB, QUEUE_WAIT_S, TIMEOUT_S, ScriptError, _exchange
 
 MAX_WORKSPACE_BYTES = 20 * 1024 * 1024  # packed
 MAX_UNPACKED_BYTES = 100 * 1024 * 1024
@@ -197,7 +197,11 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
                 raise ValueError("the workspace is too large")
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
-        async with slots:
+        try:  # one call at a time: wait a while for this sandbox, then let the API say they are all busy
+            await asyncio.wait_for(slots.acquire(), QUEUE_WAIT_S)
+        except TimeoutError:
+            raise HTTPException(503, f"busy: no free slot within {QUEUE_WAIT_S} s") from None
+        try:
             started = time.time()
             work = Path(tempfile.mkdtemp(prefix="ac-run-"))
             job: asyncio.Future[Any] | None = None
@@ -227,6 +231,8 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
                 shutil.rmtree(work, ignore_errors=True)
                 if sweeping:
                     await asyncio.to_thread(sweep, started)
+        finally:
+            slots.release()
 
     return app
 

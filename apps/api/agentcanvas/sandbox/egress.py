@@ -26,7 +26,9 @@ import hmac
 import ipaddress
 import json
 import os
+import secrets
 import socket
+import sys
 import time
 from collections.abc import Awaitable, Callable
 from urllib.parse import quote, urlsplit
@@ -46,8 +48,10 @@ def _unb64(text: str) -> bytes:
 
 
 def sign(allow: list[str], secret: str, ttl_s: float) -> tuple[str, str]:
-    """Proxy credentials (user, password) carrying `allow`, valid for `ttl_s` seconds."""
-    user = _b64(json.dumps({"allow": allow, "exp": int(time.time() + ttl_s)}, separators=(",", ":")).encode())
+    """Proxy credentials (user, password) carrying `allow`, valid for `ttl_s` seconds (one call's time: S-7), with
+    a call id the proxy logs with every connection it makes for it."""
+    claims = {"allow": allow, "exp": int(time.time() + ttl_s), "call": secrets.token_hex(6)}
+    user = _b64(json.dumps(claims, separators=(",", ":")).encode())
     return user, hmac.new(secret.encode(), user.encode(), hashlib.sha256).hexdigest()
 
 
@@ -76,7 +80,19 @@ def verify(header: str | None, secret: str, now: float | None = None) -> list[st
     return [str(e) for e in claims["allow"]]
 
 
+def _call(header: str | None) -> str:
+    """The call id of a credential `verify` already accepted (for the log line of each connection)."""
+    try:
+        user = base64.b64decode((header or "")[6:].strip()).decode().partition(":")[0]
+        return str(json.loads(_unb64(user)).get("call", "-"))[:16]
+    except ValueError:
+        return "-"
+
+
 # ------------------------------------------------------------------ the allow-list ----
+HOP_BY_HOP = ("proxy-", "connection:", "keep-alive:", "te:", "trailer:", "upgrade:", "host:")
+
+
 def _split(entry: str) -> tuple[str, int | None]:
     host, sep, port = entry.strip().lower().rpartition(":")
     if sep and port.isdigit() and "]" not in port:
@@ -167,6 +183,8 @@ class EgressProxy:
             url = urlsplit(target)
             if url.scheme != "http" or not url.hostname:
                 return await _refuse(writer, 400, "send absolute http:// URLs, or CONNECT for https")
+            if "content-length" in headers and "transfer-encoding" in headers:  # two framings: request smuggling
+                return await _refuse(writer, 400, "a request may not have both Content-Length and Transfer-Encoding")
             host, port = url.hostname, url.port or 80
         if allowed(host, port, allow) is None:
             return await _refuse(writer, 403, f"{host}:{port} is not in this project's sandbox.json egress list")
@@ -188,14 +206,17 @@ class EgressProxy:
         if upstream is None:
             return await _refuse(writer, 502, f"{host}:{port} is not reachable")
         up_reader, up_writer = upstream
+        print(f"egress call={_call(headers.get('proxy-authorization'))} {method} {host}:{port}", file=sys.stderr,
+              flush=True)  # fmt: skip
         if method == "CONNECT":
             writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
-        else:  # origin-form request line, without the proxy's own headers
+        else:  # origin-form request line, without the proxy's own or hop-by-hop headers, for the checked host
             path = urlsplit(target).path or "/"
             query = urlsplit(target).query
             first = f"{method} {path}{'?' + query if query else ''} {rest.rpartition(' ')[2]}"
-            kept = [ln for ln in lines[1:] if ln and not ln.lower().startswith(("proxy-", "connection:"))]
-            up_writer.write(("\r\n".join([first, *kept, "Connection: close", "", ""])).encode("latin-1"))
+            kept = [ln for ln in lines[1:] if ln and not ln.lower().startswith(HOP_BY_HOP)]
+            host_line = f"Host: {host}" + ("" if port == 80 else f":{port}")  # never another virtual host
+            up_writer.write(("\r\n".join([first, host_line, *kept, "Connection: close", "", ""])).encode("latin-1"))
         await writer.drain()
         try:
             # when one side is done, the other gets a moment to finish its last bytes, then both are closed
