@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,10 @@ WORKFLOW_CODE_DIRS = ("scripts", "tools", "nodes")
 _KEY = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 HIDDEN = {".git", "__pycache__", ".venv", ".agentcanvas", ".ruff_cache"}
 TEXT_SUFFIXES = {".py", ".json", ".md", ".txt", ".toml", ".yaml", ".yml", ".jinja", ".j2", ".gitignore"}
+
+
+REVISION_TTL_S = 1.0
+_REVISIONS: dict[Path, tuple[float, str]] = {}  # workspace root -> (when, revision), see `Workspace.revision`
 
 
 class WorkspaceError(ValueError):
@@ -175,7 +180,18 @@ class Workspace:
         return FileInfo(dst.relative_to(self.root).as_posix(), st.st_size, st.st_mtime)
 
     def revision(self) -> str:
-        """Changes whenever workspace code changes (graphs built from old code are rebuilt)."""
+        """Changes whenever workspace code changes (graphs built from old code are rebuilt). Walking the folders
+        costs a stat per file and every workflow read asks, so the answer is kept for a second: a change made
+        here (every one commits) is seen at once, one made outside it within the second (FR-CN-01 allows 2 s)."""
+        now = time.monotonic()
+        kept = _REVISIONS.get(self.root)
+        if kept is not None and now - kept[0] < REVISION_TTL_S:
+            return kept[1]
+        rev = self._walk()
+        _REVISIONS[self.root] = (now, rev)
+        return rev
+
+    def _walk(self) -> str:
         h = hashlib.sha256()
         for d in (*CODE_DIRS, WORKFLOWS_DIR):
             base = self.root / d
@@ -234,5 +250,6 @@ class Workspace:
 
     def _commit(self, message: str, path: Path | None = None) -> None:
         """Best effort: every save is a commit (history, diffs and restore come in Sprint 8)."""
+        _REVISIONS.pop(self.root, None)  # the code changed: the next revision walks again
         self._git("add", "-A", str(path.relative_to(self.root)) if path else ".")
         self._git("commit", "-q", "-m", message, "--allow-empty")

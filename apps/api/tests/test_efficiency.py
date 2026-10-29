@@ -161,3 +161,39 @@ async def test_the_contract_reads_every_deployment_with_its_version_in_one_query
     http = [s["detail"] for s in got["surfaces"] if s["kind"] == "http"]
     assert [d.split(":")[0] for d in http] == ["prod v1.0.0", "qa v1.1.0", "staging v1.2.0"]
     assert len(touching(seen, "workflow_version")) == 1, touching(seen, "workflow_version")
+
+
+# ------------------------------------------------------------------------------------------------- F-4 ----
+NODE = """from agentcanvas.sdk import canvas_node
+
+
+@canvas_node(name="eff.shout", label="Shout", writes=["out"])
+def shout(state: dict, cfg: dict) -> dict:
+    return {"out": str(state.get("out", "")).upper()}
+"""
+
+
+async def test_the_workspace_is_walked_once_for_many_reads_and_again_after_a_change(app, api_client, monkeypatch):
+    """Every workflow read and validation walked the whole workspace (rglob and stat) to see whether code changed."""
+    from pathlib import Path
+
+    from test_publish import make_greeter
+
+    walks = []
+    rglob = Path.rglob
+
+    def counted(self, pattern, *args, **kwargs):
+        walks.append(self)
+        return rglob(self, pattern, *args, **kwargs)
+
+    wf = await make_greeter(api_client)
+    monkeypatch.setattr(Path, "rglob", counted)
+    for _ in range(5):
+        assert (await api_client.get(f"/v1/workflows/{wf}")).status_code == 200
+        assert (await api_client.post(f"/v1/workflows/{wf}/validate")).status_code == 200
+    assert len(walks) <= 5, f"{len(walks)} folder walks for 10 reads"  # one revision walks the 5 code folders
+    before = len(walks)
+    saved = await api_client.put(f"{P}/files/nodes/shout.py", json={"content": NODE})
+    assert saved.status_code == 200, saved.text
+    types = {t["type"] for t in (await api_client.get("/v1/node-types", params={"project_id": "prj_default"})).json()}
+    assert "eff.shout" in types and len(walks) > before  # a save is seen at once
