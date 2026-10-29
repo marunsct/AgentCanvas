@@ -1,5 +1,6 @@
 /** Workflow-level settings shown when nothing is selected. */
 import { useQuery } from "@tanstack/react-query";
+import { type InputHTMLAttributes, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { SpendOut } from "../api/types";
 import { useEditor } from "../editor/store";
@@ -58,6 +59,27 @@ const BUDGET_FIELDS: [key: string, label: string, step: number][] = [
 ];
 
 
+/**
+ * A text field for a setting that is saved as it is typed: it keeps what is typed while that is not a valid value yet
+ * ("0.0" on the way to "0.05"), and shows the setting again when it changes elsewhere (undo, redo, the Copilot); an
+ * uncontrolled field kept showing the old value.
+ */
+function SettingInput<T>({ value, toText, fromText, onText, ...rest }: {
+  value: T; toText: (v: T) => string; fromText: (raw: string) => T | undefined; onText: (raw: string) => void;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+  const [text, setText] = useState(() => toText(value));
+  const [shown, setShown] = useState(value);
+  if (JSON.stringify(value) !== JSON.stringify(shown)) {
+    setShown(value);
+    if (JSON.stringify(fromText(text)) !== JSON.stringify(value)) setText(toText(value));
+  }
+  return <input {...rest} value={text} onChange={(e) => { setText(e.target.value); onText(e.target.value); }} />;
+}
+
+const numberText = (v: number | null | undefined) => (v == null ? "" : String(v));
+const textNumber = (raw: string) => (raw.trim() === "" ? null : Number(raw));
+const sharesText = (v: number[] | null | undefined) => (v ? v.map((x) => Math.round(x * 100)).join(", ") : "");
+
 /** Budgets (FR-X-15): the runner stops a run that goes over; empty = no limit. */
 function BudgetEditor() {
   const budget = useEditor((s) => s.wf?.settings.budget) as Record<string, number | null | undefined> | null | undefined;
@@ -75,16 +97,16 @@ function BudgetEditor() {
         {BUDGET_FIELDS.map(([key, label, step]) => (
           <label key={key}>
             {label}
-            <input type="number" min={step} step={step} placeholder="no limit" aria-label={`budget ${label}`}
-              defaultValue={budget?.[key] ?? ""} onChange={(e) => set(key, e.target.value)} />
+            <SettingInput type="number" min={step} step={step} placeholder="no limit" aria-label={`budget ${label}`}
+              value={budget?.[key] ?? null} toText={numberText} fromText={textNumber} onText={(raw) => set(key, raw)} />
           </label>
         ))}
         <label>
           Alert at (% of day or month, up to {MAX_ALERTS})
-          <input placeholder="80" aria-label="budget alert at percent" title={`Up to ${MAX_ALERTS} percents, e.g. 50, 80`}
-            defaultValue={alertAt ? alertAt.map((x) => Math.round(x * 100)).join(", ") : ""}
-            onChange={(e) => {
-              const shares = parseAlertShares(e.target.value);
+          <SettingInput placeholder="80" aria-label="budget alert at percent" title={`Up to ${MAX_ALERTS} percents, e.g. 50, 80`}
+            value={alertAt ?? null} toText={sharesText} fromText={parseAlertShares}
+            onText={(raw) => {
+              const shares = parseAlertShares(raw);
               if (shares !== undefined) dispatch([{ op: "UpdateSettings", patch: { budget: { alert_at: shares } } }], { debounceMs: 400 });
             }} />
         </label>
