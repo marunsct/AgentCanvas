@@ -1212,6 +1212,16 @@
               }
             ],
             "title": "Temperature"
+          },
+          "tools": {
+            "description": "workspace tools the model may call, by `import_path` (GET .../workspace/catalog)",
+            "items": {
+              "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Tools",
+            "type": "array"
           }
         },
         "required": [
@@ -1248,6 +1258,14 @@
           "reply": {
             "title": "Reply",
             "type": "string"
+          },
+          "tools": {
+            "description": "the tool calls made for this answer, in order",
+            "items": {
+              "$ref": "#/components/schemas/ToolUse"
+            },
+            "title": "Tools",
+            "type": "array"
           },
           "usage": {
             "additionalProperties": {
@@ -11487,6 +11505,30 @@
         "title": "TimeoutPolicySpec",
         "type": "object"
       },
+      "ToolUse": {
+        "properties": {
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "args",
+          "result"
+        ],
+        "title": "ToolUse",
+        "type": "object"
+      },
       "TraceExport": {
         "description": "A project's trace destination (stored in the project's settings under `trace_export`).",
         "properties": {
@@ -12184,6 +12226,16 @@
               }
             ],
             "title": "Temperature"
+          },
+          "tools": {
+            "description": "become Python tool blocks",
+            "items": {
+              "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)+:[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Tools",
+            "type": "array"
           }
         },
         "title": "WorkflowIn",
@@ -21016,7 +21068,7 @@
     },
     "/v1/projects/{project_id}/playground/chat/stream": {
       "post": {
-        "description": "The answer as it is generated, as server-sent events: `delta` {text} pieces, then `done` {reply, model,\nusage}, or `error` {message}. Nothing is saved.",
+        "description": "The answer as it is generated, as server-sent events: `delta` {text} pieces, then `done` {reply, model,\nusage}, or `error` {message}. Nothing is saved. With `tools` the model answers in whole after its tool calls:\na `tool` {name, args, result} event for each call, then the answer as one `delta`.",
         "operationId": "chat_stream_v1_projects__project_id__playground_chat_stream_post",
         "parameters": [
           {
@@ -21085,7 +21137,7 @@
     },
     "/v1/projects/{project_id}/playground/workflow": {
       "post": {
-        "description": "A workflow with one agent step that has the playground's instructions and model.",
+        "description": "A workflow with one agent step that has the playground's instructions, model and tools.",
         "operationId": "make_workflow_v1_projects__project_id__playground_workflow_post",
         "parameters": [
           {

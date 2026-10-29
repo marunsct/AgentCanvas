@@ -57,8 +57,9 @@ through six steps and ticks each one off as you do it.
 Not sure yet what to build? Open **Playground** (top of the home page, or **Try a model in the playground**).
 Pick a model, write its instructions, and chat with it. **Temperature** makes the answers more predictable (lower)
 or more varied (higher); models that always use their own sampling, such as current Claude models, have it switched
-off. When the answers look right, give it a name and press **Make it a workflow**: you get a workflow with one AI
-agent that has those instructions, that model and that temperature, ready for tools, approvals and more steps.
+off. If the project's [Workspace](workspace.md) has tools, tick the ones the model may call: each call and its
+result show above the answer (tools run for real). When the answers look right, give it a name and press **Make it a workflow**: you get a workflow with one AI
+agent that has those instructions, that model, that temperature and those tools, ready for tools, approvals and more steps.
 Nothing you type in the playground is saved.
 
 ## Simple mode

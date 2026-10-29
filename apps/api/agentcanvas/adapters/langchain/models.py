@@ -109,3 +109,15 @@ class LangChainModels:
                 content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
             if content:
                 yield str(content)
+
+    def tool_spec(self, tool: Any) -> dict[str, Any]:
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+
+        fn = convert_to_openai_tool(tool)["function"]
+        parameters = fn.get("parameters") or {"type": "object", "properties": {}}
+        return {"name": fn["name"], "description": fn.get("description") or "", "parameters": parameters}
+
+    async def call_tool(self, tool: Any, args: dict[str, Any]) -> str:
+        out = await tool.ainvoke(args)
+        content = getattr(out, "content", out)  # a tool may answer with a ToolMessage
+        return content if isinstance(content, str) else json.dumps(content, default=str)

@@ -13,6 +13,9 @@ const sent: Record<string, unknown>[] = [];
 vi.mock("../api/client", () => ({
   apiFetch: vi.fn(async (path: string) => {
     if (path === "/models") return models;
+    if (path.includes("/workspace/catalog")) {
+      return { tools: [{ name: "weather", import_path: "tools.weather:weather", description: "The weather in a city.", workflow: null }] };
+    }
     if (path.endsWith("/setup")) return { done: true, default_model: { model: "openai:gpt-4.1" } };
     return [];
   }),
@@ -20,6 +23,7 @@ vi.mock("../api/client", () => ({
 vi.mock("../run/sse", () => ({
   postStream: vi.fn(async (_path: string, body: Record<string, unknown>, on: (e: Record<string, unknown>) => void) => {
     sent.push(body);
+    if ((body.tools as string[]).length) on({ type: "tool", name: "weather", args: { city: "Paris" }, result: "sunny in Paris" });
     on({ type: "delta", text: "hi" });
   }),
 }));
@@ -68,5 +72,16 @@ describe("PlaygroundPage temperature", () => {
     expect(screen.getByText(/This model takes no temperature/)).toBeTruthy();
     await say("hello");
     expect(sent[0].temperature).toBeUndefined();
+  });
+
+  it("sends the workspace tools picked and shows what the model called", async () => {
+    renderPage();
+    await say("no tools yet");
+    expect(sent[0].tools).toEqual([]);
+    fireEvent.click(await screen.findByLabelText(/weather/));
+    await say("weather in Paris?");
+    expect(sent[1].tools).toEqual(["tools.weather:weather"]);
+    expect(await screen.findByText("Called")).toBeTruthy();
+    expect(screen.getByTestId("pg-calls").textContent).toContain("sunny in Paris");
   });
 });

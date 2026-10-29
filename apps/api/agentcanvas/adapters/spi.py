@@ -169,6 +169,15 @@ class ModelService(Protocol):
         Resource name: "copilot"."""
         ...
 
+    def tool_spec(self, tool: Any) -> dict[str, Any]:
+        """A workspace tool (as `Resources.tool` returns it) as `chat` takes tools: {"name", "description",
+        "parameters"} (the Playground's tools)."""
+        ...
+
+    async def call_tool(self, tool: Any, args: dict[str, Any]) -> str:
+        """Run a workspace tool with the model's arguments; its result as text."""
+        ...
+
 
 def supports(adapter: Any, ability: str) -> bool:
     m = getattr(adapter, "manifest", None)
