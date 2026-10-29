@@ -34,6 +34,7 @@ version and PR, and add anything new you find to *Open*. One PR per item.
 | GitHub CI caches uv downloads (keyed on `uv.lock` and the Makefile's framework pins) | unreleased | |
 | SQLite enforces the schema's cascades (found: a deleted workflow's published endpoint kept answering); MCP `Origin` and `MCP-Protocol-Version` checks; Copilot settings PUT merges | unreleased | |
 | End-to-end product pass 2026-10-29: model prices (none were set, so USD budgets and cost alerts counted nothing; a malformed `AGENTCANVAS_MODEL_PRICES` stops the start); Deep Agents token metering missed replies without a model name; thread paging by time (caller-named threads sorted anywhere; SQLite text timestamps compared in SQL); empty workflows refused before the engine; another project's workflow opens in its project; laptop-width bars kept Test and Settings in sight; two full-project pyright errors | unreleased | |
+| Follow-up pass 2026-10-29: every model choice offers only models set up to answer (By purpose, the Copilot's menu, knowledge embeddings; LM Studio-style embedding models were sent token ids); SQLite timestamps read back without a zone ("9 hours ago" in Tokyo); `sdk.emit` failed every sandboxed step that used it; W017 for a retry that hides backup models; a damaged group of steps broke the blast radius (found by the fuzz test on a new template); the hosted gallery offered a template it cannot run; framework template tests indexed inputs directly | unreleased | |
 
 ## Verified 2026-10-20 (no change needed)
 
