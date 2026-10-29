@@ -12,6 +12,15 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### Replicas: shared answer cache, budgets by database, routing by price
+The answer cache and a remote agent's pending questions live in the database (tables `answer_cache`, `a2a_reply`, with
+row-level security). Day and month budgets are read from the runs table after each model call, so two servers overshoot
+by at most one model call per run; the in-process spend tally is gone. `cheapest_of` routing (opt-in on the model block)
+picks the cheapest *ready* candidate by input plus output price at run start: local models are never routed (their
+server may be down; use them as backups), and policies that apply only to a named environment are not enforced during
+routing, as in the editor. A person in the spending report is the conversation's creator; runs from deployments,
+schedules and events show as "no person". *Reverse:* drop `cheapest_of` from a block to use its own model.
+
 ### Claude Managed Agents and Git sync: built from the reference docs, not run against the services
 The Managed Agents export (`ant apply` bundle: `agent.md`, `environment.yaml`, optional `vault.yaml`, skills) follows the
 file shapes in the claude-api reference; the Git round trip uses the GitHub REST API through httpx. Neither has been run

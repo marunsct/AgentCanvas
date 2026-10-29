@@ -62,6 +62,10 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- A workflow's day and month USD budgets now count what runs on every server have spent so far, so runs started
+  together on several replicas can no longer pass the limit by whole runs. (HARDENING G-8).
+- Runs paused for a person or for a remote A2A agent's question can be answered on another replica or after a
+  restart; the remote agent's replies are now kept in the database. (HARDENING G-9).
 - The agent network template could not be exported as an Open Agent Spec file that other runtimes accept: it starts
   three steps at once, and an Agent Spec flow's start takes one path. Steps that run side by side and meet at one
   "Wait for all" are now written one after another, and the export's notes say so.
@@ -413,6 +417,12 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- AI model blocks get an optional "Use the cheapest of" list; each run picks the cheapest listed model that has a
+  key here and that your organisation's policies allow, and the run records the choice. (HARDENING G-8).
+- Admins get Settings › Organisation › Spending, with cost, tokens and cache hits per project, workflow and person
+  for a date range (also GET /v1/org/spending). (HARDENING G-8).
+- A model block's "Reuse answers for" cache now lives in the database, so all replicas share it and a restart no
+  longer empties it. (HARDENING G-8).
 - A workflow can be connected to a GitHub branch: each publish (or saved version, or on demand) opens or updates a
   pull request with the export, the workflow diff in the description and a CI check that runs the export's tests,
   and Import from branch brings the merged workflow back into the draft, refusing to overwrite changes made on

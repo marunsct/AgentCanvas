@@ -32,6 +32,7 @@ MIGRATION = MIGRATIONS / "20261017_a3c7e9b1d5f2_matura_workspaces_rls.py"
 LATER = [
     MIGRATIONS / "20261029_e1a5c9d3f7b2_git_link.py",
     MIGRATIONS / "20261029_e4a8c2f6b0d1_a2a_replies.py",
+    MIGRATIONS / "20261029_f6b0d4a8c2e5_answer_cache.py",
 ]  # tables added after it, each with its own policy
 
 
