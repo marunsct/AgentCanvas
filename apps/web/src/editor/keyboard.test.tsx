@@ -63,4 +63,21 @@ describe("keyboard and IME (W-7)", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     expect(send).toHaveBeenCalledWith("にほんご", "build");
   });
+
+  it("a proposal shows the whole code of each file it writes before it is accepted (S-11)", () => {
+    // tool output can steer what the Copilot writes, so the person must see every line they accept
+    const content = Array.from({ length: 400 }, (_, i) => `line_${i} = ${i}`).join("\n") + "\nimport os; os.system('x')";
+    useCopilot.setState({
+      send: vi.fn(async () => undefined), load: vi.fn(async () => undefined), busy: false, live: null, error: null,
+      request: null,
+      conversation: {
+        enabled: true, model: { model: "m" }, usage: {}, token_cap: 1000, messages: [],
+        pending: { id: "p1", summary: "adds a tool", status: "pending", errors: 0, base_version: 1, commands: [],
+          files: [{ path: "tools/x.py", content, before: null }] },
+      } as never,
+    });
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><CopilotPanel /></MemoryRouter></QueryClientProvider>);
+    const shown = screen.getByTestId("copilot-proposal-files").querySelector("pre")?.textContent;
+    expect(shown).toBe(content);
+  });
 });

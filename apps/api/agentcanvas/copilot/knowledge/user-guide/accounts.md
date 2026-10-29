@@ -64,6 +64,12 @@ Two presets get you started:
 | **Writes need approval** | every step's external writes are gated by a human: `node.effects.all(e, e.effect != "external_write" \|\| e.gated)` |
 | **Approved models in prod** | in `prod`, chat models must come from an approved list |
 
+Another rule worth having when builders are not admins: no tool or remote agent may reach your private network (the
+database, internal services) unless an admin adds it. Scope *each resource*, match
+`resource.type in ["tool.http", "agent.a2a"]`, require
+`!has(resource.config.allow_private_network) || !resource.config.allow_private_network`
+(and the same with scope *each step* and `node.type == "agent.a2a"` for remote-agent steps).
+
 Names you can use: `node` (`type`, `config`, `effects`, `ungated`, `models`, `tools`), `resource`, `workflow`,
 `env`.
 

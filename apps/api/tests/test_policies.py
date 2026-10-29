@@ -210,3 +210,21 @@ async def test_policies_do_not_stop_draft_runs(api_client):
     assert tests.status_code == 200, tests.text
     refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "prod"})
     assert refused.status_code == 422
+
+
+def test_the_guides_private_network_policy_works():
+    """S-11: the rule docs/user-guide/accounts.md suggests, so builders cannot open the private network themselves."""
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.validation.policies import Policy, check_policies
+
+    require = "!has(resource.config.allow_private_network) || !resource.config.allow_private_network"
+    match = 'resource.type in ["tool.http", "agent.a2a"]'
+    policy = Policy(name="no private network", scope="resource", match=match, require=require)
+    tool = {"id": "r_t", "type": "tool.http", "name": "crm",
+            "config": {"url": "https://crm.example.com", "allowed_domains": ["crm.example.com"]}}  # fmt: skip
+    for private, broken in ((None, False), (False, False), (True, True)):
+        config = {**tool["config"], **({} if private is None else {"allow_private_network": private})}
+        wf = Workflow.model_validate({"id": "wf_p", "name": "p", **GREETER, "resources": [{**tool, "config": config}]})
+        assert bool(check_policies(wf, [policy])) is broken, private
