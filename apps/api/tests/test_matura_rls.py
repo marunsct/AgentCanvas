@@ -27,7 +27,9 @@ from agentcanvas.settings import Settings
 URL = os.getenv("TEST_DATABASE_URL") or ""
 postgres = pytest.mark.skipif(not URL.startswith("postgres"), reason="row-level security needs Postgres")
 APP_ROLE, PROBE_ROLE = "agentcanvas_rls_app", "agentcanvas_rls_probe"
-MIGRATION = pathlib.Path(__file__).parents[1] / "migrations/versions/20261017_a3c7e9b1d5f2_matura_workspaces_rls.py"
+MIGRATIONS = pathlib.Path(__file__).parents[1] / "migrations/versions"
+MIGRATION = MIGRATIONS / "20261017_a3c7e9b1d5f2_matura_workspaces_rls.py"
+LATER = [MIGRATIONS / "20261029_e1a5c9d3f7b2_git_link.py"]  # tables added after it, each with its own policy
 
 
 @pytest.fixture
@@ -53,12 +55,17 @@ def test_every_table_has_a_policy_or_a_reason_not_to():
     for table, (column, parent) in rls.TENANT_TABLES.items():  # each column and parent exists and leads upwards
         assert column in Base.metadata.tables[table].c
         assert parent is None or parent in rls.TENANT_TABLES
-    spec = importlib.util.spec_from_file_location("ts26_migration", MIGRATION)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert module.TABLES == rls.TENANT_TABLES  # the migration's copy matches
-    assert all(module._condition(t) == rls.policy_condition(t) for t in rls.TENANT_TABLES)
+    seen: dict[str, tuple[str, str | None]] = {}
+    for path in (MIGRATION, *LATER):  # the first migration, then each one that added tables (its own copy of them)
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert not set(module.TABLES) & set(seen)
+        assert all(rls.TENANT_TABLES[t] == v for t, v in module.TABLES.items())  # the migration's copy matches
+        assert all(module._condition(t) == rls.policy_condition(t) for t in module.TABLES)
+        seen.update(module.TABLES)
+    assert seen == rls.TENANT_TABLES  # every table with a policy got it from one of them
 
 
 async def _seed(client) -> dict[str, dict[str, str]]:

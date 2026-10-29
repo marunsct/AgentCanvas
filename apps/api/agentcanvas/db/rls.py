@@ -63,6 +63,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "annotation_queue": ("workflow_id", "workflow"),
     "trigger": ("workflow_id", "workflow"),
     "copilot_conversation": ("workflow_id", "workflow"),
+    "git_link": ("workflow_id", "workflow"),
     "dataset_version": ("dataset_id", "dataset"),
     "experiment_result": ("experiment_id", "experiment"),
     "knowledge_document": ("kb_id", "knowledge_base"),

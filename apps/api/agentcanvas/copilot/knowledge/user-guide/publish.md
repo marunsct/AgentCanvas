@@ -23,6 +23,11 @@ reports breaking contract changes (a removed input, a changed type) against the 
 server, Kubernetes, Cloud Run, AWS or Azure), with a service that answers the same API as a deployment and guides
 written for the workflow. See [Export and deploy](export.md).
 
+## Pull requests for versions
+
+A workflow connected to a Git branch opens or updates a pull request with its export and the diff of what changed on
+every publish. See [Git round trip](export.md#git-round-trip-a-pull-request-for-every-change).
+
 ## Publish
 
 **Publish** (or **Publish to prod**) creates a **deployment**: one per environment (`prod`, `staging`, `dev`, …),

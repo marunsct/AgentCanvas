@@ -15,6 +15,7 @@ import re
 import zipfile
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -38,6 +39,7 @@ class Pushed:
     branch: str
     created_branch: bool
     files: int
+    changed: bool = True  # False: `skip_unchanged` found nothing to commit
 
 
 def files_of(zip_bytes: bytes) -> dict[str, bytes]:
@@ -58,54 +60,139 @@ def check(repo: str, branch: str, folder: str) -> None:
         raise InvalidInput(f"'{folder}' is not a valid folder (letters, digits, . _ - and / between parts)")
 
 
+class Client:
+    """One repository's REST API for a token (`api` and `transport` are for tests: a mock transport, never GitHub)."""
+
+    def __init__(self, repo: str, token: str, transport: httpx.AsyncBaseTransport | None = None, api: str = API):
+        self.repo = repo
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                   "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "AgentCanvas"}  # fmt: skip
+        self.http = httpx.AsyncClient(base_url=api, headers=headers, transport=transport, timeout=30)
+
+    async def __aenter__(self) -> Client:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.http.aclose()
+
+    async def call(
+        self, method: str, path: str, json: Any = None, ok: tuple[int, ...] = (200, 201), missing: bool = False,
+        params: dict[str, str] | None = None, accept: str | None = None,
+    ) -> Any:  # fmt: skip
+        """The answer of `/repos/<repo><path>`: JSON (or the body's bytes when `accept` asks for raw content);
+        None for a 404 when `missing` says that is an answer, else a GitHubError that says what to fix."""
+        try:
+            r = await self.http.request(method, f"/repos/{self.repo}{path}", json=json, params=params,
+                                        headers={"Accept": accept} if accept else None)  # fmt: skip
+        except httpx.HTTPError as exc:
+            raise GitHubError(f"GitHub could not be reached: {type(exc).__name__}") from exc
+        if r.status_code in ok:
+            return r.content if accept else r.json()
+        if r.status_code == 404 and missing:
+            return None
+        raise GitHubError(_explain(r, self.repo))
+
+
 async def push(
     files: dict[str, bytes], *, repo: str, branch: str, folder: str, message: str, token: str,
     transport: httpx.AsyncBaseTransport | None = None, api: str = API,
+    root_files: dict[str, bytes] | None = None, prune: bool = False, skip_unchanged: bool = False,
 ) -> Pushed:  # fmt: skip
-    """One commit putting `files` under `folder` of `repo` on `branch` (created from the default branch if new)."""
+    """One commit putting `files` under `folder` of `repo` on `branch` (created from the default branch if new).
+
+    `root_files` go at the repository's root (such as a CI file, which GitHub reads only from `.github/workflows`);
+    `prune` deletes what the folder holds that `files` no longer has; `skip_unchanged` makes no commit when the
+    result would be the tree the branch already has (`Pushed.changed` says whether there was one)."""
     check(repo, branch, folder)
-    if len(files) > MAX_FILES:
+    if len(files) + len(root_files or {}) > MAX_FILES:
         raise InvalidInput(f"the export has {len(files)} files; at most {MAX_FILES} can be pushed at once")
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-               "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "AgentCanvas"}  # fmt: skip
-    async with httpx.AsyncClient(base_url=api, headers=headers, transport=transport,
-                                 timeout=30) as gh:  # fmt: skip
-
-        async def call(method: str, path: str, json: Any = None, ok: tuple[int, ...] = (200, 201)) -> Any:
-            try:
-                r = await gh.request(method, f"/repos/{repo}{path}", json=json)
-            except httpx.HTTPError as exc:
-                raise GitHubError(f"GitHub could not be reached: {type(exc).__name__}") from exc
-            if r.status_code in ok:
-                return r.json()
-            if r.status_code == 404 and path == "/git/ref/heads/" + branch:
-                return None
-            raise GitHubError(_explain(r, repo))
-
-        ref = await call("GET", f"/git/ref/heads/{branch}")
+    async with Client(repo, token, transport, api) as gh:
+        ref = await gh.call("GET", f"/git/ref/heads/{branch}", missing=True)
         created = ref is None
         if created:
-            default = (await call("GET", ""))["default_branch"]
-            base = await call("GET", f"/git/ref/heads/{default}")
+            default = (await gh.call("GET", ""))["default_branch"]
+            base = await gh.call("GET", f"/git/ref/heads/{default}", missing=True)
             if base is None:
                 raise GitHubError(f"{repo} has no commits yet; add a first commit (a README) and push again")
             parent = base["object"]["sha"]
         else:
             parent = ref["object"]["sha"]
-        base_tree = (await call("GET", f"/git/commits/{parent}"))["tree"]["sha"]
-        tree = []
-        for path, data in sorted(files.items()):
-            blob = await call("POST", "/git/blobs", {"content": base64.b64encode(data).decode(), "encoding": "base64"})
-            tree.append({"path": f"{folder}/{path}" if folder else path, "mode": "100644", "type": "blob",
-                         "sha": blob["sha"]})  # fmt: skip
-        new_tree = await call("POST", "/git/trees", {"base_tree": base_tree, "tree": tree})
-        commit = await call("POST", "/git/commits", {"message": message, "tree": new_tree["sha"], "parents": [parent]})
+        base_tree = (await gh.call("GET", f"/git/commits/{parent}"))["tree"]["sha"]
+        wanted = {f"{folder}/{path}" if folder else path: data for path, data in files.items()}
+        wanted.update(root_files or {})
+        tree: list[dict[str, Any]] = []
+        for path, data in sorted(wanted.items()):
+            content = base64.b64encode(data).decode()
+            blob = await gh.call("POST", "/git/blobs", {"content": content, "encoding": "base64"})
+            tree.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
+        if prune:  # what the folder holds that this export no longer has
+            listing = await gh.call("GET", f"/git/trees/{base_tree}", params={"recursive": "1"})
+            if listing.get("truncated"):
+                raise GitHubError(f"{repo} is too large to compare its files; push without pruning")
+            prefix = f"{folder}/" if folder else ""
+            tree += [{"path": e["path"], "mode": "100644", "type": "blob", "sha": None} for e in listing["tree"]
+                     if e["type"] == "blob" and e["path"].startswith(prefix) and e["path"] not in wanted]  # fmt: skip
+        new_tree = await gh.call("POST", "/git/trees", {"base_tree": base_tree, "tree": tree})
+        if skip_unchanged and new_tree["sha"] == base_tree and not created:
+            return Pushed(commit=parent, url=_url(repo, branch, folder), branch=branch, created_branch=False,
+                          files=len(files), changed=False)  # fmt: skip
+        made = {"message": message, "tree": new_tree["sha"], "parents": [parent]}
+        commit = await gh.call("POST", "/git/commits", made)
         if created:
-            await call("POST", "/git/refs", {"ref": f"refs/heads/{branch}", "sha": commit["sha"]})
+            await gh.call("POST", "/git/refs", {"ref": f"refs/heads/{branch}", "sha": commit["sha"]})
         else:
-            await call("PATCH", f"/git/refs/heads/{branch}", {"sha": commit["sha"], "force": False})
-    return Pushed(commit=commit["sha"], url=f"https://github.com/{repo}/tree/{branch}/{folder}".rstrip("/"),
-                  branch=branch, created_branch=created, files=len(files))  # fmt: skip
+            await gh.call("PATCH", f"/git/refs/heads/{branch}", {"sha": commit["sha"], "force": False})
+    return Pushed(commit=commit["sha"], url=_url(repo, branch, folder), branch=branch, created_branch=created,
+                  files=len(files))  # fmt: skip
+
+
+def _url(repo: str, branch: str, folder: str) -> str:
+    return f"https://github.com/{repo}/tree/{branch}/{folder}".rstrip("/")
+
+
+@dataclass
+class PullRequest:
+    number: int
+    url: str
+    created: bool  # opened by this call (False: an open one was updated)
+
+
+async def default_branch(repo: str, token: str, transport: httpx.AsyncBaseTransport | None = None,
+                         api: str = API) -> str:  # fmt: skip
+    async with Client(repo, token, transport, api) as gh:
+        return str((await gh.call("GET", ""))["default_branch"])
+
+
+async def read_file(
+    repo: str, path: str, ref: str, token: str, transport: httpx.AsyncBaseTransport | None = None, api: str = API
+) -> bytes | None:  # fmt: skip
+    """A file of `repo` at a branch, tag or commit; None when the file (or the branch) is not there."""
+    async with Client(repo, token, transport, api) as gh:
+        return await gh.call("GET", f"/contents/{quote(path, safe='/')}", params={"ref": ref}, missing=True,
+                             accept="application/vnd.github.raw+json")  # fmt: skip
+
+
+async def open_pull_request(
+    *, repo: str, branch: str, base: str, title: str, body: str, token: str,
+    transport: httpx.AsyncBaseTransport | None = None, api: str = API,
+) -> PullRequest | None:  # fmt: skip
+    """The open pull request from `branch` into `base`: its title and description are updated, or one is opened.
+    None when GitHub sees nothing to compare (the branch holds what `base` does)."""
+    check(repo, branch, "")
+    async with Client(repo, token, transport, api) as gh:
+        owner = repo.split("/", 1)[0]
+        found = await gh.call("GET", "/pulls", params={"head": f"{owner}:{branch}", "base": base, "state": "open"})
+        if found:
+            number = found[0]["number"]
+            done = await gh.call("PATCH", f"/pulls/{number}", {"title": title, "body": body})
+            return PullRequest(number=number, url=done["html_url"], created=False)
+        try:
+            done = await gh.call("POST", "/pulls", {"title": title, "head": branch, "base": base, "body": body})
+        except GitHubError as exc:
+            if "No commits between" in str(exc):
+                return None
+            raise
+        return PullRequest(number=done["number"], url=done["html_url"], created=True)
 
 
 def _explain(r: httpx.Response, repo: str) -> str:

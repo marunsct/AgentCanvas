@@ -8,6 +8,7 @@ import { useEditor } from "../editor/store";
 import { portability } from "../ir/portability";
 import type { BridgesOut, ExportPlanOut, GitHubPushOut, VersionOut } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
+import { GitSync } from "./GitSync";
 
 type Item = { name?: string; host?: string; port?: number; why?: string; where?: string; what?: string; install?: string; optional?: boolean };
 type Prerequisites = {
@@ -161,6 +162,7 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
       </div>
       {error && <p className="error-text small" role="alert">{error}</p>}
       {as === own && <GitHubPush wfId={wfId} version={version} target={target} />}
+      {as === own && <GitSync wfId={wfId} version={version} target={target} />}
     </section>
   );
 }

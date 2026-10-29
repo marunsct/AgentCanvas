@@ -4788,6 +4788,207 @@
         "title": "GitHubPushOut",
         "type": "object"
       },
+      "GitLinkIn": {
+        "properties": {
+          "auto": {
+            "default": "publish",
+            "description": "open or update the pull request on every publish, every version, or never",
+            "enum": [
+              "off",
+              "publish",
+              "version"
+            ],
+            "title": "Auto",
+            "type": "string"
+          },
+          "branch": {
+            "description": "the branch the pull requests come from",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Branch",
+            "type": "string"
+          },
+          "folder": {
+            "default": "",
+            "description": "where the workflow goes in the repository ('' = the root)",
+            "maxLength": 200,
+            "title": "Folder",
+            "type": "string"
+          },
+          "repo": {
+            "description": "owner/name of the repository",
+            "maxLength": 200,
+            "title": "Repo",
+            "type": "string"
+          },
+          "target": {
+            "default": "local",
+            "enum": [
+              "local",
+              "server",
+              "kubernetes",
+              "cloudrun",
+              "aws",
+              "azure"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "token_secret": {
+            "default": "GITHUB_TOKEN",
+            "description": "project secret",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Token Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "branch"
+        ],
+        "title": "GitLinkIn",
+        "type": "object"
+      },
+      "GitLinkOut": {
+        "properties": {
+          "auto": {
+            "enum": [
+              "off",
+              "publish",
+              "version"
+            ],
+            "title": "Auto",
+            "type": "string"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "folder": {
+            "title": "Folder",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "last_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the version (or 'draft') the branch was last given",
+            "title": "Last Version"
+          },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
+          "pr_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Url"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "token_secret": {
+            "title": "Token Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "branch",
+          "folder",
+          "token_secret",
+          "target",
+          "auto"
+        ],
+        "title": "GitLinkOut",
+        "type": "object"
+      },
+      "GitSyncOut": {
+        "description": "What opening the pull request after a publish or a saved version did (`error`: it did not, and why).",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
+          "pr_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Url"
+          }
+        },
+        "title": "GitSyncOut",
+        "type": "object"
+      },
       "GuidePage": {
         "properties": {
           "markdown": {
@@ -7963,6 +8164,17 @@
           },
           "deployment": {
             "$ref": "#/components/schemas/DeploymentOut"
+          },
+          "git": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitSyncOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the pull request opened or updated for this version (G-14)"
           }
         },
         "required": [
@@ -7972,9 +8184,92 @@
         "title": "PublishOut",
         "type": "object"
       },
-      "PushIn": {
+      "PullIn": {
         "properties": {
+          "overwrite": {
+            "default": false,
+            "description": "replace the draft even though it changed since the last sync",
+            "title": "Overwrite",
+            "type": "boolean"
+          }
+        },
+        "title": "PullIn",
+        "type": "object"
+      },
+      "PullOut": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "applied",
+              "same",
+              "unchanged"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "summary": {
+            "description": "what the import changed in the draft",
+            "title": "Summary",
+            "type": "string"
+          },
           "version": {
+            "description": "the draft's version after the import",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "outcome",
+          "version",
+          "summary"
+        ],
+        "title": "PullOut",
+        "type": "object"
+      },
+      "PushOut": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "changed": {
+            "description": "false: the branch already held exactly this export",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "created_branch": {
+            "title": "Created Branch",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "pr_created": {
+            "default": false,
+            "title": "Pr Created",
+            "type": "boolean"
+          },
+          "pr_number": {
             "anyOf": [
               {
                 "type": "integer"
@@ -7983,11 +8278,29 @@
                 "type": "null"
               }
             ],
-            "description": "default: the latest version",
-            "title": "Version"
+            "title": "Pr Number"
+          },
+          "pr_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Url"
           }
         },
-        "title": "PushIn",
+        "required": [
+          "commit",
+          "branch",
+          "base",
+          "changed",
+          "created_branch",
+          "label"
+        ],
+        "title": "PushOut",
         "type": "object"
       },
       "QueueIn": {
@@ -11759,6 +12072,61 @@
         "title": "WorkspaceOut",
         "type": "object"
       },
+      "agentcanvas__api__v1__datasets__PushIn": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "default: the latest version",
+            "title": "Version"
+          }
+        },
+        "title": "PushIn",
+        "type": "object"
+      },
+      "agentcanvas__api__v1__gitsync__PushIn": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the commit message",
+            "title": "Message"
+          },
+          "overwrite": {
+            "default": false,
+            "description": "replace changes made on the branch since the last sync",
+            "title": "Overwrite",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a version's semver; the draft when left out",
+            "title": "Version"
+          }
+        },
+        "title": "PushIn",
+        "type": "object"
+      },
       "agentcanvas__api__v1__setup__TestOut": {
         "properties": {
           "error": {
@@ -13377,7 +13745,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PushIn"
+                "$ref": "#/components/schemas/agentcanvas__api__v1__datasets__PushIn"
               }
             }
           },
@@ -26938,6 +27306,363 @@
         "summary": "Set Gate",
         "tags": [
           "release gates"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/git": {
+      "delete": {
+        "description": "Forget the connection (the branch and its pull requests stay on GitHub).",
+        "operationId": "disconnect_v1_workflows__wf_id__git_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Disconnect",
+        "tags": [
+          "git"
+        ]
+      },
+      "get": {
+        "description": "The workflow's Git connection (null when it has none).",
+        "operationId": "get_link_v1_workflows__wf_id__git_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GitLinkOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Link V1 Workflows  Wf Id  Git Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Link",
+        "tags": [
+          "git"
+        ]
+      },
+      "put": {
+        "description": "Connect the workflow to a branch of a GitHub repository (or change where it is connected to).",
+        "operationId": "connect_v1_workflows__wf_id__git_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitLinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Connect",
+        "tags": [
+          "git"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/git/pull": {
+      "post": {
+        "description": "Import the workflow on the branch into the draft. Refused (409) when the draft and the branch both changed\nsince the last sync, unless `overwrite`; save a version first to keep the draft.",
+        "operationId": "pull_v1_workflows__wf_id__git_pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PullIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pull",
+        "tags": [
+          "git"
+        ]
+      }
+    },
+    "/v1/workflows/{wf_id}/git/push": {
+      "post": {
+        "description": "Commit a version (or the draft) to the branch and open or update the pull request: its description is the\nworkflow's diff against the default branch, and a CI file runs the export's tests.",
+        "operationId": "push_v1_workflows__wf_id__git_push_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wf_id",
+            "required": true,
+            "schema": {
+              "title": "Wf Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/agentcanvas__api__v1__gitsync__PushIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Push",
+        "tags": [
+          "git"
         ]
       }
     },

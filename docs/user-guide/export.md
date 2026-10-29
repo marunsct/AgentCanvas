@@ -62,6 +62,38 @@ The token never leaves the server. Through the API: `POST /v1/workflows/{id}/git
 `{"repo": "acme/agents", "branch": "agentcanvas/support", "folder": "agents/support"}` (and optionally `version`,
 `target`, `message`, or `token_secret` to use another secret).
 
+## Git round trip: a pull request for every change
+
+**Connect to Git…** (under **Push to GitHub…** in the Export box) ties the workflow to a branch of a GitHub
+repository, so a change goes out as a pull request and a merged one comes back in:
+
+1. Enter the repository (`owner/name`), a branch that is **not** the repository's default branch (for example
+   `agentcanvas/support`), an optional folder, and when to open pull requests: on every **publish** (the default),
+   on every saved **version**, or **off** (on demand with **Open pull request**). It uses the same project secret as
+   Push to GitHub, `GITHUB_TOKEN`; the token also needs **Pull requests: read and write**, and **Workflows: read and
+   write** for the CI file below.
+2. **Open pull request** (or a publish) commits the export of that version, or of the draft, to the branch and opens
+   a pull request into the default branch, or updates the open one. The commit holds the export, `workflow.ir.json`
+   (the workflow itself) and `.github/workflows/agentcanvas-<workflow>.yml`.
+3. **The description is the diff.** It lists what changed in the workflow compared with what the default branch holds:
+   steps, resources, connections, state fields and settings, a table of field changes for each changed step, and the
+   changes that would break callers. It is the same comparison the Versions tab draws on the canvas.
+4. **The status check.** The CI file runs the export's own tests (`uv sync`, `uv run pytest -q`: offline, no API keys)
+   on the pull request, as the check `export tests`. Require it in the repository's branch protection to block a
+   merge that breaks them.
+5. **Import from branch** reads `workflow.ir.json` from the branch into the draft, for example after the pull
+   request was changed on GitHub or merged.
+
+Neither direction overwrites what the other side changed since the last sync. A push is refused (409) when the branch
+holds changes AgentCanvas does not have; an import is refused when the draft **and** the branch both changed (the
+message says what the import would change). Save a version to keep the draft, then choose **overwrite**. An import
+changes only the draft: it is an ordinary edit, so **Undo** and the version history keep what was there.
+
+Files the export no longer has are removed from the folder; files elsewhere in the repository are never touched.
+If publishing cannot reach GitHub, the publish still succeeds and the Git panel shows the error. Through the API:
+`PUT /v1/workflows/{id}/git` (connect), `POST …/git/push` with `{"version": "1.2.0"}` (or none for the draft),
+`POST …/git/pull`, `GET` and `DELETE …/git`.
+
 ## Export a whole workflow to another framework (preview)
 
 In the Export box, **Framework** also offers **LangGraph (through Agent Spec)**, **WayFlow** and **OpenAI Agents

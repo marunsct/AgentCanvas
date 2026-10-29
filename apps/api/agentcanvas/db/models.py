@@ -492,6 +492,28 @@ class ReleaseGate(Base):
     updated_at: Mapped[datetime] = _now()
 
 
+class GitLink(Base):
+    """G-14: a workflow connected to a branch of a GitHub repository (pull requests out, imports back)."""
+
+    __tablename__ = "git_link"
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), primary_key=True)
+    repo: Mapped[str] = mapped_column(Text)  # owner/name
+    branch: Mapped[str] = mapped_column(Text)
+    folder: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+    token_secret: Mapped[str] = mapped_column(Text, default="GITHUB_TOKEN", server_default=text("'GITHUB_TOKEN'"))
+    target: Mapped[str] = mapped_column(Text, default="local", server_default=text("'local'"))
+    auto: Mapped[str] = mapped_column(Text, default="publish", server_default=text("'publish'"))  # off|publish|version
+    repo_hash: Mapped[str | None] = mapped_column(Text)  # hash of the IR the branch held when we last pushed or pulled
+    pr_number: Mapped[int | None] = mapped_column(Integer)
+    pr_url: Mapped[str | None] = mapped_column(Text)
+    last_version: Mapped[str | None] = mapped_column(Text)  # the version (or "draft") last pushed
+    last_synced_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _now()
+
+
 class OnlineEvaluator(Base):
     """FR-EVAL-06: an evaluator scoring a sample of a deployment's finished runs in the background (S13)."""
 

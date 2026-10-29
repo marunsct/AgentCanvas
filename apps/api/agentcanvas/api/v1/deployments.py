@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.gates import gate_for
+from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
 from agentcanvas.api.v1.runs import _context, _respond
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
@@ -67,6 +68,9 @@ class PublishOut(BaseModel):
         None, description="shown once: when the deployment is created, or published again after an unpublish"
     )
     checklist: list[Check]
+    git: GitSyncOut | None = Field(
+        default=None, description="the pull request opened or updated for this version (G-14)"
+    )
 
 
 class KeyOut(BaseModel):
@@ -143,7 +147,9 @@ async def publish(
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version)
-    return PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+    out = PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+    out.git = await sync_after_version(request, session, wf_id, version, "publish")  # G-14: never fails the publish
+    return out
 
 
 async def _live(session: AsyncSession, wf_id: str, environment: str) -> tuple[Workflow, str, str] | None:

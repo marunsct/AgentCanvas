@@ -93,7 +93,11 @@ async def create_version(
     v, _ = await VersionService(session).create(
         wf_id, message=body.message, bump=body.bump, workspace_commit=commit, created_by=user.id
     )
-    return _version(v)
+    out = _version(v)
+    from agentcanvas.api.v1.gitsync import sync_after_version
+
+    await sync_after_version(request, session, wf_id, v, "version")  # G-14: a pull request, when the link asks for one
+    return out
 
 
 @router.get("/workflows/{wf_id}/versions", response_model=list[VersionOut])

@@ -893,6 +893,44 @@ export type Commit = string;
 export type CreatedBranch = boolean;
 export type Files2 = number;
 export type Url2 = string;
+/**
+ * open or update the pull request on every publish, every version, or never
+ */
+export type Auto = "off" | "publish" | "version";
+/**
+ * the branch the pull requests come from
+ */
+export type Branch2 = string;
+/**
+ * where the workflow goes in the repository ('' = the root)
+ */
+export type Folder2 = string;
+/**
+ * owner/name of the repository
+ */
+export type Repo1 = string;
+export type Target4 = "local" | "server" | "kubernetes" | "cloudrun" | "aws" | "azure";
+/**
+ * project secret
+ */
+export type TokenSecret1 = string;
+export type Auto1 = "off" | "publish" | "version";
+export type Branch3 = string;
+export type Folder3 = string;
+export type LastError = string | null;
+export type LastSyncedAt = string | null;
+/**
+ * the version (or 'draft') the branch was last given
+ */
+export type LastVersion = string | null;
+export type PrNumber = number | null;
+export type PrUrl = string | null;
+export type Repo2 = string;
+export type Target5 = string;
+export type TokenSecret2 = string;
+export type Error4 = string | null;
+export type PrNumber1 = number | null;
+export type PrUrl1 = string | null;
 export type Markdown = string;
 export type Page1 = string;
 export type Title2 = string;
@@ -983,7 +1021,7 @@ export type OrgName = string;
 export type Role1 = string;
 export type Annotations = AnnotationOut[];
 export type CreatedAt17 = string;
-export type Error4 = string | null;
+export type Error5 = string | null;
 export type Id36 = string;
 export type Input6 = {
   [k: string]: unknown;
@@ -1207,7 +1245,7 @@ export type TemplateFields = string[];
 export type Type7 = string;
 export type Version10 = string;
 export type Writes1 = string[];
-export type Error5 = string | null;
+export type Error6 = string | null;
 export type ExpectedTrajectory = string[] | null;
 export type Status10 = string;
 /**
@@ -1539,9 +1577,31 @@ export type OverrideReason = string | null;
 export type ApiKey4 = string | null;
 export type Checklist = Check[];
 /**
- * default: the latest version
+ * replace the draft even though it changed since the last sync
  */
-export type Version11 = number | null;
+export type Overwrite = boolean;
+export type Outcome = "applied" | "same" | "unchanged";
+/**
+ * what the import changed in the draft
+ */
+export type Summary6 = string;
+/**
+ * the draft's version after the import
+ */
+export type Version11 = number;
+export type Base = string;
+export type Branch4 = string;
+/**
+ * false: the branch already held exactly this export
+ */
+export type Changed1 = boolean;
+export type Commit1 = string;
+export type CreatedBranch1 = boolean;
+export type Label18 = string;
+export type Note = string | null;
+export type PrCreated = boolean;
+export type PrNumber2 = number | null;
+export type PrUrl2 = string | null;
 export type Instructions = string;
 export type Name47 = string;
 export type ReviewersPerItem = number;
@@ -1962,7 +2022,7 @@ export type Pins1 = {
 export type Stream1 = boolean;
 export type CostUsd3 = number;
 export type EndedAt1 = string | null;
-export type Error6 = string | null;
+export type Error7 = string | null;
 export type Id49 = string;
 export type IrHash3 = string;
 export type Mode3 = string;
@@ -1993,7 +2053,7 @@ export type AppliesInject = boolean;
  * an egress list gives code exactly those hosts
  */
 export type EnforcesEgress = boolean;
-export type Error7 = string | null;
+export type Error8 = string | null;
 /**
  * how this server runs workspace code (AGENTCANVAS_SCRIPT_EXECUTION)
  */
@@ -2047,7 +2107,7 @@ export type Name50 = string;
 export type ApiKey5 = string | null;
 export type BaseUrl4 = string | null;
 export type Provider2 = string;
-export type Error8 = string | null;
+export type Error9 = string | null;
 /**
  * model names, without the provider prefix
  */
@@ -2058,7 +2118,7 @@ export type Ok3 = boolean;
  */
 export type Env = string;
 export type Group = string;
-export type Label18 = string;
+export type Label19 = string;
 export type Value6 = string;
 /**
  * {"$secret": NAME}
@@ -2247,7 +2307,7 @@ export type CreatedAt28 = string;
 export type DeploymentId3 = string | null;
 export type Id52 = string;
 export type LastEndedAt = string | null;
-export type LastError = string | null;
+export type LastError1 = string | null;
 export type LastRunId = string | null;
 export type LastStartedAt = string | null;
 export type Runs3 = number;
@@ -2350,7 +2410,23 @@ export type Name58 = string;
 export type Id59 = string;
 export type IsDefault = boolean;
 export type Name59 = string;
-export type Error9 = string | null;
+/**
+ * default: the latest version
+ */
+export type Version15 = number | null;
+/**
+ * the commit message
+ */
+export type Message15 = string | null;
+/**
+ * replace changes made on the branch since the last sync
+ */
+export type Overwrite1 = boolean;
+/**
+ * a version's semver; the draft when left out
+ */
+export type Version16 = string | null;
+export type Error10 = string | null;
 export type Ok4 = boolean;
 export type Reply1 = string | null;
 export type Detail4 = string;
@@ -2464,6 +2540,9 @@ export interface ApiSchemas {
   GateOut?: GateOut;
   GitHubPushIn?: GitHubPushIn;
   GitHubPushOut?: GitHubPushOut;
+  GitLinkIn?: GitLinkIn;
+  GitLinkOut?: GitLinkOut;
+  GitSyncOut?: GitSyncOut;
   GuidePage?: GuidePage;
   GuidePageRef?: GuidePageRef;
   HTTPValidationError?: HTTPValidationError;
@@ -2528,7 +2607,9 @@ export interface ApiSchemas {
   ProviderInfo?: ProviderInfo;
   PublishIn?: PublishIn;
   PublishOut?: PublishOut;
-  PushIn?: PushIn;
+  PullIn?: PullIn;
+  PullOut?: PullOut;
+  PushOut?: PushOut;
   QueueIn?: QueueIn;
   QueueOut?: QueueOut;
   QueuePatch?: QueuePatch;
@@ -2615,6 +2696,8 @@ export interface ApiSchemas {
   WorkflowPatch?: WorkflowPatch;
   WorkflowSummary?: WorkflowSummary;
   WorkspaceOut?: WorkspaceOut;
+  agentcanvas__api__v1__datasets__PushIn?: PushIn;
+  agentcanvas__api__v1__gitsync__PushIn?: PushIn1;
   agentcanvas__api__v1__setup__TestOut?: TestOut;
   agentcanvas__api__v1__traces__TestOut?: TestOut1;
 }
@@ -4309,6 +4392,46 @@ export interface GitHubPushOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "GitLinkIn".
+ */
+export interface GitLinkIn {
+  auto?: Auto;
+  branch: Branch2;
+  folder?: Folder2;
+  repo: Repo1;
+  target?: Target4;
+  token_secret?: TokenSecret1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "GitLinkOut".
+ */
+export interface GitLinkOut {
+  auto: Auto1;
+  branch: Branch3;
+  folder: Folder3;
+  last_error?: LastError;
+  last_synced_at?: LastSyncedAt;
+  last_version?: LastVersion;
+  pr_number?: PrNumber;
+  pr_url?: PrUrl;
+  repo: Repo2;
+  target: Target5;
+  token_secret: TokenSecret2;
+}
+/**
+ * What opening the pull request after a publish or a saved version did (`error`: it did not, and why).
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "GitSyncOut".
+ */
+export interface GitSyncOut {
+  error?: Error4;
+  pr_number?: PrNumber1;
+  pr_url?: PrUrl1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "GuidePage".
  */
 export interface GuidePage {
@@ -4491,7 +4614,7 @@ export interface InvitationOut {
 export interface ItemDetail {
   annotations: Annotations;
   created_at: CreatedAt17;
-  error: Error4;
+  error: Error5;
   id: Id36;
   input: Input6;
   output: Output3;
@@ -4889,7 +5012,7 @@ export interface Targets4 {
  * via the `definition` "Observation".
  */
 export interface Observation {
-  error?: Error5;
+  error?: Error6;
   expected_trajectory?: ExpectedTrajectory;
   input?: Input7;
   output?: Output4;
@@ -5103,13 +5226,42 @@ export interface PublishOut {
   api_key?: ApiKey4;
   checklist: Checklist;
   deployment: DeploymentOut;
+  /**
+   * the pull request opened or updated for this version (G-14)
+   */
+  git?: GitSyncOut | null;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "PushIn".
+ * via the `definition` "PullIn".
  */
-export interface PushIn {
-  version?: Version11;
+export interface PullIn {
+  overwrite?: Overwrite;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "PullOut".
+ */
+export interface PullOut {
+  outcome: Outcome;
+  summary: Summary6;
+  version: Version11;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "PushOut".
+ */
+export interface PushOut {
+  base: Base;
+  branch: Branch4;
+  changed: Changed1;
+  commit: Commit1;
+  created_branch: CreatedBranch1;
+  label: Label18;
+  note?: Note;
+  pr_created?: PrCreated;
+  pr_number?: PrNumber2;
+  pr_url?: PrUrl2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5217,7 +5369,7 @@ export interface Value4 {
 export interface RunOut {
   cost_usd?: CostUsd3;
   ended_at: EndedAt1;
-  error: Error6;
+  error: Error7;
   id: Id49;
   ir_hash: IrHash3;
   mode: Mode3;
@@ -5257,7 +5409,7 @@ export interface Input8 {
 export interface SandboxOut {
   applies_inject: AppliesInject;
   enforces_egress: EnforcesEgress;
-  error?: Error7;
+  error?: Error8;
   mode: Mode5;
   /**
    * the saved policy; null when sandbox.json is invalid
@@ -5358,7 +5510,7 @@ export interface ServerModelsIn {
  * via the `definition` "ServerModelsOut".
  */
 export interface ServerModelsOut {
-  error?: Error8;
+  error?: Error9;
   models?: Models;
   ok: Ok3;
 }
@@ -5369,7 +5521,7 @@ export interface ServerModelsOut {
 export interface ServerSetting {
   env: Env;
   group: Group;
-  label: Label18;
+  label: Label19;
   value: Value6;
 }
 /**
@@ -5643,7 +5795,7 @@ export interface ThreadOut {
   deployment_id?: DeploymentId3;
   id: Id52;
   last_ended_at?: LastEndedAt;
-  last_error?: LastError;
+  last_error?: LastError1;
   last_run_id?: LastRunId;
   last_started_at?: LastStartedAt;
   runs?: Runs3;
@@ -5872,10 +6024,26 @@ export interface WorkspaceOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "agentcanvas__api__v1__datasets__PushIn".
+ */
+export interface PushIn {
+  version?: Version15;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "agentcanvas__api__v1__gitsync__PushIn".
+ */
+export interface PushIn1 {
+  message?: Message15;
+  overwrite?: Overwrite1;
+  version?: Version16;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "agentcanvas__api__v1__setup__TestOut".
  */
 export interface TestOut {
-  error?: Error9;
+  error?: Error10;
   ok: Ok4;
   reply?: Reply1;
 }
