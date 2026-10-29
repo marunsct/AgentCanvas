@@ -136,6 +136,7 @@ class TestCaseService:
             async with gate:
                 return await run_case(runner, wf, case, context, user_id)
 
+        await self.s.commit()  # a case can run for minutes: hold no connection meanwhile (the next query reopens one)
         results = list(await asyncio.gather(*(one(c) for c in cases)))
         if record:
             for case, res in zip(cases, results, strict=True):

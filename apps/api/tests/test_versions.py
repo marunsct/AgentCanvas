@@ -134,6 +134,30 @@ async def test_saved_test_cases_turn_red_when_the_router_changes(app, api_client
     assert len((await api_client.get(base)).json()) == 1
 
 
+async def test_test_case_runs_and_publish_hold_no_database_connection_meanwhile(app, api_client, monkeypatch):
+    """C-5: a case can run for minutes; the request's connection goes back to the pool while it does."""
+    from agentcanvas.services import testcases
+
+    pool = app.state.db.engine.pool
+    held: list[int] = []
+    run_case = testcases.run_case
+
+    async def counted(*args, **kwargs):
+        held.append(pool.checkedout())
+        return await run_case(*args, **kwargs)
+
+    monkeypatch.setattr(testcases, "run_case", counted)
+    wf = await new_triage(api_client)
+    base = f"/v1/workflows/{wf['id']}/test-cases"
+    assert (await api_client.post(base, json=HIGH_CASE)).status_code == 201
+    run = (await api_client.post(f"{base}/run", json={})).json()
+    assert run["passed"] == 1, run
+    assert (await api_client.get(base)).json()[0]["last_result"]["passed"] is True  # still recorded
+    publish = await api_client.post(f"/v1/workflows/{wf['id']}/publish", json={})
+    assert publish.status_code == 200, publish.text
+    assert held == [0, 0]
+
+
 @pytest.mark.parametrize("bad", [{"name": ""}, {"name": "x", "expect": {"status": "maybe"}}])
 async def test_test_case_validation(api_client, bad):
     wf = await new_triage(api_client)
