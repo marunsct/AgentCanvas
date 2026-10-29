@@ -33,6 +33,61 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- After an undo or redo that changed a workflow's budget, the Budget fields kept showing the old numbers. Now they
+  show the budget as it is, while still keeping a number that is half typed.
+- The cron trigger form did not say which time zone a schedule uses, so "0 9 * * *" could be read as 09:00 local
+  time. Now the field and each cron trigger say UTC. (HARDENING C-10).
+- Deleting a test case or a trigger, or removing a release gate or an online evaluator, happened at the first click
+  and a failure was not shown. Now each asks first and says when the server refused; deleting a block, which can be
+  undone, says how to undo it. (HARDENING W-13).
+- In Simple mode, clicking a port offered every block, including the advanced ones Simple mode hides. Now it offers
+  the same blocks as the Simple palette. (HARDENING W-12).
+- On a shared chat page, one malformed event in the reply stream ended the reply there. Now that event is skipped
+  and the rest of the reply arrives. (HARDENING W-12).
+- One knowledge document whose stored web address could not be read took the whole Knowledge page to an error
+  screen. Now the address is shown as text, and only http and https addresses are links. (HARDENING W-12).
+- Pasting while looking inside a subgraph or at a Copilot proposal added the blocks to the top level of the
+  workflow, where they could not be seen. Now paste says to leave that view first. (HARDENING W-11).
+- An undo or redo step left the history before it was saved, so a step the server refused was lost. Now a step
+  leaves the history only once it is saved. (HARDENING W-11).
+- When someone else saved the workflow while a Copilot proposal was being accepted, its edits were applied on the
+  latest version but the proposal stayed open, and accepting it again failed. Now the proposal is marked accepted
+  once its edits are saved. (HARDENING W-11).
+- Selecting a block whose settings have defaults saved the workflow and added a step to undo, because the settings
+  form reported its defaults as an edit. Now only what the person changes is saved. (HARDENING W-11).
+- A block or channel name that was not allowed, or already taken, was silently dropped when the field lost focus,
+  and renaming a channel left the old name in prompts and conditions. Now the field says what is wrong and keeps the
+  text for fixing, and after a channel rename the State panel offers to update the blocks that still use the old
+  name. (HARDENING W-10).
+- On a large workflow the canvas redrew every block several times a second while a run streamed, because each status
+  or token gave every block new data. Now only the blocks whose content changed are redrawn, and the default layout
+  and problem counts are computed once per change instead of once per block. (HARDENING W-9).
+- On a phone the beginner guide opened off screen, where it could not be read or closed, so it opened again on every
+  visit to an empty workflow; the guided build box could run past the screen too. Now both dock at the bottom of a
+  small screen and can be closed. (HARDENING W-8).
+- Pressing Enter to pick characters in a Japanese, Chinese or Korean input method sent the Copilot message half-
+  typed, the More menu could not be used with the arrow keys, and the command palette's Enter could run a command
+  below the twelve it shows. Now Enter during composition only picks characters, the More menu takes the focus and
+  moves with the arrow keys (Escape gives the focus back), and the palette's cursor stays on the commands it shows.
+  (HARDENING W-7).
+- Removing a path from a "Choose a path" block left its arrow in the workflow with nothing to leave from, invisible
+  and impossible to delete, and the Problems dock could not point at it. Now the arrow follows a renamed path and
+  goes with a removed one, and an arrow's problem in the Problems dock shows the arrow and offers "Remove this
+  connection". (HARDENING W-6).
+- After one workflow failed to open, every workflow opened after it showed "Could not load workflow" until a reload,
+  and switching quickly between two workflows could show the first one. Now the error clears on the next open and a
+  late answer for a workflow left behind is ignored. (HARDENING W-5).
+- A double-click on Run or Send started two server runs, and one on Home's "Create empty" or "Start the guided
+  build" created two workflows. Now the second click is ignored while the first is on its way. (HARDENING W-4).
+- In an MCP server's tool list, unticking one tool while all were offered left only that tool offered. Now unticking
+  removes just that tool, ticking the last missing one offers all again, and the last offered tool cannot be
+  unticked. (HARDENING W-3).
+- When the connection to a run's event stream dropped (an API restart, a proxy timeout), the editor stayed on
+  "Running…" with Run, chat and Stop dead until a reload. Now the run panel says the connection was lost and the run
+  can be started again. (HARDENING W-2).
+- When the server refused an edit, the editor threw away the whole undo/redo history and any edits typed while it
+  was being saved. Now only the refused edit is dropped, the notice names it, and the later edits are kept and
+  saved. (HARDENING W-1).
 
 - Exported LangGraph projects build their model clients with the same sampling rule as the server (the rule and the
   catalog file it reads are bundled with the export), so an export of a workflow on a current Claude or GPT-5 model
