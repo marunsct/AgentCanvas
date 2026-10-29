@@ -617,15 +617,19 @@ class KnowledgeService:
         if mode not in ks.MODES:
             raise InvalidInput(f"unknown search mode '{mode}'; use one of {', '.join(ks.MODES)}")
         index = await self.index(kb)
+        if kb.stale:  # the vectors may be another model's: a query embedded with the new one would give noise
+            mode = "keyword"
         qv = None
         if mode != "keyword" and query.strip() and index.chunks:
             qv = (await self._embed(kb, [query]))[0]
         return ks.search(index, query, mode=mode, top_k=top_k, min_score=min_score, query_vector=qv)
 
     async def export(self, kb: KnowledgeBase) -> str:
-        """The knowledge base as `knowledge/<name>.jsonl` for exported projects."""
+        """The knowledge base as `knowledge/<name>.jsonl` for exported projects. A stale one ships without its
+        vectors (they may be another model's than the header names), so the export searches it by keywords too."""
         index = await self.index(kb)
-        return ks.dump_jsonl(kb.name, kb.embedding, index.chunks)
+        chunks = [{**c, "vector": None} for c in index.chunks] if kb.stale else index.chunks
+        return ks.dump_jsonl(kb.name, kb.embedding, chunks)
 
     # ------------------------------------------------------------------- samples ----
     async def sample(self, project_id: str, name: str = "handbook", user_id: str | None = None) -> KnowledgeBase:

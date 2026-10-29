@@ -51,7 +51,9 @@ example `text-embedding-nomic-embed-text-v1.5` in LM Studio or `nomic-embed-text
 embed). An embedding model on the same server as the project's model uses the same address and key.
 
 Changing the chunking or the embedding model marks the knowledge base **stale**; click **Reindex** to split and
-embed every document again.
+embed every document again. Until then it is searched by keywords only, whatever the block's **Match by** says
+(the stored vectors may come from the old model, and comparing them with a question embedded by the new one gives
+noise), and an export ships it without vectors.
 
 ## The Search knowledge block
 

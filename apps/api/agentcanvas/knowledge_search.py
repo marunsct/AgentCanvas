@@ -143,7 +143,8 @@ def builtin_embed(texts: Sequence[str]) -> list[list[float]]:
 
 
 def cosine(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    """Cosine similarity of two vectors of the same length (vectors of different models raise ValueError)."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
@@ -181,6 +182,10 @@ class Index:
             scores.append(s)
         return scores
 
+    def comparable(self, query_vector: Sequence[float]) -> bool:
+        """Whether every chunk has a vector of the query's length, i.e. from the same embedding model."""
+        return all(c.get("vector") and len(c["vector"]) == len(query_vector) for c in self.chunks)
+
     def semantic(self, query_vector: Sequence[float]) -> list[float]:
         return [cosine(query_vector, c["vector"]) if c.get("vector") else 0.0 for c in self.chunks]
 
@@ -196,16 +201,18 @@ def search(
 ) -> list[dict[str, Any]]:
     """The best `top_k` chunks for `query`, each with `score` and a `cite` number (1, 2, …) for answers to quote.
     keyword = BM25 over words; semantic = cosine of embeddings (`query_vector` is the query's embedding from the
-    knowledge base's model, the built-in embedder's by default); hybrid = both rankings fused by reciprocal rank."""
+    knowledge base's model, the built-in embedder's by default); hybrid = both rankings fused by reciprocal rank.
+    When the chunks' vectors cannot be compared with the query's (another model's, or missing), the search is by
+    keywords: comparing vectors of different models gives noise."""
     if mode not in MODES:
         raise ValueError(f"unknown search mode {mode!r}; use one of {', '.join(MODES)}")
     if not index.chunks or not query.strip():
         return []
     ranked: list[tuple[int, float]]
-    if mode == "keyword":
+    qv = None if mode == "keyword" else query_vector if query_vector is not None else builtin_embed([query])[0]
+    if qv is None or not index.comparable(qv):
         ranked = _ranked(index.bm25(query))
     else:
-        qv = query_vector if query_vector is not None else builtin_embed([query])[0]
         semantic = _ranked(index.semantic(qv))
         if mode == "semantic":
             ranked = semantic

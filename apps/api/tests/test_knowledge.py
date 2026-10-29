@@ -95,6 +95,50 @@ def test_search_modes_scores_and_citations():
         ks.search(index, "x", mode="fuzzy")
 
 
+def test_vectors_of_another_model_are_not_compared():
+    """E-2: a 1536-d query zipped with 512-d chunk vectors gave noise; such a search is by keywords instead."""
+    index = _index()
+    other = [0.03] * 1536
+    for mode in ("semantic", "hybrid"):
+        assert ks.search(index, "lost laptop", mode=mode, query_vector=other) == ks.search(
+            index, "lost laptop", mode="keyword"
+        )
+    with pytest.raises(ValueError):
+        ks.cosine([1.0, 0.0], [1.0, 0.0, 0.0])
+
+
+async def test_a_stale_knowledge_base_is_searched_by_keywords_until_it_is_reindexed(app):
+    """E-2: after a change of embedding model the old vectors were compared with a query embedded by the new model,
+    and the export shipped them under the new model's name."""
+    calls: list[list[str]] = []
+
+    async def provider(texts):
+        calls.append(list(texts))
+        return [[float(len(t) % 7), 1.0, 0.5] for t in texts]
+
+    def factory(spec, secrets):
+        return kn.builtin_embed if (spec.get("model") or ks.BUILTIN) == ks.BUILTIN else provider
+
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s, embedder=factory)
+        kb = await svc.create("prj_default", "stale-test")
+        for title, text in (("Leave", "Everyone gets 25 vacation days."), ("IT", "Report a lost laptop to IT.")):
+            await svc.add(kb.id, title=title, text=text)
+        kb = await svc.update(kb.id, embedding=kn.Embedding(model="fake:embed-3"))
+        assert kb.stale
+        for mode in ks.MODES:
+            found = await svc.search(kb, "lost laptop", mode=mode)
+            assert [r["title"] for r in found] == ["IT"]
+            assert found == await svc.search(kb, "lost laptop", mode="keyword")
+        assert calls == []  # the query is not embedded with a model the vectors did not come from
+        assert '"vector"' not in await svc.export(kb)
+        kb = await svc.reindex(kb.id)
+        assert not kb.stale and '"vector"' in await svc.export(kb)
+        calls.clear()
+        await svc.search(kb, "lost laptop", mode="semantic")
+        assert calls == [["lost laptop"]]
+
+
 def test_retrieval_metrics():
     m = ks.retrieval_metrics(["a", "x", "b", "y"], ["a", "b"], k=3)
     assert m == {"recall": 1.0, "precision": 2 / 3, "hit": 1.0, "mrr": 1.0}

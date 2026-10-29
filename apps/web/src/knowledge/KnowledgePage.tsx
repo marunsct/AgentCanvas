@@ -152,7 +152,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
       </p>
       {kb.stale && (
         <div className="callout warn" role="status" data-testid="kb-stale">
-          The settings changed since the documents were split and embedded.{" "}
+          The settings changed since the documents were split and embedded: searches match keywords only until you reindex.{" "}
           {builder && <button type="button" onClick={() => reindex.mutate()} disabled={reindex.isPending}>{reindex.isPending ? "Reindexing…" : "Reindex"}</button>}
         </div>
       )}
