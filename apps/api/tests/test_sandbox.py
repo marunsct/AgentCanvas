@@ -369,3 +369,38 @@ async def test_another_process_cannot_read_a_calls_proxy_credential(tmp_path):
 
     _, env, _ = subprocess_command(tmp_path, "scripts.peek:run")
     assert not any("secretcred" in v or "PROXY" in k for k, v in env.items())  # the credential is not in the env
+
+
+async def test_udp_is_blocked_like_tcp(tmp_path):
+    """R-11: the child's network guard covered connections but not datagrams, so a script could send data out over
+    UDP (as DNS queries, say). A guard against mistakes only: the container's network is the real wall."""
+    from agentcanvas.sandbox.runners import _exchange
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "udp.py").write_text(
+        "import socket\n\n\ndef run(state):\n    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
+        "    try:\n        s.sendto(b'x', ('192.0.2.1', 53))\n        return {'sent': True}\n"
+        "    except PermissionError:\n        return {'sent': False}\n"
+    )
+    out = await _exchange("subprocess", tmp_path, "scripts.udp:run", {"state": {}}, "", 20)
+    assert out["update"] == {"sent": False}
+
+
+async def test_the_run_gate_checks_again_after_the_workspace_changes():
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.run_gate import RunGate
+    from agentcanvas.settings import Settings
+
+    registries = [object()]
+    gate = RunGate(Settings(), registry=lambda wf: registries[-1])
+    checked: list[object] = []
+    gate.blockers = lambda wf, registry=None: checked.append(registry) or []  # type: ignore[method-assign]
+    wf = Workflow.model_validate({"id": "wf_g", "name": "g", **GREETER})
+    await gate(wf)
+    await gate(wf)
+    assert len(checked) == 1  # the same workflow and code: checked once
+    registries.append(object())  # the workspace code changed: a new registry
+    await gate(wf)
+    assert len(checked) == 2

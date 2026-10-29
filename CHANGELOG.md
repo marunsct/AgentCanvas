@@ -62,6 +62,10 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Smaller run-time fixes: the version a published conversation continues on is read by the order of its runs, not
+  their start time (SQLite keeps that to the second); the security check before a run is repeated when the workspace
+  code changes, not only when the workflow does; the child-process sandbox's network guard covers UDP too (HARDENING
+  R-11).
 - An event handler with a dedup key that failed (a timeout, a service down) never saw that event again: its
   redelivery was skipped as a duplicate. The key is now kept only when the handler finished, so a redelivered event
   reaches it once more (HARDENING R-10).

@@ -54,8 +54,20 @@ def _block_network(proxy: str = "") -> None:
     def connect_ex(self, address):
         return real_connect_ex(self, address) if to_proxy(address) else refuse()
 
+    real_sendto, real_sendmsg = socket.socket.sendto, socket.socket.sendmsg
+
+    def sendto(self, data, *args):
+        return real_sendto(self, data, *args) if to_proxy(args[-1]) else refuse()
+
+    def sendmsg(self, buffers, ancdata=(), flags=0, address=None):
+        if address is not None and not to_proxy(address):
+            return refuse()
+        return real_sendmsg(self, buffers, ancdata, flags, *([address] if address is not None else []))
+
     socket.socket.connect = connect  # type: ignore[method-assign]
     socket.socket.connect_ex = connect_ex  # type: ignore[method-assign]
+    socket.socket.sendto = sendto  # type: ignore[method-assign]  # UDP: no data out but to the proxy either (R-11)
+    socket.socket.sendmsg = sendmsg  # type: ignore[method-assign]
     socket.getaddrinfo = getaddrinfo  # type: ignore[assignment]
     if not proxy:
         socket.create_connection = refuse  # type: ignore[assignment]

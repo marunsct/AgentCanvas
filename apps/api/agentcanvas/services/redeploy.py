@@ -66,7 +66,7 @@ async def thread_version(session: AsyncSession, thread_id: str, current: Workflo
     pinned_id = await session.scalar(
         select(Run.workflow_version_id)
         .where(Run.thread_id == thread_id, Run.workflow_version_id.is_not(None))
-        .order_by(Run.started_at.desc())
+        .order_by(Run.id.desc())  # ids are time-ordered; `started_at` has second resolution on SQLite (R-11)
         .limit(1)
     )
     if pinned_id is None or pinned_id == current.id:

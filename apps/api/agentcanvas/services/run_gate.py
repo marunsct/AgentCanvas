@@ -32,21 +32,24 @@ class RunGate:
         self.registry = registry  # the workflow's project registry (built-ins + workspace custom nodes)
         self._passed: OrderedDict[str, None] = OrderedDict()
 
-    def blockers(self, wf: Workflow) -> list[dict[str, Any]]:
+    def blockers(self, wf: Workflow, registry: Any = None) -> list[dict[str, Any]]:
         found = validate(
             wf,
-            self.registry(wf) if self.registry else None,
+            registry if registry is not None else (self.registry(wf) if self.registry else None),
             edition=self.settings.edition,
             allow_local_mcp=self.settings.allow_local_mcp,
         )
         return [d.model_dump() for d in found if d.severity == "error" and d.code in SECURITY_CODES]
 
     async def __call__(self, wf: Workflow) -> None:
-        key = f"{self.settings.edition}:{self.settings.allow_local_mcp}:{ir_hash(wf)}"
+        registry = self.registry(wf) if self.registry else None
+        # the project's registry is rebuilt when its workspace code changes, and some rules read that code (E080
+        # imports from outside the workspace): a passed check holds for this code only (R-11)
+        key = f"{self.settings.edition}:{self.settings.allow_local_mcp}:{ir_hash(wf)}:{id(registry)}"
         if key in self._passed:
             self._passed.move_to_end(key)
             return
-        errors = self.blockers(wf)
+        errors = self.blockers(wf, registry)
         if errors:
             raise WorkflowHasErrors(
                 f"workflow breaks {len(errors)} security rule(s) ({', '.join(sorted({e['code'] for e in errors}))}); "
