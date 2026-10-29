@@ -72,6 +72,15 @@ def _coerce(cell: str, schema: dict[str, Any]) -> Any:
 
 
 def parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Example]:
+    # no cell is longer than the file (the module's default is 128 KB); only ever raised, as the limit is global
+    csv.field_size_limit(max(csv.field_size_limit(), len(content) + 1))
+    try:
+        return _parse_csv(content, wf, mapping)
+    except csv.Error as exc:
+        raise InvalidInput(f"not a CSV file: {exc}") from None
+
+
+def _parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Example]:
     reader = csv.DictReader(io.StringIO(content))
     columns = reader.fieldnames or []
     terms = contract(wf)

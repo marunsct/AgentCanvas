@@ -114,6 +114,24 @@ async def test_import_and_export(api_client):
     assert broken.status_code == 422 and broken.json()["detail"].startswith("line 2:")
 
 
+async def test_a_csv_with_a_long_cell_imports_and_a_broken_one_is_refused(api_client, monkeypatch):
+    import csv as csv_module
+
+    wf = await make_greeter(api_client)
+    base = f"/v1/datasets/{(await new_dataset(api_client, wf))['id']}"
+    long = "x" * 200_000  # over the csv module's 128 KB default
+    r = await api_client.post(f"{base}/import", json={"format": "csv", "content": f"who\n{long}\n"})
+    assert r.status_code == 200, r.text[:200]
+    assert r.json()["items"][0]["input"] == {"who": long}
+
+    def broken(*_a, **_k):
+        raise csv_module.Error("unexpected end of data")
+
+    monkeypatch.setattr(csv_module, "DictReader", broken)
+    r = await api_client.post(f"{base}/import", json={"format": "csv", "content": "who\nAda\n"})
+    assert r.status_code == 422 and "not a CSV file" in r.json()["detail"], r.text[:200]
+
+
 async def test_a_dataset_named_outside_latin1_exports_under_its_name(api_client):
     wf = await make_greeter(api_client)
     ds = await new_dataset(api_client, wf, 'Tickets 日本 "q"')
