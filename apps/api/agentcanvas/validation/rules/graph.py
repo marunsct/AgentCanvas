@@ -50,7 +50,8 @@ def router_routes(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 @rule
 def loops_have_exits(ctx: ValidationContext) -> Iterator[Diagnostic]:
-    """W001: every cycle should pass through a router (a guarded exit), else it runs to the recursion limit."""
+    """W001: every cycle should pass through a router or a map (a guarded exit: a map leaves by its `empty` output),
+    else it runs to the recursion limit."""
     succ = ctx.successors
     color: dict[str, int] = {}
     reported: set[frozenset[str]] = set()
@@ -61,7 +62,7 @@ def loops_have_exits(ctx: ValidationContext) -> Iterator[Diagnostic]:
         for v in sorted(succ.get(u, ())):
             if color.get(v) == 1 and v in path:
                 loop = frozenset(path[path.index(v) :])
-                if not ctx.router_ids.intersection(loop) and loop not in reported:
+                if not ctx.conditional_ids.intersection(loop) and loop not in reported:
                     reported.add(loop)
                     members = ", ".join(sorted(names.get(x, x) for x in loop))
                     yield warning(

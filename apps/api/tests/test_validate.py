@@ -287,6 +287,35 @@ def test_ir_1_0_documents_are_upgraded(triage):
     assert Workflow.model_validate(doc).ir_version == "1.2"
 
 
+def test_a_loop_through_a_map_has_an_exit():
+    """E-4: a map leaves the loop by its `empty` output (Finish when it is not connected), like a router's path."""
+    wf = Workflow(
+        id="wf_map_loop",
+        name="map_loop",
+        nodes=[
+            Node(id="n_plan", type="core.set", name="plan", config={"values": {"note": "{{ state.notes | length }}"}}),
+            Node(id="n_map", type="core.map", name="each_topic", config={"items": "topics", "item": "topic"}),
+            Node(id="n_work", type="core.set", name="work", config={"values": {"notes": "{{ state.topic }}"}}),
+        ],
+        edges=[
+            flow("e1", "START", "n_plan"),
+            flow("e2", "n_plan", "n_map"),
+            flow("e3", "n_map", "n_work", port="each"),
+            flow("e4", "n_work", "n_plan"),
+            flow("e5", "n_map", "END", port="empty"),
+        ],
+        state={
+            "channels": [
+                {"name": "topics", "type": {"type": "array"}},
+                {"name": "topic"},
+                {"name": "notes", "type": {"type": "array"}, "reducer": "append"},
+                {"name": "note"},
+            ]
+        },
+    )  # type: ignore[arg-type]
+    assert "W001" not in codes(wf) and not [d for d in validate(wf) if d.severity == "error"]
+
+
 def test_validation_of_200_nodes_is_fast():
     """NFR-01: validation < 150 ms for 200 nodes."""
     nodes, edges, resources = (
