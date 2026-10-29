@@ -19,7 +19,9 @@ async function unnamedButtons(page: Page): Promise<string[]> {
 }
 
 async function expectAllLabelled(page: Page, where: string) {
-  await page.waitForLoadState("networkidle");
+  // not "networkidle": the editor keeps a presence stream open, so the network is never idle there
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(500);
   expect(await unnamedButtons(page), `unlabelled buttons on ${where}`).toEqual([]);
 }
 
