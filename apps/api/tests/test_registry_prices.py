@@ -122,3 +122,45 @@ def test_w020_names_a_sampling_setting_a_model_ignores():
     wf = Workflow.model_validate({"id": "wf_s", "name": "s", **GREETER, "resources": [model]})
     found = [d for d in validate(wf) if d.code == "W020"]
     assert len(found) == 1 and "temperature" in found[0].message
+
+
+def test_the_catalog_lists_current_models_with_prices():
+    reg = default_registry()
+    for model in (
+        "anthropic:claude-haiku-5-5",
+        "anthropic:claude-fable-5-1",
+        "openai:gpt-6.1-sol",
+        "openai:gpt-6-luna",
+    ):
+        info = reg.model(model)
+        assert info is not None and info.price_in_per_mtok is not None, model
+    assert price("anthropic:claude-haiku-5-5", 1_000_000, 1_000_000) == pytest.approx(0.6)
+
+
+def test_templates_use_the_current_quick_model():
+    import json
+
+    from agentcanvas.services.workflows import TEMPLATES
+
+    text = " ".join(p.read_text() for p in TEMPLATES.glob("*.ir.json"))
+    assert "claude-haiku-4-5" not in text and "claude-haiku-5-5" in text
+    assert all(json.loads(p.read_text()) for p in TEMPLATES.glob("*.ir.json"))
+
+
+def test_w023_warns_about_a_model_the_provider_retires():
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.validation import validate
+
+    config = {"model": "anthropic:claude-haiku-5-5", "fallbacks": ["anthropic:claude-sonnet-4-5"]}
+    model = {"id": "r", "type": "model.chat", "name": "m", "config": config}
+    wf = Workflow.model_validate({"id": "wf_r", "name": "r", **GREETER, "resources": [model]})
+    [found] = [d for d in validate(wf) if d.code == "W023"]
+    assert "2026-11-30" in found.message and found.path == "config.fallbacks[0]"
+
+
+async def test_a_retiring_model_is_not_offered_for_new_choices(app, api_client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    ids = [m["id"] for m in (await api_client.get("/v1/projects/prj_default/chat-models")).json()]
+    assert "anthropic:claude-haiku-5-5" in ids and "anthropic:claude-sonnet-4-5" not in ids

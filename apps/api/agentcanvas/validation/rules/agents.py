@@ -260,6 +260,30 @@ def sampling_refused(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 
 @rule
+def retiring_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W023: a model (or backup model) the provider stops serving on a known day; after it, every call fails."""
+    from datetime import UTC, datetime
+
+    today = datetime.now(UTC).date()
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        for i, model in enumerate([r.config.get("model", ""), *(r.config.get("fallbacks") or [])]):
+            info = ctx.registry.model(str(model))
+            if info is None or info.retires is None:
+                continue
+            when = info.retires.isoformat()
+            said = f"was retired on {when}" if info.retires <= today else f"retires on {when}"
+            yield warning(
+                "W023",
+                f"'{r.name}': {info.label} {said}; calls to it fail from that day",
+                node_id=r.id,
+                path="config.model" if i == 0 else f"config.fallbacks[{i - 1}]",
+                hint="pick its successor from the list (the provider names one)",
+            )
+
+
+@rule
 def backup_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
     """W016: a model block's backup models (S26) should differ from it and from each other."""
     for r in ctx.wf.resources:

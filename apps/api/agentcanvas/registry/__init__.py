@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Sequence
+from datetime import date
 from functools import cache
 from importlib.util import find_spec
 from pathlib import Path
@@ -93,6 +94,7 @@ class ModelInfo(BaseModel):
     # takes temperature / top_p / top_k: current Claude models refuse non-default values (400) and reasoning models
     # such as GPT-5 take the default only, so a run leaves them out for a model marked False
     sampling: bool = True
+    retires: date | None = None  # the day the provider stops serving it (W023 warns; new choices do not offer it)
 
 
 def token_counts(meta: Any) -> dict[str, int]:

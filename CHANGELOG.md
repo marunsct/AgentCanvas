@@ -260,6 +260,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   with `sandbox.egress.enabled` (the default) needs the key `AGENTCANVAS_EGRESS_SECRET` in its Secret.
 
 ### Changed
+- **The model catalog lists the current models, with prices**: Claude Haiku 5.5 ($0.10/$0.50 per million tokens, 1M
+  context) and Fable 5.1, the GPT-6 family (Astra, 6.1 Sol, 6.1 Terra, Luna) and Gemini 3.6 Flash; GPT-5.5 and GPT-5
+  mini now have prices, so costs and USD budgets count OpenAI models too. Templates use Claude Haiku 5.5 as their
+  quick model (Haiku 4.5 cost ten times as much). A model its provider has announced it will retire shows the date:
+  it is not offered for new choices, and the editor warns where a workflow still uses it (W023; Claude Sonnet 4.5
+  retires on 2026-11-30) (HARDENING E-9, P-3).
 - Saving the project's model from Settings stays in Settings with a notice; only the first choice, from the Home
   banner, goes back to Home.
 

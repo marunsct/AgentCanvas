@@ -23,7 +23,7 @@ brackets; it is what the saved workflow and the generated code use, and it never
 
 | Block | What it does |
 |---|---|
-| **AI model** *(add-on, `model.chat`)* | The AI “brain” as `provider:model` from any provider, hosted or local: `anthropic:claude-sonnet-5-5`, `openai:gpt-5.5`, `google_genai:gemini-2.5-flash`, `ollama:llama3.3`, `lmstudio:<model>`… A new AI model block starts as your project's default model from first-run setup. A hint under the field says where its key comes from. Optional temperature, max output tokens, timeout, Base URL, and **API key**: pick a project secret by name, or leave it empty to use the secret named after the provider. One model can power several steps. See [Models and API keys](models.md). |
+| **AI model** *(add-on, `model.chat`)* | The AI “brain” as `provider:model` from any provider, hosted or local: `anthropic:claude-sonnet-5-5`, `openai:gpt-5.5`, `google_genai:gemini-3.6-flash`, `ollama:llama3.3`, `lmstudio:<model>`… A new AI model block starts as your project's default model from first-run setup. A hint under the field says where its key comes from. Optional temperature, max output tokens, timeout, Base URL, and **API key**: pick a project secret by name, or leave it empty to use the secret named after the provider. One model can power several steps. See [Models and API keys](models.md). |
 
 ## Tools
 

@@ -238,7 +238,7 @@ async def test_model_choice_policy_and_token_cap(app, api_client):
 
     tri = (await new_workflow(api_client, template="ticket_triage"))["id"]
     convo = (await api_client.get(f"/v1/workflows/{tri}/copilot")).json()
-    assert convo["model"] == {"model": "anthropic:claude-haiku-4-5", "origin": "workflow model 'fast_model'",
+    assert convo["model"] == {"model": "anthropic:claude-haiku-5-5", "origin": "workflow model 'fast_model'",
                               "problem": None}  # fmt: skip
 
     r = await api_client.put(SETTINGS, json={"source": "separate", "model": "openai:gpt-5.5", "token_cap": 1000})

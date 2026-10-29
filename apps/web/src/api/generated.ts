@@ -1115,6 +1115,7 @@ export type PriceInPerMtok = number | null;
 export type PriceOutPerMtok = number | null;
 export type Provider = string;
 export type Reasoning = boolean;
+export type Retires = string | null;
 export type Sampling = boolean;
 export type StructuredOutput1 = boolean;
 export type Tools1 = boolean;
@@ -4703,6 +4704,7 @@ export interface ModelInfo {
   price_out_per_mtok?: PriceOutPerMtok;
   provider: Provider;
   reasoning?: Reasoning;
+  retires?: Retires;
   sampling?: Sampling;
   structured_output?: StructuredOutput1;
   tools?: Tools1;

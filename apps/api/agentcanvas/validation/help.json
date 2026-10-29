@@ -244,6 +244,10 @@
       "what": "This model does not take a temperature (or top_p, top_k), so the setting is left out.",
       "fix": "Clear the setting. To make answers more varied or more exact, say so in the prompt."
     },
+    "W023": {
+      "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
+      "fix": "Pick a newer model from the list before that day (the provider names a successor)."
+    },
     "W095": {
       "what": "This goes against a recommended organisation rule.",
       "fix": "Read the rule in the message; consider changing the workflow."

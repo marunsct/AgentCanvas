@@ -13,9 +13,9 @@ in **Settings › Models**.
 | Provider | Example model id | API key (project secret or server variable) |
 |---|---|---|
 | Anthropic | `anthropic:claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
-| OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
+| OpenAI | `openai:gpt-6.1-sol` | `OPENAI_API_KEY` |
 | Azure OpenAI | `azure_openai:<deployment>` | `AZURE_OPENAI_API_KEY` (plus endpoint and API version) |
-| Google Gemini | `google_genai:gemini-2.5-flash` | `GOOGLE_API_KEY` |
+| Google Gemini | `google_genai:gemini-3.6-flash` | `GOOGLE_API_KEY` |
 | Mistral AI | `mistralai:mistral-large-latest` | `MISTRAL_API_KEY` |
 | Groq | `groq:llama-3.3-70b-versatile` | `GROQ_API_KEY` |
 | DeepSeek | `deepseek:deepseek-chat` | `DEEPSEEK_API_KEY` |
@@ -37,6 +37,10 @@ secret `LMSTUDIO_API_KEY`, `VLLM_API_KEY` or `LLAMACPP_API_KEY` (or the server v
 first-run screen stores it for you. Set **Base URL** only when the server is not on its default address (the vLLM default
 port 8000 is also the AgentCanvas API's in development, so run vLLM on another port and set the Base URL). Start the
 server and load or pull the model before running a workflow.
+
+The catalog lists the current models with their prices (the Claude and OpenAI ones), so costs and cost budgets count
+them; a model the provider has announced it will stop serving shows its date and the editor warns (W023), and it is
+no longer offered for new choices. Claude Haiku 5.5 is the quick, low-cost model the templates use.
 
 Current Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1) and reasoning models such as GPT-5 do not take
 a **Temperature** (or top_p, top_k): the provider refuses a request that sets one, so a run leaves it out and the

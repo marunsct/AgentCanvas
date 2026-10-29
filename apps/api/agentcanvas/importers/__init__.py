@@ -276,7 +276,7 @@ PROVIDERS = {  # what the builders call a provider -> AgentCanvas's provider id
     "ollama": "ollama", "azure": "azure_openai", "azure openai": "azure_openai", "azureopenai": "azure_openai",
     "lmstudio": "lmstudio", "lm studio": "lmstudio", "vllm": "vllm",
 }  # fmt: skip
-DEFAULT_MODELS = {"openai": "gpt-5.5", "anthropic": "claude-haiku-4-5", "google_genai": "gemini-3.6-flash",
+DEFAULT_MODELS = {"openai": "gpt-5.5", "anthropic": "claude-haiku-5-5", "google_genai": "gemini-3.6-flash",
                   "mistralai": "mistral-large-latest", "groq": "llama-3.3-70b-versatile", "ollama": "llama3.3",
                   "deepseek": "deepseek-chat", "xai": "grok-4", "azure_openai": "gpt-5.5"}  # fmt: skip
 

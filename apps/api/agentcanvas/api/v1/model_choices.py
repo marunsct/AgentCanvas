@@ -89,7 +89,8 @@ async def ready_chat_models(
     secrets = request.app.state.projects.secrets.get(project_id, {})
     demo = bool(getattr(request.app.state, "demo_models", False))
     ready: list[str] = []
-    for model in dict.fromkeys([m.id for m in registry.models()] + [m for m in configured if m]):
+    listed = [m.id for m in registry.models() if m.retires is None]  # a retiring model is not offered for new work
+    for model in dict.fromkeys(listed + [m for m in configured if m]):
         p = providers.get(model.partition(":")[0])
         if p is None or (p.local and not demo):
             continue

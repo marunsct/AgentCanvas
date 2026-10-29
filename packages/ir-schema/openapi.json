@@ -6303,6 +6303,18 @@
             "title": "Reasoning",
             "type": "boolean"
           },
+          "retires": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retires"
+          },
           "sampling": {
             "default": true,
             "title": "Sampling",
@@ -13310,7 +13322,7 @@
     },
     "/v1/deployments/{dep_id}/a2a": {
       "post": {
-        "description": "The deployment as an A2A agent (JSON-RPC, A2A 0.3).",
+        "description": "The deployment as an A2A agent (JSON-RPC): A2A 1.0's methods (`SendMessage`, `GetTask`, \u2026) and 0.3's\n(`message/send`, `tasks/get`), told apart by name as the reference SDK does.",
         "operationId": "a2a_endpoint_v1_deployments__dep_id__a2a_post",
         "parameters": [
           {

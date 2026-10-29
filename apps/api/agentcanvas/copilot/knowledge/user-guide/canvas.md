@@ -40,7 +40,7 @@ channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** 
 
 ### Budgets
 
-A budget stops a run that spends too much: maximum tokens, cost (USD, from model prices: the catalog prices the Claude models, an operator adds others with `AGENTCANVAS_MODEL_PRICES`) or seconds per run,
+A budget stops a run that spends too much: maximum tokens, cost (USD, from model prices: the catalog prices the Claude and OpenAI models, an operator adds others with `AGENTCANVAS_MODEL_PRICES`) or seconds per run,
 and maximum tokens or cost per thread (all runs of a conversation together).
 
 A workflow can also have a **day** and a **month** budget in USD: all its runs together, per UTC day and calendar
