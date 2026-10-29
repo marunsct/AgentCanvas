@@ -1,6 +1,6 @@
 # 07 — Worked Example: "Support Triage" end-to-end
 
-> **v0.5 note (review F-03 / C-03):** §3 shows the long-term *inlined* code style (P2 "clean eject"). The MVP's generated code calls the shared node library instead — see the verified output in [build-guide/03-walking-skeleton-tutorial.md Part 6](./build-guide/03-walking-skeleton-tutorial.md#part-6--exporting-code-generator-agentcanvascompilercodegenpy--templatesgraphpyj2) and `build-guide/reference/`. The `make_graph` async factory below is illustrative; the MVP exposes `build_graph(resources, checkpointer, store)`.
+> **v0.5 note (review F-03 / C-03):** §3 shows the long-term *inlined* code style (P2 "clean eject"). The MVP's generated code calls the shared node library instead — see the verified output in [build-guide/03-walking-skeleton-tutorial.md Part 6](./build-guide/03-walking-skeleton-tutorial.md#part-6-exporting-code-generator-agentcanvascompilercodegenpy-templatesgraphpyj2) and `build-guide/reference/`. The `make_graph` async factory below is illustrative; the MVP exposes `build_graph(resources, checkpointer, store)`.
 
 This walks one workflow from canvas → IR → generated Python → deployment, to make the WYSIWYG contract concrete.
 

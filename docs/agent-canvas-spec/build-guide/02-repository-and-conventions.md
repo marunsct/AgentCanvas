@@ -115,7 +115,7 @@ fmt:        ; cd apps/api && uv run ruff format . && uv run ruff check --fix .
 
 ## 6. Architecture Decision Records
 
-Each ADR is a short file in `docs/adr/NNNN-title.md` with *Context / Decision / Consequences*. Create these on day 1 (text from [13-deep-review-report.md §3.4](../13-deep-review-report.md#34-undecided-choices--decisions-recorded-as-adrs-in-build-guide02-6)):
+Each ADR is a short file in `docs/adr/NNNN-title.md` with *Context / Decision / Consequences*. Create these on day 1 (text from [13-deep-review-report.md §3.4](../13-deep-review-report.md#34-undecided-choices-decisions-recorded-as-adrs-in-build-guide02-6)):
 
 | ADR | Decision |
 |-----|----------|
