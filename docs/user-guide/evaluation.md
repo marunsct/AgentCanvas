@@ -32,7 +32,8 @@ An evaluator scores one run from 0 to 1, passes or fails it at a threshold (*pas
 | **LLM judge** | a model grades the output against your rubric |
 | **tool trajectory** | the agent called the expected tools (in order, in any order, or a subset) |
 | **workspace code** | your own function in `scripts/` |
-| **composite** | a weighted mix of other evaluators, or all/any must pass |
+| **retrieval** | the passages a Search knowledge block found against the example's relevant documents (recall, precision, hit or MRR at *k*; see [Knowledge](knowledge.md#measure-retrieval)) |
+| **composite** | a weighted mix of other evaluators, or all/any must pass. A part that cannot score (no reference, no model) is left out of the weighted mix, but counts as failed for all/any |
 | **pairwise judge** | which of two answers is better (asked twice with the answers swapped to avoid position bias); reports a win rate with a confidence interval |
 
 **Try** runs an evaluator on a sample before you rely on it.
