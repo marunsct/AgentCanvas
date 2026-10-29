@@ -75,7 +75,7 @@ test("the workflow list renames, duplicates and deletes, and finds by name", asy
   await page.goto("/");
   await page.getByLabel("search workflows").fill(`Listed ${stamp}`);
   const list = page.getByTestId("workflow-list");
-  await expect(list.locator("li")).toHaveCount(1);
+  await expect(list.locator("tr")).toHaveCount(1);
 
   await page.getByTestId(`workflow-menu-Listed ${stamp}`).click();
   await page.getByRole("menuitem", { name: "Rename…" }).click();
@@ -88,12 +88,32 @@ test("the workflow list renames, duplicates and deletes, and finds by name", asy
   await expect(page).toHaveURL(/\/workflows\/wf_/);
   await page.goto("/");
   await page.getByLabel("search workflows").fill(`${stamp}`);
-  await expect(list.locator("li")).toHaveCount(2);
+  await expect(list.locator("tr")).toHaveCount(2);
 
   await page.getByTestId(`workflow-menu-Renamed ${stamp} (copy)`).click();
   await page.getByRole("menuitem", { name: "Delete…" }).click();
   await answerDialog(page);
-  await expect(list.locator("li")).toHaveCount(1);
+  await expect(list.locator("tr")).toHaveCount(1);
+});
+
+test("the workflow list shows five at a time, with pages, and filters by when it changed", async ({ page }) => {
+  const stamp = Date.now();
+  for (let i = 1; i <= 7; i++) {
+    await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name: `Paged ${stamp} ${i}` } });
+  }
+  await page.goto("/");
+  await page.getByLabel("search workflows").fill(`Paged ${stamp}`);
+  const list = page.getByTestId("workflow-list");
+  await expect(list.locator("tr")).toHaveCount(5);
+  await expect(page.getByTestId("workflow-count")).toContainText("7 of");
+  const pager = page.getByRole("navigation", { name: "workflow pages" });
+  await expect(pager).toContainText("1–5 of 7");
+  await pager.getByRole("button", { name: "next page" }).click();
+  await expect(list.locator("tr")).toHaveCount(2);
+  await expect(pager.getByRole("button", { name: "page 2" })).toHaveAttribute("aria-current", "page");
+  await page.getByLabel("changed").selectOption("older"); // all seven were just made: none is older than 30 days
+  await expect(page.locator(".empty-state")).toContainText("changed older than 30 days");
+  await expect(pager).toHaveCount(0);
 });
 
 test("Runs lists a workflow's conversations and opens one in the editor", async ({ page }) => {

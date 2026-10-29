@@ -189,7 +189,16 @@ export function useTemplates() {
 export function useWorkflows() {
   return useQuery({
     queryKey: ["workflows", PROJECT_ID],
-    queryFn: () => apiFetch<WorkflowPage>(`/projects/${PROJECT_ID}/workflows?limit=200`),
+    queryFn: async (): Promise<WorkflowPage> => { // every page: the home list finds, filters and pages them itself
+      const items: WorkflowPage["items"] = [];
+      let cursor: string | null | undefined;
+      do {
+        const page = await apiFetch<WorkflowPage>(`/projects/${PROJECT_ID}/workflows?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+        items.push(...page.items);
+        cursor = page.next_cursor;
+      } while (cursor && items.length < 10_000);
+      return { items, next_cursor: null };
+    },
   });
 }
 

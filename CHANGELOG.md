@@ -64,6 +64,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **Home lists the project's workflows as a compact table, five a page**: name, version and last change per row,
+  with search, a "Changed" filter (last 7 days, last 30 days, older) and sorting, and pages below; it loads every
+  workflow, not only the first 200.
 - **The Copilot writes workspace code as part of a proposal**: `list_workspace_files`, `read_workspace_file` and
   `propose_file` (checked with ruff, which it is told to fix). The files show in the proposal with a tick box and
   their code; accepted ones are written as one commit each, "Copilot: … (path, accepted by …)". Nothing is written

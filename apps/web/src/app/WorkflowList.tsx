@@ -1,6 +1,7 @@
-/** Home's list of the project's workflows: search, sort, and per workflow open, rename, duplicate or delete. */
+/** Home's list of the project's workflows: a compact table, five at a time, found by name, filtered by when it
+ * changed, sorted; per workflow open, rename, duplicate or delete. */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutGrid, MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
@@ -11,8 +12,7 @@ import { Menu } from "../ui/Menu";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
 import { EmptyState } from "../ui/EmptyState";
-
-type Sort = "updated" | "name";
+import { CHANGED, type Changed, listPage, pageNumbers, type Sort } from "./workflowList";
 
 export function WorkflowList() {
   const workflows = useWorkflows();
@@ -21,6 +21,8 @@ export function WorkflowList() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("updated");
+  const [changed, setChanged] = useState<Changed>("any");
+  const [page, setPage] = useState(1);
   const refresh = () => void qc.invalidateQueries({ queryKey: ["workflows"] });
   const act = useMutation({
     mutationFn: async ({ kind, id, name }: { kind: "rename" | "duplicate" | "delete"; id: string; name?: string }) => {
@@ -35,37 +37,42 @@ export function WorkflowList() {
       if (kind === "duplicate") { toast("Duplicated"); navigate(`/workflows/${(out as { id: string }).id}`); }
     },
   });
-  const items = useMemo(() => {
-    const all = workflows.data?.items ?? [];
-    const needle = q.trim().toLowerCase();
-    const found = needle ? all.filter((w) => w.name.toLowerCase().includes(needle)) : all;
-    return [...found].sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name)
-      : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
-  }, [workflows.data, q, sort]);
+  const view = useMemo(() => listPage(workflows.data?.items ?? [], { q, changed, sort, page }), [workflows.data, q, changed, sort, page]);
+  const filtered = q.trim() !== "" || changed !== "any";
 
   return (
     <section aria-label="Workflows">
       <div className="row gap list-tools">
-        <input type="search" placeholder="Search workflows" aria-label="search workflows" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" placeholder="Search workflows" aria-label="search workflows" value={q}
+          onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+        <select aria-label="changed" value={changed} onChange={(e) => { setChanged(e.target.value as Changed); setPage(1); }}>
+          {CHANGED.map((c) => <option key={c.id} value={c.id}>{c.id === "any" ? "Changed: any time" : c.label}</option>)}
+        </select>
         <select aria-label="sort workflows" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
           <option value="updated">Last changed</option>
           <option value="name">Name</option>
         </select>
+        <span className="spacer" />
+        {workflows.data && <span className="muted small" data-testid="workflow-count">
+          {filtered ? `${view.total} of ${workflows.data.items.length}` : view.total} workflow{view.total === 1 ? "" : "s"}</span>}
       </div>
       <QueryStatus q={workflows} what="workflows" />
       {workflows.data?.items.length === 0 && (
         <EmptyState icon={LayoutGrid} title="No workflows yet">Start from a template below, or with an empty canvas.</EmptyState>
       )}
-      {workflows.data && workflows.data.items.length > 0 && items.length === 0 && (
-        <div className="empty-state">No workflow matches “{q}”.</div>
+      {workflows.data && workflows.data.items.length > 0 && view.total === 0 && (
+        <div className="empty-state">No workflow matches{q.trim() ? ` “${q.trim()}”` : ""}{changed !== "any" ? ` changed ${CHANGED.find((c) => c.id === changed)!.label.toLowerCase()}` : ""}.</div>
       )}
       {act.error && <p className="error-text small" role="alert">{(act.error as Error).message}</p>}
-      <ul className="wf-list" data-testid="workflow-list">
-        {items.map((w) => (
-          <li key={w.id}>
-            <Link to={`/workflows/${w.id}`}>{w.name}</Link>
-            <small className="muted" title={exact(w.updated_at)}>v{w.version} · changed {ago(w.updated_at)}</small>
-            {canBuild && (
+      {view.total > 0 && <table className="table wf-table">
+        <thead><tr><th>Name</th><th className="wf-version">Version</th><th>Last changed</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+        <tbody data-testid="workflow-list">
+        {view.rows.map((w) => (
+          <tr key={w.id}>
+            <td className="wf-name"><Link to={`/workflows/${w.id}`}>{w.name}</Link></td>
+            <td className="wf-version muted small">v{w.version}</td>
+            <td className="muted small" title={exact(w.updated_at)}>{ago(w.updated_at)}</td>
+            <td className="wf-actions">{canBuild && (
               <Menu testId={`workflow-menu-${w.name}`} title={`More for ${w.name}`} className="row-menu"
                 label={<MoreHorizontal size={16} aria-label={`more for ${w.name}`} />}>
                 {(close) => (
@@ -88,10 +95,25 @@ export function WorkflowList() {
                   </>
                 )}
               </Menu>
-            )}
-          </li>
+            )}</td>
+          </tr>
         ))}
-      </ul>
+        </tbody>
+      </table>}
+      {view.pages > 1 && (
+        <nav className="pager" aria-label="workflow pages">
+          <span className="muted small">{view.from}–{view.to} of {view.total}</span>
+          <span className="spacer" />
+          <button type="button" className="small" aria-label="previous page" disabled={view.page === 1}
+            onClick={() => setPage(view.page - 1)}><ChevronLeft size={14} /></button>
+          {pageNumbers(view.page, view.pages).map((n, i) => n === "…"
+            ? <span key={`gap${i}`} className="muted small">…</span>
+            : <button type="button" key={n} className={`small${n === view.page ? " active" : ""}`} aria-current={n === view.page ? "page" : undefined}
+                aria-label={`page ${n}`} onClick={() => setPage(n)}>{n}</button>)}
+          <button type="button" className="small" aria-label="next page" disabled={view.page === view.pages}
+            onClick={() => setPage(view.page + 1)}><ChevronRight size={14} /></button>
+        </nav>
+      )}
     </section>
   );
 }

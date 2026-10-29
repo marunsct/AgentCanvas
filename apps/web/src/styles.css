@@ -1117,6 +1117,19 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .list-tools input[type=search] { width: 220px; }
 .list-tools select { width: auto; }
 .wf-list .row-menu > button { padding: 2px 6px; }
+/* home: the project's workflows as a compact table, five a page */
+.wf-table { margin-top: 10px; }
+.wf-table td { vertical-align: middle; padding: 7px 12px; }
+.wf-table .wf-name { width: 100%; }
+.wf-table .wf-name a { font-weight: 600; color: var(--text); }
+.wf-table .wf-name a:hover { color: var(--accent); }
+.wf-table td:not(.wf-name), .wf-table th:not(:first-child) { white-space: nowrap; }
+.wf-table .wf-actions { width: 1%; text-align: right; padding: 2px 8px; }
+.wf-table .row-menu > button { padding: 2px 6px; }
+.pager { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.pager button { min-width: 30px; padding: 3px 8px; display: inline-flex; justify-content: center; }
+.pager button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+@media (max-width: 640px) { .wf-table .wf-version { display: none; } }
 .menu-list > button.danger-item { color: var(--err); }
 .example-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .example-fields fieldset { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 12px 10px; margin: 0; }
