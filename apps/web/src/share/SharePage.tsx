@@ -2,9 +2,10 @@
  * iframe (?embed=1). No sign-in; the visitor's conversations are theirs only (see share.ts). */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
-  answerQuestion, isEmbed, loadShare, rate, sendMessage, ShareError, tokenFromPath, uploadShareFile,
-  type ShareEvent, type ShareInfo, type ShareQuestion,
+  answerQuestion, closeConversation, isEmbed, loadConversation, loadShare, rate, sendMessage, ShareError, tokenFromPath,
+  uploadShareFile, type SavedConversation, type ShareEvent, type ShareInfo, type ShareQuestion,
 } from "./share";
+import { originAllowed, parseCommand, postToParent } from "./embedApi";
 import type { FileRef } from "../ir/files";
 import { FilePicker } from "../ui/FilePicker";
 
@@ -33,19 +34,58 @@ export function SharePage() {
   const [files, setFiles] = useState<FileRef[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [away, setAway] = useState(false); // a saved conversation whose last message is still being answered
   const abort = useRef<AbortController | null>(null);
+  const started = useRef(false); // this page sent something: a saved conversation no longer replaces what is shown
   const logEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+
+  // the visitor's saved conversation (kept on the server under their browser's secret): shown again after a reload
+  const restore = useCallback((saved: SavedConversation) => {
+    if (started.current) return;
+    setMessages(saved.messages.map((m) => ({
+      id: nextId++, role: m.role, text: m.text, runId: m.run_id ?? undefined, error: m.error,
+      attached: m.attached, question: m.question ?? undefined,
+    })));
+    setThreadId(saved.thread_id);
+    setAway(saved.busy);
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.add("share-root");
     loadShare(token)
-      .then((i) => { setInfo(i); document.title = i.title; })
+      .then((i) => {
+        setInfo(i);
+        document.title = i.title;
+        loadConversation(token).then(restore).catch(() => undefined); // no history is no reason to hide the page
+      })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)));
-  }, [token]);
+  }, [token, restore]);
+
+  useEffect(() => {
+    if (!away) return;
+    const timer = setInterval(() => { loadConversation(token).then(restore).catch(() => undefined); }, 2000);
+    return () => clearInterval(timer);
+  }, [away, token, restore]);
+
+  // the postMessage API for the site that frames this page (embedApi.ts): prefill from the parent, events to it
+  const allowed = info?.frame_origins;
+  useEffect(() => {
+    if (!embed || !info) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== window.parent || !originAllowed(e.origin, allowed)) return;
+      const command = parseCommand(e.data);
+      if (command?.type === "prefill") { setDraft(command.text); input.current?.focus(); }
+    };
+    window.addEventListener("message", onMessage);
+    postToParent({ type: "ready" }, allowed);
+    return () => window.removeEventListener("message", onMessage);
+  }, [embed, info, allowed]);
 
   useEffect(() => { logEnd.current?.scrollIntoView?.({ block: "end" }); }, [messages]);
 
+  const allowedRef = useRef<readonly string[] | undefined>(undefined);
+  allowedRef.current = info?.frame_origins;
   const waiting = [...messages].reverse().find((m) => m.role === "assistant")?.question;
 
   const update = (id: number, patch: (m: Message) => Partial<Message>) =>
@@ -56,6 +96,7 @@ export function SharePage() {
     setMessages((ms) => [...ms, ...(userText !== null ? [{ id: nextId++, role: "user" as const, text: userText, attached }] : []), reply]);
     setBusy(true);
     setNotice(null);
+    started.current = true;
     const ctrl = new AbortController();
     abort.current = ctrl;
     try {
@@ -64,6 +105,11 @@ export function SharePage() {
         else if (ev.type === "TEXT_MESSAGE_CONTENT") update(reply.id, (m) => ({ text: m.text + ev.delta }));
         else if (ev.type === "RUN_FINISHED") {
           const q = ev.interrupts[0];
+          if (embed) {
+            postToParent({
+              type: "reply", text: q ? q.question : ev.answer, runId: ev.runId, threadId: ev.threadId, question: Boolean(q),
+            }, allowedRef.current);
+          }
           update(reply.id, (m) => ({
             pending: false, runId: ev.runId,
             text: q ? q.question : ev.answer || m.text || "(no answer)",
@@ -80,11 +126,11 @@ export function SharePage() {
       if (abort.current === ctrl) { abort.current = null; setBusy(false); }
       input.current?.focus();
     }
-  }, []);
+  }, [embed]);
 
   const send = (text: string) => {
     const t = text.trim();
-    if ((!t && files.length === 0) || busy) return;
+    if ((!t && files.length === 0) || busy || away) return;
     if (waiting && threadId) {
       if (!t) return;
       setDraft("");
@@ -105,6 +151,9 @@ export function SharePage() {
   const restart = () => {
     abort.current?.abort();
     abort.current = null;
+    started.current = true;
+    setAway(false);
+    void closeConversation(token).catch(() => undefined);
     setBusy(false);
     setMessages([]);
     setThreadId(null);
@@ -171,6 +220,7 @@ export function SharePage() {
         ))}
         <div ref={logEnd} />
       </div>
+      {away && <p className="share-notice" role="status">Your last message is still being answered…</p>}
       {notice && <p className="share-notice" role="status">{notice}</p>}
       {approval && !busy && (
         <div className="share-decide" role="group" aria-label="Your answer">

@@ -12,7 +12,21 @@ export interface ShareInfo {
   suggestions: string[];
   input: { field?: string | null; chat?: boolean };
   attachments?: ShareAttachments | null;
+  frame_origins?: string[]; // the sites allowed to frame the page (G-15): the postMessage API answers only these
 }
+
+/** A message of the visitor's saved conversation (G-15). */
+export interface SavedMessage {
+  role: "user" | "assistant";
+  text: string;
+  run_id?: string | null;
+  error?: boolean;
+  attached?: string[];
+  question?: ShareQuestion | null;
+}
+
+/** The visitor's latest conversation on this link, kept on the server; `busy`: its last message is still being answered. */
+export interface SavedConversation { thread_id: string | null; busy: boolean; messages: SavedMessage[] }
 
 export interface ShareQuestion { id: string | null; kind: "approval" | "tool_approval" | "input" | string; question: string }
 
@@ -79,6 +93,23 @@ export async function loadShare(token: string): Promise<ShareInfo> {
   const res = await fetch(`${BASE}/${encodeURIComponent(token)}`, { credentials: "omit" });
   if (!res.ok) throw await problem(res);
   return (await res.json()) as ShareInfo;
+}
+
+/** The conversation this browser's visitor secret last had on the link (empty when there is none). */
+export async function loadConversation(token: string): Promise<SavedConversation> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(token)}/conversation`, {
+    credentials: "omit", headers: { "x-visitor": visitorId() },
+  });
+  if (!res.ok) throw await problem(res);
+  return (await res.json()) as SavedConversation;
+}
+
+/** Start over for good: the saved conversation is closed, so a reload does not bring it back. */
+export async function closeConversation(token: string): Promise<void> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(token)}/conversation`, {
+    method: "DELETE", credentials: "omit", headers: { "x-visitor": visitorId() },
+  });
+  if (!res.ok) throw await problem(res);
 }
 
 /** Feed SSE text to `onEvent`; returns what is left over (an incomplete message). */

@@ -57,7 +57,7 @@ async def test_enable_share_and_chat(api_client):
     assert info.status_code == 200
     assert info.json() == {
         "title": "Say hi", "greeting": "Tell me your name.", "suggestions": ["Ada", "Bo"],
-        "input": {"field": "who", "chat": False}, "attachments": None,
+        "input": {"field": "who", "chat": False}, "attachments": None, "frame_origins": [],
     }  # fmt: skip
     # nothing internal: no workflow, deployment, key or version
     assert all(s not in info.text for s in ("wf_", "dep_", "ac_", "ver_", "n_g", "core.set"))

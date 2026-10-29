@@ -114,7 +114,9 @@ CREATE TABLE share_thread (                     -- S23: conversations visitors o
   thread_id     text PRIMARY KEY REFERENCES thread(id) ON DELETE CASCADE,
   deployment_id text NOT NULL REFERENCES deployment(id) ON DELETE CASCADE,
   visitor_hash  text NOT NULL,                    -- sha256 of the visitor's browser secret
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  transcript    jsonb NOT NULL DEFAULT '[]',      -- G-15: what the visitor saw, shown again after a reload
+  closed        boolean NOT NULL DEFAULT false    -- the visitor started over ("New conversation")
 );
 CREATE INDEX ix_share_thread_deployment_id ON share_thread(deployment_id);
 

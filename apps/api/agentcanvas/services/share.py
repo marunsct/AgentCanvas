@@ -18,7 +18,7 @@ import secrets
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prom
 STRONG_ANSWER_FIELDS = ("answer", "reply", "response")
 ANSWER_FIELDS = ("output", "result", "summary", "text", "message")
 MAX_SUGGESTIONS = 6
+MAX_TRANSCRIPT = 200  # messages kept per saved conversation; older ones drop off
 
 
 def new_token() -> str:
@@ -288,4 +289,35 @@ class ShareService:
 
     async def claim_thread(self, dep_id: str, thread_id: str, visitor: str) -> None:
         self.s.add(ShareThread(thread_id=thread_id, deployment_id=dep_id, visitor_hash=visitor_hash(visitor)))
+        await self.s.commit()
+
+    async def record(self, thread_id: str, *entries: dict[str, Any]) -> None:
+        """Add what the visitor sent or was told to the conversation they will see again after a reload."""
+        row = await self.s.get(ShareThread, thread_id, populate_existing=True)
+        if row is None:  # the link was regenerated, or the conversation expired, while the run went on
+            return
+        row.transcript = [*(row.transcript or []), *entries][-MAX_TRANSCRIPT:]
+        await self.s.commit()
+
+    async def latest(self, dep_id: str, visitor: str) -> ShareThread | None:
+        """The visitor's newest conversation on this link that they have not closed."""
+        return await self.s.scalar(
+            select(ShareThread)
+            .where(
+                ShareThread.deployment_id == dep_id,
+                ShareThread.visitor_hash == visitor_hash(visitor),
+                ShareThread.closed.is_(False),
+            )
+            .order_by(ShareThread.created_at.desc(), ShareThread.thread_id.desc())
+            .limit(1)
+        )
+
+    async def close_conversations(self, dep_id: str, visitor: str) -> None:
+        """ "New conversation": the visitor's conversations stay (the builders see their runs) but are not shown to
+        them again."""
+        await self.s.execute(
+            update(ShareThread)
+            .where(ShareThread.deployment_id == dep_id, ShareThread.visitor_hash == visitor_hash(visitor))
+            .values(closed=True)
+        )
         await self.s.commit()

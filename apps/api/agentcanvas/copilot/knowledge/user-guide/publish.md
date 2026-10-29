@@ -111,6 +111,42 @@ preview). The visitor can send a file with or without a message. Files are limit
 A round chat button appears in the bottom-right corner; it opens the same chat in a small panel. Optional
 attributes: `data-label` (the button's name), `data-position="left"` and `data-color` (any CSS colour).
 
+**Talk to the widget from your page.** The widget takes commands and reports what happens with `window.postMessage`,
+so your page can open the chat from its own button, start it with a question, or react to an answer. Every message
+is an object with `agentcanvas: 1` and a `type`; post to your own window (`location.origin`):
+
+| You send | What happens |
+|---|---|
+| `{ agentcanvas: 1, type: "open" }` (optional `text`) | Opens the chat (and puts `text` in the message box) |
+| `{ agentcanvas: 1, type: "close" }` | Closes it |
+| `{ agentcanvas: 1, type: "prefill", text: "…" }` | Opens the chat and puts `text` in the message box; the visitor still presses Send |
+
+| You receive | When |
+|---|---|
+| `{ agentcanvas: 1, type: "ready" }` | The chat page has loaded (after the first open) |
+| `{ agentcanvas: 1, type: "reply", text, runId, threadId, question }` | An answer arrived (`question: true`: the assistant asks the visitor something) |
+| `{ agentcanvas: 1, type: "opened" }` / `"closed"` | The chat was opened or closed, by a visitor or by a command |
+
+```html
+<button id="help">Ask about my order</button>
+<script>
+  document.getElementById("help").onclick = () =>
+    window.postMessage({ agentcanvas: 1, type: "prefill", text: "Where is my order?" }, location.origin);
+
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || e.origin !== location.origin || e.data?.agentcanvas !== 1) return; // only the widget
+    if (e.data.type === "reply") console.log("The assistant said:", e.data.text);
+  });
+</script>
+```
+
+Check `event.source` and `event.origin` as above: other frames on your page can post messages too. The widget acts only
+on commands from its own page, never from another frame. Inside the chat frame, **Sites that may show the chat widget**
+(below) decide who may talk to it: a `prefill` from a site that is not on your list is ignored, and the chat page
+sends its events only to a site on the list. If you build the iframe yourself instead of using `widget.js`, send
+`{ agentcanvas: 1, type: "prefill", text }` to the frame (`frame.contentWindow.postMessage(message, "<chat origin>")`)
+and listen for the `ready` and `reply` messages from it; the same rules apply.
+
 **Which input gets the message.** The visitor's message goes to the workflow's text input: one named like
 `message`, `question`, `query` or `input` if there is one, else a chat message list (`messages`), else its only
 text input. The share box says which one it picked; when the workflow has more than one, choose another under
@@ -129,7 +165,11 @@ field such as `answer`, `reply` or `response`, else the only text output.
   widget works anywhere). List your sites (`https://www.example.com`, or `https://*.example.com` for all its
   subdomains) and only those sites, plus this app, can frame it; others see a blocked frame. The link itself still
   opens for anyone who has it.
-- Messages a visitor sends are not kept in their browser: reloading the page starts a new conversation.
+- **Reloading keeps the conversation.** The chat page shows a visitor's latest conversation again after a reload and
+  carries on in the same thread (a question the assistant was waiting on is still open). It is kept on the server
+  under the visitor's id, which their browser remembers, and goes when conversations expire (Settings › Organisation).
+  **New conversation** closes it for good; a new link (**New link**) ends every saved conversation. A visitor who
+  clears their browser data or uses another browser starts afresh; you still see the earlier runs in **Runs**.
 
 ## Triggers
 

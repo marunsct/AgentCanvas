@@ -2,7 +2,15 @@
  *   <script src="https://YOUR-AGENTCANVAS/widget.js" data-share="sh_..." async></script>
  * Optional attributes: data-label (the button's name, default "Chat"), data-position ("left" or "right"),
  * data-color (the button's colour, a CSS colour).
- * It shows a round chat button; clicking it opens the share link's chat page in a small panel (an iframe). */
+ * It shows a round chat button; clicking it opens the share link's chat page in a small panel (an iframe).
+ *
+ * postMessage API (the page's own script talks to the widget with window.postMessage; same window, same origin):
+ *   window.postMessage({ agentcanvas: 1, type: "open", text: "optional text for the message box" }, location.origin)
+ *   window.postMessage({ agentcanvas: 1, type: "close" }, location.origin)
+ *   window.postMessage({ agentcanvas: 1, type: "prefill", text: "..." }, location.origin)   (opens the chat too)
+ * and the widget posts events back the same way: "ready" (the chat has loaded), "reply" (an answer arrived, with
+ * text, runId, threadId), "opened" and "closed". Listen with window.addEventListener("message", ...) and check
+ * event.data.agentcanvas === 1. The chat page itself only takes commands from a site its link allows. */
 (function () {
   "use strict";
   var script = document.currentScript;
@@ -71,7 +79,17 @@
 
   var frame = null;
   var open = false;
+  var ready = false; // the chat page has loaded and listens for commands
+  var queued = null; // text to put in the message box once it has
+  function emit(event) { // to the page that added the widget
+    window.postMessage(Object.assign({ agentcanvas: 1 }, event), location.origin);
+  }
+  function prefill(text) {
+    if (ready && frame) frame.contentWindow.postMessage({ agentcanvas: 1, type: "prefill", text: text }, origin);
+    else queued = text;
+  }
   function toggle(show) {
+    var changed = open !== show;
     open = show;
     if (show && !frame) { // the chat page loads on the first open, not with the host page
       frame = document.createElement("iframe");
@@ -86,7 +104,25 @@
     button.setAttribute("aria-label", (show ? "Close " : "Open ") + label);
     button.replaceChild(icon(show ? CLOSE : CHAT), button.firstChild);
     if (show && frame) frame.focus();
+    if (changed) emit({ type: show ? "opened" : "closed" });
   }
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || typeof d !== "object" || d.agentcanvas !== 1) return;
+    if (e.source === window && e.origin === location.origin) { // the page's own commands, not another frame's
+      if (d.type === "open") { toggle(true); if (typeof d.text === "string") prefill(d.text); }
+      else if (d.type === "close") toggle(false);
+      else if (d.type === "prefill" && typeof d.text === "string") { toggle(true); prefill(d.text); }
+    } else if (frame && e.source === frame.contentWindow && e.origin === origin) { // the chat page's events
+      if (d.type === "ready") {
+        ready = true;
+        if (queued !== null) { prefill(queued); queued = null; }
+        emit({ type: "ready" });
+      } else if (d.type === "reply") {
+        emit({ type: "reply", text: String(d.text || ""), runId: d.runId, threadId: d.threadId, question: !!d.question });
+      }
+    }
+  });
   button.addEventListener("click", function () { toggle(!open); });
   document.addEventListener("keydown", function (e) {
     if (open && e.key === "Escape") { toggle(false); button.focus(); }

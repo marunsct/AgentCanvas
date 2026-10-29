@@ -14,11 +14,11 @@ with the deployment's key, plus a per-client-address limit on each link; their e
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -29,10 +29,21 @@ from agentcanvas.api.v1.deployments import FeedbackIn, _continue_on, count_call
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.protocols import _pending, answer_value
 from agentcanvas.api.v1.runs import SSE_HEADERS, _context
-from agentcanvas.db.models import Deployment, DeploymentShare, Project, Run, RunScore, StoredFile, WorkflowRow
+from agentcanvas.db.models import (
+    Deployment,
+    DeploymentShare,
+    Project,
+    Run,
+    RunScore,
+    StoredFile,
+    Thread,
+    WorkflowRow,
+)
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.ir.files import file_refs
 from agentcanvas.ir.models import Workflow
+from agentcanvas.log import get_logger
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
@@ -54,6 +65,7 @@ from agentcanvas.services.share import (
     visitor_hash,
 )
 
+log = get_logger(__name__)
 router = APIRouter(tags=["share"])  # signed in: a builder's settings of a deployment's link
 public_router = APIRouter(tags=["share"])  # visitors of a link: no sign-in
 
@@ -150,6 +162,10 @@ class ShareInfo(BaseModel):
     attachments: AttachShape | None = Field(
         None, description="the file input visitors may attach files to (G-5); none: the workflow takes no files"
     )
+    frame_origins: list[str] = Field(
+        default_factory=list,
+        description="sites allowed to frame the page; the page's postMessage API answers only these (none: any)",
+    )
 
 
 MAX_VISITOR_FILES = 30  # files one visitor keeps on one link
@@ -192,7 +208,60 @@ async def share_info(token: str, request: Request, session: AsyncSession = Depen
     return ShareInfo(
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input=input_shape(wf, share.input_field), attachments=attach_shape(wf),
+        frame_origins=list(share.frame_origins or []),
     )  # fmt: skip
+
+
+class SavedMessage(BaseModel):
+    role: str
+    text: str
+    run_id: str | None = None
+    error: bool = False
+    attached: list[str] = Field(default_factory=list)
+    question: dict[str, Any] | None = None
+
+
+class SavedConversation(BaseModel):
+    thread_id: str | None = None
+    busy: bool = Field(default=False, description="the last message is still being answered")
+    messages: list[SavedMessage] = Field(default_factory=list)
+
+
+VisitorHeader = Annotated[
+    str,
+    Header(
+        alias="x-visitor", min_length=16, max_length=128, pattern=r"^[A-Za-z0-9_-]+$",
+        description="the visitor's secret (a header, so it stays out of addresses and logs)",
+    ),
+]  # fmt: skip
+
+
+@public_router.get("/share/{token}/conversation", response_model=SavedConversation)
+async def share_conversation(
+    token: str, request: Request, visitor: VisitorHeader, session: AsyncSession = Depends(get_session)
+) -> SavedConversation:
+    """The visitor's latest open conversation on this link, as they saw it (empty for a new visitor): a reload of the
+    chat page shows it again and carries on in the same thread. Kept as long as conversations are."""
+    _, dep, _ = await _open(request, session, token, count=False)
+    row = await ShareService(session).latest(dep.id, visitor)
+    if row is None:
+        return SavedConversation()
+    thread = await session.get(Thread, row.thread_id)
+    return SavedConversation(
+        thread_id=row.thread_id,
+        busy=thread is not None and thread.status == "running",
+        messages=[SavedMessage.model_validate(m) for m in row.transcript or []],
+    )
+
+
+@public_router.delete("/share/{token}/conversation", status_code=204)
+async def share_close_conversation(
+    token: str, request: Request, visitor: VisitorHeader, session: AsyncSession = Depends(get_session)
+) -> Response:
+    """ "New conversation": a reload no longer brings the visitor's earlier conversations back."""
+    _, dep, _ = await _open(request, session, token, count=False)
+    await ShareService(session).close_conversations(dep.id, visitor)
+    return Response(status_code=204)
 
 
 async def _project_of(session: AsyncSession, dep: Deployment) -> str:
@@ -229,6 +298,10 @@ async def share_upload(
         deployment_id=dep.id, visitor_hash=who, accept=shape.accept,
     )  # fmt: skip
     return file_out(row)
+
+
+def _names(attached: dict[str, Any]) -> list[str]:
+    return [str(r.get("name")) for value in attached.values() for r in file_refs(value)]
 
 
 async def _attached(session: AsyncSession, dep: Deployment, wf: Workflow, body: ShareRunIn) -> dict[str, Any]:
@@ -292,10 +365,15 @@ def _answer_steps(wf: Workflow) -> set[str]:
     return {n.id for n in wf.nodes if n.type in STREAMED and n.id in last}
 
 
-def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) -> AsyncIterator[str]:
+Record = Callable[[dict[str, Any]], Awaitable[None]]  # keeps a message in the visitor's saved conversation (G-15)
+
+
+def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow, record: Record) -> AsyncIterator[str]:
     """The run's stream as a visitor may see it: the answer text as it is written (`_answer_steps` only), then the
-    final answer or the question a pause asks; step names, state and error details stay inside."""
+    final answer or the question a pause asks; step names, state and error details stay inside. What the visitor is
+    told is also kept (`record`), so a reload shows the same conversation."""
     streamed = _answer_steps(wf)
+    written: list[str] = []
 
     async def gen() -> AsyncIterator[str]:
         def sse(ev: dict[str, Any]) -> str:
@@ -309,6 +387,7 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) 
                 and isinstance(ev.get("delta"), str)
                 and ev.get("canvas_node_id") in streamed
             ):
+                written.append(ev["delta"])
                 yield sse({"type": "TEXT_MESSAGE_CONTENT", "delta": ev["delta"]})
             elif kind == "RUN_FINISHED":
                 paused = ev.get("interrupts") or []
@@ -318,6 +397,11 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) 
                     if (i.get("kind") or "input") == "input"
                 ]
                 answer = APPROVAL_WAIT if paused and not interrupts else answer_text(ev.get("output"), shape)
+                question = interrupts[0] if interrupts else None
+                await record({
+                    "role": "assistant", "run_id": h.run_id, "question": question,
+                    "text": question["question"] if question else (answer or "".join(written) or "(no answer)"),
+                })  # fmt: skip
                 yield sse({
                     "type": "RUN_FINISHED", "runId": h.run_id, "threadId": h.thread_id,
                     "status": "interrupted" if paused else (ev.get("status") or "success"),
@@ -328,6 +412,7 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) 
                 message = "The service restarted; please send your message again." if busy else (
                     "Sorry, something went wrong. Please try again."
                 )  # fmt: skip
+                await record({"role": "assistant", "run_id": h.run_id, "text": message, "error": True})
                 yield sse({"type": "RUN_ERROR", "runId": h.run_id, "message": message})
 
     return gen()
@@ -335,8 +420,17 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) 
 
 def _stream(request: Request, h: RunHandle, shape: InputShape, wf: Workflow) -> Response:
     headers = {**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id}
+    db = request.app.state.db
+
+    async def record(entry: dict[str, Any]) -> None:
+        try:
+            async with db.sessionmaker() as s:
+                await ShareService(s).record(h.thread_id, entry)
+        except Exception:
+            log.exception("share.record_failed", thread_id=h.thread_id)
+
     return StreamingResponse(
-        counted_stream(_visitor_events(h, request.app.state.runner, shape, wf)),
+        counted_stream(_visitor_events(h, request.app.state.runner, shape, wf, record)),
         media_type="text/event-stream",
         headers=headers,
     )
@@ -369,6 +463,7 @@ async def share_run_stream(
     )  # fmt: skip
     if new:
         await shares.claim_thread(dep.id, thread_id, body.visitor)
+    await shares.record(thread_id, {"role": "user", "text": body.message.strip(), "attached": _names(attached)})
     await session.close()
     return _stream(request, h, shape, wf)
 
@@ -395,6 +490,7 @@ async def share_resume(
         wf, thread_id=thread_id, resume=ResumeSpec(value, pending.get("id")), deployment_id=dep.id,
         version_id=version_id, decided_by=None, labels={"channel": "share"},
     )  # fmt: skip
+    await ShareService(session).record(thread_id, {"role": "user", "text": (body.text or "").strip()})
     await session.close()
     return _stream(request, h, input_shape(wf, share.input_field), wf)
 

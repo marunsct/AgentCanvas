@@ -9474,6 +9474,36 @@
         "title": "SandboxPolicy",
         "type": "object"
       },
+      "SavedConversation": {
+        "properties": {
+          "busy": {
+            "default": false,
+            "description": "the last message is still being answered",
+            "title": "Busy",
+            "type": "boolean"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SavedMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "title": "SavedConversation",
+        "type": "object"
+      },
       "SavedFile": {
         "properties": {
           "diagnostics": {
@@ -9502,6 +9532,59 @@
           "modified"
         ],
         "title": "SavedFile",
+        "type": "object"
+      },
+      "SavedMessage": {
+        "properties": {
+          "attached": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Attached",
+            "type": "array"
+          },
+          "error": {
+            "default": false,
+            "title": "Error",
+            "type": "boolean"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "SavedMessage",
         "type": "object"
       },
       "Score": {
@@ -10214,6 +10297,14 @@
               }
             ],
             "description": "the file input visitors may attach files to (G-5); none: the workflow takes no files"
+          },
+          "frame_origins": {
+            "description": "sites allowed to frame the page; the page's postMessage API answers only these (none: any)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Frame Origins",
+            "type": "array"
           },
           "greeting": {
             "title": "Greeting",
@@ -23809,6 +23900,111 @@
           }
         },
         "summary": "Share Info",
+        "tags": [
+          "share"
+        ]
+      }
+    },
+    "/v1/share/{token}/conversation": {
+      "delete": {
+        "description": "\"New conversation\": a reload no longer brings the visitor's earlier conversations back.",
+        "operationId": "share_close_conversation_v1_share__token__conversation_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the visitor's secret (a header, so it stays out of addresses and logs)",
+            "in": "header",
+            "name": "x-visitor",
+            "required": true,
+            "schema": {
+              "description": "the visitor's secret (a header, so it stays out of addresses and logs)",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "X-Visitor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Close Conversation",
+        "tags": [
+          "share"
+        ]
+      },
+      "get": {
+        "description": "The visitor's latest open conversation on this link, as they saw it (empty for a new visitor): a reload of the\nchat page shows it again and carries on in the same thread. Kept as long as conversations are.",
+        "operationId": "share_conversation_v1_share__token__conversation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "description": "the visitor's secret (a header, so it stays out of addresses and logs)",
+            "in": "header",
+            "name": "x-visitor",
+            "required": true,
+            "schema": {
+              "description": "the visitor's secret (a header, so it stays out of addresses and logs)",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "X-Visitor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedConversation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Conversation",
         "tags": [
           "share"
         ]

@@ -198,6 +198,9 @@ PUBLIC = {
     ("POST", "/v1/share/{token}/runs/stream"),
     ("POST", "/v1/share/{token}/threads/{thread_id}/resume"),
     ("POST", "/v1/share/{token}/runs/{run_id}/feedback"),
+    ("POST", "/v1/share/{token}/files"),
+    ("GET", "/v1/share/{token}/conversation"),
+    ("DELETE", "/v1/share/{token}/conversation"),
 }  # fmt: skip
 OWN_CREDENTIALS = (
     "/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/",

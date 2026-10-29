@@ -2265,15 +2265,29 @@ export type Problems3 = LintItem[];
  * an egress list makes this server refuse to run the code
  */
 export type RefusesEgress = boolean;
+/**
+ * the last message is still being answered
+ */
+export type Busy = boolean;
+export type Attached = string[];
+export type Error9 = boolean;
+export type Question = {
+  [k: string]: unknown;
+} | null;
+export type Role5 = string;
+export type RunId8 = string | null;
+export type Text5 = string;
+export type Messages3 = SavedMessage[];
+export type ThreadId10 = string | null;
 export type Diagnostics4 = LintItem[];
 export type Modified1 = number;
 export type Path6 = string;
 export type Size2 = number;
-export type RunId8 = string;
+export type RunId9 = string;
 export type Scores4 = ScoreOut[];
 export type StartedAt1 = string;
 export type Status13 = string;
-export type ThreadId10 = string;
+export type ThreadId11 = string;
 /**
  * 0-1 in every mode (see the guide)
  */
@@ -2288,7 +2302,7 @@ export type Heading1 = string | null;
 export type Page3 = number | null;
 export type Score3 = number;
 export type Source8 = string | null;
-export type Text5 = string;
+export type Text6 = string;
 export type Title4 = string | null;
 export type Results1 = SearchResult[];
 export type Value5 = string;
@@ -2300,7 +2314,7 @@ export type Name51 = string;
 export type ApiKey5 = string | null;
 export type BaseUrl4 = string | null;
 export type Provider2 = string;
-export type Error9 = string | null;
+export type Error10 = string | null;
 /**
  * model names, without the provider prefix
  */
@@ -2366,6 +2380,10 @@ export type Rating1 = "up" | "down";
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
 export type Visitor1 = string;
+/**
+ * sites allowed to frame the page; the page's postMessage API answers only these (none: any)
+ */
+export type FrameOrigins = string[];
 export type Greeting = string;
 export type Suggestions = string[];
 export type Title5 = string;
@@ -2374,7 +2392,7 @@ export type Enabled6 = boolean;
 /**
  * sites allowed to show the chat page in a frame; empty: any site
  */
-export type FrameOrigins = string[];
+export type FrameOrigins1 = string[];
 export type Greeting1 = string;
 export type InputField = string | null;
 /**
@@ -2400,7 +2418,7 @@ export type InterruptId2 = string | null;
 /**
  * the answer to a question
  */
-export type Text6 = string | null;
+export type Text7 = string | null;
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
@@ -2429,7 +2447,7 @@ export type Message11 = string;
 /**
  * continue one of this visitor's conversations
  */
-export type ThreadId11 = string | null;
+export type ThreadId12 = string | null;
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
@@ -2438,7 +2456,7 @@ export type Enabled7 = boolean | null;
 /**
  * sites allowed to show the chat page in a frame (the chat widget); empty: any site
  */
-export type FrameOrigins1 = string[] | null;
+export type FrameOrigins2 = string[] | null;
 export type Greeting2 = string | null;
 /**
  * '' picks one from the workflow's inputs
@@ -2584,7 +2602,7 @@ export type Version12 = string | null;
 export type Failed2 = number;
 export type Passed3 = number;
 export type Results2 = CaseResult[];
-export type Text7 = string;
+export type Text8 = string;
 export type Title8 = string;
 export type CostUsd8 = number;
 export type CreatedAt28 = string;
@@ -2859,7 +2877,7 @@ export type Overwrite1 = boolean;
  * a version's semver; the draft when left out
  */
 export type Version16 = string | null;
-export type Error10 = string | null;
+export type Error11 = string | null;
 export type Ok4 = boolean;
 export type Reply1 = string | null;
 export type Detail4 = string;
@@ -3071,7 +3089,9 @@ export interface ApiSchemas {
   RunRequest?: RunRequest;
   SandboxOut?: SandboxOut;
   SandboxPolicy?: SandboxPolicy;
+  SavedConversation?: SavedConversation;
   SavedFile?: SavedFile;
+  SavedMessage?: SavedMessage;
   Score?: Score;
   ScoreOut?: ScoreOut;
   ScoredRunOut?: ScoredRunOut;
@@ -5993,6 +6013,27 @@ export interface SandboxPolicy {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SavedConversation".
+ */
+export interface SavedConversation {
+  busy?: Busy;
+  messages?: Messages3;
+  thread_id?: ThreadId10;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SavedMessage".
+ */
+export interface SavedMessage {
+  attached?: Attached;
+  error?: Error9;
+  question?: Question;
+  role: Role5;
+  run_id?: RunId8;
+  text: Text5;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "SavedFile".
  */
 export interface SavedFile {
@@ -6006,11 +6047,11 @@ export interface SavedFile {
  * via the `definition` "ScoredRunOut".
  */
 export interface ScoredRunOut {
-  run_id: RunId8;
+  run_id: RunId9;
   scores: Scores4;
   started_at: StartedAt1;
   status: Status13;
-  thread_id: ThreadId10;
+  thread_id: ThreadId11;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6041,7 +6082,7 @@ export interface SearchResult {
   page: Page3;
   score: Score3;
   source: Source8;
-  text: Text5;
+  text: Text6;
   title: Title4;
 }
 /**
@@ -6073,7 +6114,7 @@ export interface ServerModelsIn {
  * via the `definition` "ServerModelsOut".
  */
 export interface ServerModelsOut {
-  error?: Error9;
+  error?: Error10;
   models?: Models;
   ok: Ok3;
 }
@@ -6140,6 +6181,7 @@ export interface ShareInfo {
    * the file input visitors may attach files to (G-5); none: the workflow takes no files
    */
   attachments?: AttachShape | null;
+  frame_origins?: FrameOrigins;
   greeting: Greeting;
   input: InputShape;
   suggestions: Suggestions;
@@ -6152,7 +6194,7 @@ export interface ShareInfo {
 export interface ShareOut {
   deployment_id: DeploymentId2;
   enabled: Enabled6;
-  frame_origins: FrameOrigins;
+  frame_origins: FrameOrigins1;
   greeting: Greeting1;
   input: InputShape;
   input_field: InputField;
@@ -6170,7 +6212,7 @@ export interface ShareOut {
 export interface ShareResumeIn {
   approve?: Approve;
   interrupt_id?: InterruptId2;
-  text?: Text6;
+  text?: Text7;
   visitor: Visitor2;
 }
 /**
@@ -6180,7 +6222,7 @@ export interface ShareResumeIn {
 export interface ShareRunIn {
   files?: Files4;
   message: Message11;
-  thread_id?: ThreadId11;
+  thread_id?: ThreadId12;
   visitor: Visitor3;
 }
 /**
@@ -6189,7 +6231,7 @@ export interface ShareRunIn {
  */
 export interface ShareSettingsIn {
   enabled?: Enabled7;
-  frame_origins?: FrameOrigins1;
+  frame_origins?: FrameOrigins2;
   greeting?: Greeting2;
   input_field?: InputField1;
   suggestions?: Suggestions2;
@@ -6419,7 +6461,7 @@ export interface TestRunOut {
  * via the `definition` "TextIn".
  */
 export interface TextIn {
-  text: Text7;
+  text: Text8;
   title: Title8;
 }
 /**
@@ -6694,7 +6736,7 @@ export interface PushIn1 {
  * via the `definition` "agentcanvas__api__v1__setup__TestOut".
  */
 export interface TestOut {
-  error?: Error10;
+  error?: Error11;
   ok: Ok4;
   reply?: Reply1;
 }

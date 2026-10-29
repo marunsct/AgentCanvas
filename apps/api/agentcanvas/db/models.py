@@ -240,6 +240,9 @@ class ShareThread(Base):
     deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"), index=True)
     visitor_hash: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
+    # what the visitor saw, so a reload brings the conversation back (G-15): [{role, text, run_id?, ...}]
+    transcript: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    closed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)  # "New conversation"
 
 
 class Thread(Base):
