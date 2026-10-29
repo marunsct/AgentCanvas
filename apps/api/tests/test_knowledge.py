@@ -322,6 +322,26 @@ async def test_knowledge_base_lifecycle(api_client):
     assert (await api_client.get(k)).status_code == 404
 
 
+async def test_an_upload_with_one_bad_file_adds_none_of_them(api_client):
+    """C-8: files that fail late (the same text twice, unreadable) leave nothing behind, so a retry works."""
+    kb = await new_kb(api_client)
+    k = f"/v1/knowledge/{kb['id']}"
+    leave = ("files", ("leave.md", b"# Leave\n\nEveryone gets 25 vacation days a year.", "text/markdown"))
+    pension = ("files", ("pension.md", b"# Pension\n\nThe plan matches 5 percent.", "text/markdown"))
+    copy = ("files", ("copy.md", b"# Leave\n\nEveryone gets 25 vacation days a year.", "text/markdown"))
+    twice = await api_client.post(f"{k}/documents", files=[leave, pension, copy])
+    assert twice.status_code == 409, twice.text
+    unreadable = await api_client.post(
+        f"{k}/documents", files=[leave, ("files", ("x.exe", b"MZ", "application/octet-stream"))]
+    )
+    assert unreadable.status_code == 422, unreadable.text
+    assert (await api_client.get(f"{k}/documents")).json() == []
+    assert (await api_client.get(k)).json()["version"] == kb["version"]
+    retry = await api_client.post(f"{k}/documents", files=[leave, pension])
+    assert retry.status_code == 201 and [d["name"] for d in retry.json()] == ["leave.md", "pension.md"]
+    assert (await api_client.get(k)).json()["documents"] == 2
+
+
 async def test_web_pages_are_fetched_safely(app, api_client):
     kb = await new_kb(api_client, "web")
     k = f"/v1/knowledge/{kb['id']}"

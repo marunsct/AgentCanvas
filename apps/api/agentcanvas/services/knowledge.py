@@ -442,8 +442,23 @@ class KnowledgeService:
         return doc
 
     async def add_file(self, kb_id: str, name: str, data: bytes, user_id: str | None = None) -> KnowledgeDocument:
-        title, text = await asyncio.to_thread(extract, name, data)  # parsers are CPU-bound
-        return await self.add(kb_id, title=title, text=text, kind="upload", name=name, user_id=user_id)
+        return (await self.add_files(kb_id, [(name, data)], user_id))[0]
+
+    async def add_files(
+        self, kb_id: str, files: list[tuple[str, bytes]], user_id: str | None = None
+    ) -> list[KnowledgeDocument]:
+        """Add (name, bytes) files in one transaction: one that cannot be read or added adds none of them."""
+        texts = [await asyncio.to_thread(extract, name, data) for name, data in files]  # parsers are CPU-bound
+        try:
+            added = [
+                await self.add(kb_id, title=title, text=text, kind="upload", name=name, user_id=user_id, commit=False)
+                for (name, _), (title, text) in zip(files, texts, strict=True)
+            ]
+            await self._touch(await self._lock(kb_id))
+        except BaseException:
+            await self.s.rollback()
+            raise
+        return added
 
     async def add_url(
         self, kb_id: str, url: str, user_id: str | None = None, transport: Any = None
@@ -462,8 +477,10 @@ class KnowledgeService:
         name: str | None = None,
         url: str | None = None,
         user_id: str | None = None,
+        commit: bool = True,
     ) -> KnowledgeDocument:
-        """Add a document: keep its text, chunk and embed it. The same text twice is refused."""
+        """Add a document: keep its text, chunk and embed it. The same text twice is refused. `commit=False` leaves
+        the commit (and the version bump) to the caller, which adds more in the same transaction."""
         kb = await self._lock(kb_id)
         text = text.replace("\x00", "").strip()
         if not text:
@@ -495,7 +512,10 @@ class KnowledgeService:
                 )
             )  # fmt: skip
         doc.chunks = len(pieces)
-        await self._touch(kb)
+        if commit:
+            await self._touch(kb)
+        else:
+            await self.s.flush()  # the next document's duplicate and size checks see this one
         return doc
 
     async def remove(self, kb_id: str, doc_id: str) -> None:

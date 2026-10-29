@@ -223,8 +223,8 @@ async def upload_documents(
     s: KnowledgeService = Depends(svc),
     user: CurrentUser = Depends(current_user),
 ) -> list[DocumentOut]:
-    """Upload files (multipart field `files`, up to 20 at a time, 20 MB each). All are read before any is added,
-    so an unreadable file adds nothing."""
+    """Upload files (multipart field `files`, up to 20 at a time, 20 MB each), in one transaction: a file that
+    cannot be read or added (unreadable, the same text twice, too many chunks) adds none of them."""
     if len(files) > MAX_FILES:
         raise InvalidInput(f"upload at most {MAX_FILES} files at a time")
     await s.get(kb_id)
@@ -234,7 +234,7 @@ async def upload_documents(
         if len(data) > MAX_FILE_BYTES:
             raise InvalidInput(f"'{f.filename}' is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
         read.append((f.filename or "document.txt", data))
-    added = [await s.add_file(kb_id, name, data, user.id) for name, data in read]
+    added = await s.add_files(kb_id, read, user.id)
     note(request, documents=[d.name for d in added])
     return [_doc(d) for d in added]
 

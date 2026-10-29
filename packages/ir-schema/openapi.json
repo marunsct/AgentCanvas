@@ -15838,7 +15838,7 @@
         ]
       },
       "post": {
-        "description": "Upload files (multipart field `files`, up to 20 at a time, 20 MB each). All are read before any is added,\nso an unreadable file adds nothing.",
+        "description": "Upload files (multipart field `files`, up to 20 at a time, 20 MB each), in one transaction: a file that\ncannot be read or added (unreadable, the same text twice, too many chunks) adds none of them.",
         "operationId": "upload_documents_v1_knowledge__kb_id__documents_post",
         "parameters": [
           {
