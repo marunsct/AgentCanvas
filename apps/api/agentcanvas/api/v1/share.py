@@ -166,7 +166,10 @@ async def _open(request: Request, session: AsyncSession, token: str, count: bool
     share, dep, wf = await ShareService(session).open(token)
     if count:  # the deployment's and project's limits, and this link's per-client one (visitor secrets are free)
         client = request.client.host if request.client else "unknown"
-        per_client = request.app.state.settings.rate_limit_per_share_client
+        row = await session.get(WorkflowRow, dep.workflow_id)
+        server = request.app.state.settings
+        org = await request.app.state.org_settings.for_project(server, row.project_id if row else None)
+        per_client = org.rate_limit_per_share_client
         await count_call(request, session, dep, wf, (f"visitor:{dep.id}:{client}", per_client))
     return share, dep, wf
 

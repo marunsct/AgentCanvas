@@ -1,5 +1,5 @@
-/** Settings › Organisation › General: the organisation's name and how long its conversations are kept; the server's
- * other retentions are shown for reference (an operator sets them). Admins change; everyone else reads. */
+/** Settings › Organisation › General: the organisation's name, how long its conversations are kept and where it
+ * publishes (the limits it may set for itself are OrgLimits). Admins change; everyone else reads. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
@@ -80,12 +80,6 @@ export function OrgSettings() {
         </div>
       )}
 
-      <h3>Set by the server</h3>
-      <p className="muted small">
-        The audit log keeps entries {days(d.audit_retention_days)}; long-term memories not updated are {d.memory_retention_days === 0
-          ? "kept forever" : `deleted after ${d.memory_retention_days} days`}. An operator changes these with
-        {" "}<code>AGENTCANVAS_AUDIT_RETENTION_DAYS</code> and <code>AGENTCANVAS_MEMORY_RETENTION_DAYS</code>.
-      </p>
       {admin
         ? <button type="button" className="primary" disabled={save.isPending || (mode === "days" && !(n >= 1))} onClick={() => save.mutate()}>Save</button>
         : <p className="muted small">Only an admin can change the organisation's settings.</p>}

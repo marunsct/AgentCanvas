@@ -35,7 +35,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Project › **Sandbox** | Time and memory limits for workspace code, and the hosts it may reach, where the server can enforce that ([Workspace › Sandbox](workspace.md#sandbox)) | builders |
 | Project › **Knowledge** | How new knowledge bases split their documents (by heading, paragraph, sentence or fixed windows; passage size; overlap). Existing knowledge bases keep their own ([Knowledge](knowledge.md#chunking-and-embeddings)) | builders |
 | Project › **Observability** | Sending traces to Langfuse, Phoenix or any OpenTelemetry collector | admins |
-| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused); the server's own retentions, for reference | admins |
+| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, the four rate limits, and how long the audit log and long-term memories are kept (see below) | admins |
 | Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow and by person, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person. Cost counts models with a price. The same report is `GET /v1/org/spending?since=&until=` | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
@@ -44,3 +44,20 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 
 The addresses pages had before Settings existed (`/setup`, `/members`, `/audit`, `/policies`) still work and open
 the matching section.
+
+### What an organisation may override
+
+The server's environment variable is the default for these, and for most of them the ceiling: the operator who
+runs the server decides how much an organisation may ask of it.
+
+| Setting | The organisation may | Never |
+|---|---|---|
+| Local MCP servers (`AGENTCANVAS_ALLOW_LOCAL_MCP`) | switch them off for itself | switch them on when the server has them off |
+| The four rate limits (`AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT`, `_PER_WEBHOOK`, `_PER_PROJECT`, `_PER_SHARE_CLIENT`) | set a lower limit | set one above the server's (unless the server's is 0, no limit) |
+| Audit log kept (`AGENTCANVAS_AUDIT_RETENTION_DAYS`) | keep it longer, or forever | keep it shorter than the server does |
+| Long-term memories kept (`AGENTCANVAS_MEMORY_RETENTION_DAYS`) | choose any number of days, or forever | |
+
+Leave a field empty to use the server's value. The **Applies now** column shows what is in force. If the operator
+later lowers a server limit, an organisation's higher value stops applying at once. A per-environment limit the
+operator set with `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` keeps applying to that environment's deployments. Other
+replicas of the server pick up a change within about 15 seconds.

@@ -10,6 +10,7 @@ import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
 import { ModelDefaults } from "./ModelDefaults";
+import { OrgLimits } from "./OrgLimits";
 import { OrgSettings } from "./OrgSettings";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { ProjectSettings } from "./ProjectSettings";
@@ -33,7 +34,7 @@ export const SECTIONS: Section[] = [
   { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
   { id: "knowledge", group: "Project", label: "Knowledge", render: () => <KnowledgeSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
-  { id: "organisation", group: "Organisation", label: "General", render: () => <OrgSettings /> },
+  { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /></> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },
   { id: "spending", group: "Organisation", label: "Spending", read: "admin", render: () => <SpendingSettings /> },

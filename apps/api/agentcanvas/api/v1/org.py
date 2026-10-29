@@ -16,7 +16,8 @@ from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
-from agentcanvas.services import matura
+from agentcanvas.services import matura, org_settings
+from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spending import spending
 from agentcanvas.validation.policies import check_policy
 
@@ -171,9 +172,18 @@ class OrgSettings(BaseModel):
     environments: list[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{0,30}$")]] | None = Field(
         None, max_length=20, description="where workflows are published; null: any name (dev, staging, prod offered)"
     )
+    limits: OrgLimits | None = Field(
+        None, description="local MCP, rate limits, audit and memory retention: what is sent changes, null clears"
+    )
 
 
 DEFAULT_ENVIRONMENTS = ["dev", "staging", "prod"]
+
+
+class OrgLimitsOut(BaseModel):
+    own: OrgLimits = Field(description="what this organisation set (null: the server's value applies)")
+    server: dict[str, int | bool] = Field(description="the server's values: the default and, mostly, the ceiling")
+    effective: dict[str, int | bool] = Field(description="what applies now")
 
 
 class OrgSettingsOut(BaseModel):
@@ -185,6 +195,7 @@ class OrgSettingsOut(BaseModel):
     memory_retention_days: int = Field(description="the server's: memories not updated for this long go (0 = kept)")
     environments: list[str] | None = Field(description="the organisation's list, or null when none is set")
     offered_environments: list[str] = Field(description="what the web app offers when publishing")
+    limits: OrgLimitsOut = Field(description="the settings an organisation may override, and what applies")
 
 
 async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
@@ -198,6 +209,11 @@ async def _settings_out(session: AsyncSession, request: Request, org_id: str) ->
         effective_retention_days=server.retention_days if days is None else days,
         audit_retention_days=server.audit_retention_days, memory_retention_days=server.memory_retention_days,
         environments=org.environments, offered_environments=org.environments or DEFAULT_ENVIRONMENTS,
+        limits=OrgLimitsOut(
+            own=OrgLimits.model_validate(org_settings.stored(org.settings)),
+            server={k: getattr(server, k) for k in org_settings.FIELDS},
+            effective=org_settings.effective(server, org.settings),
+        ),
     )  # fmt: skip
 
 
@@ -232,8 +248,14 @@ async def put_org_settings(
     if "environments" in body.model_fields_set:
         names = list(dict.fromkeys(body.environments or []))
         org.environments = names or None
+    if body.limits is not None:
+        changes = body.limits.model_dump(include=body.limits.model_fields_set)
+        org_settings.check(request.app.state.settings, changes)
+        merged = {**org_settings.stored(org.settings), **changes}
+        org.settings = {k: v for k, v in merged.items() if v is not None} or None
+        request.app.state.org_settings.forget()  # this replica reads the new values at once
     await session.commit()
-    note(request, target=f"org_id={user.org_id}", **body.model_dump(include=body.model_fields_set))
+    note(request, target=f"org_id={user.org_id}", **body.model_dump(exclude_unset=True))
     return await _settings_out(session, request, user.org_id)
 
 

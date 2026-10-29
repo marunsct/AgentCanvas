@@ -24,6 +24,8 @@ from agentcanvas.adapters.spi import MemoryAbility, supports
 from agentcanvas.db.models import AuditLog, Organization, Project, Thread, WorkflowRow
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
+from agentcanvas.services import org_settings
+from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
 
@@ -40,9 +42,11 @@ class RetentionJob:
         interval_s: float = 3600.0,
         audit_days: int = 0,
         memory_days: int = 0,
+        server: Settings | None = None,
     ):
         self.db, self.runner, self.default_days, self.interval_s = db, runner, default_days, interval_s
         self.audit_days, self.memory_days = audit_days, memory_days
+        self.server = server or Settings(audit_retention_days=audit_days, memory_retention_days=memory_days)
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -101,26 +105,48 @@ class RetentionJob:
         await self.expire_memory(now, [org_id for org_id, _ in orgs])
         return deleted
 
-    async def expire_audit(self, now: datetime) -> int:
-        if self.audit_days <= 0:
-            return 0
+    async def _days(self, org_id: str | None, key: str) -> int:
+        """The days for `key` that apply to an organisation: its own within the server's ceiling, else the server's."""
+        server = self.server.model_copy(
+            update={"audit_retention_days": self.audit_days, "memory_retention_days": self.memory_days}
+        )  # the job's own numbers: they are what the server was started with
+        if org_id is None:
+            return getattr(server, key)
         async with self.db.sessionmaker() as s:
-            res = await s.execute(delete(AuditLog).where(AuditLog.created_at < now - timedelta(days=self.audit_days)))
-            await s.commit()
-        n = res.rowcount or 0  # type: ignore[attr-defined]
-        if n:
-            log.info("retention.audit_deleted", rows=n, days=self.audit_days)
+            org = await s.get(Organization, org_id)
+        return org_settings.effective(server, org.settings if org else None)[key]
+
+    async def expire_audit(self, now: datetime) -> int:
+        """Each organisation's rows older than its audit retention (never shorter than the server's), and rows that
+        belong to none by the server's."""
+        async with self.db.sessionmaker() as s:
+            org_ids = list((await s.scalars(select(Organization.id))).all())
+        n = 0
+        for org_id in [*org_ids, None]:
+            days = await self._days(org_id, "audit_retention_days")
+            if days <= 0:
+                continue
+            where = AuditLog.org_id == org_id if org_id else AuditLog.org_id.is_(None)
+            async with self.db.sessionmaker() as s:
+                res = await s.execute(delete(AuditLog).where(where, AuditLog.created_at < now - timedelta(days=days)))
+                await s.commit()
+            gone = res.rowcount or 0  # type: ignore[attr-defined]
+            if gone:
+                log.info("retention.audit_deleted", org_id=org_id, rows=gone, days=days)
+            n += gone
         return n
 
     async def expire_memory(self, now: datetime, org_ids: list[str]) -> int:
-        if self.memory_days <= 0:
-            return 0
-        before, n = now - timedelta(days=self.memory_days), 0
         if not supports(self.runner.adapter, "memory_store"):
             return 0
         memory = cast(MemoryAbility, self.runner.adapter)
+        n = 0
         for org_id in org_ids:
-            n += await memory.memory_expire((f"org:{org_id}",), before)
-        if n:
-            log.info("retention.memory_deleted", items=n, days=self.memory_days)
+            days = await self._days(org_id, "memory_retention_days")
+            if days <= 0:
+                continue
+            gone = await memory.memory_expire((f"org:{org_id}",), now - timedelta(days=days))
+            if gone:
+                log.info("retention.memory_deleted", org_id=org_id, items=gone, days=days)
+            n += gone
         return n

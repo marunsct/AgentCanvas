@@ -1442,6 +1442,34 @@ export type MinSamples2 = number | null;
 export type Sampling3 = number | null;
 export type WindowMinutes2 = number | null;
 /**
+ * false: no local MCP servers, even if the server allows
+ */
+export type AllowLocalMcp = boolean | null;
+/**
+ * not below the server's; 0 = forever
+ */
+export type AuditRetentionDays = number | null;
+/**
+ * 0 = forever
+ */
+export type MemoryRetentionDays = number | null;
+/**
+ * calls a minute, each deployment
+ */
+export type RateLimitPerDeployment = number | null;
+/**
+ * runs a minute per project
+ */
+export type RateLimitPerProject = number | null;
+/**
+ * messages a minute per share-link visitor
+ */
+export type RateLimitPerShareClient = number | null;
+/**
+ * calls a minute per webhook
+ */
+export type RateLimitPerWebhook = number | null;
+/**
  * where workflows are published; null: any name (dev, staging, prod offered)
  */
 export type Environments =
@@ -1589,7 +1617,7 @@ export type RetentionDays = number | null;
 /**
  * the server's: audit-log rows older than this go (0 = kept)
  */
-export type AuditRetentionDays = number;
+export type AuditRetentionDays1 = number;
 /**
  * what applies now (0 = conversations are kept forever)
  */
@@ -1601,7 +1629,7 @@ export type Environments1 = string[] | null;
 /**
  * the server's: memories not updated for this long go (0 = kept)
  */
-export type MemoryRetentionDays = number;
+export type MemoryRetentionDays1 = number;
 export type Name42 = string;
 /**
  * false in Matura mode, where organisations are named in Matura
@@ -2948,6 +2976,8 @@ export interface ApiSchemas {
   OnlineIn?: OnlineIn;
   OnlineOut?: OnlineOut;
   OnlinePatch?: OnlinePatch;
+  OrgLimits?: OrgLimits;
+  OrgLimitsOut?: OrgLimitsOut;
   OrgSettings?: OrgSettings;
   OrgSettingsOut?: OrgSettingsOut;
   PolicyIn?: PolicyIn;
@@ -5464,6 +5494,54 @@ export interface OnlinePatch {
   window_minutes?: WindowMinutes2;
 }
 /**
+ * What an organisation sets for itself; a field left out keeps its value, null returns it to the server's.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "OrgLimits".
+ */
+export interface OrgLimits {
+  allow_local_mcp?: AllowLocalMcp;
+  audit_retention_days?: AuditRetentionDays;
+  memory_retention_days?: MemoryRetentionDays;
+  rate_limit_per_deployment?: RateLimitPerDeployment;
+  rate_limit_per_project?: RateLimitPerProject;
+  rate_limit_per_share_client?: RateLimitPerShareClient;
+  rate_limit_per_webhook?: RateLimitPerWebhook;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "OrgLimitsOut".
+ */
+export interface OrgLimitsOut {
+  effective: Effective;
+  own: OrgLimits1;
+  server: Server;
+}
+/**
+ * what applies now
+ */
+export interface Effective {
+  [k: string]: number | boolean;
+}
+/**
+ * What an organisation sets for itself; a field left out keeps its value, null returns it to the server's.
+ */
+export interface OrgLimits1 {
+  allow_local_mcp?: AllowLocalMcp;
+  audit_retention_days?: AuditRetentionDays;
+  memory_retention_days?: MemoryRetentionDays;
+  rate_limit_per_deployment?: RateLimitPerDeployment;
+  rate_limit_per_project?: RateLimitPerProject;
+  rate_limit_per_share_client?: RateLimitPerShareClient;
+  rate_limit_per_webhook?: RateLimitPerWebhook;
+}
+/**
+ * the server's values: the default and, mostly, the ceiling
+ */
+export interface Server {
+  [k: string]: number | boolean;
+}
+/**
  * Fields left out keep their value; `retention_days: null` returns to the server default.
  *
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5471,6 +5549,10 @@ export interface OnlinePatch {
  */
 export interface OrgSettings {
   environments?: Environments;
+  /**
+   * local MCP, rate limits, audit and memory retention: what is sent changes, null clears
+   */
+  limits?: OrgLimits | null;
   name?: Name41;
   retention_days?: RetentionDays;
 }
@@ -5479,14 +5561,23 @@ export interface OrgSettings {
  * via the `definition` "OrgSettingsOut".
  */
 export interface OrgSettingsOut {
-  audit_retention_days: AuditRetentionDays;
+  audit_retention_days: AuditRetentionDays1;
   effective_retention_days: EffectiveRetentionDays;
   environments: Environments1;
-  memory_retention_days: MemoryRetentionDays;
+  limits: OrgLimitsOut1;
+  memory_retention_days: MemoryRetentionDays1;
   name: Name42;
   name_editable: NameEditable;
   offered_environments: OfferedEnvironments;
   retention_days: RetentionDays1;
+}
+/**
+ * the settings an organisation may override, and what applies
+ */
+export interface OrgLimitsOut1 {
+  effective: Effective;
+  own: OrgLimits1;
+  server: Server;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

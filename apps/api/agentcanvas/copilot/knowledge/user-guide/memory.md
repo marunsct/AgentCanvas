@@ -64,4 +64,5 @@ still returns the most recent memories.
 ## Retention
 
 Long-term memories are kept until deleted, unless the server sets `AGENTCANVAS_MEMORY_RETENTION_DAYS`, in which
-case memories not updated for that long are removed by the daily retention job.
+case memories not updated for that long are removed by the daily retention job. An organisation's admin may choose
+its own number of days under **Settings › Organisation**.

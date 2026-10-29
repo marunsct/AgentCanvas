@@ -41,6 +41,7 @@ async def inspect_mcp(
     cfg = body.config
     url = str(cfg.get("url") or "")
     local = cfg.get("transport") == "stdio" or not url.startswith(("http://", "https://"))
+    settings = await request.app.state.org_settings.for_project(settings, project_id)  # the organisation's own
     if local and not settings.allow_local_mcp:  # same condition as validator E042
         raise Forbidden("local (stdio) MCP servers are disabled; an admin must enable allow_local_mcp")
     try:

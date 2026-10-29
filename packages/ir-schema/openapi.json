@@ -7467,6 +7467,154 @@
         "title": "OnlinePatch",
         "type": "object"
       },
+      "OrgLimits": {
+        "description": "What an organisation sets for itself; a field left out keeps its value, null returns it to the server's.",
+        "properties": {
+          "allow_local_mcp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "false: no local MCP servers, even if the server allows",
+            "title": "Allow Local Mcp"
+          },
+          "audit_retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "not below the server's; 0 = forever",
+            "title": "Audit Retention Days"
+          },
+          "memory_retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 = forever",
+            "title": "Memory Retention Days"
+          },
+          "rate_limit_per_deployment": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "calls a minute, each deployment",
+            "title": "Rate Limit Per Deployment"
+          },
+          "rate_limit_per_project": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "runs a minute per project",
+            "title": "Rate Limit Per Project"
+          },
+          "rate_limit_per_share_client": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "messages a minute per share-link visitor",
+            "title": "Rate Limit Per Share Client"
+          },
+          "rate_limit_per_webhook": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "calls a minute per webhook",
+            "title": "Rate Limit Per Webhook"
+          }
+        },
+        "title": "OrgLimits",
+        "type": "object"
+      },
+      "OrgLimitsOut": {
+        "properties": {
+          "effective": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "what applies now",
+            "title": "Effective",
+            "type": "object"
+          },
+          "own": {
+            "$ref": "#/components/schemas/OrgLimits",
+            "description": "what this organisation set (null: the server's value applies)"
+          },
+          "server": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "the server's values: the default and, mostly, the ceiling",
+            "title": "Server",
+            "type": "object"
+          }
+        },
+        "required": [
+          "own",
+          "server",
+          "effective"
+        ],
+        "title": "OrgLimitsOut",
+        "type": "object"
+      },
       "OrgSettings": {
         "description": "Fields left out keep their value; `retention_days: null` returns to the server default.",
         "properties": {
@@ -7486,6 +7634,17 @@
             ],
             "description": "where workflows are published; null: any name (dev, staging, prod offered)",
             "title": "Environments"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrgLimits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "local MCP, rate limits, audit and memory retention: what is sent changes, null clears"
           },
           "name": {
             "anyOf": [
@@ -7546,6 +7705,10 @@
             "description": "the organisation's list, or null when none is set",
             "title": "Environments"
           },
+          "limits": {
+            "$ref": "#/components/schemas/OrgLimitsOut",
+            "description": "the settings an organisation may override, and what applies"
+          },
           "memory_retention_days": {
             "description": "the server's: memories not updated for this long go (0 = kept)",
             "title": "Memory Retention Days",
@@ -7588,7 +7751,8 @@
           "audit_retention_days",
           "memory_retention_days",
           "environments",
-          "offered_environments"
+          "offered_environments",
+          "limits"
         ],
         "title": "OrgSettingsOut",
         "type": "object"

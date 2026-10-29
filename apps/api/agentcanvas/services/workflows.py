@@ -19,6 +19,7 @@ from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.commands import Command, CommandError, apply_batch
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry, without_sampling
+from agentcanvas.services import org_settings
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic, validate
@@ -112,6 +113,7 @@ class WorkflowService:
         self.settings = settings
         self.registry_for = registry_for  # project id -> registry incl. workspace custom nodes
         self._policies: dict[str, list[Policy]] = {}  # project id -> its organisation's policies (FR-X-19)
+        self._org: dict[str, Settings] = {}  # project id -> the server's settings as its organisation has them
 
     def registry(self, project_id: str) -> Registry | None:
         from agentcanvas.services import projects
@@ -131,8 +133,11 @@ class WorkflowService:
         """Validation diagnostics, with the organisation's policies for `environment` (None: as the editor sees
         them)."""
         registry = self.registry(project_id) if project_id else None
+        if project_id and project_id not in self._org:
+            self._org[project_id] = await org_settings.of_project(self.repo.s, self.settings, project_id)
+        settings = self._org.get(project_id or "", self.settings)
         return validate(
-            wf, registry, edition=self.settings.edition, allow_local_mcp=self.settings.allow_local_mcp,
+            wf, registry, edition=settings.edition, allow_local_mcp=settings.allow_local_mcp,
             policies=await self.policies(project_id) if project_id else None, environment=environment,
         )  # fmt: skip
 

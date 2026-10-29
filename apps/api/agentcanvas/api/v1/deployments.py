@@ -246,7 +246,9 @@ async def count_call(
     row = await session.get(WorkflowRow, dep.workflow_id)
     if row is not None:
         PROJECT_OF[wf.id] = row.project_id
-    settings = request.app.state.settings
+    settings = await request.app.state.org_settings.for_project(
+        request.app.state.settings, row.project_id if row else None
+    )
     per_key = settings.rate_limit_by_environment.get(dep.environment, settings.rate_limit_per_deployment)
     await request.app.state.ratelimit.hit(
         (f"deployment:{dep.id}", per_key),

@@ -53,6 +53,7 @@ from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.online import OnlineScorer
+from agentcanvas.services.org_settings import OrgSettingsCache
 from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
@@ -200,10 +201,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 lambda wf: app.state.secrets.refresh(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT))
             )
             # every run, whatever started it (triggers, events, hand-over), passes the security rules first
+            app.state.org_settings = OrgSettingsCache(db)
             runner.prepare_hooks.append(
                 RunGate(
                     settings,
                     lambda wf: app.state.projects.registry(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)),
+                    lambda wf: app.state.org_settings.for_project(
+                        settings, projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)
+                    ),
                 )
             )
             app.state.events = EventService(db, runner, app.state.projects)
@@ -220,7 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
                 db, runner, settings.retention_days, settings.retention_interval_s,
-                audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days,
+                audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days, server=settings,
             )  # fmt: skip
 
             async def handover_target(s, thread_id, version_id):
