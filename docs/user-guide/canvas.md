@@ -53,8 +53,9 @@ Prometheus rules in `infra/observability/alerts.yaml` turn it into a ticket).
 
 **Spending** under the budget shows what the workflow's runs spent today and this month, against the budgets, with
 the number of runs, model answers taken from the cache and calls a backup model answered (see
-[Models](models.md#backup-models-and-reusing-answers)). Runs still going count once they finish, so runs started
-together can go a little over a day or month budget.
+[Models](models.md#backup-models-and-reusing-answers)). Runs still going count what they have spent so far, on
+every server, and each run looks at the others' spending after every model call: runs going together can pass a day
+or month budget by no more than one model call each.
 
 ## Structure: subgraphs and frames
 

@@ -177,8 +177,8 @@ def usage_price(model_id: str | None, usage: dict[str, Any]) -> float | None:
 
 @dataclass
 class Spent:
-    """What was spent before a run: by its thread's earlier runs, and by all the workflow's runs today and this
-    month (UTC; runs still going count once they finish)."""
+    """What was spent before a run: by its thread's earlier runs, and by all the workflow's other runs today and this
+    month (UTC), on any API instance: runs still going count what they have spent so far (`_concurrent_spend`)."""
 
     thread_tokens: int = 0
     thread_cost: float = 0.0
@@ -221,60 +221,8 @@ def check_budget(budget: Budget | None, usage: dict[str, Any], before: Spent) ->
             raise BudgetExceeded(f"budget exceeded: {used:g} of {limit:g} {what}")
 
 
-class SpendTally:
-    """What a workflow's runs spend while they are going, per budget period, in this process. A run's cost reaches
-    the database only when it finishes, so runs going at the same time would each see the same spending before
-    them and together pass a daily or monthly limit. Each run's check adds what the workflow's runs already going
-    had spent when it started, and what the workflow's other runs spent since.
-
-    Limitation: the tally is per process. Runs on other API instances count only once they finish (the database),
-    so concurrent runs spread over several instances can still overshoot a period limit by what they spend
-    together while going."""
-
-    def __init__(self) -> None:
-        self.total: dict[tuple[str, str], float] = {}  # (workflow, period label) -> USD reported in this process
-        self.running: dict[str, dict[str, float]] = {}  # workflow -> run -> USD so far
-        self.marks: dict[str, tuple[dict[str, str], dict[str, float]]] = {}  # run -> (labels, totals) at its start
-
-    def start(self, workflow_id: str, run_id: str) -> float:
-        """Note where a run starts (before reading the database's spending); returns what the workflow's other
-        runs going here had spent by then, which the database does not have yet."""
-        labels = {p: label for p, (label, _) in periods().items()}
-        current = set(labels.values())
-        for key in [k for k in self.total if k[0] == workflow_id and k[1] not in current]:
-            del self.total[key]  # a past day or month
-        self.marks[run_id] = (labels, {p: self.total.get((workflow_id, lb), 0.0) for p, lb in labels.items()})
-        going = self.running.setdefault(workflow_id, {})
-        carry = sum(cost for run, cost in going.items() if run != run_id)
-        going[run_id] = 0.0
-        return carry
-
-    def add(self, workflow_id: str, run_id: str, cost: float) -> None:
-        if not cost:
-            return
-        going = self.running.get(workflow_id, {})
-        if run_id in going:
-            going[run_id] += cost
-        for label, _ in periods().values():
-            self.total[(workflow_id, label)] = self.total.get((workflow_id, label), 0.0) + cost
-
-    def others(self, workflow_id: str, run_id: str, own: float) -> dict[str, float]:
-        """USD the workflow's other runs in this process spent since this run started, per period."""
-        labels, marks = self.marks.get(run_id, ({}, {}))
-        return {p: max(0.0, self.total.get((workflow_id, lb), 0.0) - marks[p] - own) for p, lb in labels.items()}
-
-    def finish(self, workflow_id: str, run_id: str) -> None:
-        """The run's cost is in the database now."""
-        self.marks.pop(run_id, None)
-        going = self.running.get(workflow_id)
-        if going is not None:
-            going.pop(run_id, None)
-            if not going:
-                del self.running[workflow_id]
-
-
 async def workflow_spend(s: Any, workflow_id: str, *, exclude_run: str | None = None) -> tuple[float, float]:
-    """USD the workflow's runs spent today and this month (UTC)."""
+    """USD the workflow's runs spent today and this month (UTC), those still going at what they have spent so far."""
     p = periods()
     day, month = p["day"][1], p["month"][1]
     q = (
@@ -322,7 +270,6 @@ class Runner:
         # awaited before a run starts (the project's secrets, reloaded when another instance changed them)
         self.prepare_hooks: list[Callable[[Workflow], Awaitable[None]]] = []
         self.draining = False  # shutting down: no new runs (FR-X-10)
-        self.spend = SpendTally()  # runs going in this process, for daily and monthly budgets
 
     @property
     def models(self) -> ModelService:
@@ -554,10 +501,11 @@ class Runner:
 
         budget = spec.workflow.settings.budget
         events: Any = None  # the adapter's async generator (closed in `finally`)
-        carry = self.spend.start(h.workflow_id, h.run_id)
+        by_period = budget is not None and (
+            budget.daily_max_cost_usd is not None or budget.monthly_max_cost_usd is not None
+        )
         try:
             before = await self._spent(h, budget) if budget else Spent()
-            before = replace(before, day_cost=before.day_cost + carry, month_cost=before.month_cost + carry)
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
             events = self.adapter_for(spec.workflow).execute(spec, resources)
@@ -566,13 +514,7 @@ class Runner:
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
                         priced = self._priced(h, raw)
                         await emit(priced)
-                        self.spend.add(h.workflow_id, h.run_id, priced["value"]["cost_usd"] or 0.0)
-                        others = self.spend.others(h.workflow_id, h.run_id, h.usage["cost_usd"])
-                        now = replace(
-                            before,
-                            day_cost=before.day_cost + others.get("day", 0.0),
-                            month_cost=before.month_cost + others.get("month", 0.0),
-                        )  # with what the workflow's concurrent runs here spent meanwhile
+                        now = await self._concurrent_spend(h, before) if by_period else before
                         await self._cost_alerts(h, budget, now)
                         check_budget(budget, h.usage, now)
                         continue
@@ -662,7 +604,6 @@ class Runner:
                 await events.aclose()  # stops the graph if we left early (budget, cancel)
             h.status = status
             await self._finish(h, status, error, interrupts)
-            self.spend.finish(h.workflow_id, h.run_id)  # after its cost is saved: later runs read it there
         finally:  # even if finalising was cut short: the thread is released and the last events are published
             if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
                 del self.active_by_thread[h.thread_id]
@@ -776,6 +717,23 @@ class Runner:
             if budget.daily_max_cost_usd or budget.monthly_max_cost_usd:
                 out.day_cost, out.month_cost = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
         return out
+
+    async def _concurrent_spend(self, h: RunHandle, before: Spent) -> Spent:
+        """Save what the run has spent so far on its row, and read what the workflow's other runs have spent, on any
+        API instance. Every run does the same after each model call, so runs going at once, here or on other replicas,
+        stop a day or month budget within a model call of each other's spending (G-8). If the database does not
+        answer, the run carries on with what it knew."""
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(
+                    update(Run).where(Run.id == h.run_id, Run.status == "running").values(cost_usd=h.usage["cost_usd"])
+                )
+                await s.commit()
+                day, month = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
+        except Exception:
+            log.warning("run.spend_sync_failed", run_id=h.run_id, exc_info=True)
+            return before
+        return replace(before, day_cost=day, month_cost=month)
 
     async def _cost_alerts(self, h: RunHandle, budget: Budget | None, before: Spent) -> None:
         """Raise the cost alerts (S26) this run's spending crosses: once per workflow, period and share, however many

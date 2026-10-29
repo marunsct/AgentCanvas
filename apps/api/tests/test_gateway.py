@@ -18,7 +18,7 @@ from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.adapters.langchain.nodes import Resources, tag_model
 from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.registry import default_registry
-from agentcanvas.runtime.runner import BudgetExceeded, SpendTally, Spent, check_budget, periods
+from agentcanvas.runtime.runner import BudgetExceeded, Spent, check_budget, periods
 from agentcanvas.testing import DemoChatModel, scripted
 from agentcanvas.validation import validate
 
@@ -220,27 +220,6 @@ def test_day_and_month_budgets_stop_runs():
     assert Budget(alert_at=[0.9, 0.5]).alerts() == [0.5, 0.9, 1.0] and Budget().alerts() == [0.8, 1.0]
     with pytest.raises(ValueError):
         Budget(alert_at=[80])
-
-
-def test_concurrent_runs_count_each_others_spending():
-    """Runs going at once each read the same spending from the database (a run's cost is saved when it ends); the
-    in-process tally adds what the workflow's other runs spent, so together they stop at the limit."""
-    t = SpendTally()
-    assert t.start("wf", "r1") == 0.0
-    t.add("wf", "r1", 0.4)
-    assert t.start("wf", "r2") == pytest.approx(0.4)  # r1 is going: its 0.4 is not in the database yet
-    t.add("wf", "r2", 0.3)
-    t.add("wf", "r1", 0.2)
-    assert t.others("wf", "r2", 0.3) == pytest.approx({"day": 0.2, "month": 0.2})
-    assert t.others("wf", "r1", 0.6) == pytest.approx({"day": 0.3, "month": 0.3})
-    budget = Budget(daily_max_cost_usd=1.0)
-    with pytest.raises(BudgetExceeded, match="this day"):  # 0.4 carried + 0.2 since + 0.3 + 0.1 of its own
-        check_budget(budget, {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.4}, Spent(day_cost=0.6))
-    t.finish("wf", "r1")  # its cost is saved: runs starting now read it from the database
-    assert t.start("wf", "r3") == pytest.approx(0.3) and t.start("other", "r4") == 0.0
-    t.finish("wf", "r2")
-    t.finish("wf", "r3")
-    assert t.running == {"other": {"r4": 0.0}} and set(t.marks) == {"r4"}
 
 
 def test_periods_are_utc_days_and_months():
