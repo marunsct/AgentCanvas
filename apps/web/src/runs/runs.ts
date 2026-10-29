@@ -16,3 +16,18 @@ export function selectionProblem(workflowIds: string[]): string | null {
   if (distinct.size === 0) return "Pick conversations first.";
   return distinct.size > 1 ? "These belong to different workflows: pick the conversations of one workflow." : null;
 }
+
+/** The "Started" choices on the Runs page. */
+export const WHEN = [
+  { id: "", label: "Any time", hours: 0 },
+  { id: "24h", label: "Last 24 hours", hours: 24 },
+  { id: "7d", label: "Last 7 days", hours: 24 * 7 },
+  { id: "30d", label: "Last 30 days", hours: 24 * 30 },
+] as const;
+export type When = (typeof WHEN)[number]["id"];
+
+/** The `since` the API takes for a choice of "Started" (an ISO time), or undefined for any time. */
+export function sinceFor(when: When, now: Date = new Date()): string | undefined {
+  const hours = WHEN.find((w) => w.id === when)?.hours;
+  return hours ? new Date(now.getTime() - hours * 3_600_000).toISOString() : undefined;
+}

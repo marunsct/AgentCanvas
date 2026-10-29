@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { exampleRun, selectionProblem } from "./runs";
+import { exampleRun, selectionProblem, sinceFor } from "./runs";
 
 const thread = (id: string, workflow_id: string) => ({
   id, workflow_id, workflow_name: workflow_id, status: "idle", title: "", runs: 1, created_at: "", updated_at: "",
@@ -45,6 +45,29 @@ describe("run helpers", () => {
     expect(selectionProblem([])).toMatch(/Pick/);
     expect(selectionProblem(["a", "b"])).toMatch(/different workflows/);
     expect(selectionProblem(["a", "a"])).toBeNull();
+  });
+});
+
+describe("Runs date filter", () => {
+  it("turns a choice into the since the API takes", () => {
+    const now = new Date("2026-10-29T12:00:00Z");
+    expect(sinceFor("", now)).toBeUndefined();
+    expect(sinceFor("24h", now)).toBe("2026-10-28T12:00:00.000Z");
+    expect(sinceFor("7d", now)).toBe("2026-10-22T12:00:00.000Z");
+    expect(sinceFor("30d", now)).toBe("2026-09-29T12:00:00.000Z");
+  });
+
+  it("asks the server only for conversations since then", async () => {
+    renderPage();
+    await screen.findByLabelText("select conversation th1");
+    expect(apiFetch.mock.calls.some(([p]) => String(p).startsWith("/threads?") && String(p).includes("since="))).toBe(false);
+    apiFetch.mockClear();
+    await act(async () => { fireEvent.change(screen.getByLabelText("filter by date"), { target: { value: "7d" } }); });
+    const asked = apiFetch.mock.calls.map(([p]) => String(p)).find((p) => p.startsWith("/threads?"))!;
+    const since = new URL(asked, "http://x").searchParams.get("since")!;
+    const days = (Date.now() - new Date(since).getTime()) / 86_400_000;
+    expect(days).toBeGreaterThan(6.99);
+    expect(days).toBeLessThan(7.01);
   });
 });
 

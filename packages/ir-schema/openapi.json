@@ -23805,6 +23805,44 @@
             }
           },
           {
+            "description": "only conversations that began at or after this time (UTC)",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only conversations that began at or after this time (UTC)",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "only conversations that began before this time (UTC)",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only conversations that began before this time (UTC)",
+              "title": "Until"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,

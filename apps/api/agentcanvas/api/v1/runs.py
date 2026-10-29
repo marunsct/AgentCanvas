@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -363,11 +363,17 @@ async def cancel_run(run_id: str, r: Runner = Depends(runner)) -> dict[str, Any]
 
 
 # ----------------------------------------------------------------- threads ----
+def _utc(t: datetime) -> datetime:
+    return t.replace(tzinfo=UTC) if t.tzinfo is None else t.astimezone(UTC)
+
+
 @router.get("/threads", response_model=ThreadPage)
 async def list_threads(
     workflow_id: str | None = None,
     project_id: str | None = Query(None, description="only this project's conversations"),
     status: str | None = None,
+    since: datetime | None = Query(None, description="only conversations that began at or after this time (UTC)"),
+    until: datetime | None = Query(None, description="only conversations that began before this time (UTC)"),
     limit: int = Query(50, ge=1, le=200),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
@@ -386,6 +392,10 @@ async def list_threads(
         q = q.where(WorkflowRow.project_id == project_id)
     if status:
         q = q.where(Thread.status == status)
+    if since:
+        q = q.where(Thread.created_at >= _utc(since))
+    if until:
+        q = q.where(Thread.created_at < _utc(until))
     if cursor:
         # ordered by when each began, not by id: a caller may name its own threads ("support-42"), which sort anywhere
         if await session.get(Thread, cursor) is None:

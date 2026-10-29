@@ -572,6 +572,40 @@ async def test_the_runs_page_lists_a_projects_conversations_with_their_runs(app,
     assert (await api_client.get("/v1/threads", params={"project_id": "prj_nope"})).status_code == 404
 
 
+async def test_the_runs_page_filters_conversations_by_date(app, api_client):
+    """GET /threads?since=&until=: conversations that began in a window (UTC), together with the other filters."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+    from test_publish import make_greeter
+
+    from agentcanvas.db.models import Thread
+
+    wf = await make_greeter(api_client)
+    now = datetime.now(UTC)
+    for name, days in (("th_today", 0), ("th_last_week", 5), ("th_last_month", 20)):
+        r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "thread_id": name})
+        assert r.status_code == 200
+        async with app.state.db.sessionmaker() as s:
+            await s.execute(update(Thread).where(Thread.id == name).values(created_at=now - timedelta(days=days)))
+            await s.commit()
+
+    async def ids(**params) -> list[str]:
+        r = await api_client.get("/v1/threads", params={"workflow_id": wf, **params})
+        assert r.status_code == 200, r.text
+        return [t["id"] for t in r.json()["items"]]
+
+    assert await ids() == ["th_today", "th_last_week", "th_last_month"]
+    assert await ids(since=(now - timedelta(days=1)).isoformat()) == ["th_today"]
+    assert await ids(since=(now - timedelta(days=7)).isoformat()) == ["th_today", "th_last_week"]
+    assert await ids(until=(now - timedelta(days=7)).isoformat()) == ["th_last_month"]
+    window = {"since": (now - timedelta(days=10)).isoformat(), "until": (now - timedelta(days=2)).isoformat()}
+    assert await ids(**window) == ["th_last_week"]
+    assert await ids(**window, status="error") == []  # with the other filters
+    assert await ids(since=(now - timedelta(days=7)).replace(tzinfo=None).isoformat()) == ["th_today", "th_last_week"]
+    assert (await api_client.get("/v1/threads", params={"since": "yesterday"})).status_code == 422
+
+
 async def test_the_runs_page_orders_conversations_by_when_they_began_not_by_id(app, api_client):
     """A caller may name its own thread ("zz-support"); it still sorts by time, and paging walks every one once."""
     from datetime import UTC, datetime, timedelta

@@ -13,6 +13,7 @@ import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
 import { EmptyState } from "../ui/EmptyState";
 import { AddToDataset } from "./AddToDataset";
+import { sinceFor, WHEN, type When } from "./runs";
 import { Activity } from "lucide-react";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -32,17 +33,20 @@ export function duration(t: Pick<ThreadOut, "last_started_at" | "last_ended_at">
 export function RunsPage() {
   const [status, setStatus] = useState("");
   const [workflow, setWorkflow] = useState("");
+  const [when, setWhen] = useState<When>("");
   const workflows = useWorkflows();
   const canBuild = useCan("builder");
   const qc = useQueryClient();
   const [picked, setPicked] = useState<string[]>([]); // conversations ticked to become dataset examples
   const threads = useInfiniteQuery({
-    queryKey: ["threads", PROJECT_ID, status, workflow],
+    queryKey: ["threads", PROJECT_ID, status, workflow, when],
     initialPageParam: "",
     queryFn: ({ pageParam }) => {
       const q = new URLSearchParams({ project_id: PROJECT_ID, limit: "50" });
       if (status) q.set("status", status);
       if (workflow) q.set("workflow_id", workflow);
+      const since = sinceFor(when);
+      if (since) q.set("since", since);
       if (pageParam) q.set("cursor", pageParam);
       return apiFetch<ThreadPage>(`/threads?${q}`);
     },
@@ -68,11 +72,14 @@ export function RunsPage() {
           <option value="">Every workflow</option>
           {workflows.data?.items.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
+        <select aria-label="filter by date" value={when} onChange={(e) => { setWhen(e.target.value as When); setPicked([]); }}>
+          {WHEN.map((w) => <option key={w.id} value={w.id}>{w.id ? `Started: ${w.label.toLowerCase()}` : "Started: any time"}</option>)}
+        </select>
       </div>
       {canBuild && chosen.length > 0 && <AddToDataset threads={chosen} onDone={() => setPicked([])} />}
       <QueryStatus q={threads} what="the runs" />
       {threads.data && items.length === 0 && (
-        status || workflow
+        status || workflow || when
           ? <div className="empty-state">No runs match these filters.</div>
           : <EmptyState icon={Activity} title="No runs yet">Run a workflow from the editor with ▶ Test, or call a published one; every conversation shows here.</EmptyState>
       )}
