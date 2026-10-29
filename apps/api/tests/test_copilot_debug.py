@@ -201,6 +201,44 @@ def test_a_turn_keeps_decisions_taken_meanwhile():
     assert {p["id"]: p["status"] for p in merged} == {"p0": "rejected", "p1": "accepted", "p2": "pending"}
 
 
+def test_a_turn_drops_the_carried_proposal_when_it_was_accepted_meanwhile():
+    """E-6: accepting the open proposal while the Copilot answered left the new proposal holding the accepted
+    commands again, so it no longer applied ("id already exists") and the turn's own changes were lost."""
+    from agentcanvas.api.v1.copilot import _pending, merge_proposals
+    from agentcanvas.copilot.tools import ToolContext, carry_pending
+    from agentcanvas.ir.commands import apply_batch, parse_commands
+    from agentcanvas.ir.models import Node, Workflow
+    from agentcanvas.registry import default_registry
+
+    async def validate(_wf):
+        return []
+
+    saved = Workflow(id="wf_x", name="x", nodes=[Node(id="n_a", type="core.set", name="a")])
+    add = [{"op": "AddNode", "node": {"id": "n_b", "type": "core.set", "name": "b"}}]
+    open_one = {"id": "p1", "status": "pending", "summary": "Add b", "commands": add, "tests": [{"name": "t"}]}
+    ctx = ToolContext(workflow=saved, registry=default_registry(), templates={}, validate=validate)
+    carry_pending(ctx, [open_one])
+    more = [{"op": "UpdateNode", "id": "n_a", "patch": {"name": "renamed"}}]
+    new = {
+        "id": "p2", "status": "pending", "summary": "Add b; Rename a", "commands": [*add, *more],
+        "tests": [{"name": "t"}], "notes": [], "carried": ctx.carried,
+    }  # fmt: skip
+    stored = [{**open_one, "status": "accepted"}]  # the person accepted p1 in the editor meanwhile
+    merged = merge_proposals(stored, [{**open_one, "status": "superseded"}, new])
+    p2 = next(p for p in merged if p["id"] == "p2")
+    assert p2["commands"] == more and p2["tests"] == [] and p2["summary"] == "Rename a" and p2["status"] == "pending"
+
+    class View:  # the draft now holds p1's changes
+        workflow = apply_batch(saved, parse_commands(add))[0]
+
+    conv = type("Conv", (), {"proposals": merged})()
+    pending = _pending(conv, View())  # type: ignore[arg-type]
+    assert pending is not None and not pending["stale"]
+    assert [n.name for n in Workflow.model_validate(pending["preview"]).nodes] == ["renamed", "b"]
+    untouched = merge_proposals([open_one], [open_one, new])  # not accepted: the new one keeps everything
+    assert next(p for p in untouched if p["id"] == "p2")["commands"] == [*add, *more]
+
+
 def test_the_open_proposal_carries_into_the_next_turn():
     """Review fix: a follow-up turn tests the open proposal's fix and keeps its changes in the new proposal."""
     from agentcanvas.copilot.tools import ToolContext, carry_pending

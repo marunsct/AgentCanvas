@@ -260,6 +260,8 @@ class CopilotTurn:
             "errors": sum(1 for d in diags if d.severity == "error"),
             "created_at": _now(),
         }
+        if self.ctx.carried:  # dropped from it if the person accepts that one while this turn runs
+            stored["carried"] = self.ctx.carried
         self.proposals.append(stored)
         return {
             **stored,

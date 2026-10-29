@@ -210,16 +210,35 @@ DECIDED = ("accepted", "rejected")
 
 
 def merge_proposals(stored: list[dict[str, Any]], turn: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The turn's proposals over the stored ones, except that a decision recorded meanwhile wins."""
+    """The turn's proposals over the stored ones, except that a decision recorded meanwhile wins. A new proposal that
+    carried an open one which was accepted meanwhile keeps only what this turn added (the rest is in the draft)."""
     by_id = {p.get("id"): p for p in stored}
+    accepted = {p.get("id") for p in stored if p.get("status") == "accepted"}
     out = []
     for p in turn:
         old = by_id.pop(p.get("id"), None)
-        out.append(old if old is not None and old.get("status") in DECIDED else p)
+        if old is not None and old.get("status") in DECIDED:
+            out.append(old)
+        elif (carried := p.get("carried")) and carried.get("id") in accepted and p.get("status") == "pending":
+            out.append(_without_carried(p, carried))
+        else:
+            out.append(p)
     merged = [*by_id.values(), *out]
     # two turns that overlapped (another API process) each left one pending: only the newest stays open
     pending = [p for p in merged if p.get("status") == "pending"]
     return [{**p, "status": "superseded"} if p in pending[:-1] else p for p in merged]
+
+
+def _without_carried(p: dict[str, Any], carried: dict[str, Any]) -> dict[str, Any]:
+    """A proposal without the accepted one it started from: its commands are applied and its files written already."""
+    rest = {k: list(p.get(k) or [])[int(carried.get(k) or 0) :] for k in ("commands", "tests", "notes", "files")}
+    summary, prefix = str(p.get("summary") or ""), str(carried.get("summary") or "")
+    if prefix and summary.startswith(f"{prefix}; "):
+        summary = summary[len(prefix) + 2 :]
+    elif prefix and summary == prefix:
+        summary = "Changes to the workflow"
+    out = {k: v for k, v in p.items() if k != "carried"}
+    return {**out, **rest, "summary": summary, "status": "pending" if any(rest.values()) else "superseded"}
 
 
 @router.post("/workflows/{wf_id}/copilot/messages", response_class=StreamingResponse)

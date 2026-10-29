@@ -62,6 +62,7 @@ class ToolContext:
     allow_real_runs: bool = False  # the person allowed test runs that call real models in this conversation
     sources: list[dict[str, str]] = field(default_factory=list)  # guide sections this turn read: the answer cites them
     workspace: Workspace | None = None  # the project's code: read here, changed only through an accepted proposal
+    carried: dict[str, Any] | None = None  # the open proposal this turn started from: its id and what it added
 
 
 @dataclass(frozen=True)
@@ -160,12 +161,18 @@ def carry_pending(ctx: ToolContext, proposals: list[dict[str, Any]]) -> None:
             ctx.workflow, _ = apply_batch(ctx.workflow, parse_commands(commands))
         except (CommandError, ValidationError):
             return
+    tests, notes = list(pending.get("tests") or []), list(pending.get("notes") or [])
+    files = list(pending.get("files") or [])
     ctx.proposal.commands.extend(commands)
-    ctx.proposal.tests.extend(pending.get("tests") or [])
-    ctx.proposal.notes.extend(pending.get("notes") or [])
-    ctx.proposal.files.extend(pending.get("files") or [])
+    ctx.proposal.tests.extend(tests)
+    ctx.proposal.notes.extend(notes)
+    ctx.proposal.files.extend(files)
     if summary := str(pending.get("summary") or "").strip():
         ctx.proposal.summary.append(summary)
+    ctx.carried = {
+        "id": pending.get("id"), "commands": len(commands), "tests": len(tests), "notes": len(notes),
+        "files": len(files), "summary": summary,
+    }  # fmt: skip
 
 
 async def propose_changes(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
