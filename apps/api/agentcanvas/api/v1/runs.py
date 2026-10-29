@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
@@ -171,6 +172,10 @@ class InterruptOut(BaseModel):
 
 class Decision(BaseModel):
     value: Any
+
+
+# a run as lists show it: without its recording (every model reply and tool output) and context (F-2)
+LIGHT_RUN = (defer(Run.recording), defer(Run.context))
 
 
 # ----------------------------------------------------------------- helpers ----
@@ -394,7 +399,7 @@ async def list_threads(
     runs: dict[str, list[Run]] = {}
     if page:
         found = await session.scalars(
-            select(Run).where(Run.thread_id.in_([t.id for t, _ in page])).order_by(Run.started_at)
+            select(Run).options(*LIGHT_RUN).where(Run.thread_id.in_([t.id for t, _ in page])).order_by(Run.started_at)
         )
         for r in found:
             runs.setdefault(r.thread_id, []).append(r)
@@ -500,7 +505,8 @@ async def explain_thread(
 @router.get("/threads/{thread_id}/runs", response_model=list[RunOut])
 async def thread_runs(thread_id: str, session: AsyncSession = Depends(get_session)) -> list[RunOut]:
     await _thread(session, thread_id)
-    rows = (await session.scalars(select(Run).where(Run.thread_id == thread_id).order_by(Run.id))).all()
+    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread_id).order_by(Run.id)
+    rows = (await session.scalars(q)).all()
     return [_run_out(x) for x in rows]
 
 
@@ -671,7 +677,7 @@ async def inbox(
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
     q = (
-        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, WorkflowRow.draft_ir, Project)
+        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
@@ -681,7 +687,12 @@ async def inbox(
         q = q.where(Thread.workflow_id == workflow_id)
     # newest first: a long backlog must not hide what is waiting right now
     rows = (await session.execute(q.order_by(InterruptTask.created_at.desc()).limit(limit))).all()
-    return [_intr(x, wid, name, ir, project) for x, wid, name, ir, project in rows]
+    # each workflow's document once, for its steps' labels: not once per waiting item (F-2)
+    wids = {wid for _, wid, _, _ in rows}
+    irs = dict(
+        (await session.execute(select(WorkflowRow.id, WorkflowRow.draft_ir).where(WorkflowRow.id.in_(wids)))).all()
+    )
+    return [_intr(x, wid, name, irs.get(wid), project) for x, wid, name, project in rows]
 
 
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])

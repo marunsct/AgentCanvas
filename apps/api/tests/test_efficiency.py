@@ -215,3 +215,26 @@ async def test_deleting_a_project_removes_its_workspace_off_the_event_loop(app, 
     monkeypatch.setattr(shutil, "rmtree", watched)
     assert (await api_client.delete(f"/v1/projects/{pid}")).status_code == 204
     assert where == [False] and not root.exists()
+
+
+# ------------------------------------------------------------------------------------------------- F-2 ----
+async def test_run_lists_do_not_read_recordings_and_the_inbox_reads_each_workflow_once(app, api_client):
+    """F-2: listing conversations read every run's recording (each model reply and tool output) to sum its
+    tokens, and the Inbox read the workflow's whole document again for every waiting item."""
+    from test_runs_v1 import triage_resources
+    from test_versions import new_triage
+
+    app.state.resources_factory = triage_resources()
+    wf = await new_triage(api_client)
+    for i in range(3):
+        await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream",
+                              json={"input": {"ticket": "Invoice?"}, "thread_id": f"th_eff{i}"})  # fmt: skip
+    with statements(app) as seen:
+        assert (await api_client.get("/v1/threads")).status_code == 200
+        assert (await api_client.get("/v1/threads/th_eff0/runs")).status_code == 200
+    run_reads = [st for st in touching(seen, "run") if st.lstrip().upper().startswith("SELECT")]
+    assert run_reads and not [st for st in run_reads if "recording" in st]
+    with statements(app) as seen:
+        inbox = (await api_client.get("/v1/inbox")).json()
+    assert len(inbox) == 3 and all(i["node_label"] for i in inbox)
+    assert len([st for st in seen if "draft_ir" in st]) == 1
