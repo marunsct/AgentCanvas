@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import copy
+import logging
 import time
 import warnings
 from collections import OrderedDict
@@ -107,6 +109,25 @@ class LangChainAdapter:
         if len(self._graphs) > self._cache_size:
             self._graphs.popitem(last=False)
         return graph
+
+    async def _read_graph(self, wf: Workflow, resources: ac.Resources) -> Any:
+        """A graph to read or edit a conversation's state with: the run's own when it can be built, else one whose
+        unreachable MCP servers have no tools (reading state needs only the checkpointer). Opening a conversation
+        no longer fails because a tool server is down (R-5). The fallback is never cached, so runs never see it."""
+        try:
+            return await self.graph(wf, resources)
+        except Exception:  # noqa: BLE001 - an MCP server down, or its address refused: read without its tools
+            logging.getLogger(__name__).warning("reading %s without the tools of an MCP server that failed", wf.id)
+        plan = lower(wf, _registry(resources))
+        reader = copy.copy(resources)
+        reader._mcp = dict(resources._mcp)
+        for pr in plan.mcp:
+            try:
+                await reader.load_mcp(pr.resource.name, pr.resource.config)
+            except Exception:  # noqa: BLE001
+                reader._mcp[(pr.resource.name, reader._key(pr.resource.config))] = []
+        p = self._persist()
+        return build_from_plan(plan, reader, checkpointer=p.checkpointer, store=p.store)
 
     async def _debug_graph(self, wf: Workflow, resources: ac.Resources, pins: dict[str, dict[str, Any]]) -> Any:
         p = self._persist()
@@ -360,12 +381,12 @@ class LangChainAdapter:
         )
 
     async def get_state(self, wf: Workflow, thread_id: str, resources: ac.Resources) -> ThreadState:
-        return await self._state(await self.graph(wf, resources), self._config(wf, thread_id), node_index(wf))
+        return await self._state(await self._read_graph(wf, resources), self._config(wf, thread_id), node_index(wf))
 
     async def history(
         self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100, include_values: bool = False
     ) -> list[CheckpointInfo]:
-        graph, names = await self.graph(wf, resources), node_index(wf)
+        graph, names = await self._read_graph(wf, resources), node_index(wf)
         out = []
         async for snap in graph.aget_state_history(self._config(wf, thread_id), limit=limit):
             meta = snap.metadata or {}
@@ -393,7 +414,7 @@ class LangChainAdapter:
         as_node: str | None,
         checkpoint_id: str | None,
     ) -> str:
-        graph = await self.graph(wf, resources)
+        graph = await self._read_graph(wf, resources)
         node = wf.node(as_node) if as_node else None
         node_name = node.name if node else as_node  # accept canvas id or node name
         new_cfg = await graph.aupdate_state(self._config(wf, thread_id, checkpoint_id), values, as_node=node_name)

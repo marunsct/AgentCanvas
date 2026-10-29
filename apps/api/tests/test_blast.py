@@ -136,3 +136,19 @@ def test_a_damaged_group_of_steps_does_not_break_the_blast_radius():
     wf = Workflow.model_validate({"id": "wf_x", "name": "x", "nodes": [group], "edges": []})
     assert "E018" in {d.code for d in validate(wf)}
     assert blast_radius(wf).nodes == [] and dry_run_tools(wf) == set()
+
+
+async def test_a_conversation_reads_while_its_mcp_server_is_down(app):
+    """R-5: reading a conversation (its state, history, an edit of its state) built the run's graph, which contacts
+    every MCP server first: with one down, opening the conversation failed. Reading needs only the checkpoints."""
+    from agentcanvas.testing import DemoResources as Resources
+
+    wf = agent_wf()
+    wf["resources"][1] = {"id": "r_mcp", "type": "mcp.server", "name": "crm",
+                          "config": {"url": "http://127.0.0.1:9/mcp"}}  # fmt: skip  # nothing listens there
+    wf["edges"][-1]["source"]["node"] = "r_mcp"
+    workflow = Workflow.model_validate(wf)
+    adapter = app.state.runner.adapters["langchain"]
+    state = await adapter.get_state(workflow, "th_never_ran", Resources())
+    assert state.values == {} or isinstance(state.values, dict)
+    assert await adapter.history(workflow, "th_never_ran", Resources()) == []

@@ -62,6 +62,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Opening a conversation (its state, history or Explain) failed with a server error while one of the workflow's MCP
+  servers was down, because reading built the whole graph and contacted every server first. Reading now goes on
+  without that server's tools (HARDENING R-5).
 - Smaller run-time fixes: the version a published conversation continues on is read by the order of its runs, not
   their start time (SQLite keeps that to the second); the security check before a run is repeated when the workspace
   code changes, not only when the workflow does; the child-process sandbox's network guard covers UDP too (HARDENING
