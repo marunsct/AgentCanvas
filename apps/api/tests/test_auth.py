@@ -125,7 +125,13 @@ def test_dev_mode_is_refused_in_production():
     with pytest.raises(RuntimeError, match="SECRET_KEY"):  # S11: the development key never reaches production
         check_auth_settings(Settings(env="prod", **oidc))
     strong = "k" * 64
-    check_auth_settings(Settings(env="prod", secret_key=strong, **oidc))
+    with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION=inprocess"):  # S-8: code as the API's own user
+        check_auth_settings(Settings(env="prod", secret_key=strong, **oidc))
+    with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION=subprocess"):
+        check_auth_settings(Settings(env="staging", secret_key=strong, script_execution="subprocess", **oidc))
+    check_auth_settings(Settings(env="prod", secret_key=strong, script_execution="remote", sandbox_url="http://s",
+                                 sandbox_token="t" * 32, **oidc))  # fmt: skip
+    check_auth_settings(Settings(env="prod", secret_key=strong, allow_unisolated_scripts=True, **oidc))
     with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION"):  # S2: hosted runs scripts in the sandbox only
         check_auth_settings(Settings(edition="hosted", secret_key=strong, **oidc))
     check_auth_settings(Settings(edition="hosted", secret_key=strong, script_execution="docker", **oidc))
@@ -191,7 +197,9 @@ async def test_every_other_route_needs_sign_in(app, client):
 async def test_api_docs_are_off_in_production(settings):
     from agentcanvas.api.main import create_app
 
-    prod = create_app(settings.model_copy(update={"env": "prod", "secret_key": "k" * 64}))
+    prod = create_app(
+        settings.model_copy(update={"env": "prod", "secret_key": "k" * 64, "allow_unisolated_scripts": True})
+    )
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=prod), base_url="http://test") as c:
         for path in ("/docs", "/redoc", "/openapi.json"):
             assert (await c.get(path)).status_code == 404, path

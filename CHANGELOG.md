@@ -8,6 +8,10 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- **A staging or production server ran workspace code as the API's own user** when left at the default `inprocess`
+  mode (or `subprocess`), with the database password and keys in reach; it only logged a warning. It now refuses to
+  start that way: use the sandbox service (`remote`), `docker` or `langsmith`, or set
+  `AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS=true` when only trusted people edit workspaces (HARDENING S-8).
 
 - **A rotated API key kept being used until the server restarted**: model clients and MCP tool sets were cached by
   the secret's name, not its value, so after replacing a leaked key, runs went on sending the old one. A changed

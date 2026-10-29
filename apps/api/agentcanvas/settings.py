@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith
     # Sandbox (spike SP-2; credentials from LANGSMITH_API_KEY)
     script_execution: Literal["inprocess", "subprocess", "docker", "langsmith", "remote"] = "inprocess"
+    # staging and prod refuse to run workspace code as the API's own user (inprocess, subprocess) unless this says so:
+    # for a server only trusted people edit (S-8)
+    allow_unisolated_scripts: bool = False
     sandbox_url: str | None = (
         None  # "remote": the sandbox service (`agentcanvas.sandbox.service`), e.g. http://sandbox:8090
     )
