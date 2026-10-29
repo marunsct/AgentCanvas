@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from agentcanvas.agentspec import ident
+from agentcanvas.sampling import refusing
 
 CHAT_INPUT = "{{ state.messages[-1].content }}"  # the person's latest chat message
 AGENT_REPLY = "{{ state.messages[-1].content }}"  # an agent's answer: the last message of the chat
@@ -37,6 +38,7 @@ class _Step:
     label: str | None = None
     model: str | None = None
     tools: list[str] = field(default_factory=list)
+    subagents: list[str] = field(default_factory=list)  # a Planning Agent's specialists (agent.subagent blocks)
     after: list[tuple[str, str | None]] = field(default_factory=list)  # (earlier step key or START, route)
     position: dict[str, float] | None = None
 
@@ -84,6 +86,8 @@ class Builder:
               label: str | None = None) -> str:  # fmt: skip
         """A model block (`provider:model`), shared by the steps that use the same settings; returns its id."""
         conf: dict[str, Any] = {"model": model}
+        if model in refusing():
+            temperature = None  # W020: the model refuses it
         if isinstance(temperature, int | float) and not isinstance(temperature, bool) and 0 <= temperature <= 2:
             conf["temperature"] = float(temperature)
         if isinstance(max_tokens, int) and not isinstance(max_tokens, bool) and max_tokens > 0:
@@ -203,6 +207,8 @@ class Builder:
                 edges.append(_wire(st.model, st.id, "model"))
             for rid in st.tools:
                 edges.append(_wire(rid, st.id, "tools"))
+            for rid in st.subagents:
+                edges.append(_wire(rid, st.id, "subagents"))
             sources = [(k, r) for k, r in st.after if k == "START" or k in self.steps] or [("START", None)]
             target = st.id
             if len(sources) > 1 and not self._exclusive(sources):  # needs every earlier step: wait for all of them
@@ -360,11 +366,16 @@ def position(x: Any, y: Any) -> dict[str, float] | None:
 
 
 # ------------------------------------------------------------------ entry point ----
-FORMATS = {"langflow": "Langflow", "flowise": "Flowise", "n8n": "n8n", "agentspec": "Open Agent Spec"}
+FORMATS = {"langflow": "Langflow", "flowise": "Flowise", "n8n": "n8n", "agentspec": "Open Agent Spec",
+           "openai_agents": "OpenAI Agents SDK"}  # fmt: skip
 
 
 def detect(doc: Any) -> str | None:
-    """Which builder wrote `doc`: langflow, flowise, n8n or agentspec (None: none of them)."""
+    """Which builder wrote `doc`: langflow, flowise, n8n, agentspec or openai_agents (None: none of them)."""
+    from agentcanvas.importers.openai_agents import looks_like
+
+    if looks_like(doc) or (isinstance(doc, dict) and looks_like(doc.get("code"))):
+        return "openai_agents"  # Python: as text, or {"code": "..."} as the import route takes it
     if not isinstance(doc, dict):
         return None
     if "component_type" in doc:
@@ -384,12 +395,22 @@ def detect(doc: Any) -> str | None:
 
 def import_document(doc: Any, *, wf_id: str, name: str | None = None) -> tuple[str, dict[str, Any], list[str],
                                                                               dict[str, Any]]:  # fmt: skip
-    """(format, IR document, report, layout) for a Langflow, Flowise, n8n or Agent Spec file."""
+    """(format, IR document, report, layout) for a Langflow, Flowise, n8n or Agent Spec file, or OpenAI Agents SDK
+    code. Workspace files the workflow needs (an Agents SDK file's function tools) are its `metadata.kit`."""
     kind = detect(doc)
     if kind is None:
         raise ImportError_(
-            "this file is not a Langflow, Flowise, n8n or Agent Spec export (expected the JSON each one downloads)"
+            "this file is not a Langflow, Flowise, n8n or Agent Spec export (expected the JSON each one downloads) or "
+            "OpenAI Agents SDK code"
         )
+    if kind == "openai_agents":
+        from agentcanvas.importers import openai_agents
+
+        builder, files = openai_agents.read(doc if isinstance(doc, str) else doc["code"], wf_id=wf_id, name=name)
+        ir, report, layout = builder.build()
+        if files:
+            ir["metadata"]["kit"] = {"files": files}
+        return kind, ir, report, layout
     if kind == "agentspec":
         from agentcanvas import agentspec
 

@@ -249,3 +249,56 @@ async def test_import_endpoint_rejects_other_files(api_client):
     spec = json.loads((Path(__file__).parent / "agentspec_sample.json").read_text())
     res = await api_client.post(f"{P}/workflows/import", json={"file": spec})
     assert res.status_code == 201 and res.json()["format"] == "agentspec"
+
+
+SDK_CODE = (Path(__file__).parent / "importers" / "openai_agents_builder.py.txt").read_text()
+
+
+def test_openai_agents_sdk_code_imports():
+    """G-1: code from OpenAI's Agent Builder (closing 2026-11-30) or written with the Agents SDK becomes a workflow:
+    agents in the order the code runs them, handoffs as a Planning Agent's specialists, function tools as Python
+    tools whose code goes to the workspace, the output type as an answer shape. The code is read, never run."""
+    from agentcanvas.importers import import_document
+    from agentcanvas.ir.models import Workflow
+
+    kind, ir, report, _ = import_document(SDK_CODE, wf_id="wf_SDK1")
+    assert kind == "openai_agents"
+    nodes = {n["label"] if "label" in n else n["name"]: n for n in ir["nodes"]}
+    assert nodes["Classifier"]["type"] == "core.agent"
+    assert nodes["Classifier"]["config"]["response_format"]["properties"] == {
+        "category": {"type": "string"}, "urgent": {"type": "boolean"},
+        "tags": {"type": "array", "items": {"type": "string"}}}  # fmt: skip
+    assert nodes["Support agent"]["type"] == "agent.deep"  # it hands off: a Planning Agent
+    by_type = {r["type"]: r for r in ir["resources"]}
+    assert by_type["agent.subagent"]["config"]["description"] == "Questions about invoices and payments"
+    assert by_type["tool.python"]["config"]["import_path"] == "tools.wf_sdk1_tools:lookup_order"
+    models = [r["config"] for r in ir["resources"] if r["type"] == "model.chat"]
+    assert models == [{"model": "openai:gpt-5-mini"}]  # one block: GPT-5 takes no temperature (W020), so 0.2 is dropped
+    flow = [(e["source"]["node"], e["target"]["node"]) for e in ir["edges"] if e.get("kind") == "flow"]
+    first, second = nodes["Classifier"]["id"], nodes["Support agent"]["id"]
+    assert ("START", first) in flow and (first, second) in flow and (second, "END") in flow  # the run order
+    [path] = ir["metadata"]["kit"]["files"]
+    assert path == "tools/wf_sdk1_tools.py"
+    code = ir["metadata"]["kit"]["files"][path]
+    assert "@tool\ndef lookup_order" in code and "@function_tool" not in code
+    compile(code, path, "exec")
+    text = " ".join(report)
+    assert "web search" in text and "guardrails" in text and "Planning Agent" in text
+    wf = Workflow.model_validate({**ir, "metadata": {}})
+    assert not [d for d in validate(wf) if d.severity == "error"]
+
+
+async def test_the_import_route_takes_agents_sdk_code_and_writes_its_tools(app, api_client):
+    r = await api_client.post("/v1/projects/prj_default/workflows/import", json={"code": SDK_CODE, "name": "Support"})
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["format"] == "openai_agents" and "kit" not in out["ir"].get("metadata", {})
+    key = out["id"].lower()
+    ws = app.state.projects.workspace("prj_default")
+    assert "def lookup_order" in (ws.root / f"tools/{key}_tools.py").read_text()
+    assert any(f"tools/{key}_tools.py" in line for line in out["report"])
+    bad = await api_client.post("/v1/projects/prj_default/workflows/import",
+                                json={"code": "from agents import Agent\nAgent(  # broken"})  # fmt: skip
+    assert bad.status_code == 422 and "not valid Python" in bad.json()["detail"]
+    both = await api_client.post("/v1/projects/prj_default/workflows/import", json={"code": SDK_CODE, "file": {}})
+    assert both.status_code == 422

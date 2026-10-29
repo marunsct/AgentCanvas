@@ -1,0 +1,46 @@
+from pydantic import BaseModel
+
+from agents import Agent, ModelSettings, Runner, WebSearchTool, function_tool
+
+
+class Triage(BaseModel):
+    category: str
+    urgent: bool
+    tags: list[str]
+
+
+@function_tool
+def lookup_order(order_id: str) -> str:
+    """Look up an order's status by its id."""
+    return f"order {order_id}: shipped"
+
+
+billing = Agent(
+    name="Billing agent",
+    handoff_description="Questions about invoices and payments",
+    instructions="You answer billing questions politely.",
+    model="gpt-5.5",
+)
+
+support = Agent(
+    name="Support agent",
+    instructions="You help customers. Hand billing questions to the billing agent.",
+    model="gpt-5-mini",
+    model_settings=ModelSettings(temperature=0.2),
+    tools=[lookup_order, WebSearchTool()],
+    handoffs=[billing],
+)
+
+classifier = Agent(
+    name="Classifier",
+    instructions="Classify the ticket.",
+    model="gpt-5-mini",
+    output_type=Triage,
+    input_guardrails=[],
+)
+
+
+async def run_workflow(text: str):
+    first = await Runner.run(classifier, text)
+    second = await Runner.run(support, first.final_output.category)
+    return second.final_output

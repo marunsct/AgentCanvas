@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -350,12 +350,23 @@ async def import_agent_spec(
 
 # ------------------------------------------------------------------ importers (S31) ----
 class ImportFile(BaseModel):
-    file: dict[str, Any] = Field(description="The JSON a Langflow, Flowise, n8n or Agent Spec export downloads")
+    file: dict[str, Any] | None = Field(
+        None, description="The JSON a Langflow, Flowise, n8n or Agent Spec export downloads"
+    )
+    code: str | None = Field(
+        None, max_length=500_000, description="OpenAI Agents SDK Python (an Agent Builder export, or written by hand)"
+    )
     name: str | None = Field(None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _one(self) -> ImportFile:
+        if (self.file is None) == (self.code is None):
+            raise ValueError("send either `file` (an exported JSON file) or `code` (OpenAI Agents SDK Python)")
+        return self
 
 
 class Imported(WorkflowOut):
-    format: str = Field(description="langflow, flowise, n8n or agentspec")
+    format: str = Field(description="langflow, flowise, n8n, agentspec or openai_agents")
     report: list[str]
 
 
@@ -363,19 +374,30 @@ class Imported(WorkflowOut):
 async def import_file(
     project_id: str,
     body: ImportFile,
+    request: Request,
     response: Response,
     svc: WorkflowService = Depends(service),
     user: CurrentUser = Depends(current_user),
 ) -> Imported:
-    """A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec), with what changed."""
+    """A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec) or OpenAI Agents SDK
+    code, with what changed."""
+    wf_id = new_id("wf")
     try:  # off the event loop: a large or strange file must not stop the server answering others
         kind, ir, report, layout = await asyncio.to_thread(
-            importers.import_document, body.file, wf_id=new_id("wf"), name=body.name
+            importers.import_document, body.file if body.file is not None else body.code, wf_id=wf_id, name=body.name
         )
     except importers.ImportError_ as exc:
         raise InvalidInput(str(exc)) from exc
     except RecursionError as exc:
         raise InvalidInput("the file is nested too deeply to import") from exc
+    kit = template_kit.kit_of(ir)
+    if kit.files:  # code the workflow calls (an Agents SDK file's function tools): into the workspace first
+        await svc.projects.require(project_id)
+        ws = request.app.state.projects.workspace(project_id)
+        added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, f"import of {kind}"))
+        report = [*report, *(f"Added {p} to the workspace." for p in added.files_written)]
+        report += [f"Kept your own {p}; the imported code needs its functions." for p in added.files_kept]
+        ir["metadata"].pop(template_kit.KIT, None)
     view = await svc.create_from_ir(project_id, ir, layout, user.id)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     return Imported(**_out(view, response).model_dump(), format=kind, report=report)

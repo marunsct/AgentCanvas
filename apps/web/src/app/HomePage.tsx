@@ -91,7 +91,7 @@ export function HomePage() {
             onPick={(t) => create.mutate({ name: name.trim() || t.name, template: t.id })} />
         )}
         {create.error && <p className="error-text">{(create.error as Error).message}</p>}
-        <h3>…or bring one from Langflow, Flowise, n8n or another agent framework</h3>
+        <h3>…or bring one from OpenAI Agent Builder, Flowise, Langflow, n8n or another agent framework</h3>
         <FileImport projectId={PROJECT_ID} onDone={onImported} />
         {imported && (
           <div className="notes small" data-testid="import-notes">

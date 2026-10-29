@@ -224,6 +224,12 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- **Import OpenAI Agents SDK code**, which is what OpenAI's Agent Builder exports before it closes on 30 November
+  2026: **Import a file…** takes a `.py` file and reads it without running it. Agents become AI agent steps with
+  their instructions, model and answer shape, in the order the code runs them; handoffs make a Planning Agent with
+  specialists; `@function_tool` functions become Python tools whose code is added to the workspace; hosted tools,
+  guardrails and branching are listed with what to use instead. The guide's page for switching covers Agent Builder
+  and Flowise (archived in August 2026) (HARDENING G-1, P-4, P-5).
 
 - **Published workflows answer A2A 1.0 clients**: `SendMessage` and `GetTask` with 1.0's wire form (`TASK_STATE_*`
   states, `ROLE_AGENT`, parts without `kind`, `{"task": …}`), the `A2A-Version` header (none means 0.3, as the spec

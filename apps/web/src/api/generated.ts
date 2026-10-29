@@ -900,6 +900,16 @@ export type Name29 = string;
  * path prefixes to match (empty: every path)
  */
 export type Paths = string[];
+/**
+ * OpenAI Agents SDK Python (an Agent Builder export, or written by hand)
+ */
+export type Code4 = string | null;
+/**
+ * The JSON a Langflow, Flowise, n8n or Agent Spec export downloads
+ */
+export type File = {
+  [k: string]: unknown;
+} | null;
 export type Name30 = string | null;
 /**
  * the file's text
@@ -914,7 +924,7 @@ export type Split5 = string | null;
 export type CreatedAt15 = string;
 export type Diagnostics3 = Diagnostic[];
 /**
- * langflow, flowise, n8n or agentspec
+ * langflow, flowise, n8n, agentspec or openai_agents
  */
 export type Format1 = string;
 export type Id34 = string;
@@ -4294,14 +4304,9 @@ export interface Headers {
  * via the `definition` "ImportFile".
  */
 export interface ImportFile {
-  file: File;
+  code?: Code4;
+  file?: File;
   name?: Name30;
-}
-/**
- * The JSON a Langflow, Flowise, n8n or Agent Spec export downloads
- */
-export interface File {
-  [k: string]: unknown;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

@@ -6,5 +6,6 @@ describe("nameFromFile", () => {
     expect(nameFromFile("customer-support.flow.json")).toBe("Customer support");
     expect(nameFromFile("My_n8n_workflow.json")).toBe("My n8n workflow");
     expect(nameFromFile(".json")).toBe("");
+    expect(nameFromFile("support_agents.py")).toBe("Support agents");  // OpenAI Agents SDK code
   });
 });

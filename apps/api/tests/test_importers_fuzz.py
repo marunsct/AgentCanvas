@@ -156,3 +156,33 @@ def test_a_loop_of_pass_through_nodes_imports():
     ], "connections": {"A": {"main": [[{"node": "B"}]]}, "B": {"main": [[{"node": "A"}, {"node": "C"}]]}}}  # fmt: skip
     _, ir, _, _ = import_document(doc, wf_id="wf_new")
     validate(Workflow.model_validate(ir))
+
+
+def test_damaged_agents_sdk_code_imports_or_is_refused_plainly():
+    """Python cut short, lines dropped or swapped, junk inserted: an import or ImportError_, never a crash."""
+    code = (FILES / "openai_agents_builder.py.txt").read_text()
+    lines = code.splitlines()
+    rng = random.Random(f"{SEED}:sdk")
+    failures: dict[str, str] = {}
+    for round_ in range(ROUNDS):
+        damaged = list(lines)
+        for _ in range(rng.randint(1, 4)):
+            i = rng.randrange(len(damaged))
+            action = rng.choice(["drop", "cut", "junk", "swap"])
+            if action == "drop":
+                damaged.pop(i)
+            elif action == "cut":
+                damaged[i] = damaged[i][: rng.randrange(len(damaged[i]) + 1)]
+            elif action == "junk":
+                damaged.insert(i, rng.choice(["Agent(", "x = Agent(name=1, tools=5)", "@function_tool", "\x00", "))"]))
+            elif len(damaged) > 1:
+                j = rng.randrange(len(damaged))
+                damaged[i], damaged[j] = damaged[j], damaged[i]
+        try:
+            _, ir, _, _ = import_document("\n".join(damaged), wf_id="wf_new")
+            validate(Workflow.model_validate({**ir, "metadata": {}}))
+        except ImportError_:
+            continue
+        except Exception as exc:  # noqa: BLE001
+            failures.setdefault(_where(exc), f"round {round_}")
+    assert not failures, "\n".join(f"{k} ({v})" for k, v in failures.items())

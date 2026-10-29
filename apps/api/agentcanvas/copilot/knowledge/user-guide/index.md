@@ -22,7 +22,7 @@ debug, test, evaluate, export and publish behind an API.
 
 1. [Run AgentCanvas on your computer](run-locally.md): one Docker command, or from source with a two-minute smoke
    test.
-   Coming from Langflow, Flowise or n8n? [Import your flows](switching.md).
+   Coming from OpenAI Agent Builder (closing 30 November 2026), Flowise (archived), Langflow or n8n? [Import your flows](switching.md).
 2. [Getting started](getting-started.md): build and run your first workflow.
 3. [Core concepts](concepts.md): the handful of ideas everything else builds on.
 

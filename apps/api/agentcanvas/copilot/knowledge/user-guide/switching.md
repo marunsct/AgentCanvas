@@ -1,4 +1,4 @@
-# Coming from Langflow, Flowise or n8n
+# Coming from OpenAI Agent Builder, Flowise, Langflow or n8n
 
 Already built a flow in another visual builder? Bring it with you. On the home page, under **…or bring one from
 Langflow, Flowise, n8n or another agent framework**, press **Import a file…** and pick the JSON file the other
@@ -10,6 +10,13 @@ builder exports. AgentCanvas recognises which builder wrote it and creates a new
 
 The same button also imports [Open Agent Spec](agents-and-connectors.md) files (from WayFlow, or pyagentspec's
 LangGraph and AutoGen adapters).
+
+!!! note "Two builders are closing"
+    **OpenAI's Agent Builder** shuts down on 30 November 2026 (its Evals become read-only on 31 October); OpenAI's
+    way out is to export your workflow as Agents SDK code. **Flowise** was archived in August 2026 and is no longer
+    maintained. Both import here: see [From OpenAI Agent Builder or the Agents SDK](#from-openai-agent-builder-or-the-agents-sdk)
+    and the Flowise row below. Your workflow then runs on LangGraph or the OpenAI Agents SDK, exports as a project of
+    either, and keeps working whichever provider you choose.
 
 ## How to export from each builder
 
@@ -47,6 +54,25 @@ Branches that exclude each other (the two sides of an If) do not: whichever ran 
 The model names in the file are kept (`openai:gpt-4.1-mini`, `ollama:llama3.3`…); a model the catalogue does not
 know shows a warning in **Problems**, and you can pick another in the model block.
 
+## From OpenAI Agent Builder or the Agents SDK
+
+In Agent Builder, open the workflow and use its **Code** export for the Agents SDK in Python, saved as a `.py` file (any
+Python file written with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) works the same way).
+**Import a file…** reads it without running it:
+
+| In the code | In AgentCanvas |
+|---|---|
+| `Agent(name=…, instructions=…, model=…)` | **AI agent** step with its instructions and an AI model block (`openai:<model>`); `model_settings` keep `max_tokens` (and `temperature` for models that take one) |
+| `output_type=SomeModel` (a Pydantic class in the file) | the agent's **answer shape**, written to `structured_response` |
+| `@function_tool` functions | **Python tool** blocks; their code goes to the workspace as `tools/<workflow>_tools.py`, as LangChain `@tool`s |
+| `handoffs=[…]`, `other.as_tool(…)` | the agent becomes a **Planning Agent** with the others as its specialists (their answers come back to it) |
+| the `Runner.run(…)` calls | the order of the steps |
+| `WebSearchTool`, `FileSearchTool`, code interpreter, hosted MCP | listed in the notes with what to use instead (an HTTP tool, a knowledge base, a script, an App connector) |
+| guardrails, `if`/`else` between agents | listed in the notes: add a safety step or a **Choose a path** step |
+
+Agent Builder's file search used OpenAI vector stores: upload the same files to a [knowledge base](knowledge.md).
+Its evaluations do not come with the workflow; build a [dataset and evaluators](evaluation.md) from a few runs.
+
 ## Through the API
 
 ```bash
@@ -55,5 +81,5 @@ curl -X POST http://localhost:7777/api/v1/projects/prj_default/workflows/import 
   -d "{\"file\": $(cat my-flow.json)}"
 ```
 
-The answer has the new workflow, the `format` it recognised (`langflow`, `flowise`, `n8n` or `agentspec`) and the
-`report` lines.
+For Agents SDK code send `{"code": "<the Python>"}` instead of `file`. The answer has the new workflow, the `format`
+it recognised (`langflow`, `flowise`, `n8n`, `agentspec` or `openai_agents`) and the `report` lines.

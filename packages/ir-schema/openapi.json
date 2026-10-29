@@ -4851,11 +4851,31 @@
       },
       "ImportFile": {
         "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 500000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OpenAI Agents SDK Python (an Agent Builder export, or written by hand)",
+            "title": "Code"
+          },
           "file": {
-            "additionalProperties": true,
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "The JSON a Langflow, Flowise, n8n or Agent Spec export downloads",
-            "title": "File",
-            "type": "object"
+            "title": "File"
           },
           "name": {
             "anyOf": [
@@ -4871,9 +4891,6 @@
             "title": "Name"
           }
         },
-        "required": [
-          "file"
-        ],
         "title": "ImportFile",
         "type": "object"
       },
@@ -4938,7 +4955,7 @@
             "type": "array"
           },
           "format": {
-            "description": "langflow, flowise, n8n or agentspec",
+            "description": "langflow, flowise, n8n, agentspec or openai_agents",
             "title": "Format",
             "type": "string"
           },
@@ -21311,7 +21328,7 @@
     },
     "/v1/projects/{project_id}/workflows/import": {
       "post": {
-        "description": "A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec), with what changed.",
+        "description": "A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec) or OpenAI Agents SDK\ncode, with what changed.",
         "operationId": "import_file_v1_projects__project_id__workflows_import_post",
         "parameters": [
           {
