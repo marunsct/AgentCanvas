@@ -96,7 +96,7 @@ class SearchIn(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
     mode: Literal["hybrid", "semantic", "keyword"] = "hybrid"
     top_k: int = Field(default=5, ge=1, le=50)
-    min_score: float = Field(default=0.0, ge=0)
+    min_score: float = Field(default=0.0, ge=0, le=1, description="0-1 in every mode (see the guide)")
 
 
 class SearchResult(BaseModel):

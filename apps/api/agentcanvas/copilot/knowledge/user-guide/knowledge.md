@@ -63,9 +63,17 @@ noise), and an export ships it without vectors.
 | Search for | A template, by default `{{ state.question }}` |
 | Match by | Hybrid, meaning or keywords |
 | At most | How many passages to keep (5) |
-| Minimum score | Drop weaker passages (0 keeps the best ones) |
+| Minimum score | Drop weaker passages, from 0 to 1 (0 keeps the best ones); the scale below |
 | Save the passages in | A list of `{cite, title, text, page, source, score}` |
 | Save the sources in | Optional: the citation list to show under an answer |
+
+A passage's `score` and the minimum score are on one scale from 0 to 1, whatever the match:
+
+| Match by | Score |
+|---|---|
+| Keywords | Relative to the best match, which scores 1 (0.5: half as strong a match) |
+| Meaning | How close the passage's embedding is to the question's (cosine similarity) |
+| Hybrid | 1: first in both rankings; 0.5: first in one of them; lower further down |
 
 An AI step can then quote them, for example:
 

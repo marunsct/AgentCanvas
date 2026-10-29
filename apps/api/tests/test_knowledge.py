@@ -95,6 +95,18 @@ def test_search_modes_scores_and_citations():
         ks.search(index, "x", mode="fuzzy")
 
 
+def test_scores_are_on_one_scale_in_every_mode():
+    """E-3: hybrid scores were reciprocal-rank sums (at most 0.033), so a minimum score of 0.1 found nothing; BM25
+    scores had no upper bound."""
+    index = _index()
+    for mode in ks.MODES:
+        found = ks.search(index, "lost laptop", mode=mode)
+        assert found and all(0 < r["score"] <= 1 for r in found), (mode, found)
+        assert ks.search(index, "lost laptop", mode=mode, min_score=0.1)[0]["id"] == "laptops", mode
+    assert ks.search(index, "lost laptop", mode="keyword")[0]["score"] == 1.0  # the best match
+    assert ks.search(index, "lost laptop", mode="hybrid")[0]["score"] == 1.0  # first in both rankings
+
+
 def test_vectors_of_another_model_are_not_compared():
     """E-2: a 1536-d query zipped with 512-d chunk vectors gave noise; such a search is by keywords instead."""
     index = _index()

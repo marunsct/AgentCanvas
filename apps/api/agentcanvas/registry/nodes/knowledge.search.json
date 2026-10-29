@@ -58,8 +58,9 @@
         "type": "number",
         "title": "Minimum score",
         "minimum": 0,
+        "maximum": 1,
         "default": 0,
-        "description": "Drop passages scoring below this (0 = keep the best ones whatever their score)"
+        "description": "Drop passages scoring below this, 0-1 (0 = keep the best ones whatever their score). Keywords: relative to the best match; meaning: the cosine similarity; hybrid: 1 is first in both rankings, 0.5 first in one"
       },
       "output": {
         "type": "string",

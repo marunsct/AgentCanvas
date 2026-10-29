@@ -8965,6 +8965,8 @@
         "properties": {
           "min_score": {
             "default": 0.0,
+            "description": "0-1 in every mode (see the guide)",
+            "maximum": 1.0,
             "minimum": 0.0,
             "title": "Min Score",
             "type": "number"

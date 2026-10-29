@@ -203,7 +203,10 @@ def search(
     keyword = BM25 over words; semantic = cosine of embeddings (`query_vector` is the query's embedding from the
     knowledge base's model, the built-in embedder's by default); hybrid = both rankings fused by reciprocal rank.
     When the chunks' vectors cannot be compared with the query's (another model's, or missing), the search is by
-    keywords: comparing vectors of different models gives noise."""
+    keywords: comparing vectors of different models gives noise.
+
+    `score` (and `min_score`) is 0-1 in every mode: keyword = BM25 relative to the best match (which scores 1);
+    semantic = the cosine; hybrid = the fused score relative to the most possible (1: first in both rankings)."""
     if mode not in MODES:
         raise ValueError(f"unknown search mode {mode!r}; use one of {', '.join(MODES)}")
     if not index.chunks or not query.strip():
@@ -212,15 +215,18 @@ def search(
     qv = None if mode == "keyword" else query_vector if query_vector is not None else builtin_embed([query])[0]
     if qv is None or not index.comparable(qv):
         ranked = _ranked(index.bm25(query))
+        top = ranked[0][1] if ranked else 1.0
+        ranked = [(i, s / top) for i, s in ranked]
     else:
         semantic = _ranked(index.semantic(qv))
         if mode == "semantic":
-            ranked = semantic
+            ranked = [(i, min(s, 1.0)) for i, s in semantic]
         else:
             fused: dict[int, float] = {}
+            best = 2.0 / (RRF_K + 1)  # first in both rankings
             for ranking in (_ranked(index.bm25(query)), semantic):
                 for rank, (i, _) in enumerate(ranking[:50]):
-                    fused[i] = fused.get(i, 0.0) + 1.0 / (RRF_K + rank + 1)
+                    fused[i] = fused.get(i, 0.0) + 1.0 / (RRF_K + rank + 1) / best
             ranked = sorted(fused.items(), key=lambda x: -x[1])
     out = []
     for i, score in ranked:

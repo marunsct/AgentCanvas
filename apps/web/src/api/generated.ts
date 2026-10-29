@@ -1991,6 +1991,9 @@ export type Scores4 = ScoreOut[];
 export type StartedAt1 = string;
 export type Status13 = string;
 export type ThreadId10 = string;
+/**
+ * 0-1 in every mode (see the guide)
+ */
 export type MinScore = number;
 export type Mode6 = "hybrid" | "semantic" | "keyword";
 export type Query = string;
