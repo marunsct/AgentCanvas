@@ -291,7 +291,7 @@ export function CopilotPanel() {
         <textarea aria-label="Message the Copilot" rows={2} value={text} disabled={busy}
           placeholder={mode === "build" ? "What should this workflow do?" : "Ask about this workflow"}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) submit(e); }} />
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
         <div className="row gap">
           <div className="segmented" role="radiogroup" aria-label="Copilot mode">
             {(["build", "ask"] as Mode[]).map((m) => (

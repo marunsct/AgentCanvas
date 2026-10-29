@@ -74,6 +74,7 @@ export function CommandPalette({ onRun, onCopilot }: { onRun: () => void; onCopi
   }, [open]);
 
   if (!open) return null;
+  const shown = filtered.slice(0, 12); // the cursor stays on these: Enter used to run a match below them, unseen
   const choose = (i: Item | undefined) => {
     if (!i) return;
     close();
@@ -83,17 +84,19 @@ export function CommandPalette({ onRun, onCopilot }: { onRun: () => void; onCopi
     <div className="palette-overlay" onMouseDown={close}>
       <div className="command-palette" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
         <input ref={input} value={q} placeholder={at ? "Add a widget here…" : "Type a command or widget…"}
-          aria-label="Search commands"
+          aria-label="Search commands" role="combobox" aria-expanded aria-controls="palette-options"
+          aria-activedescendant={shown[cursor] ? `palette-${shown[cursor].id}` : undefined}
           onChange={(e) => { setQ(e.target.value); setCursor(0); }}
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
-            if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, filtered.length - 1)); }
+            if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.max(0, Math.min(c + 1, shown.length - 1))); }
             if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
-            if (e.key === "Enter") choose(filtered[cursor]);
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) choose(shown[cursor]);
           }} />
-        <ul>
-          {filtered.slice(0, 12).map((i, k) => (
-            <li key={i.id} className={k === cursor ? "active" : ""} onMouseEnter={() => setCursor(k)} onClick={() => choose(i)}>
+        <ul id="palette-options" role="listbox" aria-label="Commands">
+          {shown.map((i, k) => (
+            <li key={i.id} id={`palette-${i.id}`} role="option" aria-selected={k === cursor} className={k === cursor ? "active" : ""}
+              onMouseEnter={() => setCursor(k)} onClick={() => choose(i)}>
               {i.label} <small className="muted">{i.hint}</small>
             </li>
           ))}
