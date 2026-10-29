@@ -4,14 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
-import type { ChunkOut, DocumentOut, KnowledgeBaseOut, SearchOut } from "../api/generated";
+import type { ChunkOut, DocumentOut, KnowledgeBaseOut, RecrawlResult, SearchOut } from "../api/generated";
 import { PROJECT_ID, useEmbeddingModels } from "../api/queries";
 import { can } from "../api/session";
 import { ModelSelect } from "../ui/ModelSelect";
 import { QueryStatus } from "../ui/QueryStatus";
 import {
-  ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, embeddingLabel, MODES, type Mode, NAME_PATTERN, STRATEGIES,
-  suggestName,
+  ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, crawlSummary, embeddingLabel, MODES, type Mode, NAME_PATTERN,
+  RECRAWL_CHOICES, STRATEGIES, suggestName,
 } from "./knowledge";
 import { confirmDialog } from "../ui/dialog";
 import { PageHeader } from "../ui/PageHeader";
@@ -93,6 +93,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [sitemap, setSitemap] = useState("");
   const [refused, setRefused] = useState<string[]>([]);
   const [adding, setAdding] = useState(kb.documents === 0);
   const done = () => { onChange(); void qc.invalidateQueries({ queryKey: ["knowledge", "docs", kb.id] }); };
@@ -107,6 +108,10 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   const addUrl = useMutation({
     mutationFn: () => apiFetch<DocumentOut>(`${base}/documents/url`, { method: "POST", json: { url } }),
     onSuccess: () => { setUrl(""); done(); },
+  });
+  const addSitemap = useMutation({
+    mutationFn: () => apiFetch<RecrawlResult>(`${base}/documents/sitemap`, { method: "POST", json: { url: sitemap } }),
+    onSuccess: () => { setSitemap(""); done(); },
   });
   const addText = useMutation({
     mutationFn: () => apiFetch<DocumentOut>(`${base}/documents/text`, { method: "POST", json: { title, text } }),
@@ -124,7 +129,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   });
   const embedders = useEmbeddingModels();
   const drop = useMutation({ mutationFn: () => apiFetch(base, { method: "DELETE" }), onSuccess: onDeleted });
-  const failure = [upload, addUrl, addText, remove, reindex, settings, drop].find((m) => m.isError)?.error;
+  const failure = [upload, addUrl, addSitemap, addText, remove, reindex, settings, drop].find((m) => m.isError)?.error;
 
   const pick = (list: FileList | null) => {
     const files = Array.from(list ?? []);
@@ -178,6 +183,16 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
                 <button type="submit" disabled={!url || addUrl.isPending}>Add page</button>
               </div>
             </form>
+            <form className="column gap" onSubmit={(e) => { e.preventDefault(); if (sitemap) addSitemap.mutate(); }}>
+              <span>Add every page of a sitemap</span>
+              <div className="row gap">
+                <input aria-label="sitemap address" placeholder="https://…/sitemap.xml" value={sitemap}
+                  onChange={(e) => setSitemap(e.target.value)} />
+                <button type="submit" disabled={!sitemap || addSitemap.isPending}>
+                  {addSitemap.isPending ? "Reading pages…" : "Add pages"}
+                </button>
+              </div>
+            </form>
             <form className="column gap" onSubmit={(e) => { e.preventDefault(); if (title && text) addText.mutate(); }}>
               <span>Paste text</span>
               <input aria-label="text title" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -208,6 +223,8 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         </details>
       )}
 
+      <Recrawl kb={kb} base={base} builder={builder} onChange={done} />
+
       <QueryStatus q={docs} what="documents" />
       <table className="memory-table">
         <thead><tr><th>Document</th><th>From</th><th>Chunks</th><th /></tr></thead>
@@ -221,6 +238,38 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         </tbody>
       </table>
     </section>
+  );
+}
+
+/** Keep a knowledge base's web pages and sitemaps up to date: how often they are fetched again, and now. */
+function Recrawl({ kb, base, builder, onChange }: { kb: KnowledgeBaseOut; base: string; builder: boolean; onChange: () => void }) {
+  const hours = kb.recrawl.every_hours ?? null;
+  const last = kb.recrawl.last ?? null;
+  const set = useMutation({
+    mutationFn: (every_hours: number | null) => apiFetch(`${base}/recrawl`, { method: "PUT", json: { every_hours } }),
+    onSuccess: onChange,
+  });
+  const now = useMutation({ mutationFn: () => apiFetch<RecrawlResult>(`${base}/recrawl`, { method: "POST" }), onSuccess: onChange });
+  if (hours === null && !last && (!builder || kb.documents === 0)) return null;
+  const error = set.error ?? now.error;
+  const named = RECRAWL_CHOICES.find((c) => c.hours === hours)?.label ?? `Every ${hours} hours`;
+  return (
+    <div className="row gap wrap small kb-recrawl" data-testid="kb-recrawl">
+      <span>Fetch web pages again</span>
+      {builder ? (
+        <select aria-label="re-crawl interval" value={hours ?? ""} disabled={set.isPending}
+          onChange={(e) => set.mutate(e.target.value ? Number(e.target.value) : null)}>
+          {RECRAWL_CHOICES.map((c) => <option key={c.label} value={c.hours ?? ""}>{c.label}</option>)}
+          {hours !== null && !RECRAWL_CHOICES.some((c) => c.hours === hours) && <option value={hours}>{named}</option>}
+        </select>
+      ) : <strong>{named}</strong>}
+      {builder && <button type="button" onClick={() => now.mutate()} disabled={now.isPending}>{now.isPending ? "Fetching…" : "Fetch now"}</button>}
+      <span className="muted" data-testid="kb-crawl-last">
+        {last ? `Last: ${crawlSummary(last)}` : crawlSummary(null)}
+      </span>
+      {kb.recrawl.sitemaps.length > 0 && <span className="muted">Sitemaps: {kb.recrawl.sitemaps.join(", ")}</span>}
+      {error != null && <span className="error-box" role="alert">{errorText(error)}</span>}
+    </div>
   );
 }
 

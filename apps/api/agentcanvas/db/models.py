@@ -374,6 +374,9 @@ class KnowledgeBase(Base):
     chunking: Mapped[dict[str, Any]]  # {"strategy", "size", "overlap"}
     stale: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     version: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    # web re-crawl (G-6): {"every_hours", "sitemaps": {sitemap url: [page urls]}, "last": {at, added, updated, ...}}
+    recrawl: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    crawled_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)  # claimed by the crawl job
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _now()

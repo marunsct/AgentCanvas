@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkFiles, chunkingLabel, citation, embeddingLabel, NAME_PATTERN, suggestName } from "./knowledge";
+import { checkFiles, chunkingLabel, citation, crawlSummary, embeddingLabel, NAME_PATTERN, suggestName } from "./knowledge";
 
 describe("knowledge helpers (S24)", () => {
   it("suggests names the server accepts", () => {
@@ -31,5 +31,14 @@ describe("knowledge helpers (S24)", () => {
     expect(chunkingLabel({ chunking: { strategy: "markdown", size: 800, overlap: 100 } })).toBe("By heading, about 800 characters");
     expect(embeddingLabel({ embedding: { model: "builtin" } })).toBe("Built-in (offline)");
     expect(embeddingLabel({ embedding: { model: "openai:text-embedding-3-small" } })).toBe("openai:text-embedding-3-small");
+  });
+});
+
+describe("re-crawl summary (G-6)", () => {
+  it("names what changed and what failed, and says so before the first fetch", () => {
+    expect(crawlSummary(null)).toBe("Not fetched yet.");
+    const last = { at: "2026-10-29T10:00:00Z", added: 1, updated: 2, removed: 0, unchanged: 3, failed: [{ url: "u", error: "HTTP 404" }] };
+    expect(crawlSummary(last)).toBe("2 updated, 1 added, 3 unchanged; 1 page failed");
+    expect(crawlSummary({ ...last, updated: 0, added: 0, failed: [] })).toBe("3 unchanged");
   });
 });

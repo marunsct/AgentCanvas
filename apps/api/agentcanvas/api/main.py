@@ -46,7 +46,7 @@ from agentcanvas.services import projects as projects_module
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
-from agentcanvas.services.knowledge import Searcher, knowledge_embedder
+from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
@@ -164,6 +164,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects.knowledge = Searcher(
                 db, knowledge_embedder(adapter), lambda project_id: app.state.projects.secrets.get(project_id, {})
             )
+            app.state.crawl = CrawlJob(
+                db,
+                knowledge_embedder(adapter),
+                lambda project_id: app.state.projects.secrets.get(project_id, {}),
+                transport=lambda: getattr(app.state, "knowledge_transport", None),
+            )
             runner = Runner(
                 db,
                 adapter,
@@ -210,6 +216,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.experiments.start()
                 app.state.cron.start()
                 app.state.retention.start()
+                app.state.crawl.start()
                 app.state.handover.start()
                 app.state.online.start()
                 app.state.secrets.start()
@@ -232,6 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.handover.stop()
                 await app.state.cron.stop()
                 await app.state.retention.stop()
+                await app.state.crawl.stop()
                 await app.state.secrets.stop()
                 if app.state.matura_feed is not None:
                     await app.state.matura_feed.stop()

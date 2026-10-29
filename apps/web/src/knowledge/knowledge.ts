@@ -56,3 +56,24 @@ export function embeddingLabel(kb: Pick<KnowledgeBaseOut, "embedding">): string 
 export function blockSnippet(name: string): string {
   return `Search knowledge → Knowledge base: ${name}`;
 }
+
+/** How often a knowledge base's web pages are fetched again, in the hours the page offers. */
+export const RECRAWL_CHOICES: { hours: number | null; label: string }[] = [
+  { hours: null, label: "Never" },
+  { hours: 6, label: "Every 6 hours" },
+  { hours: 24, label: "Daily" },
+  { hours: 168, label: "Weekly" },
+];
+
+type Crawl = KnowledgeBaseOut["recrawl"]["last"];
+
+/** The last re-crawl in one line: "2 updated, 1 added, 3 unchanged; 1 page failed". */
+export function crawlSummary(last: Crawl): string {
+  if (!last) return "Not fetched yet.";
+  const parts = [
+    last.updated && `${last.updated} updated`, last.added && `${last.added} added`, last.removed && `${last.removed} removed`,
+    `${last.unchanged} unchanged`,
+  ].filter(Boolean);
+  const failed = last.failed.length;
+  return `${parts.join(", ")}${failed ? `; ${failed} page${failed === 1 ? "" : "s"} failed` : ""}`;
+}

@@ -5561,6 +5561,9 @@
             "title": "Project Id",
             "type": "string"
           },
+          "recrawl": {
+            "$ref": "#/components/schemas/RecrawlOut"
+          },
           "stale": {
             "description": "settings changed since the documents were indexed: reindex",
             "title": "Stale",
@@ -5585,6 +5588,7 @@
           "chunking",
           "stale",
           "version",
+          "recrawl",
           "documents",
           "chunks",
           "created_at",
@@ -8118,6 +8122,111 @@
         "title": "QueuePatch",
         "type": "object"
       },
+      "RecrawlIn": {
+        "properties": {
+          "every_hours": {
+            "anyOf": [
+              {
+                "maximum": 2160.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "fetch the web pages again this often; null turns it off",
+            "title": "Every Hours"
+          }
+        },
+        "title": "RecrawlIn",
+        "type": "object"
+      },
+      "RecrawlOut": {
+        "properties": {
+          "every_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Every Hours"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecrawlResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sitemaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sitemaps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "every_hours",
+          "sitemaps",
+          "last"
+        ],
+        "title": "RecrawlOut",
+        "type": "object"
+      },
+      "RecrawlResult": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "failed": {
+            "description": "[{url, error}]: pages that could not be fetched or added",
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "added",
+          "updated",
+          "removed",
+          "unchanged",
+          "failed"
+        ],
+        "title": "RecrawlResult",
+        "type": "object"
+      },
       "RefactorOut": {
         "description": "Commands the editor dispatches like its own edits (optimistic, autosaved, undoable).",
         "properties": {
@@ -9854,6 +9963,22 @@
           "persona"
         ],
         "title": "Simulation",
+        "type": "object"
+      },
+      "SitemapIn": {
+        "properties": {
+          "url": {
+            "description": "a sitemap.xml (or a sitemap index) on a public host",
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "SitemapIn",
         "type": "object"
       },
       "SpendOut": {
@@ -15969,6 +16094,82 @@
         ]
       }
     },
+    "/v1/knowledge/{kb_id}/documents/sitemap": {
+      "post": {
+        "description": "Add every page of a sitemap (up to 500, on the sitemap's own host) and keep following it: a re-crawl adds\nits new pages and removes the ones that left it. Private and internal addresses are refused.",
+        "operationId": "add_sitemap_v1_knowledge__kb_id__documents_sitemap_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SitemapIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecrawlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Sitemap",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/v1/knowledge/{kb_id}/documents/text": {
       "post": {
         "operationId": "add_text_v1_knowledge__kb_id__documents_text_post",
@@ -16261,6 +16462,146 @@
           }
         ],
         "summary": "List Chunks",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/knowledge/{kb_id}/recrawl": {
+      "post": {
+        "description": "Fetch the web pages and sitemaps now: changed pages are replaced, new sitemap pages added, gone ones removed.",
+        "operationId": "recrawl_now_v1_knowledge__kb_id__recrawl_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecrawlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recrawl Now",
+        "tags": [
+          "knowledge"
+        ]
+      },
+      "put": {
+        "description": "Fetch the knowledge base's web pages and sitemaps again every `every_hours` hours (null: never).",
+        "operationId": "set_recrawl_v1_knowledge__kb_id__recrawl_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecrawlIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Recrawl",
         "tags": [
           "knowledge"
         ]

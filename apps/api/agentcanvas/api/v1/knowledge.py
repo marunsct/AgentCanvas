@@ -50,6 +50,27 @@ class KnowledgeBasePatch(BaseModel):
     chunking: Chunking | None = None
 
 
+class RecrawlIn(BaseModel):
+    every_hours: int | None = Field(
+        default=None, ge=1, le=24 * 90, description="fetch the web pages again this often; null turns it off"
+    )
+
+
+class RecrawlResult(BaseModel):
+    at: datetime
+    added: int
+    updated: int
+    removed: int
+    unchanged: int
+    failed: list[dict[str, str]] = Field(description="[{url, error}]: pages that could not be fetched or added")
+
+
+class RecrawlOut(BaseModel):
+    every_hours: int | None
+    sitemaps: list[str]
+    last: RecrawlResult | None
+
+
 class KnowledgeBaseOut(BaseModel):
     id: str
     project_id: str
@@ -59,6 +80,7 @@ class KnowledgeBaseOut(BaseModel):
     chunking: Chunking
     stale: bool = Field(description="settings changed since the documents were indexed: reindex")
     version: int
+    recrawl: RecrawlOut
     documents: int
     chunks: int
     created_at: datetime
@@ -85,6 +107,10 @@ class ChunkOut(BaseModel):
 
 class UrlIn(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
+
+
+class SitemapIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2000, description="a sitemap.xml (or a sitemap index) on a public host")
 
 
 class TextIn(BaseModel):
@@ -115,10 +141,20 @@ class SearchOut(BaseModel):
     results: list[SearchResult]
 
 
+def _recrawl(kb: KnowledgeBase) -> RecrawlOut:
+    cfg = kb.recrawl if isinstance(kb.recrawl, dict) else {}
+    last = cfg.get("last")
+    return RecrawlOut(
+        every_hours=cfg.get("every_hours"), sitemaps=list(cfg.get("sitemaps") or {}),
+        last=RecrawlResult.model_validate(last) if last else None,
+    )  # fmt: skip
+
+
 def _out(kb: KnowledgeBase, documents: int, chunks: int) -> KnowledgeBaseOut:
     return KnowledgeBaseOut(
         id=kb.id, project_id=kb.project_id, name=kb.name, description=kb.description, embedding=kb.embedding,
-        chunking=Chunking.model_validate(kb.chunking), stale=kb.stale, version=kb.version, documents=documents,
+        chunking=Chunking.model_validate(kb.chunking), stale=kb.stale, version=kb.version, recrawl=_recrawl(kb),
+        documents=documents,
         chunks=chunks, created_at=kb.created_at, updated_at=kb.updated_at,
     )  # fmt: skip
 
@@ -251,6 +287,41 @@ async def add_url(
     doc = await s.add_url(kb_id, body.url, user.id, transport=getattr(request.app.state, "knowledge_transport", None))
     note(request, url=doc.url)
     return _doc(doc)
+
+
+@router.post("/knowledge/{kb_id}/documents/sitemap", response_model=RecrawlResult, status_code=201)
+async def add_sitemap(
+    kb_id: str,
+    body: SitemapIn,
+    request: Request,
+    s: KnowledgeService = Depends(svc),
+    user: CurrentUser = Depends(current_user),
+) -> RecrawlResult:
+    """Add every page of a sitemap (up to 500, on the sitemap's own host) and keep following it: a re-crawl adds
+    its new pages and removes the ones that left it. Private and internal addresses are refused."""
+    done = await s.add_sitemap(
+        kb_id, body.url, user.id, transport=getattr(request.app.state, "knowledge_transport", None)
+    )
+    note(request, sitemap=body.url, added=done["added"])
+    return RecrawlResult.model_validate(done)
+
+
+@router.put("/knowledge/{kb_id}/recrawl", response_model=KnowledgeBaseOut)
+async def set_recrawl(kb_id: str, body: RecrawlIn, s: KnowledgeService = Depends(svc)) -> KnowledgeBaseOut:
+    """Fetch the knowledge base's web pages and sitemaps again every `every_hours` hours (null: never)."""
+    return await _full(s, await s.set_recrawl(kb_id, body.every_hours))
+
+
+@router.post("/knowledge/{kb_id}/recrawl", response_model=RecrawlResult)
+async def recrawl_now(
+    kb_id: str,
+    request: Request,
+    s: KnowledgeService = Depends(svc),
+    user: CurrentUser = Depends(current_user),
+) -> RecrawlResult:
+    """Fetch the web pages and sitemaps now: changed pages are replaced, new sitemap pages added, gone ones removed."""
+    done = await s.recrawl(kb_id, user.id, transport=getattr(request.app.state, "knowledge_transport", None))
+    return RecrawlResult.model_validate(done)
 
 
 @router.post("/knowledge/{kb_id}/documents/text", response_model=DocumentOut, status_code=201)

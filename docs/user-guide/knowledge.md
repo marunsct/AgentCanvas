@@ -28,9 +28,20 @@ Create a knowledge base (its name is lower-case letters, digits, `-` and `_`, e.
   each. PDF pages are kept, so citations name the page. Scanned PDFs have no text: run them through OCR first.
 - **Add a public web page or document** by its address. Only public addresses are fetched: private, internal
   and cloud-metadata addresses are refused, also after a redirect. Pages up to 5 MB.
+- **Add every page of a sitemap**: give the address of a `sitemap.xml` (or a sitemap index) and its pages are added,
+  up to 500, those on the sitemap's own host.
 - **Paste text** with a title.
 
 The same text twice is refused. Click a document to see how it was split into chunks.
+
+### Keep web pages up to date
+
+Under the documents, **Fetch web pages again** sets how often (every 6 hours, daily or weekly) the server fetches the
+base's web pages and sitemaps again; **Fetch now** does it at once. A page whose text changed replaces its document
+(the old passages leave the index), a page new to a followed sitemap is added, and a page that left the sitemap is
+removed. A page that cannot be fetched keeps its document and is listed as failed in the result shown next to the
+setting. A page you removed by hand is not added back while the sitemap still lists it. The same refusal of private
+and internal addresses applies to every fetch, redirects and sitemaps included.
 
 Google Drive and other sources: download the files and upload them, or connect the source's MCP server to an
 agent (see [Agents and connectors](agents-and-connectors.md)).

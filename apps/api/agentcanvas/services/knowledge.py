@@ -12,6 +12,10 @@ two rankings as in process. Scores and citations are the same as the in-process 
 without pgvector) keeps using: there every change bumps the knowledge base's `version`, so each instance's in-memory
 index knows when to reload. Changing the embedding model or chunking marks the knowledge base stale until it is
 reindexed.
+
+Web pages and sitemaps can be re-crawled (G-6): a knowledge base with `recrawl.every_hours` has its pages fetched
+again by `CrawlJob`; a page whose text changed replaces its document, pages new to a sitemap are added and pages that
+left it are removed. Every fetch keeps the private-address refusal of `fetch_url`.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ import socket
 from array import array
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 from urllib.parse import urljoin, urlsplit
@@ -41,6 +45,9 @@ from agentcanvas import knowledge_search as ks
 from agentcanvas.db.models import KnowledgeBase, KnowledgeChunk, KnowledgeDocument
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.log import get_logger
+
+log = get_logger(__name__)
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TEXT_CHARS = 2_000_000  # extracted text per document
@@ -55,6 +62,10 @@ ANN_INDEXES: dict[int, str] = {
     384: "vector", 512: "vector", 768: "vector", 1024: "vector", 1536: "vector", 3072: "halfvec",
 }  # fmt: skip
 MAX_TERMS = 32  # query words a keyword search in Postgres weighs
+MAX_SITEMAP_PAGES = 500  # pages one sitemap (with the sitemaps its index lists) adds
+MAX_SITEMAPS_PER_INDEX = 10
+CRAWL_CONCURRENCY = 4  # pages fetched at once while re-crawling
+MAX_RECRAWL_HOURS = 24 * 90
 MAX_PAGE_BYTES = 5 * 1024 * 1024
 URL_TIMEOUT_S = 20.0
 EMBED_BATCH = 64
@@ -219,9 +230,9 @@ async def public_address(host: str, port: int) -> str:
     return addresses[0]
 
 
-async def fetch_url(url: str, transport: Any = None) -> tuple[str, str, str]:
-    """(final url, title, text) of a public web page or file. At most 5 redirects, each re-checked; at most
-    5 MB; HTML is reduced to its visible text, PDF and Word files are extracted."""
+async def _get(url: str, transport: Any = None) -> tuple[str, str, str | None, bytes]:
+    """(final url, content type, encoding, body) of a public address. At most 5 redirects, each re-checked; at most
+    5 MB. Private, internal and cloud-metadata addresses are refused, also after a redirect."""
     import httpx
 
     current = url
@@ -252,21 +263,73 @@ async def fetch_url(url: str, transport: Any = None) -> tuple[str, str, str]:
                 if len(body) > MAX_PAGE_BYTES:
                     raise InvalidInput(f"'{current}' is larger than {MAX_PAGE_BYTES // (1024 * 1024)} MB")
             kind = r.headers.get("content-type", "").split(";")[0].strip().lower()
-        name = Path(parts.path).name or parts.hostname
-        if kind == "application/pdf" or name.lower().endswith(".pdf"):
-            title, text = await asyncio.to_thread(
-                extract, name if name.lower().endswith(".pdf") else "page.pdf", bytes(body)
-            )
-        elif kind.endswith("wordprocessingml.document"):
-            title, text = await asyncio.to_thread(extract, "page.docx", bytes(body))
-        elif kind in ("text/html", "application/xhtml+xml") or not kind:
-            title, text = await asyncio.to_thread(html_text, body.decode(r.encoding or "utf-8", errors="replace"))
-        elif kind.startswith("text/") or kind in ("application/json",):
-            title, text = name, body.decode(r.encoding or "utf-8", errors="replace")
-        else:
-            raise InvalidInput(f"'{current}' is {kind}, not a page or document")
-        return current, (title or parts.hostname), text
+            return current, kind, r.encoding, bytes(body)
     raise InvalidInput(f"'{url}' redirects too many times")
+
+
+async def fetch_url(url: str, transport: Any = None) -> tuple[str, str, str]:
+    """(final url, title, text) of a public web page or file. At most 5 redirects, each re-checked; at most
+    5 MB; HTML is reduced to its visible text, PDF and Word files are extracted."""
+    current, kind, encoding, body = await _get(url, transport)
+    parts = urlsplit(current)
+    name = Path(parts.path).name or parts.hostname or "page"
+    if kind == "application/pdf" or name.lower().endswith(".pdf"):
+        title, text = await asyncio.to_thread(extract, name if name.lower().endswith(".pdf") else "page.pdf", body)
+    elif kind.endswith("wordprocessingml.document"):
+        title, text = await asyncio.to_thread(extract, "page.docx", body)
+    elif kind in ("text/html", "application/xhtml+xml") or not kind:
+        title, text = await asyncio.to_thread(html_text, body.decode(encoding or "utf-8", errors="replace"))
+    elif kind.startswith("text/") or kind in ("application/json",):
+        title, text = name, body.decode(encoding or "utf-8", errors="replace")
+    else:
+        raise InvalidInput(f"'{current}' is {kind}, not a page or document")
+    return current, (title or parts.hostname or name), text
+
+
+def sitemap_urls(xml: bytes) -> tuple[str, list[str]]:
+    """("urlset" | "sitemapindex", the `<loc>` addresses) of a sitemap file. Documents that declare entities or a
+    DTD are refused (entity expansion)."""
+    import xml.etree.ElementTree as ET
+
+    head = xml.lower()
+    if b"<!doctype" in head or b"<!entity" in head:
+        raise InvalidInput("the sitemap declares a DTD or entities; they are not read")
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as exc:
+        raise InvalidInput(f"the sitemap is not valid XML: {exc}") from None
+    kind = root.tag.rsplit("}", 1)[-1]
+    if kind not in ("urlset", "sitemapindex"):
+        raise InvalidInput("not a sitemap: its root element should be <urlset> or <sitemapindex>")
+    locs = [
+        (e.text or "").strip()
+        for e in root.iter()
+        if e.tag.rsplit("}", 1)[-1] == "loc" and (e.text or "").strip()
+    ]  # fmt: skip
+    return kind, locs
+
+
+async def fetch_sitemap(url: str, transport: Any = None) -> list[str]:
+    """The page addresses of a sitemap, or of the sitemaps a sitemap index lists (one level), in order and without
+    repeats: only http(s) addresses on the sitemap's own host, at most `MAX_SITEMAP_PAGES`. The sitemap is fetched
+    like a page, so private addresses are refused."""
+    final, _, _, body = await _get(url, transport)
+    host = urlsplit(final).hostname
+    kind, locs = sitemap_urls(body)
+    if kind == "sitemapindex":
+        pages: list[str] = []
+        for child in [u for u in locs if urlsplit(u).hostname == host][:MAX_SITEMAPS_PER_INDEX]:
+            _, _, _, data = await _get(child, transport)
+            sub_kind, sub = sitemap_urls(data)
+            if sub_kind == "urlset":
+                pages.extend(sub)
+        locs = pages
+    seen: dict[str, None] = {}
+    for u in locs:
+        parts = urlsplit(u)
+        if parts.scheme in ("http", "https") and parts.hostname == host:
+            seen.setdefault(u, None)
+    return list(seen)[:MAX_SITEMAP_PAGES]
 
 
 # ------------------------------------------------------------- vector bytes ----
@@ -516,6 +579,141 @@ class KnowledgeService:
         await self.get(kb_id)  # before going online
         final, title, text = await fetch_url(url, transport)
         return await self.add(kb_id, title=title, text=text, kind="url", name=title, url=final, user_id=user_id)
+
+    # -------------------------------------------------------------------- re-crawl ----
+    async def set_recrawl(self, kb_id: str, every_hours: int | None) -> KnowledgeBase:
+        """Turn the scheduled re-crawl on (every `every_hours` hours) or off (None). The settings live in
+        `recrawl` next to the sitemaps the base follows and the last result."""
+        kb = await self.get(kb_id)
+        if every_hours is not None and not 1 <= every_hours <= MAX_RECRAWL_HOURS:
+            raise InvalidInput(f"re-crawl every 1 to {MAX_RECRAWL_HOURS} hours")
+        cfg = dict(kb.recrawl or {})
+        if every_hours is None:
+            cfg.pop("every_hours", None)
+        else:
+            cfg["every_hours"] = every_hours
+            if kb.crawled_at is None:  # just set up: the next crawl is one interval away
+                kb.crawled_at = datetime.now(UTC)
+        kb.recrawl = cfg or None
+        await self.s.commit()
+        return kb
+
+    async def add_sitemap(
+        self, kb_id: str, url: str, user_id: str | None = None, transport: Any = None
+    ) -> dict[str, Any]:
+        """Follow a sitemap: its pages are added now and kept in step by every re-crawl. Returns the crawl's summary."""
+        kb = await self.get(kb_id)  # before going online
+        pages = await fetch_sitemap(url, transport)
+        if not pages:
+            raise InvalidInput("the sitemap lists no pages")
+        cfg = dict(kb.recrawl or {})
+        cfg["sitemaps"] = {**(cfg.get("sitemaps") or {}), url: {}}
+        kb.recrawl = cfg
+        await self.s.commit()
+        return await self.recrawl(kb_id, user_id, transport)
+
+    async def recrawl(self, kb_id: str, user_id: str | None = None, transport: Any = None) -> dict[str, Any]:
+        """Fetch the knowledge base's web pages again. A page whose text changed replaces its document; the pages
+        of its sitemaps that are new are added and the ones that left the sitemap are removed; a page that cannot
+        be fetched keeps its document and is reported. Returns and stores
+        `{at, added, updated, removed, unchanged, failed: [{url, error}]}`."""
+        kb = await self.get(kb_id)
+        cfg = dict(kb.recrawl or {})
+        sitemaps: dict[str, dict[str, str]] = {u: dict(m or {}) for u, m in (cfg.get("sitemaps") or {}).items()}
+        result: dict[str, Any] = {"added": 0, "updated": 0, "removed": 0, "unchanged": 0, "failed": []}
+
+        def failed(url: str, exc: Exception) -> None:
+            result["failed"].append({"url": url, "error": str(exc)[:300]})
+
+        docs = {d.url: d for d in await self.documents(kb_id) if d.source == "url" and d.url}
+        listed: dict[str, list[str]] = {}  # sitemap -> the addresses it lists now
+        for sitemap in sitemaps:
+            try:
+                listed[sitemap] = await fetch_sitemap(sitemap, transport)
+            except InvalidInput as exc:  # keep what it listed before
+                failed(sitemap, exc)
+        wanted = {  # pages still listed by a sitemap (or by one that could not be read)
+            final
+            for sitemap, mapping in sitemaps.items()
+            for url, final in mapping.items()
+            if sitemap not in listed or url in listed[sitemap]
+        }
+        for sitemap, pages in listed.items():  # pages that left a sitemap, before fetching anything
+            for url, final in list(sitemaps[sitemap].items()):
+                if url not in pages:
+                    del sitemaps[sitemap][url]
+                    if (gone := docs.get(final)) and final not in wanted:
+                        await self.remove(kb_id, gone.id)
+                        del docs[final]
+                        result["removed"] += 1
+        known = {u for mapping in sitemaps.values() for u in mapping}
+        new_pages = [u for pages in listed.values() for u in pages if u not in known and u not in docs]
+        new_pages = list(dict.fromkeys(new_pages))
+        gate = asyncio.Semaphore(CRAWL_CONCURRENCY)
+
+        async def fetch(url: str) -> tuple[str, tuple[str, str, str] | InvalidInput]:
+            async with gate:
+                try:
+                    return url, await fetch_url(url, transport)
+                except InvalidInput as exc:
+                    return url, exc
+
+        fetched = dict(await asyncio.gather(*(fetch(u) for u in [*docs, *new_pages])))
+
+        for url, doc in docs.items():  # pages already in the base: unchanged, or replaced
+            got = fetched[url]
+            if isinstance(got, InvalidInput):
+                failed(url, got)
+                continue
+            _, title, text = got
+            if hashlib.sha256(text.replace("\x00", "").strip().encode()).hexdigest() == doc.sha256:
+                result["unchanged"] += 1
+                continue
+            try:
+                await self.add(kb_id, title=title, text=text, kind="url", name=title, url=doc.url, user_id=user_id,
+                               commit=False)  # fmt: skip
+                await self._drop(doc)
+                await self._touch(await self.get(kb_id))
+                result["updated"] += 1
+            except (InvalidInput, Conflict) as exc:
+                await self.s.rollback()
+                failed(url, exc)
+
+        for url in new_pages:  # pages new to a sitemap
+            got = fetched[url]
+            if isinstance(got, InvalidInput):
+                failed(url, got)
+                continue
+            final, title, text = got
+            for sitemap, pages in listed.items():
+                if url in pages:
+                    sitemaps[sitemap][url] = final
+            if final in docs:  # redirects to a page the base already has
+                continue
+            try:
+                await self.add(kb_id, title=title, text=text, kind="url", name=title, url=final, user_id=user_id)
+                result["added"] += 1
+            except (InvalidInput, Conflict) as exc:
+                await self.s.rollback()
+                failed(url, exc)
+
+        for sitemap, pages in listed.items():  # the pages that were already known stay mapped
+            for url in pages:
+                if url not in sitemaps[sitemap] and url in docs:
+                    sitemaps[sitemap][url] = url
+
+        kb = await self.get(kb_id)
+        cfg = dict(kb.recrawl or {})
+        if sitemaps:
+            cfg["sitemaps"] = sitemaps
+        cfg["last"] = {"at": datetime.now(UTC).isoformat(timespec="seconds"), **result, "failed": result["failed"][:20]}
+        kb.recrawl = cfg
+        await self.s.commit()
+        return cfg["last"]
+
+    async def _drop(self, doc: KnowledgeDocument) -> None:
+        await self.s.execute(delete(KnowledgeChunk).where(KnowledgeChunk.doc_id == doc.id))
+        await self.s.delete(doc)
 
     async def add(
         self,
@@ -938,3 +1136,75 @@ class Searcher:
                 return await svc.search(kb, query, mode=mode, top_k=top_k, min_score=min_score)
 
         return search
+
+
+class CrawlJob:
+    """Re-crawls the knowledge bases whose `recrawl.every_hours` has passed since their last crawl. A replica claims a
+    base by moving its `crawled_at` forward in one conditional UPDATE, so across replicas it is crawled once per
+    interval."""
+
+    def __init__(
+        self,
+        db: Any,
+        embedder: EmbedderFactory,
+        secrets: Callable[[str], dict[str, str]],
+        transport: Callable[[], Any] = lambda: None,
+        interval_s: float = 300.0,
+    ):
+        self.db, self.embedder, self.secrets, self.transport, self.interval_s = (
+            db,
+            embedder,
+            secrets,
+            transport,
+            interval_s,
+        )
+        self._task: asyncio.Task | None = None
+
+    def start(self) -> None:
+        self._task = asyncio.create_task(self._loop(), name="knowledge-crawl")
+
+    async def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+
+    async def _loop(self) -> None:
+        while True:
+            try:
+                await self.tick(datetime.now(UTC))
+            except Exception:
+                log.exception("knowledge.crawl_tick_failed")
+            await asyncio.sleep(self.interval_s)
+
+    async def tick(self, now: datetime) -> list[str]:
+        """Crawl the bases due at `now`; returns their ids."""
+        async with self.db.sessionmaker() as s:
+            rows = (await s.execute(select(KnowledgeBase.id, KnowledgeBase.recrawl))).all()
+        crawled = []
+        for kb_id, cfg in rows:
+            every = (cfg or {}).get("every_hours") if isinstance(cfg, dict) else None
+            if not isinstance(every, int) or every < 1:
+                continue
+            # one tick of slack: a crawl at 09:00:10 is due again at the 09:00 tick a day later
+            due = now - timedelta(hours=every) + timedelta(seconds=self.interval_s)
+            async with self.db.sessionmaker() as s:
+                claimed = await s.execute(
+                    sql_update(KnowledgeBase)
+                    .where(
+                        KnowledgeBase.id == kb_id,
+                        (KnowledgeBase.crawled_at.is_(None)) | (KnowledgeBase.crawled_at < due),
+                    )
+                    .values(crawled_at=now)
+                )
+                await s.commit()
+                if claimed.rowcount != 1:  # type: ignore[attr-defined]
+                    continue
+                try:
+                    svc = KnowledgeService(s, embedder=self.embedder, secrets=self.secrets)
+                    summary = await svc.recrawl(kb_id, transport=self.transport())
+                    log.info("knowledge.recrawled", kb=kb_id, **{k: v for k, v in summary.items() if k != "failed"})
+                    crawled.append(kb_id)
+                except Exception as exc:  # noqa: BLE001 - one base must not stop the others
+                    await s.rollback()
+                    log.warning("knowledge.recrawl_failed", kb=kb_id, error=str(exc))
+        return crawled

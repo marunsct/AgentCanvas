@@ -1041,6 +1041,19 @@ export type Documents = number;
 export type Id39 = string;
 export type Name33 = string;
 export type ProjectId4 = string;
+export type EveryHours = number | null;
+export type Added1 = number;
+export type At = string;
+/**
+ * [{url, error}]: pages that could not be fetched or added
+ */
+export type Failed = {
+  [k: string]: string;
+}[];
+export type Removed1 = number;
+export type Unchanged = number;
+export type Updated = number;
+export type Sitemaps = string[];
 /**
  * settings changed since the documents were indexed: reindex
  */
@@ -1720,7 +1733,7 @@ export type Rubric =
 /**
  * production runs that failed
  */
-export type Failed = boolean;
+export type Failed1 = boolean;
 /**
  * runs an end user rated down through the deployment API
  */
@@ -1924,6 +1937,10 @@ export type WorkflowId7 = string;
 export type Instructions2 = string | null;
 export type Name49 = string | null;
 export type ReviewersPerItem2 = number | null;
+/**
+ * fetch the web pages again this often; null turns it off
+ */
+export type EveryHours1 = number | null;
 export type Commands2 = {
   [k: string]: unknown;
 }[];
@@ -2155,6 +2172,10 @@ export type Suggestions2 =
   | [string, string, string, string, string, string]
   | null;
 export type Title7 = string | null;
+/**
+ * a sitemap.xml (or a sitemap index) on a public host
+ */
+export type Url3 = string;
 export type Alerts = CostAlertOut[];
 export type CacheHits = number;
 export type Fallbacks = number;
@@ -2208,7 +2229,7 @@ export type Ids1 = string[] | null;
  * run against a version instead of the draft
  */
 export type Version12 = string | null;
-export type Failed1 = number;
+export type Failed2 = number;
 export type Passed3 = number;
 export type Results2 = CaseResult[];
 export type Text6 = string;
@@ -2268,7 +2289,7 @@ export type Enabled9 = boolean;
 export type Id53 = string;
 export type Kind10 = string;
 export type Secret = string | null;
-export type Url3 = string | null;
+export type Url4 = string | null;
 export type DeploymentId5 = string | null;
 export type Kind11 = "webhook" | "cron";
 export type CreatedAt30 = string;
@@ -2276,8 +2297,8 @@ export type DeploymentId6 = string | null;
 export type Enabled10 = boolean;
 export type Id54 = string;
 export type Kind12 = string;
-export type Url4 = string | null;
-export type Url5 = string;
+export type Url5 = string | null;
+export type Url6 = string;
 /**
  * the Copilot proposals accepted since the version before, and by whom
  */
@@ -2505,6 +2526,9 @@ export interface ApiSchemas {
   QueueIn?: QueueIn;
   QueueOut?: QueueOut;
   QueuePatch?: QueuePatch;
+  RecrawlIn?: RecrawlIn;
+  RecrawlOut?: RecrawlOut;
+  RecrawlResult?: RecrawlResult;
   RefactorOut?: RefactorOut;
   RemoveNode?: RemoveNode;
   RemoveResource?: RemoveResource;
@@ -2546,6 +2570,7 @@ export interface ApiSchemas {
   ShareRunIn?: ShareRunIn;
   ShareSettingsIn?: ShareSettingsIn;
   Simulation?: Simulation;
+  SitemapIn?: SitemapIn;
   SpendOut?: SpendOut;
   SpendPeriod?: SpendPeriod;
   StateEdit?: StateEdit;
@@ -4535,12 +4560,34 @@ export interface KnowledgeBaseOut {
   id: Id39;
   name: Name33;
   project_id: ProjectId4;
+  recrawl: RecrawlOut;
   stale: Stale;
   updated_at: UpdatedAt7;
   version: Version9;
 }
 export interface Embedding1 {
   [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "RecrawlOut".
+ */
+export interface RecrawlOut {
+  every_hours: EveryHours;
+  last: RecrawlResult | null;
+  sitemaps: Sitemaps;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "RecrawlResult".
+ */
+export interface RecrawlResult {
+  added: Added1;
+  at: At;
+  failed: Failed;
+  removed: Removed1;
+  unchanged: Unchanged;
+  updated: Updated;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5063,7 +5110,7 @@ export interface QueueIn {
  * via the `definition` "Rules".
  */
 export interface Rules {
-  failed?: Failed;
+  failed?: Failed1;
   scores_below?: ScoresBelow;
   thumbs_down?: ThumbsDown;
 }
@@ -5104,6 +5151,13 @@ export interface QueuePatch {
   name?: Name49;
   reviewers_per_item?: ReviewersPerItem2;
   rules?: Rules | null;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "RecrawlIn".
+ */
+export interface RecrawlIn {
+  every_hours?: EveryHours1;
 }
 /**
  * Commands the editor dispatches like its own edits (optimistic, autosaved, undoable).
@@ -5405,6 +5459,13 @@ export interface ShareSettingsIn {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SitemapIn".
+ */
+export interface SitemapIn {
+  url: Url3;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "SpendOut".
  */
 export interface SpendOut {
@@ -5543,7 +5604,7 @@ export interface TestRunIn {
  * via the `definition` "TestRunOut".
  */
 export interface TestRunOut {
-  failed: Failed1;
+  failed: Failed2;
   passed: Passed3;
   results: Results2;
 }
@@ -5638,7 +5699,7 @@ export interface TriggerCreated {
   id: Id53;
   kind: Kind10;
   secret?: Secret;
-  url?: Url3;
+  url?: Url4;
 }
 export interface Config7 {
   [k: string]: unknown;
@@ -5666,7 +5727,7 @@ export interface TriggerOut {
   enabled: Enabled10;
   id: Id54;
   kind: Kind12;
-  url?: Url4;
+  url?: Url5;
 }
 export interface Config9 {
   [k: string]: unknown;
@@ -5676,7 +5737,7 @@ export interface Config9 {
  * via the `definition` "UrlIn".
  */
 export interface UrlIn {
-  url: Url5;
+  url: Url6;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
