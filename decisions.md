@@ -12,6 +12,17 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### LiteLLM stays at 1.105.7, one step short of the newest
+The framework pins were raised to the releases of late October (HARDENING 1.7), except LiteLLM: 1.106.x makes Google
+ADK's tool calls fail with "No module named 'mcp'", a package it imports without declaring. 1.105.7 is the newest
+that passes the ADK, parts, conformance and interop tests. *Reverse:* raise it in `designs.AGENT_FRAMEWORKS` (the pins
+test lists every other place) once a LiteLLM release declares `mcp` or ADK stops importing it that way.
+
+### Merging the agents' work: cherry-picks onto the branch, not merges
+The review's fixes were made in parallel by four agents in their own worktrees, each rebased onto this branch and
+cherry-picked here, so the branch stays one line of commits, one concern each. Their changelog lines arrived in their
+commit messages and were added in separate "Changelog:" commits.
+
 ### One decrypted secrets cache per API process stays (S-9)
 The review asked to decrypt secrets per project with a short lifetime instead of keeping every organisation's values
 in one process-wide dictionary. I did not: code that runs inside the API process can already read the KMS key and the

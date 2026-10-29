@@ -59,6 +59,92 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- CrewAI, Google ADK, Mastra, OpenAI Agents SDK, the flow-engine frameworks and single-agent exports wrote a model
+  block's temperature into the code even for models that refuse it (current Claude and GPT-5 class models), so the
+  exported project's first call failed with a 400. The temperature is now written only for models that take it.
+- CrewAI, Google ADK, Mastra, Pydantic AI, Agno, Strands, LlamaIndex and Agent Framework exports dropped backup
+  models, the answer cache and step policies with only a general line in the README, and the Agent Spec exports did
+  not mention them, nor fields that collect values or approvals that no longer wait for a yes. Each export now has a
+  GAPS.md naming every block concerned, and an approval with steps after it is a "Must fix" in the Agent Spec
+  exports. (HARDENING X-6).
+- An exported service's Dockerfile and compose files used floating images (python:3.12-slim, postgres:16-alpine,
+  caddy:2-alpine) and resolved its Python packages afresh on every build. Images are now pinned by version and
+  digest, `make setup` writes uv.lock, and the image installs exactly what it locks. (HARDENING X-7).
+- An Agent Spec file that wrote its start node out in place (under start_node and again in nodes) failed to import
+  with "a control flow edge points at a step that is not in the flow", and the import report only counted the agent
+  tools it left out. Such files now import, and the report names each tool. (HARDENING X-9).
+- In LangGraph code, a resource named `<router>_route` or `<map>_fan_out` was silently replaced by the router's or
+  map's own helper, so the agent got the helper as its tool. The helpers now have names no block can take.
+  (HARDENING X-3).
+- A key typed straight into a header or environment value (Authorization: Bearer …) was written into exported code
+  and the exported copy of the workflow. The canvas now warns about it (W021) and every export refuses it, naming
+  the block and the header, until it is stored as a project secret. (HARDENING X-1).
+- An Agent Spec file whose branch values held a quote or a backslash imported as a router with an invalid rule, and
+  agent instructions with Windows line breaks came out of every single-agent export with plain line breaks. Branch
+  values are now quoted properly both ways, and instructions are written exactly as typed. (HARDENING X-5).
+- CrewAI and Google ADK code changed multi-line Set values, Ask a person prompts and knowledge search queries by
+  indenting the lines inside them. Those texts are now written exactly as typed, and every Python generator is
+  checked against a corpus of awkward texts. (HARDENING X-2).
+- Opening a deployment's share settings created its share link as a side effect, so merely looking made a link.
+  Reading the settings now creates nothing; the link is made when they are first saved, for example by switching
+  sharing on.
+- A builder could move a project into or out of a Matura workspace, although only admins may rename or delete a
+  project. Moving it now needs an admin too.
+- With sign-in, a request naming an organisation other than the default made it the default, a database write on
+  every request of two clients or tabs working in different organisations. The choice is now written at most once a
+  minute per organisation. (HARDENING F-4).
+- Deleting a project removed its workspace folder on the server's main loop, so a large workspace paused every other
+  request and stream while it went. It is now removed in the background thread pool. (HARDENING F-4).
+- Every workflow read and validation walked every file of the project's workspace to see whether its code had
+  changed. The answer is now kept for a second, and a change saved through AgentCanvas is seen at once. (HARDENING
+  F-4).
+- The experiments list, refreshed every second while one runs, read every result of every experiment, outputs
+  included, one query per experiment, and an experiment's results came back all at once. The list now reads only
+  what its summaries need in one query and shows 50 experiments a page, and results come 1000 at a time (the
+  evaluation page fetches them all). (HARDENING F-3).
+- A deployment's score chart read up to 100,000 score rows and grouped them on the server, and stopped counting past
+  that. The database now groups them by hour or day, so every score counts and the page loads faster. (HARDENING
+  F-3).
+- Saving a version read every Copilot conversation of the workflow, messages and all, to credit accepted proposals.
+  It now reads only the proposals of conversations changed since the version before. (HARDENING F-3).
+- A workflow's contract page looked up each deployment's version with a query of its own. It now reads them all in
+  one query. (HARDENING F-3).
+- The knowledge page's list ran one count query per knowledge base. It now counts them all in one query. (HARDENING
+  F-3).
+- Two admins deleting an organisation's last two projects at the same moment could leave it with none; restoring a
+  version could keep its steps but not their positions; a template whose kit failed partway left a workflow with
+  half its kit; and a review whose correction the dataset refused was saved anyway. Now one project always stays, a
+  restore writes steps and positions together, a failed kit leaves no workflow behind, and a refused correction
+  saves no review. (HARDENING C-12).
+- On SQLite, an audit-log search from a time with a UTC offset was off by that offset; asking for dataset version 0
+  returned the latest version; paging a project's event log with another project's event id answered as if it
+  existed; and `%` or `_` in the audit target filter matched everything. Times now compare as the same instant,
+  version 0 is not found, a foreign event id is unknown, and the target filter matches its text literally.
+  (HARDENING C-11).
+- A cron trigger whose stored schedule could not be read stopped all scheduled runs of the server. That trigger is
+  now skipped with a warning in the log, and the others keep firing. (HARDENING C-10).
+- Making a workflow's code folder, recording a version's workspace commit and saving a release gate ran git on the
+  server's main loop and outside the workspace's lock, so a code save at the same moment could stay uncommitted and
+  a gate could reuse an evaluation of older code. They now take turns with saves, off the main loop. (HARDENING
+  C-9).
+- Uploading several files to a knowledge base when a later one failed (the same text twice, too many chunks,
+  unreadable) kept the earlier ones, so a retry was refused as a duplicate. Now a failing file adds none of them,
+  and the retry works. (HARDENING C-8).
+- Unpublishing a deployment and publishing it again silently brought its old API key back to life, without showing
+  it. Publishing again now issues a new key, shown once, and the old key stays revoked. (HARDENING C-7).
+- When a release gate's evaluation took longer than its ten-minute limit, publishing failed but the experiment kept
+  running and spending on models. It is now cancelled when the gate gives up. (HARDENING C-6).
+- Running a workflow's saved test cases, or publishing it, kept a database connection for the whole run, so a few at
+  once could leave every other request waiting. The connection now goes back to the pool while the cases run.
+  (HARDENING C-5).
+- Importing a CSV file with a very long cell (over 128 KB) failed with a server error. Such files now import, and a
+  file the CSV reader cannot parse is refused with a message that says so. (HARDENING C-4).
+- Exporting a dataset whose name has characters such as Japanese failed with a server error. The download now
+  carries an ASCII name for every browser and the real name for those that read it; workflow, agent and bridge
+  exports are named the same way. (HARDENING C-3).
+- Saving a version, or publishing, twice at the same moment could fail with a server error because both tried to
+  take the same version number. Now the second one sees the first: a snapshot is told nothing changed, and a publish
+  pins the same version. (HARDENING C-2).
 - An answer whose run failed before it took (the model provider down, say) took the question out of the Inbox
   although the run was still waiting for it; it now goes back. The Echo demo engine dropped a paused run's state
   before running the continuation, so a continuation that failed could not be answered again (HARDENING R-4).
@@ -500,6 +586,16 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- Exports and framework environments now install openai-agents 0.24.0, CrewAI 1.15.33, Google ADK 2.13.0 (with
+  LiteLLM 1.105.7; 1.106 needs the mcp package it does not declare), Pydantic AI 2.63.0, Agno 3.1.11, Strands
+  1.62.0, Agent Framework 1.23.0 / 1.17.0, Claude Agent SDK 0.2.174, and @mastra/core 1.80.0 with @ai-sdk/openai-
+  compatible 3.0.80 and zod 4.6.7. Run `make framework FW=<id>` (and `make mastra`) again to update a local
+  environment.
+- LlamaIndex exports and the LlamaIndex environment installed whatever llama-index-workflows was newest, and a
+  workflow named like a framework (e.g. "CrewAI") got a package of that name in its export, hiding the framework,
+  when the server lacked it. Exports now pin the tested llama-index-workflows, such names get a `wf_` prefix, `make
+  crewai` uses Python 3.13 (CrewAI does not support 3.14), and a test checks every framework pin against the one
+  list. (HARDENING X-8).
 
 - **The model catalog lists the current models, with prices**: Claude Haiku 5.5 ($0.10/$0.50 per million tokens, 1M
   context) and Fable 5.1, the GPT-6 family (Astra, 6.1 Sol, 6.1 Terra, Luna) and Gemini 3.6 Flash; GPT-5.5 and GPT-5
