@@ -62,6 +62,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The agent network template could not be exported as an Open Agent Spec file that other runtimes accept: it starts
+  three steps at once, and an Agent Spec flow's start takes one path. Steps that run side by side and meet at one
+  "Wait for all" are now written one after another, and the export's notes say so.
 - Opening a conversation (its state, history or Explain) failed with a server error while one of the workflow's MCP
   servers was down, because reading built the whole graph and contacted every server first. Reading now goes on
   without that server's tools (HARDENING R-5).

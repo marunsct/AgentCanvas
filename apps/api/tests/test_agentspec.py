@@ -298,3 +298,21 @@ async def test_api_round_trip(app, api_client):
 async def test_api_refuses_a_bad_file(api_client):
     res = await api_client.post(f"{P}/workflows/agent-spec", json={"spec": {"component_type": "Tool", "id": "t"}})
     assert res.status_code == 422 and "cannot import a Tool" in res.text
+
+
+def test_steps_that_start_side_by_side_export_one_after_another():
+    """The agent network template starts three steps at once; Agent Spec's start node takes one outgoing edge (newer
+    pyagentspec refuses the file otherwise), and its flows follow one path, so they are written in sequence."""
+    import json
+
+    from agentcanvas.agentspec import export_flow
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.workflows import TEMPLATES
+
+    wf = Workflow.model_validate(json.loads((TEMPLATES / "agent_network.ir.json").read_text()))
+    doc, report = export_flow(wf)
+    refs = doc["$referenced_components"]
+    start = doc["start_node"]["$component_ref"]
+    edges = [refs[e["$component_ref"]] if "$component_ref" in e else e for e in doc["control_flow_connections"]]
+    assert len([e for e in edges if e["from_node"]["$component_ref"] == start]) == 1
+    assert any("one after another" in line for line in report)

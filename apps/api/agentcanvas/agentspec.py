@@ -12,6 +12,7 @@ functions over dicts: no LangChain, no pyagentspec (the CI ``frameworks`` job ch
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import uuid
@@ -39,6 +40,42 @@ class AgentSpecError(ValueError):
 
 
 # ------------------------------------------------------------------ export ----
+
+
+def _sequential(wf: Workflow, report: list[str]) -> list[Any]:
+    """The workflow's edges, with parallel one-step branches that meet at one "Wait for all" written one after another:
+    an Agent Spec flow follows one path at a time, and its start node takes one outgoing edge only (pyagentspec refuses
+    more). Other fan-outs are left as they are; the report says a runtime may follow only one of them."""
+    flows = [e for e in wf.edges if e.kind == "flow"]
+    out_of: dict[str, list[Any]] = {}
+    for e in flows:
+        out_of.setdefault(e.source.node, []).append(e)
+    joins = {n.id for n in wf.nodes if n.type == "core.join"}
+    replaced: set[str] = set()
+    added: list[Any] = []
+    for src, edges in out_of.items():
+        targets = [e.target.node for e in edges if not e.source.route]
+        if len(targets) < 2 or len(targets) != len(edges):
+            continue
+        nexts = [out_of.get(t, []) for t in targets]
+        if not all(len(n) == 1 for n in nexts) or len({n[0].target.node for n in nexts}) != 1:
+            continue
+        join = nexts[0][0].target.node
+        if join not in joins:
+            continue
+        chain = [src, *targets, join]
+        replaced |= {e.id for e in edges} | {n[0].id for n in nexts}
+        first = edges[0]
+        for i, (a, b) in enumerate(itertools.pairwise(chain)):
+            source, target = first.source.model_copy(update={"node": a, "route": None}), first.target
+            added.append(first.model_copy(update={"id": f"{first.id}-seq{i}", "source": source,
+                                                  "target": target.model_copy(update={"node": b})}))  # fmt: skip
+        names = ", ".join(node.name for t in targets if (node := wf.node(t)))
+        report.append(f"Steps that run side by side ({names}) run one after another in Agent Spec, which follows one "
+                      "path at a time.")  # fmt: skip
+    return [e for e in wf.edges if e.id not in replaced] + added
+
+
 def export_flow(wf: Workflow, layout: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[str]]:
     """The workflow as an Agent Spec ``Flow`` document, and what it could not express. `layout` (canvas positions)
     rides along so an import back looks the same."""
@@ -243,7 +280,7 @@ class _Exporter:
                 self.writers.setdefault(name, []).append(spec_id.get(sid, sid))
 
         control = []
-        for e in wf.edges:
+        for e in _sequential(wf, self.report):
             if e.kind != "flow" or e.source.node not in spec_id or e.target.node not in spec_id:
                 continue
             src = by_id[spec_id[e.source.node]]
