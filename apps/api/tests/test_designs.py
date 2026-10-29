@@ -330,7 +330,7 @@ def test_a_tool_becomes_a_plain_function():
 # ------------------------------------------------------------------ API and exports ----
 async def test_the_api_lists_frameworks_and_shows_an_agents_code(api_client, app):
     found = (await api_client.get("/v1/agent-frameworks")).json()
-    assert [f["id"] for f in found] == list(designs.AGENT_FRAMEWORKS)
+    assert [f["id"] for f in found] == [*designs.AGENT_FRAMEWORKS, "claude_managed_agents"]  # G-12: the platform last
     assert found[0]["installed"] is True and found[0]["own_env"] is False  # the OpenAI Agents SDK ships (S25)
     # CrewAI runs where it has an environment of its own (S28: make crewai / make framework FW=crewai)
     assert found[1]["installed"] is (designs.part_python("crewai") is not None) and found[1]["own_env"] is True

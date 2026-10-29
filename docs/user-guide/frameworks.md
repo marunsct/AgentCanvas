@@ -69,6 +69,7 @@ An **AI agent** block can be designed as a native agent of a popular agent frame
 | LlamaIndex | `llama-index-core`, `llama-index-llms-openai-like` | OpenAI-compatible |
 | Microsoft Agent Framework | `agent-framework-core`, `agent-framework-openai` | OpenAI-compatible |
 | Claude Agent SDK | `claude-agent-sdk` | Anthropic |
+| Claude Managed Agents (platform) | `anthropic` | Anthropic; exported as `ant apply` files, see below |
 
 Pick one and the block is generated as that framework's own code. You design it exactly as before: its
 instructions, the model wired into it, its tools (Python functions from the workspace, HTTP tools and MCP servers),
@@ -86,6 +87,36 @@ which tools need approval, and an answer shape. What changes:
   starts again from its beginning with your answer.
 - **Typed answers.** An answer shape becomes the framework's own structured output (a Pydantic class), and the
   answer lands in the block's `structured_response` output.
+
+### Take an agent to Claude Managed Agents
+
+**Claude Managed Agents** also appears in **Designed for**, under *Agent platforms*. It is Anthropic's hosted agent
+platform, not a Python framework, so the block still runs on the canvas as your workflow's own agent; what changes is
+the export. **Export for Claude Managed Agents (ant apply)** downloads the files the `ant` CLI applies:
+
+| File | What it is |
+|---|---|
+| `agents/<agent>/agent.md` | The agent: model, tools and MCP servers as YAML at the top, the instructions below |
+| `agents/<agent>/environment.yaml` | The cloud environment its sessions run in |
+| `agents/<agent>/vault.yaml` | Only when an MCP server needs a credential: the vault that holds it (never the secret) |
+| `agents/<agent>/skills/<name>/` | The workspace's skills (`skills/<name>/SKILL.md`, or the workflow's own `flows/<id>/skills/`) |
+| `run.py`, `custom_tools.py` | A session runner that answers the agent's custom tools and asks before calls that need approval |
+| `Makefile`, `doctor.py`, `tests/` | `make doctor`, `make plan`, `make apply`, `make run Q="…"`, and offline tests |
+| `README.md`, `GAPS.md` | `ant apply` and how to run a session; what did not carry over |
+
+How the canvas maps onto the platform:
+
+- **Model.** A Claude model (Claude 4.5 or later); another provider's model stops the export and says so.
+- **Python and web API tools** become *custom tools*: the platform sends each call to `run.py` on your machine,
+  which runs the same code as the canvas. A Python tool's arguments come from its signature and docstring.
+- **MCP servers** become `mcp_servers` with an `mcp_toolset`. The platform signs in with a vault credential, so the
+  README gives the `ant beta:vaults:credentials create` command instead of a header.
+- **Tools that need approval** become `always_ask` for MCP tools; for custom tools `run.py` asks on the terminal.
+- **Skills** from the workspace go with the agent.
+
+The export panel and `GAPS.md` list what does not carry over (add-ons, an enforced answer shape, temperature and token
+limits, scripts inside skills, and that sessions and costs live in the Claude Console). Apply with `ant apply`
+(`make plan` first), keep `claude-lock.json`, and start a session with `make run`.
 
 Each framework takes a little less than LangGraph does: add-ons (middleware) and the more unusual tool kinds cannot
 be wired into a designed agent, and P005 says which. Only the LangGraph framework can run agents designed for other

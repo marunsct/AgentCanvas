@@ -27,7 +27,7 @@ export function ExportSection({ wfId, versions }: { wfId: string; versions: Vers
   const { data: frameworks = [] } = useFrameworks();
   const { data: agents = [] } = useAgentFrameworks();
   const own = wf?.framework ?? "langchain";
-  const fits = wf ? portability(wf, frameworks, new Set(agents.map((a) => a.id))) : [];
+  const fits = wf ? portability(wf, frameworks, new Set(agents.filter((a) => !a.hosted).map((a) => a.id))) : [];
   const as = framework.startsWith("fw:") ? framework.slice(3) : framework ? null : own; // a framework project
   const bridgeId = as === null ? framework : "";
   const service = as === "langchain"; // a LangGraph service: the deploy kit and "where it will run"

@@ -38,6 +38,16 @@ LangGraph workflows): the generated flow, a command-line runner and offline test
 can also write the same workflow for another installed framework; see
 [Export for any framework](frameworks.md#what-each-framework-can-do).
 
+## Take one AI agent to Claude Managed Agents
+
+An AI agent can also be exported as files for Anthropic's Claude Managed Agents: in the block's settings, choose
+**Designed for → Claude Managed Agents**, then **Export for Claude Managed Agents (ant apply)**. The download holds
+`agents/<agent>/agent.md` (model, tools, MCP servers, skills and the instructions), `environment.yaml`, a vault file
+when an MCP server needs a credential, the workspace's skills, a session runner (`run.py`) for the custom tools,
+tests, and a README. `make doctor` checks the `ant` CLI and its version, a way to sign in, the files, the settings the
+tools read and the hosts they call; `make plan` and `make apply` run `ant apply`. Details and what does not carry
+over: [Design an agent in any agent framework](frameworks.md#take-an-agent-to-claude-managed-agents).
+
 ## Push to GitHub
 
 Instead of downloading, the export can go straight into a GitHub repository. In **Export**, open **Push to

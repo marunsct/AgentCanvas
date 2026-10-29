@@ -29,10 +29,15 @@ export type Type1 = string;
 export type DatasetId = string;
 export type Code = string;
 export type ExportProblems = string[];
+export type File = string;
 export type Framework = string;
+export type Blocks = boolean;
+export type Text = string;
+export type Gaps = DesignGapOut[];
 export type Label2 = string;
 export type Problems = string[];
 export type Api = string;
+export type Hosted = boolean;
 export type Id2 = string;
 export type Installed = boolean;
 export type Label3 = string;
@@ -126,9 +131,9 @@ export type Ungated = string[];
 export type Files = string[];
 export type After = string[];
 export type Before = string[];
-export type Blocks = boolean;
-export type Text = string;
-export type Gaps = GapOut[];
+export type Blocks1 = boolean;
+export type Text1 = string;
+export type Gaps1 = GapOut[];
 export type Id6 = string;
 export type Label4 = string;
 export type Packages1 = string[];
@@ -201,7 +206,7 @@ export type Heading = string | null;
 export type Id8 = string;
 export type Ordinal = number;
 export type Page = number | null;
-export type Text1 = string;
+export type Text2 = string;
 /**
  * fixed windows only: characters shared
  */
@@ -239,7 +244,7 @@ export type Model3 = string;
 /**
  * the Copilot's explanation, in plain words
  */
-export type Text2 = string;
+export type Text3 = string;
 /**
  * @minItems 1
  */
@@ -915,7 +920,7 @@ export type Code4 = string | null;
 /**
  * The JSON a Langflow, Flowise, n8n or Agent Spec export downloads
  */
-export type File = {
+export type File1 = {
   [k: string]: unknown;
 } | null;
 export type Name30 = string | null;
@@ -1116,7 +1121,7 @@ export type UpdatedAt8 = string | null;
  */
 export type AllowRealRuns = boolean;
 export type Mode2 = "build" | "ask";
-export type Text3 = string;
+export type Text4 = string;
 export type Embedding2 = string | null;
 export type Judge = string | null;
 export type SimulatedUser = string | null;
@@ -2030,7 +2035,7 @@ export type Heading1 = string | null;
 export type Page3 = number | null;
 export type Score3 = number;
 export type Source8 = string | null;
-export type Text4 = string;
+export type Text5 = string;
 export type Title4 = string | null;
 export type Results1 = SearchResult[];
 export type Value5 = string;
@@ -2138,7 +2143,7 @@ export type InterruptId2 = string | null;
 /**
  * the answer to a question
  */
-export type Text5 = string | null;
+export type Text6 = string | null;
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
@@ -2232,7 +2237,7 @@ export type Version12 = string | null;
 export type Failed2 = number;
 export type Passed3 = number;
 export type Results2 = CaseResult[];
-export type Text6 = string;
+export type Text7 = string;
 export type Title8 = string;
 export type CostUsd4 = number;
 export type CreatedAt28 = string;
@@ -2411,6 +2416,7 @@ export interface ApiSchemas {
   Decision?: Decision;
   DefaultModel?: DefaultModel;
   DeploymentOut?: DeploymentOut;
+  DesignGapOut?: DesignGapOut;
   Diagnostic?: Diagnostic;
   DiffOut?: DiffOut;
   Disconnect?: Disconnect;
@@ -2729,9 +2735,19 @@ export interface Reference {
 export interface AgentCodeOut {
   code: Code;
   export_problems: ExportProblems;
+  file?: File;
   framework: Framework;
+  gaps?: Gaps;
   label: Label2;
   problems: Problems;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "DesignGapOut".
+ */
+export interface DesignGapOut {
+  blocks: Blocks;
+  text: Text;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -2739,6 +2755,7 @@ export interface AgentCodeOut {
  */
 export interface AgentFrameworkOut {
   api: Api;
+  hosted?: Hosted;
   id: Id2;
   installed: Installed;
   label: Label3;
@@ -2991,7 +3008,7 @@ export interface Breakpoints {
  * via the `definition` "BridgeOut".
  */
 export interface BridgeOut {
-  gaps: Gaps;
+  gaps: Gaps1;
   id: Id6;
   label: Label4;
   packages: Packages1;
@@ -3004,8 +3021,8 @@ export interface BridgeOut {
  * via the `definition` "GapOut".
  */
 export interface GapOut {
-  blocks: Blocks;
-  text: Text;
+  blocks: Blocks1;
+  text: Text1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3140,7 +3157,7 @@ export interface ChunkOut {
   id: Id8;
   ordinal: Ordinal;
   page: Page;
-  text: Text1;
+  text: Text2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3170,7 +3187,7 @@ export interface CodeHelpIn {
 export interface CodeHelpOut {
   code?: Code2;
   model: Model3;
-  text: Text2;
+  text: Text3;
   usage?: Usage1;
 }
 export interface Usage1 {
@@ -4351,7 +4368,7 @@ export interface Headers {
  */
 export interface ImportFile {
   code?: Code4;
-  file?: File;
+  file?: File1;
   name?: Name30;
 }
 /**
@@ -4726,7 +4743,7 @@ export interface Value3 {
 export interface MessageIn {
   allow_real_runs?: AllowRealRuns;
   mode?: Mode2;
-  text: Text3;
+  text: Text4;
 }
 /**
  * Leave a purpose out to keep its default; null clears it (the project's model, or built-in embeddings).
@@ -5309,7 +5326,7 @@ export interface SearchResult {
   page: Page3;
   score: Score3;
   source: Source8;
-  text: Text4;
+  text: Text5;
   title: Title4;
 }
 /**
@@ -5433,7 +5450,7 @@ export interface ShareOut {
 export interface ShareResumeIn {
   approve?: Approve;
   interrupt_id?: InterruptId2;
-  text?: Text5;
+  text?: Text6;
   visitor: Visitor1;
 }
 /**
@@ -5613,7 +5630,7 @@ export interface TestRunOut {
  * via the `definition` "TextIn".
  */
 export interface TextIn {
-  text: Text6;
+  text: Text7;
   title: Title8;
 }
 /**

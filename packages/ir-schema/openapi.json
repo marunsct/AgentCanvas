@@ -94,9 +94,22 @@
             "title": "Export Problems",
             "type": "array"
           },
+          "file": {
+            "default": "agent.py",
+            "title": "File",
+            "type": "string"
+          },
           "framework": {
             "title": "Framework",
             "type": "string"
+          },
+          "gaps": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DesignGapOut"
+            },
+            "title": "Gaps",
+            "type": "array"
           },
           "label": {
             "title": "Label",
@@ -125,6 +138,11 @@
           "api": {
             "title": "Api",
             "type": "string"
+          },
+          "hosted": {
+            "default": false,
+            "title": "Hosted",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -2717,6 +2735,24 @@
           "endpoint"
         ],
         "title": "DeploymentOut",
+        "type": "object"
+      },
+      "DesignGapOut": {
+        "properties": {
+          "blocks": {
+            "title": "Blocks",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blocks",
+          "text"
+        ],
+        "title": "DesignGapOut",
         "type": "object"
       },
       "Diagnostic": {
@@ -11842,7 +11878,7 @@
     },
     "/v1/agent-frameworks": {
       "get": {
-        "description": "Frameworks an Agent block can be designed for: generated in that framework's own code.",
+        "description": "Frameworks an Agent block can be designed for: generated in that framework's own code, and the agent\nplatforms it can be exported to (G-12).",
         "operationId": "list_agent_frameworks_v1_agent_frameworks_get",
         "parameters": [
           {
@@ -24216,7 +24252,7 @@
     },
     "/v1/workflows/{wf_id}/agents/{node_id}/export.zip": {
       "get": {
-        "description": "One Agent block as a native project for its framework: runner, pinned packages, README and tests.",
+        "description": "One Agent block as a native project for its framework: runner, pinned packages, README and tests; for Claude\nManaged Agents, the files `ant apply` reads with a session runner, `make doctor` and tests (G-12).",
         "operationId": "agent_export_v1_workflows__wf_id__agents__node_id__export_zip_get",
         "parameters": [
           {
