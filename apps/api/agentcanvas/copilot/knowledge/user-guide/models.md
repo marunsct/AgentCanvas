@@ -75,7 +75,7 @@ them from environment variables with the same names (listed in the export's `.en
 
 ## Backup models and reusing answers
 
-Two settings of an **AI model** block form its model gateway. They work on every framework (LangGraph, the
+Three settings of an **AI model** block form its model gateway. They work on every framework (LangGraph, the
 OpenAI Agents SDK, CrewAI and Google ADK) and for every step and agent the block powers.
 
 - **Backup models:** when the block's model fails (the provider is down, out of quota, too slow for the block's
@@ -84,6 +84,18 @@ OpenAI Agents SDK, CrewAI and Google ADK) and for every step and agent the block
   after the provider, see above) and the block's temperature, output limit and timeout; it does not take the block's
   address or key. Pick backups from other providers, so one outage does not stop both (the editor warns about a
   backup that repeats the model, W016). Cost is counted for the model that answered.
+- **Use the cheapest of** (optional): a list of models. At the start of every run the block uses the cheapest of
+  them that is *ready* and *allowed*, instead of the model at the top, which stays the choice when none qualifies.
+  Ready: the provider has a key here (a project secret or server variable), or the block's own key or address is for
+  that provider; a retired model is not ready, and a local model is never chosen (a local server may be down: list
+  it among the backup models). Allowed: swapping it in breaks no [policy](accounts.md) of your organisation that
+  the block's own model does not already break (policies that apply to every environment). Cheapest means the
+  catalog price, input plus output per million tokens; a model with no price is used only when no priced model
+  qualifies, because a cost budget cannot count its calls. It works with the backup models, not instead of them:
+  the winner is the block's model for the run and the backups still catch its failures (the winner is dropped from
+  them if it was listed). The run's events carry the choice (`ac.route`: the model chosen and why each other
+  candidate was not), and the draft keeps both settings. The editor warns about a model listed twice, a local one
+  or one with no price (W024). Exported projects always use the model at the top.
 - **Reuse answers for (s):** an identical request (same messages, tools and settings) within that many seconds gets
   the stored answer without calling the provider, at no cost. Good for steps whose answer should not change, such as
   classifying or extracting; leave it empty for creative writing. Cached answers are kept in the database, per
@@ -91,7 +103,7 @@ OpenAI Agents SDK, CrewAI and Google ADK) and for every step and agent the block
   keeps them in the memory of the exported process.)
 
 The run panel and the workflow's **Spending** count cached answers and answers from backups. Exported LangGraph
-projects keep both settings; OpenAI Agents SDK exports keep the backup models but not the cache; CrewAI and Google ADK exports keep neither. The older **Backup
+projects keep the backup models and the cache settings; OpenAI Agents SDK exports keep the backup models but not the cache; CrewAI and Google ADK exports keep neither. The older **Backup
 models** add-on block (`mw.model_fallback`) still works for agents on LangGraph.
 
 ## The first-run screen

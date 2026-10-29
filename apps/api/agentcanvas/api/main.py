@@ -45,6 +45,7 @@ from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
+from agentcanvas.services import routing
 from agentcanvas.services.answer_cache import DatabaseAnswerCache
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
@@ -194,6 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 models=app.state.models,
             )
             app.state.runner = runner
+            runner.router = lambda session, wf, project_id: routing.route_run(app, session, wf, project_id)
             runner.prepare_hooks.append(
                 lambda wf: app.state.secrets.refresh(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT))
             )

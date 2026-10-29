@@ -73,6 +73,7 @@ class RunHandle:
     size: int = 0  # about how many bytes its events take in memory (finished runs are evicted by this too)
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
+    routing: list[dict[str, Any]] = field(default_factory=list)  # the model each routed block got (services/routing.py)
 
 
 def _plain(value: Any) -> Any:
@@ -270,6 +271,8 @@ class Runner:
         # awaited before a run starts (the project's secrets, reloaded when another instance changed them)
         self.prepare_hooks: list[Callable[[Workflow], Awaitable[None]]] = []
         self.draining = False  # shutting down: no new runs (FR-X-10)
+        # picks the models of blocks that list `cheapest_of` (db session, workflow, project id -> workflow, notes)
+        self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
 
     @property
     def models(self) -> ModelService:
@@ -335,6 +338,7 @@ class Runner:
             raise Conflict(f"thread '{thread_id}' already has an active run", run_id=self.active_by_thread[thread_id])
         run_id = new_id("run")
         self.active_by_thread[thread_id] = run_id  # reserved before any await: a concurrent start is refused
+        routed, routing = wf, []  # the workflow as this run executes it, and why each routed block got its model
         try:
             for prepare in self.prepare_hooks:
                 await prepare(wf)
@@ -375,6 +379,11 @@ class Runner:
                     from agentcanvas.services.projects import PROJECT_OF
 
                     PROJECT_OF[wf.id] = project_id
+                if self.router is not None and project_id is not None:
+                    try:
+                        routed, routing = await self.router(s, wf, project_id)
+                    except Exception:
+                        log.exception("run.routing_failed", run_id=run_id)
                 await s.flush()
                 s.add(
                     Run(
@@ -401,7 +410,7 @@ class Runner:
             raise
 
         spec = RunSpec(
-            workflow=wf,
+            workflow=routed,
             thread_id=thread_id,
             run_id=run_id,
             input=input,
@@ -428,6 +437,7 @@ class Runner:
             trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
+        handle.routing = routing
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
@@ -487,6 +497,8 @@ class Runner:
                 "adapter": spec.workflow.framework,
             },
         )
+        for note in h.routing:
+            await self._emit(h, {"type": "CUSTOM", "name": "ac.route", "value": note})
         status, error, interrupts = "error", None, []
         # The run's last events are published only after the run is finalised (saved, thread released): a client
         # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has

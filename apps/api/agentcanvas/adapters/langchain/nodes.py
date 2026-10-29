@@ -320,7 +320,11 @@ def tag_model(model: Any, model_id: str | None, resource: str | None = None) -> 
     return model
 
 
-GATEWAY_KEYS = ("fallbacks", "cache_ttl")  # model block settings of the model gateway (S26), not the client's
+GATEWAY_KEYS = (
+    "fallbacks",
+    "cache_ttl",
+    "cheapest_of",
+)  # model block settings of the gateway (S26, G-8), not the client's
 BACKUP_KEYS = ("temperature", "max_tokens", "timeout")  # settings a block's backup models share with it
 
 # Model providers (the `provider:` prefix of a model id). Kept in step with registry/providers.json (tested).

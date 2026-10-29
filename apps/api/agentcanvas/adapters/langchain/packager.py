@@ -524,6 +524,9 @@ def canvas_only(wf: Workflow, label: str) -> list[str]:
         if backups := [str(b) for b in r.config.get("fallbacks") or [] if b]:
             out.append(f"Model block '{r.name}': its backup models ({', '.join(backups)}) are not tried; when its "
                        "model fails, the step fails.")  # fmt: skip
+        if candidates := [str(m) for m in r.config.get("cheapest_of") or [] if m]:
+            out.append(f"Model block '{r.name}': it does not pick the cheapest of {', '.join(candidates)}; it always "
+                       f"uses {r.config.get('model')}.")  # fmt: skip
         if r.config.get("cache_ttl"):
             out.append(f"Model block '{r.name}': its answer cache ({r.config['cache_ttl']} s) is not exported; every "
                        "request reaches the model.")  # fmt: skip

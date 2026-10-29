@@ -300,3 +300,35 @@ def backup_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     hint="pick a model from another provider, so an outage of one does not stop both",
                 )
             seen.add(str(model))
+
+
+@rule
+def cheapest_of_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W024: a model block's `cheapest_of` list (G-8) only chooses among models a run can use and compare."""
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        listed = r.config.get("cheapest_of")
+        if not isinstance(listed, list):
+            continue
+        seen: set[str] = set()
+        for i, model in enumerate(str(m) for m in listed):
+            where = {"node_id": r.id, "path": f"config.cheapest_of[{i}]"}
+            info, provider = ctx.registry.model(model), ctx.registry.provider(model.partition(":")[0])
+            if model in seen:
+                yield warning("W024", f"{model} is listed twice in the cheapest-of list of '{r.name}'", **where)
+            elif provider is not None and provider.local:
+                yield warning(
+                    "W024",
+                    f"{model} is a local model, which a run never picks by price (its server may be down)",
+                    hint=f"list it among the backup models of '{r.name}' instead",
+                    **where,
+                )
+            elif info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
+                yield warning(
+                    "W024",
+                    f"{model} has no catalog price, so it is chosen only when no priced model in the list qualifies",
+                    hint="an operator sets its price with AGENTCANVAS_MODEL_PRICES",
+                    **where,
+                )
+            seen.add(model)

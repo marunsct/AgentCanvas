@@ -224,6 +224,10 @@
       "what": "The cost limit cannot count this model, because its price is unknown.",
       "fix": "Use a token limit instead, or a model with a known price."
     },
+    "W024": {
+      "what": "A model in \u201cUse the cheapest of\u201d is listed twice, is a local model (a run never picks those by price), or has no known price (it is chosen only when no priced model qualifies).",
+      "fix": "Remove the repeat, move a local model to the backup models, or ask your operator to set the price."
+    },
     "W016": {
       "what": "This backup model is already tried before it, so it adds nothing when the model fails.",
       "fix": "Pick a backup model from another provider."
