@@ -113,6 +113,6 @@ do. The Copilot refuses to put API keys or passwords into settings and uses secr
   accept or reject; `DELETE …/copilot` starts a new chat. Conversations are per person and per workflow.
 - Developers can measure a model's building quality with the eval harness:
   `uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5` builds ten workflows from plain
-  requests and checks each one validates and uses the expected blocks; `--suite debug` plants about 30 bugs in the
+  requests and checks each one validates and uses the expected blocks; `--suite debug` plants about 100 bugs in the
   starter templates (a missing arrow to Finish, an unplugged model, a wrong output field, a broken condition, an
   unknown field in a prompt) and checks the Copilot's fix leaves no errors.

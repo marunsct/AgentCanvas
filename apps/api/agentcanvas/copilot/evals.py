@@ -191,7 +191,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Copilot eval harness")
     parser.add_argument("--model", required=True, help="provider:model")
     parser.add_argument("--case", help="run one case by id")
-    parser.add_argument("--suite", choices=["build", "debug"], default="build", help="debug: ~30 planted bugs")
+    parser.add_argument("--suite", choices=["build", "debug"], default="build", help="debug: ~100 planted bugs")
     parser.add_argument("--engine", choices=["loop", "deepagents"], default="loop", help="the Copilot's engine")
     parser.add_argument("--min-pass", type=float, default=0.0, help="exit 1 when fewer cases pass (0-1)")
     parser.add_argument("--out", help="write the results as JSON")
