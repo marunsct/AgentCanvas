@@ -417,6 +417,19 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- App connectors that need a sign-in, such as Linear and Atlassian, now have a Connect button: each person signs in
+  with their own account, and a run uses the connection of whoever started it, or the organisation's service
+  connection when the block is set to that (for schedules, webhooks and deployments). Hosted app connectors no
+  longer fail on a redirect option the MCP client sends. (HARDENING G-7).
+- An admin can make a SCIM token under Settings > Organisation so Okta, Entra ID and other providers add, suspend
+  and remove members and push groups that give roles. Everything is limited to the token's own organisation and
+  audited. (HARDENING G-13).
+- An admin can map the groups in the OIDC sign-in token to roles under Settings > Organisation. The role is set at
+  every sign-in, people in a mapped group join without an invitation, and the last admin can never be removed by a
+  token. (HARDENING G-13).
+- People can make their own API tokens (act_...) in Settings, shown once, with a role at most their own and an
+  optional expiry; the API accepts them as Authorization: Bearer next to sign-in, in their organisation only, and
+  admins can revoke anyone's. Every change made with a token is audited. (HARDENING G-13).
 - A LangGraph export now carries file and image fields (the service takes a file inline or by address, and the PDF
   and Word readers are added to its dependencies). Exports to other frameworks list file fields in GAPS.md as not
   shown to a model, and the editor warns (P008) when a workflow on another framework has them. (HARDENING G-5).

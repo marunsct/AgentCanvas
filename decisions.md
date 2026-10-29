@@ -12,6 +12,17 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### Governance and per-person connections: scope and limits
+Personal API tokens (`act_…`, shown once, SHA-256 at rest) are capped at the lower of their chosen role and the owner's
+current role, cannot create tokens, and stop when the owner is suspended or removed. The groups claim and SCIM 2.0
+work in **OIDC mode only**; Matura mode keeps its own member sync and refuses them, and tokens work in every mode.
+A SCIM member's role is the strongest role among their groups (default viewer). App connectors that need sign-in
+connect per person with OAuth (RFC 9728/8414, PKCE, Client ID Metadata Documents with dynamic registration as the
+fallback); a run acts as whoever started or resumed it, so a reviewer who resumes after an approval uses their own
+connection. Not built: a hand-entered OAuth client id/secret (GitHub and Slack still need keys), OAuth connectors in
+exported code (it fails with a clear message), and a validator diagnostic for "starter identity on a scheduled run"
+(runtime error only). New setting `AGENTCANVAS_PUBLIC_URL`; unset, the first CORS origin is used (right for development).
+
 ### Files and images: references in state, bytes in the project
 A file field is a channel typed `{"type":"object","format":"file"}` (optionally `contentMediaType`, e.g. `image/*`);
 runs and checkpoints hold only a reference (`fil_…`, name, media type, size), never bytes. Uploads are capped
