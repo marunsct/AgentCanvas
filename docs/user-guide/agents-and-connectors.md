@@ -139,7 +139,7 @@ double-click it: it becomes an **App connector (MCP)** block already set up for 
 into an agent, and use **Browse tools** to pick tools.
 
 - **Keys.** Connectors that need a key name the secret they read, such as `GITHUB_MCP_AUTH`. Add it under
-  **Workspace → Secrets**. Where a server expects `Authorization: Bearer <token>`, store the whole value,
+  **Settings › Secrets**. Where a server expects `Authorization: Bearer <token>`, store the whole value,
   including `Bearer `.
 - **Local connectors** start a program on the AgentCanvas server (`npx` or `uvx`). They work only in the local
   edition, after an admin turns on *local MCP servers*, and need Node.js or uv on the server.

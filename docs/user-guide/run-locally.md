@@ -69,8 +69,9 @@ the local admin): don't expose it to other people. For a shared server follow [D
 ## From source
 
 !!! tip "Verified"
-    The from-source steps were run on a clean checkout on 2026-10-06: `make setup`, `make dev-fake`, `make dev-web`,
-    the smoke test in step 6, a publish + API call, and the first-run model screen. The Docker stack is started and
+    The from-source steps were run on a clean checkout on 2026-10-06 (`make setup`, `make dev-fake`, `make dev-web`,
+    the smoke test in step 6, a publish + API call, the first-run model screen); the screens have changed since (the
+    app shell, Settings, the workflow list), so the pictures here are older than the app. The Docker stack is started and
     checked (first-run setup included) by CI on every change.
 
 ### At a glance
@@ -180,8 +181,8 @@ make dev-web
 Same as `cd apps/web && pnpm dev`. Open <http://localhost:5173>. The web dev server forwards `/api/*` to the API on
 port 8000, so no extra configuration is needed.
 
-You land on **Home**: a *Start the guided build* button, a *New workflow* box, eight template cards and your
-workflow list. Your initial at the right of the top bar opens a menu that says you are an admin.
+You land on **Home**: your workflows (five to a page, with search and a *Changed* filter), a *Start the guided
+build* button, a *New workflow* box and the template gallery (search, category and level). Your initial at the right of the top bar opens a menu that says you are an admin.
 
 ![Home page](img/home.png)
 
@@ -194,6 +195,10 @@ workflow list. Your initial at the right of the top bar opens a menu that says y
 5. Click **Approve**.
 6. *Streamed output* shows `reply_drafter Done — the tool call finished (demo model).` and the Output shows the
    tool's answer `sent: demo`. Every step shows a green *done* badge.
+
+This card is a demo with scripted model replies: it is offered when the server runs in development (`make dev-fake`
+and the Docker app). With a real model chosen on the first-run screen the drafted reply is the model's own words, so
+step 6 shows different text; the approval and the green badges are the same.
 
 ![A finished run](img/editor-run.png)
 
@@ -265,7 +270,7 @@ Local mode makes you an admin with no sign-in. To try real sign-in with
     ```
 
 The web app now redirects to Keycloak; the bootstrap email becomes an admin on first sign-in and can invite others
-from **Members**.
+from **Settings › Members**.
 
 ## Stop, reset and update
 

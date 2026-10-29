@@ -5,7 +5,7 @@
 In production AgentCanvas signs people in through your identity provider (any OpenID Connect provider: Keycloak,
 Okta, Entra ID, Auth0, Google…). The administrator configures it once (see [Deploy and operate](deploy.md#sign-in));
 people then click through to their usual login page. Sessions renew silently. The top bar shows who you are and
-your role, with **Sign out** and **Sign in with a different account**.
+your role, with **Sign out** (sign in again to use a different account).
 
 In local mode (`make dev-fake` / `make dev-api` without OIDC) there is no sign-in: you are the built-in admin
 `dev@localhost`.

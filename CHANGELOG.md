@@ -2,9 +2,13 @@
 
 All notable changes to AgentCanvas. Versions follow [semver](https://semver.org); dates are UTC.
 
-## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
+## Unreleased
+
+The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the hardening passes and the deep
+review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+
 - **A rotated API key kept being used until the server restarted**: model clients and MCP tool sets were cached by
   the secret's name, not its value, so after replacing a leaked key, runs went on sending the old one. A changed
   secret value now builds new clients, and an MCP server's tools are loaded again with it (HARDENING R-3).
@@ -25,6 +29,7 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+
 - Exported LangGraph projects build their model clients with the same sampling rule as the server (the rule and the
   catalog file it reads are bundled with the export), so an export of a workflow on a current Claude or GPT-5 model
   does not send them a temperature either.
@@ -116,8 +121,51 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - The Runs page could crash when the API answered with something of another shape (found by the chaos sweep).
 - Deleting a workflow that had been published and called failed on Postgres (references to its versions and
   deployments had no delete rule). A migration adds the rules.
+- **A chat stopped after its first message.** The run's input was kept as the caller's own dict, the engine turned its
+  message dicts into message objects in place, and saving the run's recording then failed, so the thread stayed
+  "running" and every next message answered "already has an active run". The input is now a plain copy, and a run
+  whose full save fails still records its status and frees its thread (`_finish_bare`).
+- A client that sends its next message the moment it reads `RUN_FINISHED` could get "already has an active run": the
+  run published its last event before it saved itself and released the thread. The last events now come after.
+- **Concurrent migrations.** Replicas that start together each ran Alembic; three of four crashed on a duplicate-type
+  error. Migrations now take a Postgres advisory lock (the others wait, then find nothing to do) and give up on a
+  table lock after 60 s instead of queuing every other query behind an `ALTER TABLE`.
+- The Agent Spec export, the bridges list and the export plan answered 500 for a router, Set step or HTTP tool whose
+  free-form settings had the wrong type (a hand-edited or imported document). They read them defensively now.
+- The exported **Ask your documents** template failed its own tests because the export script did not ship the
+  knowledge base the template searches; the script now includes the sample handbook, as the API's export does.
+- The web app waited for ever on a server that never answered (no timeout on plain requests): they now end after two
+  minutes with a message. A streamed run's last event is delivered even when the connection closes without a blank line.
+- **Two query values answered with a 500**: a page cursor or dataset version too large for a 64-bit integer (SQLite
+  raises `OverflowError`, not `DataError`), and a NUL character in a memory namespace on Postgres (LangGraph's store
+  raises psycopg's `DataError`, not SQLAlchemy's). Both are 422 now, and the audit cursor is bounded.
+- **A misrouted `/api` crashed every page** when a proxy answered an API path with the app's own page (HTTP 200, HTML): the
+  client handed the HTML to components as data ("`data.map is not a function`"). It is now an error that says so ("the server
+  answered with a web page instead of data. Is /api forwarded to the AgentCanvas API?"). A page that still receives data
+  of an unexpected shape (an old page against a newer server) shows its crash notice with a hint to reload.
+- **Failed requests waited a second for nothing**: a 404, 403 or 422 was retried once; now only a dropped connection or a
+  server error is.
+- **A sign-in token with an empty or blank `sub` was accepted** (PyJWT only checks that the claim exists), so every such token
+  would have shared one account. It is refused with a 401.
+- **An export of a workflow with an emoji in its name or description could not be installed**: the description was
+  written into `pyproject.toml` with `json.dumps`, which spells a character outside the Basic Multilingual Plane as a
+  surrogate pair that TOML rejects. All six packagers (LangGraph, the flow frameworks, Google ADK, CrewAI, OpenAI Agents,
+  agent designs) now use `toml_string`.
+- **Exports and the server could be installed on a Python too new for them**: `requires-python` had no ceiling, so with
+  Python 3.15 installed `uv` picked it and the install failed (a dependency has no 3.15 wheel). It now stops at 3.14.
+- **Share-link frame allow-lists never worked behind nginx** (the production web image): `auth_request` does not expand
+  variables, so the API was never asked which sites may frame a link's chat page and every page got an empty
+  `frame-ancestors`. The token now travels in the request URI.
+- **Two steps starting at once could get a model bridge that was not listening yet** (client base URL `http://127.0.0.1:0`): the
+  OpenAI Agents SDK (and every framework that talks to the bridge) failed with "'tuple' object has no attribute 'choices'"
+  on some runs of an experiment. Callers now wait for the bridge's port.
+- Fixable high and critical vulnerabilities in the API image (certifi, filelock, pypdf upgraded; pip, whose vendored
+  libraries were the rest, removed from the runtime image). Advisories published since (authlib 1.8.0, a critical
+  signature bypass, and dnspython 2.8.0, both reached only through the optional MCP extra) are fixed by locking authlib
+  1.9.1 and dnspython 2.9.0.
 
 ### Added
+
 - **Published workflows answer A2A 1.0 clients**: `SendMessage` and `GetTask` with 1.0's wire form (`TASK_STATE_*`
   states, `ROLE_AGENT`, parts without `kind`, `{"task": …}`), the `A2A-Version` header (none means 0.3, as the spec
   says), and an agent card in 1.0's shape for a client that asks for it (`supportedInterfaces`,
@@ -254,44 +302,6 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   `b2d6f0a4c8e3`). Simple mode stays per browser.
 - Page headers with a title, a sentence on what the page is for, and breadcrumbs on a workflow's pages; Lucide icons
   (pinned at 1.52.0).
-
-### Upgrading
-- Migration `d8f2b6c0e4a9` adds `copilot_conversation.model` (empty: the project's model).
-- Migration `c6e0a4b8d2f7` adds `workflow_version.copilot_changes` (an empty list for existing versions); it runs with
-  the others at start-up.
-- Production compose needs `AGENTCANVAS_EGRESS_SECRET` (32+ random characters) in `infra/.env.prod`; a Helm install
-  with `sandbox.egress.enabled` (the default) needs the key `AGENTCANVAS_EGRESS_SECRET` in its Secret.
-
-### Changed
-- **The model catalog lists the current models, with prices**: Claude Haiku 5.5 ($0.10/$0.50 per million tokens, 1M
-  context) and Fable 5.1, the GPT-6 family (Astra, 6.1 Sol, 6.1 Terra, Luna) and Gemini 3.6 Flash; GPT-5.5 and GPT-5
-  mini now have prices, so costs and USD budgets count OpenAI models too. Templates use Claude Haiku 5.5 as their
-  quick model (Haiku 4.5 cost ten times as much). A model its provider has announced it will retire shows the date:
-  it is not offered for new choices, and the editor warns where a workflow still uses it (W023; Claude Sonnet 4.5
-  retires on 2026-11-30) (HARDENING E-9, P-3).
-- Saving the project's model from Settings stays in Settings with a notice; only the first choice, from the Home
-  banner, goes back to Home.
-
-## Unreleased — Hardening pass: chat, exports, migrations, keyboard, local CI
-
-### Fixed
-- **A chat stopped after its first message.** The run's input was kept as the caller's own dict, the engine turned its
-  message dicts into message objects in place, and saving the run's recording then failed, so the thread stayed
-  "running" and every next message answered "already has an active run". The input is now a plain copy, and a run
-  whose full save fails still records its status and frees its thread (`_finish_bare`).
-- A client that sends its next message the moment it reads `RUN_FINISHED` could get "already has an active run": the
-  run published its last event before it saved itself and released the thread. The last events now come after.
-- **Concurrent migrations.** Replicas that start together each ran Alembic; three of four crashed on a duplicate-type
-  error. Migrations now take a Postgres advisory lock (the others wait, then find nothing to do) and give up on a
-  table lock after 60 s instead of queuing every other query behind an `ALTER TABLE`.
-- The Agent Spec export, the bridges list and the export plan answered 500 for a router, Set step or HTTP tool whose
-  free-form settings had the wrong type (a hand-edited or imported document). They read them defensively now.
-- The exported **Ask your documents** template failed its own tests because the export script did not ship the
-  knowledge base the template searches; the script now includes the sample handbook, as the API's export does.
-- The web app waited for ever on a server that never answered (no timeout on plain requests): they now end after two
-  minutes with a message. A streamed run's last event is delivered even when the connection closes without a blank line.
-
-### Added
 - API-wide robustness tests: every operation of the OpenAPI document is called with hostile bodies, ids and headers
   (`test_api_robustness.py`), and every template is damaged at random places and read through every endpoint that reads
   a workflow, then run (`test_workflow_fuzz.py`; `ROBUSTNESS_ROUNDS` and `ROBUSTNESS_SEED` lengthen the soak).
@@ -303,46 +313,6 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   `frameworks` and `export` stages the GitHub workflow had; Helm runs from its official image when it is not installed.
   Each export's environment is deleted after its tests so a laptop's disk survives.
 - `E2E_API_PORT` moves the end-to-end API off port 8000 when another program holds it.
-
-### Changed
-- Home, Members, Copilot and Editor pages read the session through `useMe`/`useCan`, so they redraw on a role change.
-- `make ci` runs the gates locally (check, strict docs build, dependency audit, Helm lint); `make ci-full` adds the
-  framework environments, the whole API suite, the Docker images and e2e. `make hooks` runs lint, types and web tests
-  before every `git push`. The GitHub workflow now runs only when started by hand.
-- `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
-
-## Unreleased — Hardening, third pass
-
-### Fixed
-- **Two query values answered with a 500**: a page cursor or dataset version too large for a 64-bit integer (SQLite
-  raises `OverflowError`, not `DataError`), and a NUL character in a memory namespace on Postgres (LangGraph's store
-  raises psycopg's `DataError`, not SQLAlchemy's). Both are 422 now, and the audit cursor is bounded.
-- **A misrouted `/api` crashed every page** when a proxy answered an API path with the app's own page (HTTP 200, HTML): the
-  client handed the HTML to components as data ("`data.map is not a function`"). It is now an error that says so ("the server
-  answered with a web page instead of data. Is /api forwarded to the AgentCanvas API?"). A page that still receives data
-  of an unexpected shape (an old page against a newer server) shows its crash notice with a hint to reload.
-- **Failed requests waited a second for nothing**: a 404, 403 or 422 was retried once; now only a dropped connection or a
-  server error is.
-- **A sign-in token with an empty or blank `sub` was accepted** (PyJWT only checks that the claim exists), so every such token
-  would have shared one account. It is refused with a 401.
-- **An export of a workflow with an emoji in its name or description could not be installed**: the description was
-  written into `pyproject.toml` with `json.dumps`, which spells a character outside the Basic Multilingual Plane as a
-  surrogate pair that TOML rejects. All six packagers (LangGraph, the flow frameworks, Google ADK, CrewAI, OpenAI Agents,
-  agent designs) now use `toml_string`.
-- **Exports and the server could be installed on a Python too new for them**: `requires-python` had no ceiling, so with
-  Python 3.15 installed `uv` picked it and the install failed (a dependency has no 3.15 wheel). It now stops at 3.14.
-- **Share-link frame allow-lists never worked behind nginx** (the production web image): `auth_request` does not expand
-  variables, so the API was never asked which sites may frame a link's chat page and every page got an empty
-  `frame-ancestors`. The token now travels in the request URI.
-- **Two steps starting at once could get a model bridge that was not listening yet** (client base URL `http://127.0.0.1:0`): the
-  OpenAI Agents SDK (and every framework that talks to the bridge) failed with "'tuple' object has no attribute 'choices'"
-  on some runs of an experiment. Callers now wait for the bridge's port.
-- Fixable high and critical vulnerabilities in the API image (certifi, filelock, pypdf upgraded; pip, whose vendored
-  libraries were the rest, removed from the runtime image). Advisories published since (authlib 1.8.0, a critical
-  signature bypass, and dnspython 2.8.0, both reached only through the optional MCP extra) are fixed by locking authlib
-  1.9.1 and dnspython 2.9.0.
-
-### Added
 - Hostile query parameters on every GET route (`test_api_robustness.py`), and on routes reached with real ids
   (`test_query_params_real_data.py`), so paging, cursors and version filters meet the values.
 - `e2e/chaos.spec.ts`: every page against an API that answers 500, a proxy's 502 page, HTML with a 200, a dropped
@@ -377,14 +347,6 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - Tests that run over every route of the OpenAPI document: a stranger gets nothing from any route; a viewer or reviewer
   can do only what `ROLE_EXCEPTIONS` allows. Concurrency tests: 25 simultaneous runs, racing starts on one thread,
   racing decisions on one approval.
-
-### Changed
-- Finished runs' events are also evicted by size (256 MB), not only by count.
-- `decisions.md` records the judgment calls made while hardening without asking.
-
-## Unreleased — Hardening, second pass
-
-### Added
 - The export plan lists the knowledge bases a workflow searches and whether the project has them; the export dialog says
   when one is left out (the exported search would fail).
 - `make lint` (and the pre-push hook and the GitHub workflow) run **oxlint** on the web app: hooks called conditionally
@@ -395,10 +357,34 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+
+- **The model catalog lists the current models, with prices**: Claude Haiku 5.5 ($0.10/$0.50 per million tokens, 1M
+  context) and Fable 5.1, the GPT-6 family (Astra, 6.1 Sol, 6.1 Terra, Luna) and Gemini 3.6 Flash; GPT-5.5 and GPT-5
+  mini now have prices, so costs and USD budgets count OpenAI models too. Templates use Claude Haiku 5.5 as their
+  quick model (Haiku 4.5 cost ten times as much). A model its provider has announced it will retire shows the date:
+  it is not offered for new choices, and the editor warns where a workflow still uses it (W023; Claude Sonnet 4.5
+  retires on 2026-11-30) (HARDENING E-9, P-3).
+- Saving the project's model from Settings stays in Settings with a notice; only the first choice, from the Home
+  banner, goes back to Home.
+- Home, Members, Copilot and Editor pages read the session through `useMe`/`useCan`, so they redraw on a role change.
+- `make ci` runs the gates locally (check, strict docs build, dependency audit, Helm lint); `make ci-full` adds the
+  framework environments, the whole API suite, the Docker images and e2e. `make hooks` runs lint, types and web tests
+  before every `git push`. The GitHub workflow now runs only when started by hand.
+- `HARDENING.md` keeps the hardening plan: what is done (with versions) and what is open.
+- Finished runs' events are also evicted by size (256 MB), not only by count.
+- `decisions.md` records the judgment calls made while hardening without asking.
 - Servers clean up the temp folders of framework workers that a killed server left behind (the folder name now carries the
   server's process id; only folders of dead processes are removed).
 - Nine hand-written response types in the web app are now the generated API types, so a change to the API fails the
   type check instead of going unnoticed.
+
+### Upgrading
+
+- Migration `d8f2b6c0e4a9` adds `copilot_conversation.model` (empty: the project's model).
+- Migration `c6e0a4b8d2f7` adds `workflow_version.copilot_changes` (an empty list for existing versions); it runs with
+  the others at start-up.
+- Production compose needs `AGENTCANVAS_EGRESS_SECRET` (32+ random characters) in `infra/.env.prod`; a Helm install
+  with `sandbox.egress.enabled` (the default) needs the key `AGENTCANVAS_EGRESS_SECRET` in its Secret.
 
 ## v0.32.3 — Session state in the web app, and a guard on framework versions
 

@@ -32,6 +32,12 @@ and the Run tab shows **Approval needed** with the value under review.
 Select a step and click **○ Add breakpoint** in the Inspector. A run pauses *before* that step
 (*Paused at a breakpoint before …*); inspect the state, then **⏵ Continue**.
 
+## History
+
+The **History** tab of the editor's dock lists this workflow's past conversations, newest first, with their status;
+click one to open it in the **Timeline**. The project's conversations of every workflow are on the **Runs** page
+([Settings and moving around](settings.md#your-workflows-and-the-runs-page)).
+
 ## Timeline: time travel and fork
 
 The **Timeline** tab in the bottom dock lists every checkpoint of the run's thread. Select one to see the state

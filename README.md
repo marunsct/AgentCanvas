@@ -32,6 +32,9 @@ docs/            specification, build guide, ADRs
 make docker-up    # Postgres (pgvector) + migrations + API + web app on http://localhost:7777
 ```
 
+The image carries every framework (several GB); `FRAMEWORKS=none WITH_MASTRA=false make docker-up` builds a small one with LangGraph and
+the OpenAI Agents SDK only.
+
 Open http://localhost:7777 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
 DeepSeek, Grok, any OpenAI-compatible API, or a local model with Ollama, LM Studio, vLLM or llama.cpp. See
 [Models and API keys](docs/user-guide/models.md).
@@ -121,7 +124,7 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S21: Design any agent (v0.13.0) | ✅ done: an AI agent block designed as a native agent in nine frameworks, with its code and a native export |
 | S22: Whole flows, preview (v0.14.0) | ✅ done: export a whole workflow to LangGraph, WayFlow or OpenAI Agents through Agent Spec, with a gaps report |
 | Milestone review after S20–S22 | ✅ done (#27): 19 fixes |
-| S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates |
+| S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates (36 now, beginner to advanced) |
 | S24: Knowledge Studio (v0.16.0) | ✅ done: knowledge bases from files, web pages and text; hybrid search with citations; the Search knowledge block; retrieval evals |
 | S25: OpenAI Agents SDK flows (v0.17.0) | ✅ done: workflows run and export as OpenAI Agents SDK code (agents, tools, approvals, typed answers); convert and compare in one experiment |
 | S26: Model gateway and cost controls (v0.18.0) | ✅ done: backup models when a provider fails, an answer cache, day and month budgets with cost alerts, spending in the editor |

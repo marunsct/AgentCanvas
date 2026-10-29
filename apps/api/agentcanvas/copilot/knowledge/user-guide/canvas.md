@@ -12,7 +12,7 @@
 | **Side panel** (right) | **Inspector** (settings of the selection, or the Workflow panel when nothing is selected), **Run**, **Tests**, **Versions**, **Code**. |
 | **Dock** (bottom) | **Problems**, **Timeline**, **Explain**. |
 
-**Themes.** The menu under your initial at the right of the top bar picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is remembered in this browser.
+**Themes.** The menu under your initial at the right of the top bar picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is kept in this browser and, when you are signed in, with your account, so it follows you to other browsers.
 
 ## Add and connect steps
 

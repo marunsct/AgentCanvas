@@ -18,7 +18,7 @@ the editor.
 
 ## Option B: start from a template
 
-On **Home**, the [template gallery](templates.md) creates a ready-to-run workflow from one of 25 templates:
+On **Home**, the [template gallery](templates.md) creates a ready-to-run workflow from one of 36 templates, beginner to advanced:
 customer support bots, content writers, data extraction, research, sales, HR, engineering and operations helpers.
 Search it or pick a category, then click a card. The ones to start with:
 
@@ -36,8 +36,8 @@ examples, used in the smoke test.
 1. Click **Classify and route**. The editor opens:
     - the **palette** of widgets on the left,
     - the **canvas** in the middle,
-    - the **Inspector / Run / Tests / Versions / Code** tabs on the right,
-    - the **Problems / Timeline / Explain** dock at the bottom.
+    - the **Inspector / Copilot / Run / Tests / Versions / Code** tabs on the right,
+    - the **Problems / Timeline / Explain / History** dock at the bottom (History lists the workflow's runs).
 2. Click a step on the canvas. The Inspector shows its settings: prompt, output channel, model.
 3. Open the **Run** tab. The input box is pre-filled with the workflow's inputs as JSON. Fill in a value and
    click **▶ Run**.
@@ -67,3 +67,6 @@ Changes save automatically (the header shows *Saved*). Undo and redo with the �
 - Learn the vocabulary in [Core concepts](concepts.md).
 - Add a tool to the Chat assistant: see [Widgets › Tools](widgets.md#tools).
 - Save the run as a test case and freeze a version: see [Publish and integrate](publish.md).
+- Let the [Copilot](copilot.md) build or fix a workflow from a plain description, try a model in the
+  [Playground](settings.md#the-top-bar), and follow every run on the **Runs** page
+  ([Settings and moving around](settings.md#your-workflows-and-the-runs-page)).

@@ -50,7 +50,8 @@ The Problems tab explains the rest:
 ## An AI block of its own framework
 
 An AI step, AI agent or Planning Agent can be **Designed for** another framework than the workflow (in the block's
-settings). Until mixed-framework flows arrive, the block still runs on the workflow's framework and P004 reminds you.
+settings). In a LangGraph workflow such an agent runs as a part of a [mixed flow](#mixed-flows-parts-and-contracts),
+in its own framework; a block that cannot run that way runs on the workflow's framework, and P004 says so.
 
 ## Design an agent in any agent framework
 
@@ -317,7 +318,8 @@ Pick **Mastra** as the workflow's framework. Mastra is a TypeScript framework, s
 (22.18 or later) next to the server: `make mastra` installs Mastra and what the flow needs from npm in
 `apps/api/.frameworks/mastra` (or set `AGENTCANVAS_MASTRA_DIR` to a folder whose `node_modules` has them, and
 `AGENTCANVAS_NODE` to a Node.js other than the one on the `PATH`). Without it you can still design, check and export
-these workflows; a run says how to install it. The Docker image has no Node.js.
+these workflows; a run says how to install it. The Docker app's image includes Node.js and Mastra unless
+`FRAMEWORKS` leaves Mastra out (`WITH_MASTRA`).
 
 The workflow becomes a TypeScript module, read in the **Code** tab: a Mastra `Agent` for each AI block, an
 `async function` for each block and a `FLOW` that says which step follows which. It runs the way the canvas draws it,

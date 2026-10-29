@@ -64,7 +64,7 @@ For each AI model block, the first of these that exists is used:
 
 1. The **API key (secret reference)** field of that AI model block: pick any project secret by name.
 2. The **project secret named after the provider**, for example `OPENAI_API_KEY`. The first-run screen saves the key
-   you enter under this name; you can also add it on the **Workspace** page under **Secrets**.
+   you enter under this name; you can also add it under **Settings › Secrets**.
 3. The **server's environment variable** of the same name (set when the server was started).
 
 So one key entered on the first-run screen serves every model of that provider in the project, and a single model

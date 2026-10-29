@@ -32,10 +32,11 @@ Or call `GET /v1/workflows/{id}/export.zip?target=<target>&version=<x.y.z>`, and
 A database is needed when the workflow pauses for people (approvals, questions), keeps memories, or continues chats
 across messages. Without one, the service keeps conversations in a SQLite file on one machine.
 
-A workflow whose framework is the **OpenAI Agents SDK** exports as an SDK project instead (the targets above are for
-LangGraph workflows): the generated flow, a command-line runner and offline tests. See
-[Run a workflow on the OpenAI Agents SDK](frameworks.md#run-a-workflow-on-the-openai-agents-sdk). A workflow on
-**CrewAI** exports as a CrewAI project the same way; see [Run a workflow on CrewAI](frameworks.md#run-a-workflow-on-crewai).
+A workflow on another framework (OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Microsoft Agent
+Framework, Strands, LlamaIndex or Mastra) exports as a project of that framework instead (the targets above are for
+LangGraph workflows): the generated flow, a command-line runner and offline tests. **Framework** in the export dialog
+can also write the same workflow for another installed framework; see
+[Export for any framework](frameworks.md#what-each-framework-can-do).
 
 ## Push to GitHub
 
@@ -45,7 +46,7 @@ files the download would hold are committed in one commit. A branch that does no
 repository's default branch, so you can open a pull request from it; pushing again to the same branch adds a new
 commit on top.
 
-It needs a project secret named `GITHUB_TOKEN` (Workspace → Secrets) holding a GitHub token that can write to the
+It needs a project secret named `GITHUB_TOKEN` (Settings › Secrets) holding a GitHub token that can write to the
 repository: a fine-grained personal access token with **Contents: Read and write** on that repository is enough.
 The token never leaves the server. Through the API: `POST /v1/workflows/{id}/github` with
 `{"repo": "acme/agents", "branch": "agentcanvas/support", "folder": "agents/support"}` (and optionally `version`,
@@ -143,7 +144,7 @@ Every call except `/healthz` and `/docs` needs `Authorization: Bearer <key>`, on
 ## Keys and secrets
 
 Secret values never leave AgentCanvas: the export names every secret the workflow uses, and you copy the values from
-**Workspace → Secrets** into `.env`. The deploy scripts put them in the platform's secret store (Secret Manager,
+**Settings › Secrets** into `.env`. The deploy scripts put them in the platform's secret store (Secret Manager,
 Secrets Manager, Container Apps secrets, or a Kubernetes secret).
 
 ## Release gate

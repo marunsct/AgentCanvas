@@ -28,6 +28,16 @@ Open it with **✦ Copilot** in the editor's top bar (or the **Copilot** tab on 
 The Copilot tells you what it cannot do for you, such as adding an API key as a [secret](workspace.md) or filling
 a memory space.
 
+## Conversations, Stop and the plan
+
+- **History** at the top of the panel lists your earlier conversations about this workflow; open one to carry on
+  where it stopped. **New chat** keeps the current one there.
+- **■ Stop** ends an answer while it is being written; what was said so far is kept.
+- On a longer build the Copilot keeps a short **Plan** (a to-do list, "2 of 5 done") under its answer, so you see
+  where it is.
+- A proposal lists each change with a tick box: untick what you do not want (unticking a step unticks the wires to
+  it) and **Accept** applies only what is ticked. The canvas shows the ticked changes as they would be.
+
 ## Testing
 
 Ask "write tests for this and run them", or let the Copilot do it after building from a brief with success
@@ -73,7 +83,7 @@ workspace's history, saying it came from the Copilot and who accepted it.
 
 Set this in **Settings › Copilot**:
 
-- **Use the workflow's model** (default): the project's default model from first-run setup, or, without one, the
+- **Use the project's model** (default): the project's default model from first-run setup, or, without one, the
   first AI model in the workflow.
 - **Use a separate model**: any `provider:model`, for example a stronger model for building, or a local model
   (`ollama:…`) so nothing leaves your machine. Its key is the provider's project secret, as for
