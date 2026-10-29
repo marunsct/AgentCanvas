@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from collections.abc import AsyncIterator, MutableMapping
@@ -87,13 +88,31 @@ def cost_alert(alert: Any) -> None:
     COST_ALERTS.labels(period=alert.period).inc()
 
 
-async def counted_stream(stream: AsyncIterator[str]) -> AsyncIterator[str]:
-    """An SSE body that counts itself in `agentcanvas_sse_clients` while it is open."""
+KEEPALIVE_S = 15.0  # an SSE comment after this long without a chunk, so proxies keep the stream open (R-9)
+
+
+async def counted_stream(stream: AsyncIterator[str], keepalive_s: float | None = None) -> AsyncIterator[str]:
+    """An SSE body that counts itself in `agentcanvas_sse_clients` while it is open, and sends a comment line (which
+    readers ignore) when a long step leaves it quiet: a proxy with a 60 s read timeout would otherwise cut it."""
     SSE_CLIENTS.inc()
+    it = aiter(stream)
+    nxt: asyncio.Future[str] | None = None
     try:
-        async for chunk in stream:
+        while True:
+            nxt = nxt or asyncio.ensure_future(anext(it))
+            done, _ = await asyncio.wait({nxt}, timeout=keepalive_s or KEEPALIVE_S)
+            if not done:
+                yield ": keepalive\n\n"
+                continue
+            try:
+                chunk = nxt.result()
+            except StopAsyncIteration:
+                return
+            nxt = None
             yield chunk
     finally:
+        if nxt is not None and not nxt.done():
+            nxt.cancel()
         SSE_CLIENTS.dec()
 
 

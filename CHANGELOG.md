@@ -62,6 +62,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- A run, Copilot answer, share-page reply or Playground stream that went quiet during a long step (a slow tool, a
+  model thinking) was cut by proxies with a 60-second read timeout. Every stream now sends a keep-alive comment
+  after 15 quiet seconds, which readers ignore (HARDENING R-9).
 - With many runs going at once, a run that had just finished was forgotten straight away (running runs counted
   against the finished ones a server keeps), so a client attaching to it a moment later got 404. A run going on for
   hours no longer keeps every streamed token in memory: past 64 MB its oldest text pieces are emptied, and a server

@@ -32,6 +32,7 @@ from agentcanvas.db.models import Deployment, DeploymentShare, Project, Run, Run
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
+from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation
@@ -268,7 +269,9 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow) 
 def _stream(request: Request, h: RunHandle, shape: InputShape, wf: Workflow) -> Response:
     headers = {**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id}
     return StreamingResponse(
-        _visitor_events(h, request.app.state.runner, shape, wf), media_type="text/event-stream", headers=headers
+        counted_stream(_visitor_events(h, request.app.state.runner, shape, wf)),
+        media_type="text/event-stream",
+        headers=headers,
     )
 
 

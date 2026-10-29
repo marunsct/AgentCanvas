@@ -22,6 +22,7 @@ from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
+from agentcanvas.observability import counted_stream
 from agentcanvas.services.secrets import redact
 from agentcanvas.services.workflows import WorkflowService
 
@@ -135,7 +136,9 @@ async def chat_stream(
         yield f"data: {json.dumps({'type': 'done', 'reply': reply, 'model': model, 'usage': usage})}\n\n"
 
     return StreamingResponse(
-        events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        counted_stream(events()),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

@@ -104,3 +104,20 @@ def test_route_labels_hide_ids():
     }
     assert observability.route_label(scope) == "/v1/threads/{thread_id}/runs/{run_id}"
     assert observability.route_label({"path": "/v1/nope/123"}) == "unmatched"
+
+
+async def test_a_quiet_stream_says_it_is_alive():
+    """R-9: a long step sent nothing for minutes and a proxy with a 60 s read timeout cut the stream; a comment
+    line (which SSE readers ignore) now goes out when nothing else did, and every event still arrives in order."""
+    import asyncio
+
+    from agentcanvas.observability import counted_stream
+
+    async def slow():
+        yield "data: 1\n\n"
+        await asyncio.sleep(0.25)
+        yield "data: 2\n\n"
+
+    got = [chunk async for chunk in counted_stream(slow(), keepalive_s=0.05)]
+    assert got[0] == "data: 1\n\n" and got[-1] == "data: 2\n\n"
+    assert got.count(": keepalive\n\n") >= 3 and len(got) == got.count(": keepalive\n\n") + 2
