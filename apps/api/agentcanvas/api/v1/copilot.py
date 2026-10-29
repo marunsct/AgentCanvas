@@ -41,6 +41,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.registry import Registry, billed_tokens, default_registry
 from agentcanvas.runtime.runner import usage_price
+from agentcanvas.services.knowledge import KnowledgeService
 from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
@@ -322,10 +323,22 @@ async def _start_turn(
         request.app.state.runner, request.app.state.db.sessionmaker, view.workflow,
         lambda wf, given: run_context(wf, given, user), user.id,
     )  # fmt: skip
+    db = request.app.state.db
+
+    async def knowledge_bases() -> list[dict[str, Any]]:  # the stream outlives this request's session
+        async with db.sessionmaker() as s:
+            rows = await KnowledgeService(s).list(project_id)
+        return [
+            {"name": kb.name, "description": kb.description, "documents": documents, "chunks": chunks,
+             "embedding_model": (kb.embedding or {}).get("model") or "builtin", "stale": kb.stale}
+            for kb, documents, chunks in rows
+        ]  # fmt: skip
+
     ctx = ToolContext(
         workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
         runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
         allow_real_runs=body.allow_real_runs, workspace=request.app.state.projects.workspace(project_id),
+        knowledge=knowledge_bases,
     )  # fmt: skip
     carry_pending(ctx, list(conv.proposals or []))
     factory = getattr(request.app.state, "resources_factory", None)
@@ -344,7 +357,6 @@ async def _start_turn(
     usage_before = dict(usage)
     spent_before = _spent(list(conv.messages or []))  # the earlier answers' costs, as GET /copilot sums them
     await session.commit()  # the stream outlives this request's session (it is closed when the response starts)
-    db = request.app.state.db
 
     async def save() -> None:
         """Merge this turn into the row as it is now: decisions taken meanwhile (another tab) are kept."""

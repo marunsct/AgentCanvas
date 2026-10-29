@@ -53,12 +53,23 @@ SUBAGENTS: list[dict[str, Any]] = [
     },
     {
         "name": "researcher",
-        "description": "Answers how AgentCanvas or a block works, which block or template fits a need, or which models "
-        "are available, from the guide and the block catalog. Give it the question.",
+        "description": "Answers how AgentCanvas or a block works, which block or template fits a need, which models "
+        "are available, which secrets and knowledge bases the project has, or what an export would need, from the "
+        "guide, the block catalog and the project. Give it the question.",
         "system_prompt": "You answer one question about AgentCanvas from its guide (search_guide), its blocks "
-        "(find_blocks, get_block), its templates (get_template) and models (list_models). Answer briefly and name "
-        "the guide page or the block you used.",
-        "tools": ["search_guide", "find_blocks", "get_block", "get_template", "list_models"],
+        "(find_blocks, get_block), its templates (get_template), models (list_models), the project's secret names "
+        "(list_secrets) and knowledge bases (list_knowledge_bases), and what an export holds and lacks "
+        "(export_plan). Answer briefly and name the guide page or the block you used.",
+        "tools": [
+            "search_guide",
+            "find_blocks",
+            "get_block",
+            "get_template",
+            "list_models",
+            "list_secrets",
+            "list_knowledge_bases",
+            "export_plan",
+        ],
     },
 ]
 

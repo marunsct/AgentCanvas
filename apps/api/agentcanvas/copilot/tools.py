@@ -11,18 +11,22 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import ValidationError
 
+from agentcanvas import designs
 from agentcanvas.copilot import docs, rules
 from agentcanvas.copilot.pack import block_summary
 from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry
+from agentcanvas.registry import adapters as adapter_manifests
+from agentcanvas.services.knowledge import used_knowledge_bases
 from agentcanvas.services.testcases import Expect
 from agentcanvas.services.workflows import without_gallery
 from agentcanvas.validation import Diagnostic
@@ -48,6 +52,9 @@ class Proposal:
         return bool(self.commands or self.tests or self.notes or self.files)
 
 
+KnowledgeLister = Callable[[], Awaitable[list[dict[str, Any]]]]
+
+
 @dataclass
 class ToolContext:
     workflow: Workflow  # the working copy: the saved draft plus this turn's proposal
@@ -63,6 +70,7 @@ class ToolContext:
     sources: list[dict[str, str]] = field(default_factory=list)  # guide sections this turn read: the answer cites them
     workspace: Workspace | None = None  # the project's code: read here, changed only through an accepted proposal
     carried: dict[str, Any] | None = None  # the open proposal this turn started from: its id and what it added
+    knowledge: KnowledgeLister | None = None  # the project's knowledge bases: names, counts, model; never contents
 
 
 @dataclass(frozen=True)
@@ -388,6 +396,82 @@ async def list_models(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "models": models, "providers": providers, "secrets_set": ctx.secret_names}
 
 
+# ------------------------------------------- the project: secrets, knowledge, export ----
+async def list_secrets(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """The project's secret names, the ones the workflow refers to, and the API key each model needs. Values never
+    reach the Copilot: they are not in its context to begin with."""
+    used = sorted(secret_refs(ctx.workflow.model_dump(mode="json")))
+    keys = []
+    for r in _flat(ctx.workflow)[1]:
+        if r.type != "model.chat" or secret_refs(r.config.get("api_key")):
+            continue  # a key named in the model's settings is one of `used`
+        model = str(r.config.get("model") or "")
+        p = ctx.registry.provider(model.partition(":")[0])
+        if p is None or not p.key_env:
+            continue
+        where = "project secret" if p.key_env in ctx.secret_names else "server" if os.environ.get(p.key_env) else None
+        keys.append({"model": model, "secret": p.key_env, "set": where})
+    return {
+        "ok": True, "secrets": ctx.secret_names, "used_by_workflow": used,
+        "missing": [n for n in used if n not in ctx.secret_names], "model_keys": keys,
+        "note": "names only; the person adds or changes a secret in Settings > Secrets, never in a block's settings",
+    }  # fmt: skip
+
+
+async def list_knowledge_bases(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.knowledge is None:
+        return {"ok": False, "error": "knowledge bases are not available here"}
+    bases = await ctx.knowledge()
+    used = sorted(used_knowledge_bases(ctx.workflow.model_dump(mode="json")))
+    names = {b["name"] for b in bases}
+    return {
+        "ok": True, "knowledge_bases": bases, "used_by_workflow": used, "missing": [n for n in used if n not in names],
+        "note": "a stale base searches with old settings until it is reindexed; the person adds documents and "
+        "reindexes on the Knowledge page",
+    }  # fmt: skip
+
+
+async def export_plan(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """What exporting the workflow (as it would be with your proposal) gives and what it lacks, from the same code as
+    the Export box: the framework's portability, designed agents' export problems, the deploy kit's prerequisites and
+    the knowledge bases the export ships."""
+    from agentcanvas.adapters.langchain import deploykit
+
+    wf = ctx.workflow
+    framework = str(args.get("framework") or wf.framework)
+    target = str(args.get("target") or "local")
+    m = adapter_manifests.manifest(framework)
+    if m is None:
+        known = ", ".join(a.id for a in adapter_manifests.installed())
+        return {"ok": False, "error": f"no installed framework '{framework}'; one of {known}"}
+    if target not in deploykit.TARGETS:
+        return {"ok": False, "error": f"no deploy target '{target}'; one of {', '.join(deploykit.TARGETS)}"}
+    if framework != wf.framework:  # the same workflow written for another framework, as the Export box does
+        wf = wf.model_copy(update={"framework": framework})
+    fit = adapter_manifests.portability(wf, [m])[0]
+    gaps = [f"{b['name']} ({b['type']}): {m.label} cannot run it" for b in fit["blockers"]]
+    gaps += [f"{b['name']} ({b['type']}) is emulated: {b['note'] or 'it behaves differently'}" for b in fit["emulated"]]
+    for n in _flat(wf)[0]:
+        if n.type in designs.DESIGN_TYPES and str(n.engine) in designs.AGENT_FRAMEWORKS:
+            gaps += [f"{n.name}: {p}" for p in designs.export_problems(str(n.engine), designs.design_for(wf, n))]
+    errors = [d for d in await ctx.validate(wf) if d.severity == "error"]
+    out: dict[str, Any] = {
+        "ok": True, "framework": {"id": m.id, "label": m.label, "what": m.description}, "gaps": gaps,
+        "errors": _diagnostics(errors)[:10],
+    }  # fmt: skip
+    if framework == "langchain":  # a LangGraph service with a deploy kit for the target (S16)
+        facts = deploykit.facts(wf, "workflow", "0.0.0")
+        out["targets"] = [{"id": t.id, "label": t.label} for t in deploykit.TARGETS.values()]
+        out["deploy"] = deploykit.prerequisites(facts, deploykit.TARGETS[target])
+    else:
+        out["deploy"] = f"a plain {m.label} project; the deploy kit (Docker, Kubernetes, clouds) is for LangGraph only"
+    if used := sorted(used_knowledge_bases(wf.model_dump(mode="json"))):
+        have = {b["name"] for b in await ctx.knowledge()} if ctx.knowledge else set()
+        out["knowledge"] = [{"name": n, "shipped": n in have} for n in used]  # one the project lacks is left out
+    out["note"] = "the person exports from the Export box; nothing is exported or published here"
+    return out
+
+
 MAX_READ = 20_000  # characters of a workspace file given to the model
 
 
@@ -544,6 +628,28 @@ TOOLS: dict[str, Tool] = {
             "The AI models and providers this server knows, and which project secrets are set (names only).",
             {"type": "object", "properties": {}},
             list_models,
+        ),
+        Tool(
+            "list_secrets",
+            "The project's secret names (never values), which ones the workflow refers to and which of those are "
+            "missing, and the API key each model needs and whether it is set.",
+            {"type": "object", "properties": {}},
+            list_secrets,
+        ),
+        Tool(
+            "list_knowledge_bases",
+            "The project's knowledge bases: name, description, documents, embedding model, and whether it is stale "
+            "(needs reindexing); and which ones the workflow searches.",
+            {"type": "object", "properties": {}},
+            list_knowledge_bases,
+        ),
+        Tool(
+            "export_plan",
+            "What exporting this workflow would give and lack: for `framework` (default the workflow's), the blocks "
+            "that framework cannot run or only emulates and the validation errors; for LangGraph, what the deploy "
+            "kit for `target` (local, server, kubernetes, cloudrun, aws, azure) needs: keys, hosts, database, tools.",
+            {"type": "object", "properties": {"framework": {"type": "string"}, "target": {"type": "string"}}},
+            export_plan,
         ),
         Tool(
             "run_test",
