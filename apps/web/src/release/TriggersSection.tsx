@@ -47,7 +47,10 @@ export function TriggersSection({ wfId }: { wfId: string }) {
       <h4>Triggers <small className="muted">{published ? `run ${published.environment} v${published.semver}` : "run the draft"}</small></h4>
       <div className="row gap">
         <button type="button" className="small" onClick={() => void create("webhook")}>+ Webhook</button>
-        <input className="mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} aria-label="cron schedule" />
+        {/* the server runs schedules in UTC: 0 9 * * * is 09:00 UTC, not 09:00 here */}
+        <input className="mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} aria-label="cron schedule (UTC)"
+          title="Minute hour day month weekday, in UTC" />
+        <span className="small muted">UTC</span>
         <button type="button" className="small" onClick={() => void create("cron")}>+ Cron</button>
       </div>
       <label className="small">Cron input (JSON)
@@ -66,7 +69,9 @@ export function TriggersSection({ wfId }: { wfId: string }) {
         {(triggers.data ?? []).map((t) => (
           <li key={t.id} data-testid={`trigger-${t.kind}`}>
             <div className="row gap">
-              <b>{t.kind}</b> {t.kind === "cron" ? <code>{String(t.config.schedule)}</code> : <code className="small">{t.url}</code>}
+              <b>{t.kind}</b> {t.kind === "cron"
+                ? <><code>{String(t.config.schedule)}</code> <span className="small muted">UTC</span></>
+                : <code className="small">{t.url}</code>}
               {!t.enabled && <span className="badge warn">off</span>}
               <span className="spacer" />
               <button type="button" className="small" onClick={() => void toggle(t)}>{t.enabled ? "Disable" : "Enable"}</button>
