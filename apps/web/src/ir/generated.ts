@@ -1,6 +1,6 @@
 /* Generated from packages/ir-schema/ir.schema.json (pnpm gen:ir). Do not edit. */
 
-export type IrVersion = "1.0" | "1.1" | "1.2";
+export type IrVersion = "1.0" | "1.1" | "1.2" | "1.3";
 export type Id = string;
 export type Name = string;
 export type Description = string;
@@ -52,7 +52,6 @@ export type RecursionLimit = number;
 export type Durability = "exit" | "async" | "sync";
 export type InputChannels = string[] | null;
 export type OutputChannels = string[] | null;
-export type Experimental = boolean;
 export type MaxTokens = number | null;
 export type MaxCostUsd = number | null;
 export type MaxSeconds = number | null;
@@ -199,7 +198,6 @@ export interface WorkflowSettings {
   node_defaults?: NodePolicies | null;
   input_channels?: InputChannels;
   output_channels?: OutputChannels;
-  experimental?: Experimental;
   budget?: Budget | null;
   trace_redact?: TraceRedact;
 }

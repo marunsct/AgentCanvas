@@ -182,7 +182,7 @@ def test_engine_is_left_out_of_the_json_when_unset():
     wf = Workflow.model_validate({"id": "wf_x", "name": "x", "ir_version": "1.1", "nodes": [
         {"id": "n_a", "type": "core.set", "name": "a", "config": {"values": {"x": "1"}}}]})  # fmt: skip
     dumped = wf.model_dump(mode="json")
-    assert dumped["ir_version"] == "1.2" and "engine" not in dumped["nodes"][0]
+    assert dumped["ir_version"] == "1.3" and "engine" not in dumped["nodes"][0]
     with_engine = Workflow.model_validate({**dumped, "nodes": [{**dumped["nodes"][0], "engine": "echo"}]})
     assert with_engine.model_dump(mode="json")["nodes"][0]["engine"] == "echo"
 

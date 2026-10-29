@@ -212,7 +212,23 @@ def test_a_workflow_from_a_newer_server_gets_a_plain_message():
 
     with pytest.raises(ValidationError, match="newer AgentCanvas"):
         Workflow.model_validate({"id": "w", "name": "x", "ir_version": "9.0"})
-    assert Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.0"}).ir_version == "1.2"
+    assert Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.0"}).ir_version == "1.3"
+
+
+def test_the_dead_experimental_flag_is_migrated_away():
+    """IR 1.3 dropped `settings.experimental`: a stored 1.2 document that has it opens, and saves without it."""
+    import pytest
+    from pydantic import ValidationError
+
+    from agentcanvas.ir.models import Workflow
+
+    old = {"id": "w", "name": "x", "ir_version": "1.2", "settings": {"experimental": True, "recursion_limit": 7}}
+    wf = Workflow.model_validate(old)
+    assert wf.ir_version == "1.3" and wf.settings.recursion_limit == 7
+    assert "experimental" not in wf.model_dump(mode="json")["settings"]
+    assert old["settings"]["experimental"] is True  # the caller's document is left as it was
+    with pytest.raises(ValidationError):  # and a current document may not carry it
+        Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.3", "settings": {"experimental": True}})
 
 
 def test_framework_workers_do_not_inherit_the_servers_secrets(monkeypatch):

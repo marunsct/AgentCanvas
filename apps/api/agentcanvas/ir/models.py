@@ -12,6 +12,8 @@ IR versions
 * ``1.2`` — adds an optional ``engine`` on AI blocks: the framework that block is designed for, when it differs
   from the workflow's ``framework`` (S20). Older documents load unchanged; ``engine`` is left out of the JSON
   when unset, so their hashes keep the same shape.
+* ``1.3`` — drops ``settings.experimental``, a flag nothing ever read. Older documents are migrated on load
+  (the key is removed), so one that still carries it opens instead of failing the strict schema.
 """
 
 from __future__ import annotations
@@ -22,11 +24,25 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-IR_VERSION = "1.2"
-SUPPORTED_IR_VERSIONS = ("1.0", "1.1", "1.2")
+IR_VERSION = "1.3"
+SUPPORTED_IR_VERSIONS = ("1.0", "1.1", "1.2", "1.3")
+
+
 # version -> steps that bring a raw document of that version up to IR_VERSION (in order); add one when a change is
 # not a strict superset of the previous version
-MIGRATIONS: dict[str, list[Callable[[dict[str, Any]], dict[str, Any]]]] = {}
+def _drop_experimental(doc: dict[str, Any]) -> dict[str, Any]:
+    """1.2 -> 1.3: `settings.experimental` is gone."""
+    settings = doc.get("settings")
+    if isinstance(settings, dict) and "experimental" in settings:
+        doc = {**doc, "settings": {k: v for k, v in settings.items() if k != "experimental"}}
+    return doc
+
+
+MIGRATIONS: dict[str, list[Callable[[dict[str, Any]], dict[str, Any]]]] = {
+    "1.0": [_drop_experimental],
+    "1.1": [_drop_experimental],
+    "1.2": [_drop_experimental],
+}
 IDENT = re.compile(r"^[a-z][a-z0-9_]{0,62}$")  # names become Python identifiers
 SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")  # an environment variable in exports
 TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")  # e.g. core.llm, model.chat, acme.upsert
@@ -249,14 +265,13 @@ class WorkflowSettings(_Base):
     node_defaults: NodePolicies | None = None  # compiles to StateGraph.set_node_defaults(...)
     input_channels: list[str] | None = None  # None = all non-private channels
     output_channels: list[str] | None = None  # None = all non-private channels
-    experimental: bool = False  # allow upstream experimental features (D16)
     budget: Budget | None = None  # FR-X-15
     # S12: fields (keys at any depth of a step's input or output) whose values never reach a trace
     trace_redact: list[str] = Field(default_factory=list)
 
 
 class Workflow(_Base):
-    ir_version: Literal["1.0", "1.1", "1.2"] = IR_VERSION
+    ir_version: Literal["1.0", "1.1", "1.2", "1.3"] = IR_VERSION
     id: str
     name: str
     description: str = ""
@@ -274,7 +289,7 @@ class Workflow(_Base):
     @classmethod
     def _known_version(cls, data: Any) -> Any:
         """A document from a newer AgentCanvas gets a plain message instead of a schema error; older ones run through
-        MIGRATIONS (none needed yet: 1.0 and 1.1 are strict subsets of 1.2)."""
+        MIGRATIONS (1.0 and 1.1 are strict subsets of 1.2; 1.3 dropped `settings.experimental`)."""
         if not isinstance(data, dict) or "ir_version" not in data:
             return data
         version = str(data["ir_version"])
@@ -289,7 +304,7 @@ class Workflow(_Base):
 
     @model_validator(mode="after")
     def _upgrade(self) -> Workflow:
-        self.ir_version = IR_VERSION  # 1.0 and 1.1 documents are strict subsets of 1.2
+        self.ir_version = IR_VERSION  # older documents were migrated above
         return self
 
     # ---- small helpers used by validator, interpreter and compiler ----

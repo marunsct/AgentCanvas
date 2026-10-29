@@ -237,7 +237,7 @@ class Builder:
             channels.insert(0, {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages",
                                 "io": "inout"})  # fmt: skip
         ir: dict[str, Any] = {
-            "ir_version": "1.2",
+            "ir_version": "1.3",
             "id": self.wf_id,
             "name": self.name,
             "description": self.description,

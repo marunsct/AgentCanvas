@@ -246,7 +246,7 @@ async def make_workflow(
         fn = t["import_path"].partition(":")[2]
         names.append(fn if fn not in names else f"{fn}_{len(names)}")
     ir = {
-        "ir_version": "1.2",
+        "ir_version": "1.3",
         "id": new_id("wf"),
         "name": body.name,
         "description": "Made from the playground.",
