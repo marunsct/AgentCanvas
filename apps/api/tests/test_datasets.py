@@ -55,6 +55,27 @@ async def test_examples_are_checked_and_every_change_is_a_version(api_client):
     assert [(d["id"], d["version"], d["examples"]) for d in listed] == [(ds["id"], 4, 1)]
 
 
+def test_csv_references_keep_the_type_of_the_output_they_are_compared_with():
+    """E-8: every reference cell was parsed as JSON ("1" -> 1, "true" -> True, "null" -> None), so an exact match
+    against the run's text output failed."""
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.datasets import parse_csv
+
+    wf = Workflow.model_validate({
+        "id": "wf_csv", "name": "csv",
+        "state": {"channels": [
+            {"name": "q"}, {"name": "answer"}, {"name": "count", "type": {"type": "integer"}},
+            {"name": "tags", "type": {"type": "array"}}, {"name": "loose", "type": {}},
+        ]},
+    })  # fmt: skip
+    csv = (
+        'q,reference.answer,reference.count,reference.tags,reference.loose\na,1,2,"[""x""]",true\nb,null,null,[],1e5\n'
+    )
+    first, second = parse_csv(csv, wf, None)
+    assert first.reference == {"answer": "1", "count": 2, "tags": ["x"], "loose": "true"}
+    assert second.reference == {"answer": "null", "tags": [], "loose": "1e5"}  # a null count is no reference
+
+
 async def test_import_and_export(api_client):
     wf = await make_greeter(api_client)
     base = f"/v1/datasets/{(await new_dataset(api_client, wf))['id']}"

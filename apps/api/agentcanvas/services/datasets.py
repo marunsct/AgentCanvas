@@ -74,7 +74,10 @@ def _coerce(cell: str, schema: dict[str, Any]) -> Any:
 def parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Example]:
     reader = csv.DictReader(io.StringIO(content))
     columns = reader.fieldnames or []
-    fields = contract(wf).input
+    terms = contract(wf)
+    fields = terms.input
+    # a reference is compared with the run's output: typed as the output contract (or its channel) says, else text
+    outputs = {**{ch.name: ch.type for ch in wf.state.channels}, **terms.output}
     if mapping is None:
         mapping = Mapping(
             input={c: c for c in columns if c in fields},
@@ -89,10 +92,11 @@ def parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Examp
     used = {*mapping.input.values(), *mapping.reference.values(), mapping.split}
     out = []
     for row in reader:
+        reference = {ch: _coerce(row[c], outputs.get(ch, {})) for ch, c in mapping.reference.items() if row.get(c)}
         out.append(
             Example(
                 input={f: _coerce(row[c], fields.get(f, {})) for f, c in mapping.input.items() if row.get(c)},
-                reference={ch: _coerce(row[c], {"type": "any"}) for ch, c in mapping.reference.items() if row.get(c)},
+                reference={ch: v for ch, v in reference.items() if v is not None},  # a "null" cell: no reference
                 split=(row.get(mapping.split) or "") if mapping.split else "",
                 metadata={c: v for c, v in row.items() if c not in used and c is not None and v},
             )
