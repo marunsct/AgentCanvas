@@ -74,6 +74,10 @@ class Organization(Base):
     # OIDC groups claim -> roles (G-13): {"claim", "roles": {"<group>": "<role>"}, "unmatched": "keep"|"remove"} (see
     # services/sso_groups.py); SQL NULL: roles are managed by hand
     sso_groups: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    # SCIM provisioning (G-13): the SHA-256 of the identity provider's bearer token (NULL: SCIM is off), and its start
+    scim_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    scim_token_prefix: Mapped[str | None] = mapped_column(Text)
+    scim_token_created_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
 
 
@@ -107,6 +111,9 @@ class Membership(Base):
     # false: an invitation to someone who already belongs to another organisation, until they accept it (S11)
     accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())  # the default organisation
+    # SCIM (G-13): `active: false` suspends the membership without deleting it; the provider's own id for the person
+    suspended: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    scim_external_id: Mapped[str | None] = mapped_column(Text)
 
 
 class Project(Base):
@@ -845,3 +852,25 @@ class PersonalToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
+
+
+class ScimGroup(Base):
+    """A group the identity provider provisions over SCIM (G-13). Its `display_name` is looked up in the organisation's
+    groups table (`organization.sso_groups`) for the role its members get."""
+
+    __tablename__ = "scim_group"
+    __table_args__ = (UniqueConstraint("org_id", "display_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), index=True)
+    display_name: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
+class ScimGroupMember(Base):
+    __tablename__ = "scim_group_member"
+    group_id: Mapped[str] = mapped_column(ForeignKey("scim_group.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)

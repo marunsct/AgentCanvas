@@ -110,6 +110,7 @@ CHILD_PARAMS = {
     "path": "a file inside {project_id}'s workspace",
     "policy_id": "PolicyRepo.require filters by the caller's organisation",
     "user_id": "member routes act on the caller's organisation only",
+    "group_id": "/scim/v2: ScimService looks groups up within the organisation of the SCIM token",
     "token_id": "TokenService.revoke compares the token's organisation (and, for /me, its owner) with the caller's",
     "org_id": "/me/invitations: the caller's own invitations only",
     "target": "a framework name, not a stored object (S22 bridge export)",

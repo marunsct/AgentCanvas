@@ -78,6 +78,32 @@ name such as `realm_access.roles` reaches a nested claim), and list which role e
 Each change is in the audit log (`sso_role_sync`, `sso_member_removed`). Clear the table to manage roles under Members
 again. In Matura mode roles come from Matura and this setting is not offered.
 
+## Provisioning from your directory (SCIM)
+
+Where people sign in with OpenID Connect, an admin can let the identity provider keep the member list in step with the
+directory over **SCIM 2.0** (Okta, Entra ID, OneLogin and others). Under **Settings › Organisation › General ›
+Provisioning**, **Create token**, copy it (it is shown once) and give it to the provider as a bearer token, with the base
+URL shown there (`https://<your AgentCanvas>/api/scim/v2`). **Replace token** stops the old one at once; **Switch off**
+turns SCIM off.
+
+What the provider can do:
+
+| In the directory | In AgentCanvas |
+|---|---|
+| Assign a user to the app | Adds the person (matched by email, `userName`) as a member with the `viewer` role. Someone who already belongs to another organisation still has to accept, as with an invitation. |
+| Deactivate a user (`active: false`) | Suspends the membership: no access and their API tokens stop, but nothing is deleted. Reactivating restores it. |
+| Remove a user | Removes the membership (the account stays: they may belong to other organisations). |
+| Push a group with members | Members get the role the group's **name** has in the groups table (see above); a person in several groups gets the strongest, and `viewer` when none gives one. |
+| Remove a group | Its members lose the role it gave. |
+
+Everything is limited to this organisation: the token cannot see or change another one's people. A person nobody
+pushes, such as the first admin, keeps their role. Changes the provider asks for that would leave the organisation without
+an admin who has signed in are refused for users (the provider shows an error) and skipped for group-driven roles.
+Every change is in the audit log without a person, marked `scim`. Supported: `Users` and `Groups` with `GET` (filter
+`attribute eq "value"`, `startIndex`, `count`), `POST`, `PUT`, `PATCH` and `DELETE`, and the `ServiceProviderConfig`,
+`ResourceTypes` and `Schemas` documents; bulk, sorting and ETags are not. In Matura mode members come from Matura and
+SCIM is off.
+
 ## Audit log
 
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a

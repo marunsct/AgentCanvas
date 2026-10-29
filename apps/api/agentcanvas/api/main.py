@@ -31,6 +31,7 @@ from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.limits import BodyLimit, RefuseClients
 from agentcanvas.api.problems import install_problem_handlers
+from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
@@ -359,6 +360,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse({"status": "ready"})
 
     app.include_router(v1_router)
+    app.include_router(scim_router)  # /scim/v2: the organisation's SCIM token (G-13)
     return app
 
 

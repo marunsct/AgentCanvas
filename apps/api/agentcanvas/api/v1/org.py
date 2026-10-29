@@ -17,7 +17,7 @@ from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
-from agentcanvas.services import matura, org_settings
+from agentcanvas.services import matura, org_settings, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spending import spending
 from agentcanvas.services.sso_groups import GroupMapping
@@ -34,6 +34,7 @@ class MemberOut(BaseModel):
     role: Role
     invited: bool = Field(description="has not signed in yet")
     accepted: bool = Field(True, description="false: belongs to another organisation and has not accepted yet")
+    deactivated: bool = Field(False, description="suspended by the identity provider over SCIM (G-13)")
 
 
 class MemberIn(BaseModel):
@@ -41,11 +42,11 @@ class MemberIn(BaseModel):
     role: Role
 
 
-def _out(u, role: str, accepted: bool = True) -> MemberOut:
+def _out(u, role: str, accepted: bool = True, deactivated: bool = False) -> MemberOut:
     """Profile details (the name from their identity provider) only once they joined (S11)."""
     return MemberOut(
         user_id=u.id, email=u.email, display_name=u.display_name if accepted else None,
-        role=role, invited=u.oidc_subject.startswith("pending:"), accepted=accepted,  # type: ignore[arg-type]
+        role=role, invited=u.oidc_subject.startswith("pending:"), accepted=accepted, deactivated=deactivated,  # type: ignore[arg-type]
     )  # fmt: skip
 
 
@@ -53,7 +54,7 @@ def _out(u, role: str, accepted: bool = True) -> MemberOut:
 async def list_members(
     session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> list[MemberOut]:
-    return [_out(u, m.role, m.accepted) for u, m in await MemberRepo(session).list(user.org_id)]
+    return [_out(u, m.role, m.accepted, m.suspended) for u, m in await MemberRepo(session).list(user.org_id)]
 
 
 @router.put("/members", response_model=MemberOut, dependencies=[Depends(members_here)])
@@ -271,6 +272,71 @@ async def put_org_settings(
     await session.refresh(org)  # an attribute set to SQL NULL is reloaded
     note(request, target=f"org_id={user.org_id}", **body.model_dump(exclude_unset=True))
     return await _settings_out(session, request, user.org_id)
+
+
+class ScimStatus(BaseModel):
+    available: bool = Field(description="true when people sign in with OpenID Connect (not dev or Matura mode)")
+    enabled: bool
+    prefix: str | None = Field(description="the token's first characters, to tell it from another")
+    created_at: datetime | None
+    base_path: str = Field(default="/scim/v2", description="behind the web container: https://<host>/api/scim/v2")
+
+
+class ScimCreated(ScimStatus):
+    token: str = Field(description="the SCIM bearer token: shown this once, give it to the identity provider")
+
+
+def _scim_status(org: Organization, settings) -> ScimStatus:
+    return ScimStatus(
+        available=settings.auth_mode == "oidc", enabled=bool(org.scim_token_hash), prefix=org.scim_token_prefix,
+        created_at=org.scim_token_created_at,
+    )  # fmt: skip
+
+
+@router.get("/scim", response_model=ScimStatus)
+async def scim_status(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> ScimStatus:
+    """Whether the identity provider may provision this organisation's members over SCIM 2.0 (admins)."""
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    return _scim_status(org, request.app.state.settings)
+
+
+@router.post("/scim/token", response_model=ScimCreated, status_code=201)
+async def create_scim_token(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> ScimCreated:
+    """Make (or replace) the organisation's SCIM token. The old one stops working at once."""
+    settings = request.app.state.settings
+    if settings.auth_mode == "matura":
+        raise Conflict("members and roles are managed" + matura.portal_hint(matura.portal_base(settings)))
+    if settings.auth_mode != "oidc":
+        raise Conflict("SCIM provisions people who sign in with OpenID Connect (AUTH_MODE=oidc)")
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    value = scim.new_token()
+    org.scim_token_hash, org.scim_token_prefix = tokens.hash_token(value), value[:11]
+    org.scim_token_created_at = datetime.now(UTC)
+    await session.commit()
+    note(request, target=f"org_id={user.org_id}", prefix=org.scim_token_prefix)
+    return ScimCreated(**_scim_status(org, settings).model_dump(), token=value)  # base_path: its default
+
+
+@router.delete("/scim/token", status_code=204)
+async def delete_scim_token(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> Response:
+    """Switch SCIM off: the token stops working."""
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    org.scim_token_hash = org.scim_token_prefix = org.scim_token_created_at = None
+    await session.commit()
+    note(request, target=f"org_id={user.org_id}")
+    return Response(status_code=204)
 
 
 @router.get("/policies", response_model=list[PolicyOut])

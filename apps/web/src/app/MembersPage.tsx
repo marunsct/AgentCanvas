@@ -62,7 +62,9 @@ export function MembersPage() {
           {(members.data ?? []).map((m) => (
             <tr key={m.user_id}>
               <td>{m.display_name ?? m.email}{m.display_name && <span className="muted small"> {m.email}</span>}</td>
-              <td>{m.invited || !m.accepted
+              <td>{m.deactivated
+                ? <span className="badge err" title="Suspended by your identity provider over SCIM; it can reactivate them">deactivated</span>
+                : m.invited || !m.accepted
                 ? <span className="badge warn" title="It takes effect when they next sign in">{m.invited ? "invited" : "awaiting acceptance"}</span>
                 : <span className="badge ok">member</span>}</td>
               <td>

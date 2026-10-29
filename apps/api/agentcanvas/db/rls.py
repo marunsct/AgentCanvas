@@ -45,6 +45,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "audit_log": ("org_id", None),
     "answer_cache": ("project_id", "project"),
     "personal_token": ("org_id", None),
+    "scim_group": ("org_id", None),
     "workflow": ("project_id", "project"),
     "secret": ("project_id", "project"),
     "connection": ("project_id", "project"),
@@ -79,6 +80,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "a2a_reply": ("thread_id", "thread"),
     "annotation_item": ("queue_id", "annotation_queue"),
     "annotation": ("item_id", "annotation_item"),
+    "scim_group_member": ("group_id", "scim_group"),
 }
 # tables without a policy, and why
 EXEMPT: dict[str, str] = {

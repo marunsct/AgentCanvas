@@ -102,8 +102,8 @@ class TokenService:
         if row.expires_at is not None and row.expires_at <= now:
             raise Unauthorized("this API token expired")
         member = await self.s.get(Membership, (row.org_id, row.user_id))
-        if member is None or not member.accepted:
-            raise Unauthorized("the person this API token belongs to is no longer a member of its organisation")
+        if member is None or not member.accepted or member.suspended:
+            raise Unauthorized("the person this API token belongs to is no longer an active member of its organisation")
         user = await self.s.get(AppUser, row.user_id)
         role = min(row.role, member.role, key=RANK.__getitem__)
         caller = TokenCaller(row.id, row.user_id, row.org_id, role, user.email if user else "")

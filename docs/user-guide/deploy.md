@@ -76,6 +76,10 @@ To give roles by group (see [Roles from groups](accounts.md#roles-from-groups)),
 the groups to the **access token** the SPA sends, as a claim in your provider (a "groups" mapper in Keycloak, a
 groups claim in Okta or Entra ID). The API reads the claim from that token only.
 
+For provisioning over SCIM point the provider at `https://<your app>/api/scim/v2` with the token an admin makes under
+[Provisioning](accounts.md#provisioning-from-your-directory-scim). The web container's proxy forwards `/api/scim/v2` like
+any other API path and tells the API its `/api` prefix (`X-Forwarded-Prefix`) so the addresses it returns are right.
+
 ### Sign-in through Matura
 
 [Matura](https://github.com/marunsct/Platform) manages sign-in, organisations, members and roles for several apps.

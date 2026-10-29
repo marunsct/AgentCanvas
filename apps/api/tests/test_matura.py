@@ -159,6 +159,18 @@ async def test_groups_do_not_map_to_roles_in_matura_mode(client):
     assert (await client.get("/v1/me", headers=viewer)).json()["role"] == "viewer"
 
 
+async def test_scim_is_not_available_in_matura_mode(client):
+    """G-13: members and roles are managed in Matura, so no SCIM token can be made and none is accepted."""
+    admin = as_user(ANA, ACME, "admin")
+    assert (await client.get("/v1/org/scim", headers=admin)).json() == {
+        "available": False, "enabled": False, "prefix": None, "created_at": None, "base_path": "/scim/v2",
+    }  # fmt: skip
+    r = await client.post("/v1/org/scim/token", headers=admin)
+    assert r.status_code == 409 and "Matura" in r.json()["detail"]
+    r = await client.get("/scim/v2/Users", headers={"Authorization": "Bearer scim_anything"})
+    assert r.status_code == 403 and r.json()["status"] == "403"
+
+
 async def test_refusals(client):
     no_tenant = {"Authorization": f"Bearer {ISSUER.token(ANA, perms=['canvas.read'])}"}
     r = await client.get("/v1/me", headers=no_tenant)

@@ -7,6 +7,7 @@ import type { OrgSettingsOut } from "../api/generated";
 import { useCan } from "../api/session";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
+import { ScimSettings } from "./ScimSettings";
 import { SsoGroups } from "./SsoGroups";
 
 const days = (n: number) => (n === 0 ? "kept forever" : `${n} days`);
@@ -82,6 +83,7 @@ export function OrgSettings() {
       )}
 
       <SsoGroups data={d} admin={admin} />
+      <ScimSettings />
 
       {admin
         ? <button type="button" className="primary" disabled={save.isPending || (mode === "days" && !(n >= 1))} onClick={() => save.mutate()}>Save</button>

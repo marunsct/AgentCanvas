@@ -107,6 +107,7 @@ class UserRepo:
     async def memberships(self, user_id: str, accepted_only: bool = True) -> dict[str, str]:
         """org id -> role; the default organisation (the one used last) first."""
         q = select(Membership.org_id, Membership.role).where(Membership.user_id == user_id)
+        q = q.where(Membership.suspended.is_(False))  # SCIM `active: false`: not there until reactivated
         if accepted_only:
             q = q.where(Membership.accepted.is_(True))
         q = q.order_by(Membership.last_used_at.desc().nulls_last(), Membership.org_id)
@@ -241,6 +242,27 @@ class MemberRepo:
         await self.s.commit()
         return before
 
+    async def change_role(self, org_id: str, user_id: str, role: str) -> None:
+        """Change an existing member's role, whatever else is true of the membership. `Conflict` rather than leave
+        the organisation without a signed-in admin."""
+        await self._lock(org_id)
+        m = await self.s.get(Membership, (org_id, user_id))
+        if m is None:
+            raise NotFound(f"user '{user_id}' is not a member")
+        m.role = role
+        await self._keep_an_admin(org_id)
+        await self.s.commit()
+
+    async def set_suspended(self, org_id: str, user_id: str, suspended: bool) -> None:
+        """Suspend or reactivate a membership (SCIM `active`). `Conflict` rather than suspend the last admin."""
+        await self._lock(org_id)
+        m = await self.s.get(Membership, (org_id, user_id))
+        if m is None:
+            raise NotFound(f"user '{user_id}' is not a member")
+        m.suspended = suspended
+        await self._keep_an_admin(org_id)
+        await self.s.commit()
+
     async def remove(self, org_id: str, user_id: str) -> None:
         await self._lock(org_id)
         m = await self.s.get(Membership, (org_id, user_id))
@@ -266,6 +288,7 @@ class MemberRepo:
             .select_from(Membership)
             .join(AppUser, AppUser.id == Membership.user_id)
             .where(Membership.org_id == org_id, Membership.role == "admin", Membership.accepted.is_(True))
+            .where(Membership.suspended.is_(False))
             .where(~AppUser.oidc_subject.startswith("pending:"))
         )
         if not await self.s.scalar(q):
