@@ -436,11 +436,15 @@ async def get_contract(
 
     wf = await VersionService(session).workflow_at(wf_id, version or "draft")
     out = ContractOut(**contract(wf).model_dump())
-    deps = (await session.scalars(select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.active))).all()
-    for d in deps:
-        v = await session.get(WorkflowVersion, d.version_id)
-        out.surfaces.append(Surface(kind="http", detail=f"{d.environment} v{v.semver if v else '?'}: "
-                                    f"POST /v1/deployments/{d.id}/runs/wait|stream (Bearer key)"))  # fmt: skip
+    deps = (
+        select(Deployment.id, Deployment.environment, WorkflowVersion.semver)
+        .outerjoin(WorkflowVersion, WorkflowVersion.id == Deployment.version_id)
+        .where(Deployment.workflow_id == wf_id, Deployment.active)
+        .order_by(Deployment.environment)
+    )  # with their versions in one query
+    for dep_id, environment, semver in (await session.execute(deps)).all():
+        out.surfaces.append(Surface(kind="http", detail=f"{environment} v{semver or '?'}: "
+                                    f"POST /v1/deployments/{dep_id}/runs/wait|stream (Bearer key)"))  # fmt: skip
     for t in (await session.scalars(select(Trigger).where(Trigger.workflow_id == wf_id, Trigger.enabled))).all():
         detail = f"POST /v1/hooks/{t.id} (HMAC signed)" if t.kind == "webhook" else f"cron {t.config.get('schedule')}"
         out.surfaces.append(Surface(kind=t.kind, detail=detail))

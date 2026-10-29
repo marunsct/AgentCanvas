@@ -41,3 +41,17 @@ async def test_the_knowledge_list_counts_every_base_in_one_query(app, api_client
     assert [(k["name"], k["documents"]) for k in listed] == [("one", 1), ("three", 1), ("two", 1)]
     assert all(k["chunks"] >= 1 for k in listed)
     assert len(touching(seen, "knowledge_document")) == 1, touching(seen, "knowledge_document")
+
+
+async def test_the_contract_reads_every_deployment_with_its_version_in_one_query(app, api_client):
+    from test_publish import make_greeter, set_greeting
+
+    wf = await make_greeter(api_client)
+    for env, greeting in (("prod", "Hi"), ("qa", "Hey"), ("staging", "Yo")):
+        await set_greeting(api_client, wf, greeting)  # a version of its own each
+        assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": env})).status_code == 200
+    with statements(app) as seen:
+        got = (await api_client.get(f"/v1/workflows/{wf}/contract")).json()
+    http = [s["detail"] for s in got["surfaces"] if s["kind"] == "http"]
+    assert [d.split(":")[0] for d in http] == ["prod v1.0.0", "qa v1.1.0", "staging v1.2.0"]
+    assert len(touching(seen, "workflow_version")) == 1, touching(seen, "workflow_version")
