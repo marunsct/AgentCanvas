@@ -749,6 +749,11 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .help-drawer dd { margin: 0 0 0 12px; color: var(--muted); }
 .help-drawer ol, .help-drawer ul { padding-left: 20px; margin: 4px 0; }
 .help-drawer .help-close { margin-left: auto; }
+@media (max-width: 700px) {
+  /* phones: the guide and the guided build dock at the bottom, inside the screen (the guide sat off screen, so its
+     close button could not be reached and it opened again on every visit) */
+  .help-drawer, .tutor { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; min-width: 0; max-height: 55vh; overflow: auto; }
+}
 .port-row.out > span { margin-right: 6px; }
 /* a port's hover card must not hide under the minimap */
 .react-flow:has(.port-row:hover, .react-flow__handle:hover) .react-flow__minimap { z-index: 3; opacity: .35; }
