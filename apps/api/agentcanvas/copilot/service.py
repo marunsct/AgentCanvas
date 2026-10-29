@@ -51,7 +51,8 @@ Code. A script step, a tool for an agent, a custom block or an event handler nee
 there (`list_workspace_files`, `read_workspace_file`), then write the whole file with `propose_file` and fix what \
 ruff reports. Script steps name their file in the block's settings.
 5. Finish with two or three plain sentences: what the proposal does, and anything the person must do themselves \
-(add a secret, fill a memory space, pick a model). The person sees your changes on the canvas and accepts or \
+(add a secret, fill a memory space, pick a model; `list_secrets` and `list_knowledge_bases` say what is there). \
+The person sees your changes on the canvas and accepts or \
 rejects them; nothing is saved until they accept.
 
 Debugging. When the person asks why something fails or to find a problem: look at `get_problems`, `list_runs` and \
@@ -62,7 +63,9 @@ practices): mention the ones that matter when you review or build, and change th
 Keep replies short and friendly; no JSON or ids in your text."""
 
 ASK = """Answer the person's question about this workflow or about AgentCanvas. Look things up with your tools \
-(`get_problems`, `list_runs` and `get_run` for errors and failed runs, `search_guide` for how the product works). You \
+(`get_problems`, `list_runs` and `get_run` for errors and failed runs, `search_guide` for how the product works, \
+`list_secrets`, `list_knowledge_bases` and `export_plan` for the project's secret names, its knowledge bases and what \
+an export would hold and lack). You \
 cannot change or run the workflow in this mode: if a change would help, describe it and suggest switching to Build. \
 Keep replies short and plain."""
 

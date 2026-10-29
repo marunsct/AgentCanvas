@@ -116,6 +116,79 @@ async def test_tools_apply_to_a_working_copy_and_report_errors():
     assert "core.approval" in [b["type"] for b in found["blocks"]]
 
 
+async def test_secrets_knowledge_and_export_tools_say_what_the_project_has():
+    async def check(wf: Workflow):
+        return validate(wf, default_registry())
+
+    async def bases():
+        return [{"name": "faq", "description": "", "documents": 0, "chunks": 0, "embedding_model": "builtin",
+                 "stale": True}]  # fmt: skip
+
+    templates = list_templates(Settings(env="test"))
+    qa = Workflow.model_validate({**templates["knowledge_qa"], "id": "wf_qa"})
+    ctx = ToolContext(qa, default_registry(), templates, check, secret_names=["SLACK_TOKEN"], knowledge=bases)
+    names = ["list_secrets", "list_knowledge_bases", "export_plan"]
+    secrets = await run_tool(ctx, "list_secrets", {}, names)
+    assert secrets["ok"] and secrets["secrets"] == ["SLACK_TOKEN"]
+    [key] = [k for k in secrets["model_keys"] if k["secret"] == "ANTHROPIC_API_KEY"][:1]
+    assert key["set"] in (None, "server")  # not a project secret here
+    kbs = await run_tool(ctx, "list_knowledge_bases", {}, names)
+    assert kbs["knowledge_bases"][0]["stale"] and kbs["used_by_workflow"] == ["handbook"]
+    assert kbs["missing"] == ["handbook"]  # the workflow searches a base this project does not have
+
+    plan = await run_tool(ctx, "export_plan", {"target": "kubernetes"}, names)
+    assert plan["ok"] and plan["framework"]["id"] == "langchain" and plan["deploy"]["target"] == "kubernetes"
+    assert "ANTHROPIC_API_KEY" in [k["name"] for k in plan["deploy"]["keys"]]
+    assert plan["knowledge"] == [{"name": "handbook", "shipped": False}]  # left out of the export
+    crew = await run_tool(ctx, "export_plan", {"framework": "crewai"}, names)
+    assert crew["ok"] and "plain CrewAI project" in crew["deploy"] and any("emulated" in g for g in crew["gaps"])
+    assert not (await run_tool(ctx, "export_plan", {"framework": "nope"}, names))["ok"]
+
+    network = Workflow.model_validate({**templates["agent_network"], "id": "wf_net"})
+    ctx = ToolContext(network, default_registry(), templates, check, secret_names=["ISSUE_TRACKER_KEY"])
+    secrets = await run_tool(ctx, "list_secrets", {}, names)
+    assert secrets["used_by_workflow"] == ["ISSUE_TRACKER_KEY", "PLATFORM_AGENT_KEY"]
+    assert secrets["missing"] == ["PLATFORM_AGENT_KEY"]
+    assert not (await run_tool(ctx, "list_knowledge_bases", {}, names))["ok"]  # no project here (the eval harness)
+
+
+async def test_ask_mode_reads_secret_names_knowledge_bases_and_the_export_plan(app, api_client):
+    from agentcanvas.adapters.langchain.testing import ToolFakeModel
+    from agentcanvas.copilot.tools import READ_ONLY
+
+    assert {"list_secrets", "list_knowledge_bases", "export_plan"} <= set(READ_ONLY)  # Ask mode has them
+    secret = await api_client.put("/v1/projects/prj_default/secrets/API_TOKEN", json={"value": "s3cret-value"})
+    assert secret.status_code == 204
+    kb = await api_client.post("/v1/projects/prj_default/knowledge", json={"name": "handbook", "sample": "handbook"})
+    assert kb.status_code == 201, kb.text
+    wf_id = (await new_workflow(api_client, template="knowledge_qa"))["id"]
+    seen: list = []
+
+    class Recording(ToolFakeModel):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            seen.append([str(m.content) for m in messages if m.type == "tool"])
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    replies = [
+        AIMessage(content="", tool_calls=[{"name": n, "args": {}, "id": f"c_{n}"}
+                                          for n in ("list_secrets", "list_knowledge_bases", "export_plan")]),
+        AIMessage(content="It needs ANTHROPIC_API_KEY; the handbook is there."),
+    ]  # fmt: skip
+    app.state.resources_factory = lambda thread_id, wf: DemoResources(
+        overrides={"copilot": Recording(messages=iter(replies), disable_streaming=True)}
+    )
+    events = await ask(api_client, wf_id, "what does exporting this need?", mode="ask")
+    tools = {t["name"]: t["ok"] for t in of(events, "tool")}  # Deep Agents runs the three side by side
+    assert tools == {"list_secrets": True, "list_knowledge_bases": True, "export_plan": True}
+    results = [json.loads(r) for r in seen[-1]]  # what the model read back
+    assert next(r for r in results if "secrets" in r)["secrets"] == ["API_TOKEN"]
+    bases = next(r for r in results if "knowledge_bases" in r)["knowledge_bases"]
+    assert bases[0]["name"] == "handbook" and bases[0]["documents"] > 0 and bases[0]["stale"] is False
+    plan = next(r for r in results if "deploy" in r)
+    assert plan["knowledge"] == [{"name": "handbook", "shipped": True}]
+    assert "s3cret-value" not in json.dumps(seen) and "s3cret-value" not in json.dumps(events)  # names, never values
+
+
 async def test_proposed_files_are_checked_with_ruff_and_read_back_as_proposed(tmp_path):
     from agentcanvas.workspace.store import Workspace
 

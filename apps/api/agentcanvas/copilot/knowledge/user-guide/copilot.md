@@ -114,6 +114,10 @@ every block with its ports and settings (including your workspace's own blocks),
 commands and the meaning of every problem code. Providers that support prompt caching (Anthropic) cache it, so it is
 cheap after the first message: the cost shown prices cache reads and writes at their own rates. Its tools look up a block's full settings, read a template, read your workflow with
 its problems, read past runs, search this user guide, and list the models and which secrets are set (names only).
+It can also see the project's [secrets](workspace.md) by name (never their values) and which ones the workflow
+needs, its [knowledge bases](knowledge.md) (documents, embedding model, whether one needs reindexing), and what an
+[export](export.md) of the workflow would hold and lack. These are for explaining and pointing you to the right
+page, in either mode: adding a secret or a document, and exporting, stay with you.
 An answer that used this guide ends with **From: Guide › page › section** links, which open the section in the
 app's own copy of the guide. Each answer also shows the tokens it used, and its cost when the model has a price.
 
