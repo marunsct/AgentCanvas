@@ -61,10 +61,10 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
 {%- elif n.type == "agent.deep" %}
     builder.add_node({{ n.name | py }}, ac.deep_agent_node(name={{ n.name | py }}, model={{ p.wired.model[0] }}, tools=[{{ refs(p.wired.get("tools", []), plan.many) }}], system_prompt={{ n.config.get("system_prompt", "") | py }}, middleware=[{{ p.wired.get("middleware", []) | join(", ") }}], subagents=[{{ p.wired.get("subagents", []) | join(", ") }}], backends=[{{ p.wired.get("backend", []) | join(", ") }}], planning={{ n.config.get("planning", True) | py }}, approve_tools={{ n.config.get("approve_tools") | py }}, permissions={{ n.config.get("permissions") | pp }}, response_format={{ n.config.get("response_format") | pp }}), {{ meta }})
 {%- elif n.type == "core.router" %}
-    {{ n.name }}_route = ac.router_fn(cases={{ n.config.get("cases", []) | pp }}, default={{ n.config.get("default", "default") | py }})
+    _route_{{ n.name }} = ac.router_fn(cases={{ n.config.get("cases", []) | pp }}, default={{ n.config.get("default", "default") | py }})
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
 {%- elif n.type == "core.map" %}{% set worker, empty = plan.map_edges[n.name] %}
-    {{ n.name }}_fan_out = ac.map_fn(items={{ n.config["items"] | py }}, item={{ n.config["item"] | py }}, target={{ worker | py }}, empty={{ empty if empty in ("START", "END") else (empty | py) }}, carry={{ n.config.get("carry", []) | py }}, max_items={{ n.config.get("max_items") | py }})
+    _fan_out_{{ n.name }} = ac.map_fn(items={{ n.config["items"] | py }}, item={{ n.config["item"] | py }}, target={{ worker | py }}, empty={{ empty if empty in ("START", "END") else (empty | py) }}, carry={{ n.config.get("carry", []) | py }}, max_items={{ n.config.get("max_items") | py }})
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
 {%- elif n.type == "core.subgraph" %}
     builder.add_node({{ n.name | py }}, ac.subgraph_node(graph={{ sub_fn(path + [n.name]) }}(resources), inputs={{ n.config.get("inputs", []) | py }}, outputs={{ n.config.get("outputs", []) | py }}, append={{ p.append_outputs | py }}), {{ meta }})
@@ -108,10 +108,10 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
     builder.add_edge([{{ sources | map("py") | join(", ") }}], {{ join | py }})
 {%- endfor %}
 {%- for rname, mapping in plan.router_edges.items() %}
-    builder.add_conditional_edges({{ rname | py }}, {{ rname }}_route, { {%- for k, v in mapping.items() %}{{ k | py }}: {{ v if v in ("START", "END") else (v | py) }}, {% endfor -%} })
+    builder.add_conditional_edges({{ rname | py }}, _route_{{ rname }}, { {%- for k, v in mapping.items() %}{{ k | py }}: {{ v if v in ("START", "END") else (v | py) }}, {% endfor -%} })
 {%- endfor %}
 {%- for mname, (worker, empty) in plan.map_edges.items() %}
-    builder.add_conditional_edges({{ mname | py }}, {{ mname }}_fan_out, [{{ worker | py }}, {{ empty if empty in ("START", "END") else (empty | py) }}])
+    builder.add_conditional_edges({{ mname | py }}, _fan_out_{{ mname }}, [{{ worker | py }}, {{ empty if empty in ("START", "END") else (empty | py) }}])
 {%- endfor %}
 {% if plan.needs_cache %}
     if cache is None:

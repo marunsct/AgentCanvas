@@ -70,6 +70,46 @@ def test_names_and_labels_cannot_inject_code(triage):
     assert readme.splitlines()[0] == '# Triage """x import os; os.system(\'id\')  #'
 
 
+def test_a_resource_named_like_a_helper_keeps_its_name():
+    """A tool named `<router>_route` or `<map>_fan_out` stayed a tool: the generated helpers have names no block can
+    have, so the agent is not handed the router's function in its place (X-3)."""
+    import ast
+
+    from agentcanvas.adapters.langchain.codegen import generate
+
+    def flow(src, dst, port=None):
+        return {"id": f"e_{src}_{dst}", "kind": "flow", "source": {"node": src, "port": port}, "target": {"node": dst}}
+
+    wf = Workflow.model_validate({
+        "id": "wf_names", "name": "Names",
+        "state": {"channels": [{"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"},
+                               {"name": "q", "type": {"type": "string"}},
+                               {"name": "items", "type": {"type": "array"}, "default": []}]},
+        "resources": [
+            {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}},
+            *({"id": rid, "type": "tool.python", "name": name, "config": {"import_path": "examples.tools:send_reply"}}
+              for rid, name in (("r_r", "pick_route"), ("r_m", "each_fan_out"))),
+        ],
+        "nodes": [
+            {"id": "n_pick", "type": "core.router", "name": "pick",
+             "config": {"cases": [{"when": 'state.q == "a"', "route": "a"}], "default": "default"}},
+            {"id": "n_each", "type": "core.map", "name": "each",
+             "config": {"items": "items", "item": "q", "carry": []}},
+            {"id": "n_agent", "type": "core.agent", "name": "agent", "config": {"system_prompt": "x"}},
+        ],
+        "edges": [
+            flow("START", "n_pick"), flow("n_pick", "n_each", "route:a"), flow("n_pick", "END", "route:default"),
+            flow("n_each", "n_agent", "each"), flow("n_each", "END", "empty"), flow("n_agent", "END"),
+            *({"id": f"w_{r}", "kind": "wiring", "source": {"node": r}, "target": {"node": "n_agent", "port": port}}
+              for r, port in (("r_model", "model"), ("r_r", "tools"), ("r_m", "tools"))),
+        ],
+    })  # fmt: skip
+    build = next(f for f in ast.parse(generate(wf)).body if isinstance(f, ast.FunctionDef) and f.name == "build_graph")
+    assigned = [t.id for s in build.body if isinstance(s, ast.Assign) for t in s.targets if isinstance(t, ast.Name)]
+    assert len(assigned) == len(set(assigned)), assigned
+    assert {"pick_route", "each_fan_out"} <= set(assigned)
+
+
 async def test_export_zip_runs_its_own_tests(app, api_client, tmp_path):
     """M6-T2 AC: unzip → pytest passes (with this environment's packages instead of `uv sync`)."""
     await api_client.put(f"{P}/files/tools/support.py", json={"content": TOOL})

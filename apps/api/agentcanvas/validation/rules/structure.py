@@ -10,7 +10,8 @@ from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, 
 
 SPECIAL = {"START", "END"}
 # names the exported graph code itself uses for variables (adapters/langchain/templates/graph.py.j2): a
-# resource of that name would replace them
+# resource of that name would replace them (the router and map helpers are `_route_<name>` and `_fan_out_<name>`:
+# no block name starts with `_`)
 GENERATED = {"ac", "interop", "builder", "resources", "checkpointer", "store", "cache", "annotations"}
 
 
