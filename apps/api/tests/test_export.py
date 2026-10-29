@@ -44,6 +44,21 @@ def test_package_metadata(triage):
     assert "OPENAI_API_KEY=" in env and "ANTHROPIC_API_KEY=" in env and "CRM_TOKEN=" in env
 
 
+def test_the_image_builds_from_the_same_bytes_every_time(triage):
+    """Base images by version and digest, and the packages from uv.lock when the project has one (X-7)."""
+    import re
+
+    files = deploykit.files(triage, deploykit.facts(triage, "triage", "1.0.0"), deploykit.TARGETS["server"])
+    images = re.findall(r"^FROM (\S+)", files["Dockerfile"], re.M) + re.findall(r"--from=(\S+)", files["Dockerfile"])
+    images += re.findall(r"^\s+image: (\S+)", files["deploy/server/docker-compose.yml"], re.M)
+    pinned = re.compile(r"^[\w./-]+:v?\d+\.\d+[\w.-]*@sha256:[0-9a-f]{64}$")  # a patch release: 16.15, 3.12.16
+    assert [i for i in images if not pinned.match(i) and i != "triage:latest"] == [] and len(images) == 5
+    assert "COPY pyproject.toml uv.lock* ./" in files["Dockerfile"]
+    assert "uv sync --no-dev --no-install-project $([ -f uv.lock ] && echo --locked)" in files["Dockerfile"]
+    setup = files["Makefile"].split("\nsetup:")[1].split("\n\n")[0]
+    assert "uv lock" in setup
+
+
 def test_names_and_labels_cannot_inject_code(triage):
     """Free text lands in comments and docstrings of generated code: a line break must not end them."""
     import ast
