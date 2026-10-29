@@ -12,6 +12,16 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### Half-finished features finished; `GET /projects/{id}/models/resolve` removed
+`GET model-defaults` already returns the resolved model for every purpose and the Settings page uses that, so the
+unused `models/resolve` route was removed (it had been released: **a breaking API change**; restore it from
+`d4ed815` if a client needs it). `settings.experimental` was dropped from the IR with IR 1.3 and a load-time migration
+that strips it from 1.0-1.2 documents. Organisation overrides (Settings › Organisation) are bounded by the server:
+local MCP can be switched off but never on when the server forbids it; the four rate limits can be lowered, never
+raised; audit retention can be longer, never shorter; the operator's per-environment limit still wins. Node defaults
+cover retry, timeout and cache only, the settings LangGraph applies. *Reverse:* delete an organisation's override to go
+back to the server's value.
+
 ### Replicas: shared answer cache, budgets by database, routing by price
 The answer cache and a remote agent's pending questions live in the database (tables `answer_cache`, `a2a_reply`, with
 row-level security). Day and month budgets are read from the runs table after each model call, so two servers overshoot

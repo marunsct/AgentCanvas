@@ -417,6 +417,35 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- On a phone, the Runs page shows each conversation as a card instead of a table that runs off the screen. The
+  Inbox, a share page and Runs are checked at 390 px wide. (HARDENING section 5).
+- Tables, form fields and status badges share one look and behaviour across the Runs page, the workflow list and the
+  Knowledge settings; column headers are always present and errors are announced. (HARDENING section 5).
+- The Runs page can show only the conversations that started in the last 24 hours, 7 days or 30 days. The
+  conversations API takes since and until. (HARDENING section 5).
+- The editor opens in the Simple or Full mode you last chose on any browser you are signed in to. You can also set
+  it under Settings › Appearance. (HARDENING section 5).
+- Admins can set their organisation's own rate limits, switch local MCP servers off, keep the audit log longer and
+  choose how long long-term memories are kept, in Settings › Organisation. The server's values stay the default and
+  the ceiling. (HARDENING section 5).
+- Settings has a Knowledge section where a project sets how new knowledge bases split their documents. Existing
+  knowledge bases keep their own settings. (HARDENING section 5).
+- On the Runs page, tick conversations and press Add these runs as examples to put them in an evaluation dataset.
+  The one-purpose models/resolve API call is gone; GET model-defaults already answers for every purpose. (HARDENING
+  section 5).
+- Workflows no longer carry a Settings experimental flag that did nothing. Saved workflows open as before; the IR
+  version is now 1.3. (HARDENING section 5).
+- The Workflow panel has Defaults for every block (retries, timeout, cache) and Hide these fields from traces, which
+  were only reachable through the API before. (HARDENING section 5).
+- The Playground lists the project's workspace tools; tick the ones the model may call and each call and its result
+  show above the answer. Making a workflow from the chat adds them as Python tool blocks. (HARDENING section 5).
+- The Playground has a Temperature slider; it is switched off for models that always use their own sampling (such as
+  current Claude models), and a workflow made from the Playground keeps the temperature only when its model takes
+  one. (HARDENING section 5).
+- When a published workflow has more than one text input, the share box has a "Messages go to" choice; leaving it on
+  "Picked from the workflow's inputs" keeps the automatic pick. (HARDENING section 5).
+- A knowledge base can be renamed and given a description from the Knowledge page (Rename…). The form warns that
+  Search knowledge blocks naming the old name need the new one. (HARDENING section 5).
 - AI model blocks get an optional "Use the cheapest of" list; each run picks the cheapest listed model that has a
   key here and that your organisation's policies allow, and the run records the choice. (HARDENING G-8).
 - Admins get Settings › Organisation › Spending, with cost, tokens and cache hits per project, workflow and person
@@ -648,6 +677,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- No change for users: the end-to-end tests for the editor, debugging and Google ADK now pass with a real model as
+  well as the demo one. (HARDENING section 5).
 - Faster Copilot and evaluation: the Copilot keeps the knowledge pack of each project shape (two projects with their
   own blocks rebuilt it on alternate requests), the guide search computes its statistics once, a composite evaluator
   scores its parts side by side, and adding a document to a knowledge base embeds it before locking the base, so
