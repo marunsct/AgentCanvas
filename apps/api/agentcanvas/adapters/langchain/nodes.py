@@ -83,6 +83,9 @@ def sandboxed_tool(import_path: str, workspace: Path, runner: Any) -> BaseTool:
             result = await runner.exchange(import_path, {"tool_args": args})
         except (TimeoutError, RuntimeError) as exc:  # ScriptError is a RuntimeError: the model sees the failure
             raise ToolException(f"{spec['name']}: {exc}") from None
+        from agentcanvas.sandbox.runners import relay_events
+
+        relay_events(result)
         return result.get("output")
 
     return StructuredTool.from_function(

@@ -96,8 +96,8 @@ def _tool_shim() -> None:
 
 def _sdk_shim() -> None:
     """Workspace code imports `agentcanvas.sdk` (`@on`, `@canvas_node`, `Event`, `Actions`); a bare sandbox image
-    (docker, LangSmith) has no AgentCanvas, so a stand-in with the same decorators keeps the plain functions. `emit`
-    and `secret` need the host and say so."""
+    (docker, LangSmith) has no AgentCanvas, so a stand-in with the same decorators keeps the plain functions. `secret`
+    needs the host and says so; `emit` is collected (`_collect_emits`)."""
     try:
         import agentcanvas.sdk  # noqa: F401
     except ImportError:
@@ -117,13 +117,25 @@ def _sdk_shim() -> None:
         sdk.canvas_node = _keep  # type: ignore[attr-defined]
         sdk.Event = _Event  # type: ignore[attr-defined]
         sdk.Actions = _Actions  # type: ignore[attr-defined]
-        sdk.emit = _host_only("emit")  # type: ignore[attr-defined]
         sdk.secret = _host_only("secret")  # type: ignore[attr-defined]
         pkg = types.ModuleType("agentcanvas")
         pkg.__path__ = []  # type: ignore[attr-defined]
         pkg.sdk = sdk  # type: ignore[attr-defined]
         sys.modules.setdefault("agentcanvas", pkg)
         sys.modules.setdefault("agentcanvas.sdk", sdk)
+
+
+_EMITTED: list[dict] = []  # events the code emitted: returned with its result, emitted into the run by the host
+
+
+def _collect_emits() -> None:
+    """`agentcanvas.sdk.emit` here has no run to write to (the run is in the host process): record the events,
+    which go back with the result."""
+
+    def emit(event_type, data=None):
+        _EMITTED.append({"type": str(event_type), "data": dict(data or {})})
+
+    sys.modules["agentcanvas.sdk"].emit = emit  # type: ignore[attr-defined]
 
 
 def _call_tool(obj, args: dict):
@@ -170,13 +182,14 @@ def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
         _sdk_shim()
+        _collect_emits()
         if "tool_args" in payload:  # one call of a workspace tool: return its output
             _tool_shim()
             with contextlib.redirect_stdout(sys.stderr):
                 output = _call_tool(_load(sys.argv[1]), dict(payload["tool_args"] or {}))
                 if inspect.isawaitable(output):
                     output = asyncio.run(output)  # type: ignore[arg-type]
-            out.write(json.dumps({"ok": True, "output": output}, default=str) + "\n")
+            out.write(json.dumps({"ok": True, "output": output, "events": _EMITTED}, default=str) + "\n")
             return 0
         if "event" in payload:  # an event handler: return the actions it recorded
             act = _Actions()
@@ -194,7 +207,7 @@ def main() -> int:
                 result = asyncio.run(result)  # type: ignore[arg-type]
         if result is not None and not isinstance(result, dict):
             raise TypeError(f"a script must return a dict of channel updates, got {type(result).__name__}")
-        out.write(json.dumps({"ok": True, "update": result or {}}, default=str) + "\n")
+        out.write(json.dumps({"ok": True, "update": result or {}, "events": _EMITTED}, default=str) + "\n")
         return 0
     except BaseException as exc:  # noqa: BLE001 - report everything to the host
         tb = traceback.format_exc(limit=5)

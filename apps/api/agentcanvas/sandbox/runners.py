@@ -92,6 +92,23 @@ def docker_command(
     ]  # fmt: skip
 
 
+def relay_events(result: dict) -> None:
+    """Emit, into the run that called the sandbox, the events its code emitted (`agentcanvas.sdk.emit` there only
+    records them): they show on the canvas and reach the project's handlers as if the code had run in-process."""
+    events = result.get("events") or []
+    if not events:
+        return
+    from langgraph.config import get_stream_writer
+
+    try:
+        write = get_stream_writer()
+    except RuntimeError:  # not inside a run (a tool tried on its own): nothing to show them in
+        return
+    for e in events:
+        if isinstance(e, dict) and isinstance(e.get("type"), str):
+            write({"ac_event": e["type"], "data": e.get("data") if isinstance(e.get("data"), dict) else {}})
+
+
 def _parse(import_path: str, stdout: str, stderr: str, exit_code: int | None) -> dict:
     """The child's result line (the last line on stdout)."""
     lines = [ln for ln in stdout.splitlines() if ln.strip()]
@@ -161,6 +178,7 @@ async def run_in_sandbox(
         raise TimeoutError(f"script {exc}") from None
     except ScriptError as exc:
         raise ScriptError(f"script {exc}") from None
+    relay_events(result)
     return result.get("update") or {}
 
 
@@ -244,6 +262,7 @@ class SandboxRunner:
                 raise TimeoutError(f"script {exc}") from None
             except ScriptError as exc:
                 raise ScriptError(f"script {exc}") from None
+            relay_events(result)
             return result.get("update") or {}
 
         run.__name__ = import_path.rpartition(":")[2] or "script"

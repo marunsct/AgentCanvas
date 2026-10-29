@@ -5,6 +5,11 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **Workspace code that emitted an event failed in the sandbox**, the default for Docker and servers:
+  `agentcanvas.sdk.emit` looked for the run in the sandbox's own process, found none, and failed the step
+  ("Called get_config outside of a runnable context"). The sandboxed code now records its events, they come back
+  with its result, and the API emits them into the run, so they show on the canvas and reach the project's
+  handlers as they did in-process.
 - **Every "changed … ago" was off by the viewer's time zone on SQLite** (the local edition without Docker): SQLite
   keeps no time zone, the API sent `2026-10-29T02:31:47`, and browsers read that as local time, so a workflow
   changed a minute ago showed as "9 hours ago" in Tokyo. Every timestamp column now reads back in UTC with its

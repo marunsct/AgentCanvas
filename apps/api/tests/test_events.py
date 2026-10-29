@@ -277,3 +277,25 @@ async def test_the_event_log_pages_back_through_older_events_and_filters_by_type
     lost = (await api_client.get(f"{P}/events", params={"type": "crm.lead.lost"})).json()
     assert len(lost) == 3 and {e["type"] for e in lost} == {"crm.lead.lost"}
     assert (await api_client.get(f"{P}/events", params={"before": "evt_nope"})).status_code == 422
+
+
+async def test_an_event_emitted_by_code_in_a_sandbox_reaches_the_run_and_the_handlers(app, api_client):
+    """`sdk.emit` in sandboxed code has no run to write to: the child records the events, the host emits them into
+    the run (they used to fail the step, so scripts that emitted broke under the default sandbox)."""
+    app.state.settings.script_execution = "subprocess"
+    app.state.projects._resources.clear()
+    await setup(api_client)
+    flag_src = (
+        "from agentcanvas.sdk import emit\n\n\n"
+        "def run(state):\n    emit('invoice.flagged', {'invoice': 'INV-9'})\n    return {'out': 'flagged'}\n"
+    )
+    await api_client.put(f"{P}/files/scripts/flag_boxed.py", json={"content": flag_src})
+    flag = {"id": "n_f", "type": "core.script", "name": "flag", "config": {"import_path": "scripts.flag_boxed:run"}}
+    flagger = await make_wf(api_client, linear("Boxed flagger", [flag], ["out"]))
+    stream = events((await api_client.post(f"/v1/workflows/{flagger}/runs/stream", json={})).text)
+    assert stream[-1]["type"] == "RUN_FINISHED", stream[-1]
+    assert any(e["type"] == "CUSTOM" and (e.get("value") or {}).get("ac_event") == "invoice.flagged" for e in stream)
+    await delivered(app)
+    log = (await api_client.get(f"{P}/events")).json()
+    flagged = next(e for e in log if e["type"] == "invoice.flagged")
+    assert flagged["source"] == "run" and flagged["data"] == {"invoice": "INV-9"}
