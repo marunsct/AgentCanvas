@@ -50,7 +50,10 @@ doesn't read JSON.
 - **📌 Pin last output:** after a run, select a step and pin its last output. Debug runs then skip that step and replay
   the pinned output: handy for iterating on a later step without re-running an expensive one. **Unpin** to undo.
 - **Mock replies:** select a *AI model* block and enter **Mock replies for debug runs**. Debug runs use those
-  replies instead of calling the model.
+  replies instead of calling the model. The replies follow the conversation: the first answer of a conversation is
+  reply 1, the next one reply 2, and the last reply repeats. An agent's tool loop and a chat's later turns move
+  through the list, but every **Ask AI** step starts a conversation of its own, so each one gets reply 1. To script
+  two Ask AI steps differently, give each its own AI model block.
 
 Pins and mocks only affect runs started from the editor, never published deployments.
 

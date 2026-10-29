@@ -569,7 +569,9 @@ class Resources:
         """A copy whose named chat models answer with scripted replies (debug "mock mode", M4-T9), and whose named
         tool resources answer with recorded outputs (FR-X-13 replay) instead of being called.
 
-        A model reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}; the last reply repeats. A tool
+        A model reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}. Replies follow the conversation
+        (`MockChatModel`): its n-th answer is reply n and the last one repeats, so every Ask AI step, which starts a
+        conversation of its own, gets the first reply; steps scripted differently need their own model. A tool
         recording is {"tool", "args", "output" | "error"} (see `ReplayQueue`)."""
         from langchain_core.messages import AIMessage
 
