@@ -109,7 +109,10 @@ See [Memory](memory.md) for spaces and sharing.
 ## Agent add-ons
 
 Add-ons (middleware) change how an agent's model and tool calls behave. Plug one or more into an agent's
-`middleware` input; the order of the lines is the order they apply.
+`middleware` input; the order of the lines is the order they apply: the first one connected wraps the ones after
+it. So connect **Retry AI calls** before **Backup models** (each attempt can then fall back), or set the retry's
+"When retries are exhausted" to error; otherwise the retry answers the failure itself and the backup models are
+never tried (warning W017).
 
 | Block | What it does |
 |---|---|

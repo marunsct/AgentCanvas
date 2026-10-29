@@ -153,6 +153,27 @@ def middleware_stack(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 
 @rule
+def retry_inside_fallback(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W017: "Retry AI calls" connected after "Backup models" and set to carry on when retries run out answers the
+    failure itself (an error message to the agent), so the backup models are never tried. The first add-on
+    connected wraps the ones after it."""
+    for el in [*ctx.wf.nodes, *ctx.wf.resources]:
+        mws = ctx.wf.wired_into(el.id, "middleware")
+        fallback = next((i for i, r in enumerate(mws) if r.type == "mw.model_fallback"), None)
+        if fallback is None:
+            continue
+        for r in mws[fallback + 1 :]:
+            if r.type == "mw.model_retry" and r.config.get("on_failure", "continue") != "error":
+                yield warning(
+                    "W017",
+                    f"'{r.name}' answers the failure itself when its retries run out, so the backup models of "
+                    f"'{mws[fallback].name}' on '{el.name}' are never tried",
+                    node_id=r.id,
+                    hint="set its 'When retries are exhausted' to error, or connect it before the backup models",
+                )
+
+
+@rule
 def deep_agents(ctx: ValidationContext) -> Iterator[Diagnostic]:
     """E032 subagents, E034 permission paths, E036 file mounts, E071 user-scoped folders."""
     has_user = any(f.source == "user" for f in ctx.wf.context.fields)

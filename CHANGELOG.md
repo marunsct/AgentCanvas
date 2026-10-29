@@ -69,6 +69,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   deployments had no delete rule). A migration adds the rules.
 
 ### Added
+- **W017: "Retry AI calls" connected after "Backup models" hides them.** The first add-on connected wraps the ones
+  after it, and a retry that carries on when its retries run out (the default) answers the failure itself, so the
+  backup models were never tried, without a word. The editor now warns and says how to fix it.
 - **Home lists the project's workflows as a compact table, five a page**: name, version and last change per row,
   with search, a "Changed" filter (last 7 days, last 30 days, older) and sorting, and pages below; it loads every
   workflow, not only the first 200.

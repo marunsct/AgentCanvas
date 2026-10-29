@@ -198,6 +198,38 @@ async def test_model_fallback_uses_wired_models_in_order(tmp_path):
     assert code.index("backup = resources.model(") < code.index("fallback = resources.middleware(")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_failure", ["continue", "error"])
+async def test_retry_after_backup_models_hides_them_unless_it_raises(tmp_path, on_failure):
+    """W017: the first add-on wraps the next, so a retry inside the backup models that answers the failure itself
+    ("continue") keeps them from ever being tried; one that raises ("error") hands the failure on to them."""
+    wf = agent_wf(
+        resources=[
+            ("backup", "model.chat", {"model": "fake:scripted"}),
+            ("fallback", "mw.model_fallback", {}),
+            ("retry", "mw.model_retry", {"max_retries": 1, "on_failure": on_failure, "initial_delay": 0}),
+        ],
+        wiring=[
+            ("backup", "fallback", "models"),
+            ("fallback", "agent", "middleware"),
+            ("retry", "agent", "middleware"),
+        ],
+    )
+    assert ("W017" in codes(wf)) == (on_failure == "continue")
+
+    def res():
+        return Resources(
+            overrides={"model": BrokenModel(messages=iter([])), "backup": scripted("answer from the backup model")}
+        )
+
+    async def run(graph):
+        return last_text(await graph.ainvoke({"messages": [("user", "hi")]}, cfg()))
+
+    a, b = await both(wf, tmp_path, res, run)
+    assert a == b
+    assert (a == "answer from the backup model") == (on_failure == "error"), a
+
+
 def test_middleware_order_follows_edge_order():
     wf = agent_wf(
         resources=[
