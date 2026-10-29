@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from jsonschema import Draft202012Validator
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.db.models import EventDedup, EventLog, WorkflowRow
@@ -122,6 +122,7 @@ class EventService:
     ) -> HandlerResult:
         res = HandlerResult(handler=h["import_path"], matched=True)
         variables = {"event": event}
+        claimed: str | None = None
         try:
             if h.get("filter") and not bool(eval_expression(h["filter"], variables)):
                 return HandlerResult(handler=h["import_path"], matched=False, skipped="filter")
@@ -130,9 +131,12 @@ class EventService:
                 if not await self._first_delivery(project_id, h["import_path"], value, event["id"]):
                     res.skipped = "duplicate"
                     return res
+                claimed = value
             res.actions = await asyncio.wait_for(self._call(project_id, h["import_path"], event), HANDLER_TIMEOUT_S)
         except (ExpressionError, TimeoutError, Exception) as exc:  # noqa: BLE001 - report, never crash delivery
             res.error = f"{type(exc).__name__}: {exc}"
+            if claimed is not None:  # it did not run to the end: the same event delivered again may (R-10)
+                await self._release(project_id, h["import_path"], claimed)
         return res
 
     async def _call(self, project_id: str, import_path: str, event: dict[str, Any]) -> list[dict[str, Any]]:
@@ -157,6 +161,12 @@ class EventService:
                 return True
             except IntegrityError:
                 return False
+
+    async def _release(self, project_id: str, handler: str, value: str) -> None:
+        async with self.db.sessionmaker() as s:
+            same = (EventDedup.project_id == project_id, EventDedup.handler == handler, EventDedup.value == value)
+            await s.execute(delete(EventDedup).where(*same))
+            await s.commit()
 
     # ------------------------------------------------------------------ actions ----
     async def _perform(self, project_id: str, action: dict[str, Any], user_id: str | None, depth: int) -> list[str]:

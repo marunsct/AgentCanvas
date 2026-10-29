@@ -62,6 +62,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- An event handler with a dedup key that failed (a timeout, a service down) never saw that event again: its
+  redelivery was skipped as a duplicate. The key is now kept only when the handler finished, so a redelivered event
+  reaches it once more (HARDENING R-10).
 - A run, Copilot answer, share-page reply or Playground stream that went quiet during a long step (a slow tool, a
   model thinking) was cut by proxies with a 60-second read timeout. Every stream now sends a keep-alive comment
   after 15 quiet seconds, which readers ignore (HARDENING R-9).

@@ -303,3 +303,27 @@ async def test_an_event_emitted_by_code_in_a_sandbox_reaches_the_run_and_the_han
     log = (await api_client.get(f"{P}/events")).json()
     flagged = next(e for e in log if e["type"] == "invoice.flagged")
     assert flagged["source"] == "run" and flagged["data"] == {"invoice": "INV-9"}
+
+
+PAYMENTS = """from agentcanvas.sdk import on
+
+
+@on("payment.received", dedup_key="event.data.id")
+def record(event, act):
+    if event.data.get("crm_down"):
+        raise RuntimeError("the CRM did not answer")
+    act.emit("payment.recorded", {"id": event.data["id"]})
+"""
+
+
+async def test_a_handler_that_failed_takes_the_same_event_again(app, api_client):
+    """R-10: the dedup key was taken before the handler ran, so a handler that failed (a timeout, a service down)
+    never saw that event again: its redelivery was "duplicate". Now only a handler that finished keeps the key."""
+    await api_client.put(f"{P}/files/events/payments.py", json={"content": PAYMENTS})
+    failed = (await api_client.post(f"{P}/events", json={"type": "payment.received",
+                                                          "data": {"id": "P1", "crm_down": True}})).json()  # fmt: skip
+    assert "CRM did not answer" in failed["handlers"][0]["error"]
+    retried = (await api_client.post(f"{P}/events", json={"type": "payment.received", "data": {"id": "P1"}})).json()
+    assert retried["handlers"][0].get("skipped") is None and not retried["handlers"][0].get("error")
+    again = (await api_client.post(f"{P}/events", json={"type": "payment.received", "data": {"id": "P1"}})).json()
+    assert again["handlers"][0]["skipped"] == "duplicate"  # once it ran to the end, the key holds
