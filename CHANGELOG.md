@@ -37,6 +37,55 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The Evaluation guide's table of evaluators left out the retrieval evaluator and did not say what a composite does
+  with a part that cannot score. It now lists retrieval and explains that such a part is left out of a weighted mix
+  but counts as failed for "all" and "any". (HARDENING D-7).
+- An uploaded PDF, Word or HTML file was embedded with its metadata title but searched and cited by its file name,
+  so its search results changed after the next reindex; and adding a run to an annotation queue by hand showed it as
+  unreviewed even when it had reviews. Files are now embedded with the title they are cited by, and re-added runs
+  show their reviews. (HARDENING E-12).
+- An experiment whose target workflow no longer validated stayed "running" and was retried by every server every few
+  seconds; experiment costs left out the AI judges entirely, a judge model without a price counted as free with no
+  warning, and a drift alert never resolved once traffic stopped. Such an experiment now ends with an error,
+  experiments show the judges' cost beside the runs' cost and name unpriced judge models (online scores say so in
+  their comment), and an alert resolves when its window has too few scores. (HARDENING E-11).
+- When checking the Copilot's proposal failed, its answer stopped without an error or an end and the editor showed
+  only its generic reload notice; a large workflow was cut mid-text before the Copilot saw it; and accepting a
+  proposal with tests or files that do not exist silently ignored them. The answer now always ends with the error
+  and its end, a large workflow loses whole blocks with a note saying how many are shown, and wrong test or file
+  choices are refused like wrong changes. (HARDENING E-10).
+- Importing a dataset from CSV turned every reference cell into JSON ("1", "true", "1e5" became numbers and
+  booleans), so exact-match evaluators failed against the run's text output, and a "null" cell became an empty
+  reference value. References now take the type of the workflow output they are compared with and stay text
+  otherwise; a null in a typed column means no reference. (HARDENING E-8).
+- When the AI judge did not answer in JSON, any stray 0 or 1 in its reply was taken as the score ("lists 1 item then
+  fails badly" passed with 1.0), a rating like "8/10" gave no score, and a reply with two JSON objects failed to
+  parse. The judge's last JSON answer is used now; otherwise only a labelled score, a rating such as 8/10 or 80%, or
+  a lone decimal counts, and anything else scores nothing with the reason. (HARDENING E-7).
+- Accepting the Copilot's open proposal while it was still answering left its next proposal holding the accepted
+  changes a second time, so the proposal no longer applied ("the workflow changed since") and everything it added in
+  that answer was lost. The next proposal now keeps only what was added after the accepted one. (HARDENING E-6).
+- A "Wait for all" block fed by steps that follow different paths of one "Choose a path" block validated clean, yet
+  only one path ever runs, so the run stopped without reaching Finish and without any message. Validation now
+  reports it (E016), also when the steps are several blocks after the router. (HARDENING E-5).
+- A loop that went through a "Repeat for each item" block was warned about as a loop with no way out, although the
+  block leaves the loop when its list is empty. Such loops are no longer warned about. (HARDENING E-4).
+- A "Choose a path" block whose fallback path name was cleared got two errors, a bad name and a path '' with no
+  arrow. Only the bad name is reported now. (HARDENING E-4).
+- A prompt that mentioned "state.something" in plain text, or a template calling state.get(...), was reported as
+  reading an unknown data field. Only the {{ … }} and {% … %} parts of prompts and templates (and whole conditions)
+  are checked now, and method calls are not taken for fields. (HARDENING E-4).
+- Clearing an optional output field of a block (such as a guard's flag output or Search knowledge's sources) gave
+  the error "refers to unknown state channel ''". An empty optional field now means "not saved" and is not reported;
+  an empty required one still is. (HARDENING E-4).
+- A Search knowledge block's minimum score was compared with raw scores whose scale depended on the mode, so in
+  hybrid mode (the default) any value of 0.033 or more found nothing. Scores and the minimum are now 0 to 1 in every
+  mode (keywords relative to the best match, meaning the cosine, hybrid 1 for first in both rankings), and the guide
+  explains each. (HARDENING E-3).
+- After a knowledge base's embedding model was changed, searches compared the old vectors with a question embedded
+  by the new model and returned noise until someone pressed Reindex, and exports shipped the old vectors under the
+  new model's name. A stale knowledge base is now searched by keywords only (the page says so), exports ship it
+  without vectors, and vectors of different lengths are never compared. (HARDENING E-2).
 - After an undo or redo that changed a workflow's budget, the Budget fields kept showing the old numbers. Now they
   show the budget as it is, while still keeping a number that is half typed.
 - The cron trigger form did not say which time zone a schedule uses, so "0 9 * * *" could be read as 09:00 local
