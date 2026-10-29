@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from agentcanvas.adapters.langchain.packager import _exportable_cases, _secret_names, package_name
+from agentcanvas.adapters.langchain.packager import _exportable_cases, _secret_names, gaps_md, package_name
 from agentcanvas.adapters.mastra import codegen
 from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.errors import InvalidInput
@@ -435,7 +435,8 @@ node src/main.ts '{{"thread_id": "t1", "resume": {{"approved": true}}}}'
 
 Each model block reaches its provider over the OpenAI chat-completions API (any provider with such an endpoint,
 local servers included). Override the model or address per block with the variables in the last column. Backup
-models and the answer cache of the canvas are not exported for Mastra flows.
+models and the answer cache of the canvas are not exported for Mastra flows: `GAPS.md` lists the blocks that use
+them, and the steps whose retry or time limit does not apply.
 
 | Block | Model | Address | Key variable | Overrides |
 |---|---|---|---|---|
@@ -487,6 +488,7 @@ def package(
     files: dict[str, str | bytes] = {
         "package.json": json.dumps(manifest, indent=2) + "\n",
         "tsconfig.json": json.dumps(TSCONFIG, indent=2) + "\n",
+        "GAPS.md": gaps_md(wf, "a Mastra flow"),
         "README.md": _readme(wf, pkg, models, python),
         ".env.example": "".join(f"{k}=\n" for k in keys),
         ".gitignore": "node_modules/\n.env\n.runs/\n__pycache__/\n",

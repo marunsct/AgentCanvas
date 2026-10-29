@@ -513,6 +513,44 @@ def test_workspace_code_imports(import_path):
 '''
 
 
+def canvas_only(wf: Workflow, label: str) -> list[str]:
+    """What a block does on the canvas but not in `label` (e.g. "a CrewAI flow"), one line per block: backup models
+    and the answer cache (the canvas's model gateway gives them), and node policies (retry, timeout, cache, error
+    route), which only LangGraph applies."""
+    out = []
+    for r in wf.resources:
+        if r.type != "model.chat":
+            continue
+        if backups := [str(b) for b in r.config.get("fallbacks") or [] if b]:
+            out.append(f"Model block '{r.name}': its backup models ({', '.join(backups)}) are not tried; when its "
+                       "model fails, the step fails.")  # fmt: skip
+        if r.config.get("cache_ttl"):
+            out.append(f"Model block '{r.name}': its answer cache ({r.config['cache_ttl']} s) is not exported; every "
+                       "request reaches the model.")  # fmt: skip
+    names = [("retry", "retry"), ("timeout", "time limit"), ("cache", "cache"), ("error_route", "error path")]
+
+    def unused(found: list[str]) -> str:
+        return " and ".join(found) + (" do" if len(found) > 1 else " does") + f" not apply in {label}"
+
+    if defaults := [what for attr, what in names if getattr(wf.settings.node_defaults, attr, None)]:
+        out.append(f"The workflow's default {unused(defaults)}: steps run once, with no time limit, and an error ends "
+                   "the run.")  # fmt: skip
+    for n in wf.nodes:
+        if policies := [what for attr, what in names if getattr(n.policies, attr, None)]:
+            out.append(f"'{n.name}': its {unused(policies)}: it runs once, with no time limit, and an error ends the "
+                       "run.")  # fmt: skip
+    return out
+
+
+def gaps_md(wf: Workflow, label: str) -> str:
+    """`GAPS.md` of an export to `label`: `canvas_only`, as a list to go through before relying on the export."""
+    lines = [f"# What runs differently in {label}", ""]
+    lines += [f"- {g}" for g in canvas_only(wf, label)] or [
+        "Nothing found: no backup models, answer cache or step policies."
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _exportable_cases(wf: Workflow, cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Cases that run offline: every chat model mocked, no pinned outputs (the export has no debug pins)."""
     models = {name for name, _ in _models(wf)}

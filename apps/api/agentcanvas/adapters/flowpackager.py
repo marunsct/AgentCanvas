@@ -23,6 +23,7 @@ from agentcanvas.adapters.langchain.packager import (
     _exportable_cases,
     _secret_names,
     _version,
+    gaps_md,
     package_name,
 )
 from agentcanvas.adapters.llamaindex.codegen import LLAMA_INDEX_CORE_VERSION, OPENAI_LIKE_VERSION, WORKFLOWS_VERSION
@@ -367,7 +368,8 @@ uv run python -m {pkg} '{{"thread_id": "t1", "resume": {{"approved": true}}}}'
 
 Each model block reaches its provider over the OpenAI chat-completions API (any provider with such an endpoint,
 local servers included). Override the model or address per block with the variables in the last column. Backup
-models and the answer cache of the canvas are not exported for {t.label} flows.
+models and the answer cache of the canvas are not exported for {t.label} flows: `GAPS.md` lists the blocks that
+use them, and the steps whose retry or time limit does not apply.
 
 | Block | Model | Address | Key variable | Overrides |
 |---|---|---|---|---|
@@ -596,6 +598,7 @@ def package(
     host = HOST.format(models_code=t.models, models=json.dumps(models, indent=4), tools=json.dumps(tools, indent=4))
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, t, pkg, version, found.requirements if found else []),
+        "GAPS.md": gaps_md(wf, f"a {t.label} flow"),
         "README.md": _readme(wf, t, framework, pkg, models),
         ".env.example": "".join(f"{k}=\n" for k in keys),
         ".gitignore": ".venv/\n__pycache__/\n.env\n.runs/\n",

@@ -8,10 +8,16 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from collections.abc import Callable
+from functools import partial
 
 import pytest
 
 from agentcanvas import agentspec, bridges
+from agentcanvas.adapters import flowpackager
+from agentcanvas.adapters.crewai import packager as crewai
+from agentcanvas.adapters.google_adk import packager as google_adk
+from agentcanvas.adapters.mastra import packager as mastra
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.workflows import TEMPLATES
 
@@ -38,6 +44,35 @@ def test_what_blocks_each_framework_is_named():
     assert not [g for g in bridges.gaps(template("ticket_triage"), "langgraph") if g.blocks]
     gaps = bridges.gaps(template("ticket_triage"), "wayflow")
     assert gaps[-1].blocks is False and any("nothing reports back" in g.text for g in gaps)
+
+
+def _differs() -> Workflow:
+    """ticket_triage with what only the canvas does: a backup model and a cache, a retry, a collecting field, and an
+    approval with a step after it."""
+    ir = template("ticket_triage").model_dump(mode="json")
+    ir["resources"][0]["config"].update(fallbacks=["openai:gpt-5.5"], cache_ttl=600)
+    draft = next(n for n in ir["nodes"] if n["name"] == "draft_reply")
+    draft["policies"] = {"retry": {"max_attempts": 3}}
+    ir["state"]["channels"].append({"name": "log", "type": {"type": "array"}, "reducer": "append", "io": "private"})
+    ok = next(e for e in ir["edges"] if e["kind"] == "flow" and e["source"]["node"] == "n_ok")
+    ok["target"]["node"] = "n_draft"
+    return Workflow.model_validate(ir)
+
+
+@pytest.mark.parametrize("target", list(bridges.TARGETS))
+def test_gaps_name_what_only_the_canvas_does(target):
+    """X-6: backup models, the answer cache, policies and collecting fields are listed; an approval that guards
+    later steps must be dealt with (it no longer waits for a yes)."""
+    found = bridges.gaps(_differs(), target)
+    differs = [g.text for g in found if not g.blocks]
+    assert any("'fast_model'" in t and "backup models (openai:gpt-5.5)" in t for t in differs)
+    assert any("'fast_model'" in t and "answer cache (600 s)" in t for t in differs)
+    assert any("'draft_reply': its retry does not apply" in t for t in differs)
+    assert any("'log' combines what steps write on the canvas (append)" in t for t in differs)
+    assert any("Approval 'manager_approval' is a question here" in g.text for g in found if g.blocks)
+    assert not any(t.startswith("Approval 'manager_approval'") for t in differs)
+    plain = bridges.gaps(template("ticket_triage"), target)  # nothing after the approval: it only differs
+    assert any(g.text.startswith("Approval 'manager_approval': written as a question") for g in plain if not g.blocks)
 
 
 def test_gaps_found_by_the_gallery_templates():
@@ -137,3 +172,27 @@ def test_odd_names_secrets_and_filtered_reads():
     shout = next(c for c in doc["$referenced_components"].values() if c.get("name") == "shout"
                  and c["component_type"] == "ToolNode")  # fmt: skip
     assert [i["title"] for i in shout["inputs"]] == ["topic", "doc"]
+
+
+EXPORTS: dict[str, Callable[[Workflow], tuple[str, bytes]]] = {
+    "crewai": partial(crewai.package, source=""),
+    "google_adk": partial(google_adk.package, source=""),
+    "mastra": partial(mastra.package, source=""),
+    **{fw: partial(flowpackager.package, source="", framework=fw) for fw in flowpackager.TARGETS},
+}
+
+
+def _read(data: bytes, suffix: str) -> str:
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        return z.read(next(n for n in z.namelist() if n.endswith(suffix))).decode()
+
+
+@pytest.mark.parametrize("framework", list(EXPORTS))
+def test_framework_exports_say_what_runs_differently(framework):
+    """X-6: an export that drops backup models, the answer cache and step policies names the blocks in GAPS.md."""
+    _, data = EXPORTS[framework](_differs())
+    gaps = _read(data, "/GAPS.md")
+    assert "Model block 'fast_model': its backup models (openai:gpt-5.5) are not tried" in gaps
+    assert "answer cache (600 s)" in gaps and "'draft_reply': its retry does not apply" in gaps
+    assert "`GAPS.md`" in _read(data, "/README.md")
+    assert "Nothing found" in _read(EXPORTS[framework](template("chat_assistant"))[1], "/GAPS.md")

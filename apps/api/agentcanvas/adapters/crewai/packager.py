@@ -15,7 +15,14 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.adapters.crewai.codegen import CREWAI_VERSION
-from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _secret_names, _version, package_name
+from agentcanvas.adapters.langchain.packager import (
+    _dist,
+    _exportable_cases,
+    _secret_names,
+    _version,
+    gaps_md,
+    package_name,
+)
 from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
@@ -83,7 +90,8 @@ uv run python -m {pkg} '{{"thread_id": "t1", "resume": {{"approved": true}}}}'
 
 Each model block reaches its provider over the OpenAI chat-completions API (any provider with such an endpoint,
 local servers included). Override the model or address per block with the variables in the last column. Backup
-models and the answer cache of the canvas are not exported for CrewAI flows.
+models and the answer cache of the canvas are not exported for CrewAI flows: `GAPS.md` lists the blocks that use
+them, and the steps whose retry or time limit does not apply.
 
 | Block | Model | Address | Key variable | Overrides |
 |---|---|---|---|---|
@@ -334,6 +342,7 @@ def package(
     keys = sorted({m["key_env"] for m in models.values()} | _secret_names(wf.model_dump(mode="json")))
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, pkg, version, found.requirements if found else []),
+        "GAPS.md": gaps_md(wf, "a CrewAI flow"),
         "README.md": _readme(wf, pkg, models),
         ".env.example": "".join(f"{k}=\n" for k in keys),
         ".gitignore": ".venv/\n__pycache__/\n.env\n.runs/\n",
