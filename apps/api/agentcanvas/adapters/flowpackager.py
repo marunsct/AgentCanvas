@@ -17,8 +17,15 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.adapters.agno.codegen import AGNO_VERSION, OPENAI_VERSION
-from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _secret_names, _version, package_name
-from agentcanvas.adapters.llamaindex.codegen import LLAMA_INDEX_CORE_VERSION, OPENAI_LIKE_VERSION
+from agentcanvas.adapters.langchain.packager import (
+    RESERVED,
+    _dist,
+    _exportable_cases,
+    _secret_names,
+    _version,
+    package_name,
+)
+from agentcanvas.adapters.llamaindex.codegen import LLAMA_INDEX_CORE_VERSION, OPENAI_LIKE_VERSION, WORKFLOWS_VERSION
 from agentcanvas.adapters.microsoft_agent_framework.codegen import (
     AGENT_FRAMEWORK_OPENAI_VERSION,
     AGENT_FRAMEWORK_VERSION,
@@ -34,13 +41,6 @@ from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[1]  # the `agentcanvas` package directory
 PINNED = ["jsonschema", "cel-python", "jinja2"]
-# What an export imports (or its frameworks do) besides the standard library: the flow's own package must not hide
-# one of them on src/, whether or not the server has it installed (`package_name` only sees the server's packages).
-RESERVED = {
-    "agent_framework", "agentcanvas", "agents", "agno", "anyio", "boto3", "botocore", "celpy", "crewai", "google",
-    "httpx", "jinja2", "jsonschema", "llama_index", "mastra", "mcp", "openai", "opentelemetry", "pydantic",
-    "pydantic_ai", "pydantic_core", "pytest", "strands", "tests", "workflows",
-}  # fmt: skip
 
 
 @dataclass
@@ -291,7 +291,11 @@ TARGETS = {
     "llamaindex": Target(
         label="LlamaIndex",
         slug="llamaindex",
-        pins=[f"llama-index-core=={LLAMA_INDEX_CORE_VERSION}", f"llama-index-llms-openai-like=={OPENAI_LIKE_VERSION}"],
+        pins=[
+            f"llama-index-core=={LLAMA_INDEX_CORE_VERSION}",
+            f"llama-index-workflows=={WORKFLOWS_VERSION}",
+            f"llama-index-llms-openai-like=={OPENAI_LIKE_VERSION}",
+        ],
         docs="https://docs.llamaindex.ai/",
         how="a LlamaIndex `FunctionAgent` for each AI block (an `OpenAILike` LLM, tools, an `output_cls` for typed "
         "answers)",

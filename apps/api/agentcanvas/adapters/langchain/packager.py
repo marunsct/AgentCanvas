@@ -93,6 +93,15 @@ PROVIDERS = {  # model id prefix -> (integration package, API key variable)
 }
 
 
+# What an export imports (or its frameworks do) besides the standard library: the flow's own package must not hide
+# one of them on src/, whether or not the server has it installed (`find_spec` sees only the server's packages).
+RESERVED = {
+    "agent_framework", "agentcanvas", "agents", "agno", "anyio", "boto3", "botocore", "celpy", "crewai", "google",
+    "httpx", "jinja2", "jsonschema", "llama_index", "mastra", "mcp", "openai", "opentelemetry", "pydantic",
+    "pydantic_ai", "pydantic_core", "pytest", "strands", "tests", "workflows",
+}  # fmt: skip
+
+
 def package_name(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "workflow"
     if not slug[0].isalpha() or _taken(slug):
@@ -106,7 +115,7 @@ def _taken(slug: str) -> bool:
     import keyword
     import sys
 
-    if keyword.iskeyword(slug) or slug in sys.stdlib_module_names:
+    if keyword.iskeyword(slug) or slug in sys.stdlib_module_names or slug in RESERVED:
         return True
     try:
         return importlib.util.find_spec(slug) is not None

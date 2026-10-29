@@ -62,8 +62,8 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_STRANDS" = "true" ] ||
 ARG WITH_LLAMAINDEX=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|llamaindex) "; then \
       uv venv .frameworks/llamaindex && uv pip install --python .frameworks/llamaindex/bin/python \
-      llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1 cel-python==0.5.0 jinja2==3.1.6 \
-      jsonschema==4.26.0; fi
+      llama-index-core==0.14.25 llama-index-workflows==2.25.0 llama-index-llms-openai-like==0.8.1 cel-python==0.5.0 \
+      jinja2==3.1.6 jsonschema==4.26.0; fi
 
 # 8) optional (S36): Mastra workflows run on Node.js 22.18+ with Mastra from npm, in /opt/mastra (node in bin/):
 #   --build-arg WITH_MASTRA=true (the Docker app sets it unless FRAMEWORKS leaves Mastra out). Otherwise the folder stays empty.
