@@ -419,3 +419,27 @@ def test_exports_carry_the_gateway():
 def test_scripted_overrides_skip_the_gateway():
     res = Resources(overrides={"m": scripted("hi")})
     assert not isinstance(res.model("m", {"model": "openai:gpt-5-mini", "fallbacks": ["x:y"]}), GatewayModel)
+
+
+def test_a_rotated_key_builds_a_new_model_client(monkeypatch):
+    """R-3: model clients were cached by the secret's name, so after rotating a leaked key runs kept using the old
+    value until 64 other configs evicted it or the server restarted."""
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from agentcanvas.adapters.langchain.nodes import Resources
+
+    built: list[str | None] = []
+
+    def init(model_id, **kw):
+        built.append(kw.get("api_key"))
+        return FakeListChatModel(responses=["ok"])
+
+    monkeypatch.setattr(nodes, "init_chat_model", init)
+    secrets = {"OPENAI_API_KEY": "sk-old-123456"}
+    res = Resources(secrets=secrets)
+    res.model("m", {"model": "openai:gpt-5.5"})
+    res.model("m", {"model": "openai:gpt-5.5"})
+    assert built == ["sk-old-123456"]  # reused while nothing changed
+    secrets["OPENAI_API_KEY"] = "sk-new-654321"  # the secrets cache updates this dict in place
+    res.model("m", {"model": "openai:gpt-5.5"})
+    assert built[-1] == "sk-new-654321"

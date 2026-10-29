@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import hashlib
 import inspect
 import json
 import operator
@@ -459,10 +460,17 @@ class Resources:
         self.knowledge: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None
         self._kb_files: dict[str, tuple[float, ks.Index, Callable[..., Awaitable[list[list[float]]]]]] = {}
 
+    def _key(self, config: dict[str, Any]) -> str:
+        """A cache key for a client built from `config`: its settings and the project's secret values, so a rotated
+        key (a `$secret` reference, or the provider key a model uses implicitly) builds a new client instead of
+        reusing one that holds the old value until the server restarts."""
+        values = json.dumps(sorted(self._secrets.items()))
+        return f"{_config_key(config)}:{hashlib.sha256(values.encode()).hexdigest()[:16]}"
+
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
             return tag_model(self._overrides[name], config.get("model"), name)
-        key = f"{name}:{_config_key(config)}"  # an edited model, key or address is a new client
+        key = f"{name}:{self._key(config)}"  # an edited model, address or secret value is a new client
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
@@ -526,7 +534,7 @@ class Resources:
 
     def _tool(self, name: str, config: dict[str, Any], type_: str) -> Any:
         if type_ == "mcp.server":
-            key = (name, _config_key(config))
+            key = (name, self._key(config))
             if key not in self._mcp:
                 raise RuntimeError(f"MCP tools of '{name}' are not loaded yet; build the graph with abuild_graph()")
             return self._mcp[key]
@@ -613,8 +621,10 @@ class Resources:
         """Discover an MCP server's tools (network I/O, so it happens before the synchronous graph build)."""
         if name in self._replays:  # replayed: the recorded tools stand in, the server is not contacted
             return replay_stubs(name, ReplayQueue(self._replays[name]))
-        key = (name, _config_key(config))
+        key = (name, self._key(config))
         if refresh or key not in self._mcp:
+            for old in [k for k in self._mcp if k[0] == name and k != key]:  # its tools under an older key or config
+                del self._mcp[old]
             target = self._overrides.get(name)
             if target is None:
                 target = mcp_target(config, self._resolve)

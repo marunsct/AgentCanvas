@@ -5,6 +5,9 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Security
+- **A rotated API key kept being used until the server restarted**: model clients and MCP tool sets were cached by
+  the secret's name, not its value, so after replacing a leaked key, runs went on sending the old one. A changed
+  secret value now builds new clients, and an MCP server's tools are loaded again with it (HARDENING R-3).
 - **A builder could read the project's stored model keys by pointing a model at a server they run**: the model-list
   probe, the connection test and runs sent the provider key (a project secret or server variable) to whatever base
   URL was given. A stored key now goes only to its provider or the server saved with it; any other address gets a
