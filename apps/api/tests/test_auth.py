@@ -105,6 +105,35 @@ async def test_org_header_must_name_a_membership(client):
     assert r.status_code == 403
 
 
+async def test_two_clients_in_different_organisations_do_not_write_on_every_request(app, client):
+    """F-4: a request naming another organisation than the default made it the default, a write and a commit on
+    every request of two clients (or tabs) that alternate."""
+    from test_efficiency import statements
+
+    from agentcanvas.db.models import Membership, Organization
+    from agentcanvas.db.repositories import UserRepo
+
+    alice = bearer(token())
+    assert (await client.get("/v1/me", headers=alice)).status_code == 200
+    async with app.state.db.sessionmaker() as s:
+        alice_id = (await UserRepo(s).by_subject("oidc:alice-sub")).id  # type: ignore[union-attr]
+        s.add(Organization(id="org_b", name="Org B"))
+        await s.flush()
+        s.add(Membership(org_id="org_b", user_id=alice_id, role="admin"))
+        await s.commit()
+    default = (await client.get("/v1/me", headers=alice)).json()["org_id"]
+    other = "org_b" if default == "org_default" else "org_default"
+    assert (await client.get("/v1/me", headers={**alice, "X-Org-Id": other})).json()["org_id"] == other
+    assert (await client.get("/v1/me", headers=alice)).json()["org_id"] == other  # a switch is remembered
+    with statements(app) as seen:
+        for _ in range(5):
+            for org in (default, other):
+                r = await client.get("/v1/me", headers={**alice, "X-Org-Id": org})
+                assert r.json()["org_id"] == org
+    writes = [x for x in seen if x.startswith("UPDATE membership")]
+    assert len(writes) == 1, writes  # the first switch back; then at most once a minute per organisation
+
+
 async def test_public_routes_need_no_sign_in(client):
     cfg = (await client.get("/v1/auth/config")).json()
     assert cfg == {"mode": "oidc", "issuer": ISSUER, "client_id": "spa",

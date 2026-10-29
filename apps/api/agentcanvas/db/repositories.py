@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select, update
@@ -35,6 +35,7 @@ from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
 
 DEV_ORG, DEV_USER, DEV_PROJECT = "org_default", "usr_dev", "prj_default"
+USED_EVERY = timedelta(minutes=1)  # how often choosing an organisation is written down (`UserRepo.used`)
 
 
 async def seed_dev(session: AsyncSession) -> None:
@@ -112,11 +113,19 @@ class UserRepo:
         return {org: role for org, role in (await self.s.execute(q)).all()}
 
     async def used(self, user_id: str, org_id: str) -> None:
-        """Remember the organisation a user just chose: it is their default from now on."""
+        """Remember the organisation a user just chose: it is their default from now on. At most once a minute
+        per organisation: two clients (or tabs) acting in different organisations would otherwise write on every
+        request; the default is then the one chosen last, to within the minute."""
+        now = datetime.now(UTC)
+        last = await self.s.scalar(
+            select(Membership.last_used_at).where(Membership.user_id == user_id, Membership.org_id == org_id)
+        )
+        if last is not None and last > now - USED_EVERY:
+            return
         await self.s.execute(
             update(Membership)
             .where(Membership.user_id == user_id, Membership.org_id == org_id)
-            .values(last_used_at=datetime.now(UTC))
+            .values(last_used_at=now)
         )
         await self.s.commit()
 
