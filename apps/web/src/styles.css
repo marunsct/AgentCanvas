@@ -941,6 +941,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .kb .column.gap { gap: 6px; }
 .kb .grow, .kb-search input.grow { flex: 1 1 260px; min-width: 0; }
 .kb-title { margin: 0; }
+.kb-about { max-width: 520px; margin: 8px 0; }
 .kb .callout.warn { border: 1px solid var(--warn, #b45309); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
 .kb-search { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
 .kb-results { margin: 8px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }

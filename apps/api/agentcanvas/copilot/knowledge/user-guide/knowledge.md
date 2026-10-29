@@ -34,6 +34,9 @@ Create a knowledge base (its name is lower-case letters, digits, `-` and `_`, e.
 
 The same text twice is refused. Click a document to see how it was split into chunks.
 
+**Rename…** changes the knowledge base's name and description. A Search knowledge block finds the knowledge base
+by its name, so a block that names the old one needs the new name.
+
 ### Keep web pages up to date
 
 Under the documents, **Fetch web pages again** sets how often (every 6 hours, daily or weekly) the server fetches the

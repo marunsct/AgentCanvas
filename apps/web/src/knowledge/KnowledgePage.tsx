@@ -128,8 +128,13 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
     onSuccess: done,
   });
   const embedders = useEmbeddingModels();
+  const [editing, setEditing] = useState(false);
+  const about = useMutation({
+    mutationFn: (patch: { name: string; description: string }) => apiFetch(base, { method: "PATCH", json: patch }),
+    onSuccess: () => { setEditing(false); onChange(); },
+  });
   const drop = useMutation({ mutationFn: () => apiFetch(base, { method: "DELETE" }), onSuccess: onDeleted });
-  const failure = [upload, addUrl, addSitemap, addText, remove, reindex, settings, drop].find((m) => m.isError)?.error;
+  const failure = [upload, addUrl, addSitemap, addText, remove, reindex, settings, about, drop].find((m) => m.isError)?.error;
 
   const pick = (list: FileList | null) => {
     const files = Array.from(list ?? []);
@@ -144,6 +149,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         <h3 className="kb-title">{kb.name}</h3>
         <span className="muted small" data-testid="kb-counts">{kb.documents} documents · {kb.chunks} chunks</span>
         <span className="spacer" />
+        {builder && !editing && <button type="button" onClick={() => setEditing(true)}>Rename…</button>}
         {builder && (
           <button type="button" className="danger"
             onClick={async () => { if (await confirmDialog({ title: `Delete the knowledge base ${kb.name}?`, body: "Its documents and their search index are deleted too.", confirm: "Delete", danger: true })) drop.mutate(); }}>
@@ -151,7 +157,9 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
           </button>
         )}
       </div>
-      {kb.description && <p className="muted">{kb.description}</p>}
+      {editing ? (
+        <AboutForm kb={kb} saving={about.isPending} onSave={(patch) => about.mutate(patch)} onCancel={() => setEditing(false)} />
+      ) : kb.description && <p className="muted">{kb.description}</p>}
       <p className="small muted">
         Embeddings: {embeddingLabel(kb)} · Chunks: {chunkingLabel(kb)} · In a workflow: <code>{blockSnippet(kb.name)}</code>
       </p>
@@ -270,6 +278,38 @@ function Recrawl({ kb, base, builder, onChange }: { kb: KnowledgeBaseOut; base: 
       {kb.recrawl.sitemaps.length > 0 && <span className="muted">Sitemaps: {kb.recrawl.sitemaps.join(", ")}</span>}
       {error != null && <span className="error-box" role="alert">{errorText(error)}</span>}
     </div>
+  );
+}
+
+/** The name and description. A Search knowledge block finds the knowledge base by name, so a rename says so. */
+function AboutForm({ kb, saving, onSave, onCancel }: {
+  kb: KnowledgeBaseOut; saving: boolean; onSave: (patch: { name: string; description: string }) => void; onCancel: () => void;
+}) {
+  const [name, setName] = useState(kb.name);
+  const [description, setDescription] = useState(kb.description);
+  const next = suggestName(name);
+  return (
+    <form className="column gap kb-about" aria-label="name and description"
+      onSubmit={(e) => { e.preventDefault(); if (NAME_PATTERN.test(next)) onSave({ name: next, description: description.trim() }); }}>
+      <label className="column gap">
+        <span>Name</span>
+        <input aria-label="knowledge base name" value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      {next !== kb.name && NAME_PATTERN.test(next) && (
+        <span className="muted small" data-testid="kb-rename-hint">
+          Saved as {next}. Search knowledge blocks that name {kb.name} need the new name.
+        </span>
+      )}
+      <label className="column gap">
+        <span>Description</span>
+        <textarea aria-label="knowledge base description" rows={2} maxLength={2000} value={description}
+          onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <div className="row gap">
+        <button type="submit" className="primary" disabled={!NAME_PATTERN.test(next) || saving}>Save</button>
+        <button type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
   );
 }
 
