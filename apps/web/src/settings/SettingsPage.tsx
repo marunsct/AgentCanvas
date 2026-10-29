@@ -11,6 +11,7 @@ import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
 import { ModelDefaults } from "./ModelDefaults";
 import { OrgSettings } from "./OrgSettings";
+import { KnowledgeSettings } from "./KnowledgeSettings";
 import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettings } from "./SandboxSettings";
 import { SecretsSettings } from "./SecretsSettings";
@@ -30,6 +31,7 @@ export const SECTIONS: Section[] = [
   { id: "copilot", group: "Project", label: "Copilot", render: () => <CopilotSettings /> },
   { id: "secrets", group: "Project", label: "Secrets", render: () => <SecretsSettings /> },
   { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
+  { id: "knowledge", group: "Project", label: "Knowledge", render: () => <KnowledgeSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
   { id: "organisation", group: "Organisation", label: "General", render: () => <OrgSettings /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },

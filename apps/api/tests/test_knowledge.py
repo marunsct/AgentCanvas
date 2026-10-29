@@ -255,6 +255,23 @@ async def new_kb(api, name: str = "docs", **body) -> dict:
     return r.json()
 
 
+async def test_a_project_sets_the_chunking_new_knowledge_bases_start_with(api_client):
+    d = f"{P}/knowledge-defaults"
+    assert (await api_client.get(d)).json() == {"chunking": {"strategy": "markdown", "size": 800, "overlap": 100}}
+    fixed = {"strategy": "fixed", "size": 300, "overlap": 30}
+    assert (await api_client.put(d, json={"chunking": fixed})).json() == {"chunking": fixed}
+    assert (await api_client.get(d)).json() == {"chunking": fixed}
+    assert (await new_kb(api_client, "own"))["chunking"] == fixed  # a new one starts with the project's
+    explicit = {"strategy": "sentences", "size": 500, "overlap": 0}
+    assert (await new_kb(api_client, "named", chunking=explicit))["chunking"] == explicit  # one that says wins
+    sizes = {"own": 300, "named": 500}
+    assert {k["name"]: k["chunking"]["size"] for k in (await api_client.get(f"{P}/knowledge")).json()} == sizes
+    later = {"strategy": "paragraphs", "size": 1000, "overlap": 0}
+    assert (await api_client.put(d, json={"chunking": later})).status_code == 200
+    assert {k["name"]: k["chunking"]["size"] for k in (await api_client.get(f"{P}/knowledge")).json()} == sizes
+    assert (await api_client.put(d, json={"chunking": {"strategy": "fixed", "size": 5}})).status_code == 422
+
+
 async def test_concurrent_changes_each_bump_the_version(app, api_client):
     """Two changes made from stale copies both count: `version` is bumped in SQL, so no search cache keeps an index
     one of them made stale."""

@@ -2918,6 +2918,7 @@ export interface ApiSchemas {
   KnowledgeBaseIn?: KnowledgeBaseIn;
   KnowledgeBaseOut?: KnowledgeBaseOut;
   KnowledgeBasePatch?: KnowledgeBasePatch;
+  KnowledgeDefaults?: KnowledgeDefaults;
   LangSmithLink?: LangSmithLink;
   LayoutUpdate?: LayoutUpdate;
   LintItem?: LintItem;
@@ -5114,6 +5115,21 @@ export interface KnowledgeBasePatch {
   description?: Description12;
   embedding?: Embedding | null;
   name?: Name35;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "KnowledgeDefaults".
+ */
+export interface KnowledgeDefaults {
+  chunking?: Chunking1;
+}
+/**
+ * how new knowledge bases split their documents, unless they say
+ */
+export interface Chunking1 {
+  overlap?: Overlap;
+  size?: Size;
+  strategy?: Strategy;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

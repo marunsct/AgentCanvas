@@ -5902,6 +5902,16 @@
         "title": "KnowledgeBasePatch",
         "type": "object"
       },
+      "KnowledgeDefaults": {
+        "properties": {
+          "chunking": {
+            "$ref": "#/components/schemas/Chunking",
+            "description": "how new knowledge bases split their documents, unless they say"
+          }
+        },
+        "title": "KnowledgeDefaults",
+        "type": "object"
+      },
       "LangSmithLink": {
         "properties": {
           "dataset_id": {
@@ -20763,6 +20773,146 @@
           }
         ],
         "summary": "Create Knowledge Base",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge-defaults": {
+      "get": {
+        "description": "What a new knowledge base uses when it names no chunking (Settings > Knowledge).",
+        "operationId": "get_knowledge_defaults_v1_projects__project_id__knowledge_defaults_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeDefaults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Knowledge Defaults",
+        "tags": [
+          "knowledge"
+        ]
+      },
+      "put": {
+        "description": "Set the chunking new knowledge bases start with. Existing ones keep theirs.",
+        "operationId": "put_knowledge_defaults_v1_projects__project_id__knowledge_defaults_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeDefaults"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeDefaults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Knowledge Defaults",
         "tags": [
           "knowledge"
         ]

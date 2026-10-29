@@ -51,7 +51,8 @@ agent (see [Agents and connectors](agents-and-connectors.md)).
 
 ## Chunking and embeddings
 
-Documents are split into **chunks** of about the size you choose (800 characters by default):
+Documents are split into **chunks** of about the size you choose (800 characters by default; a project can set
+other defaults for its new knowledge bases under **Settings › Knowledge**):
 
 - **By heading** (default): a chunk stays under one Markdown heading and remembers it.
 - **By paragraph**, **by sentence**, or **fixed size** windows that overlap.

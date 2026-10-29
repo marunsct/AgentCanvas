@@ -71,6 +71,21 @@ class RecrawlOut(BaseModel):
     last: RecrawlResult | None
 
 
+class KnowledgeDefaults(BaseModel):
+    chunking: Chunking = Field(
+        default_factory=Chunking, description="how new knowledge bases split their documents, unless they say"
+    )
+
+
+KEY = "knowledge_defaults"  # in the project's settings: {"chunking": {...}}
+
+
+def project_chunking(project_settings: dict) -> Chunking | None:
+    """The project's chunking for new knowledge bases, or None when it has set none (the built-in one applies)."""
+    raw = (project_settings.get(KEY) or {}).get("chunking")
+    return Chunking.model_validate(raw) if isinstance(raw, dict) else None
+
+
 class KnowledgeBaseOut(BaseModel):
     id: str
     project_id: str
@@ -208,11 +223,29 @@ async def create_knowledge_base(
             embedding = Embedding(model=own)  # the project's embedding model (Settings > Models)
         embedding = _on_project_server(embedding, project_settings)
         kb = await s.create(
-            project_id, body.name, description=body.description, embedding=embedding, chunking=body.chunking,
-            user_id=user.id,
+            project_id, body.name, description=body.description, embedding=embedding,
+            chunking=body.chunking or project_chunking(project_settings), user_id=user.id,
         )  # fmt: skip
     note(request, knowledge_base=kb.name)
     return await _full(s, kb)
+
+
+@router.get("/projects/{project_id}/knowledge-defaults", response_model=KnowledgeDefaults)
+async def get_knowledge_defaults(project_id: str, s: KnowledgeService = Depends(svc)) -> KnowledgeDefaults:
+    """What a new knowledge base uses when it names no chunking (Settings > Knowledge)."""
+    return KnowledgeDefaults(chunking=project_chunking(await _project_settings(s, project_id)) or Chunking())
+
+
+@router.put("/projects/{project_id}/knowledge-defaults", response_model=KnowledgeDefaults)
+async def put_knowledge_defaults(
+    project_id: str, body: KnowledgeDefaults, request: Request, s: KnowledgeService = Depends(svc)
+) -> KnowledgeDefaults:
+    """Set the chunking new knowledge bases start with. Existing ones keep theirs."""
+    project = await ProjectRepo(s.s).require(project_id)
+    project.settings = {**(project.settings or {}), KEY: {"chunking": body.chunking.model_dump()}}
+    await s.s.commit()
+    note(request, target=f"project_id={project_id}", **body.chunking.model_dump())
+    return body
 
 
 @router.get("/knowledge/{kb_id}", response_model=KnowledgeBaseOut)
