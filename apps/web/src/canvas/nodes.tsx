@@ -2,6 +2,7 @@
 import { Handle, type Node, type NodeProps, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { memo, type MouseEvent, type KeyboardEvent, useEffect, useRef } from "react";
 import type { NodeManifest } from "../api/types";
+import { PeerMarks } from "../editor/PresenceBar";
 import { useUi } from "../editor/ui";
 import { type PortHelp, portHelp, typeName } from "../help/glossary";
 import { rememberOpener } from "./focus";
@@ -106,6 +107,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
     >
       <Handle type="target" id="in" position={Position.Left} className="h-flow" style={{ top: 20 }} />
       <PortTip help={portHelp(m, undefined, "in")} side="in flow-in" />
+      <PeerMarks id={id} />
       <header>
         <span className="icon">{ICONS[m?.icon ?? "box"] ?? "▪"}</span>
         <span className="title" title={blockTitle(m, data.type)}>{data.label}</span>
@@ -149,6 +151,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data, selected }: N
     <div className={`resource${selected ? " selected" : ""}${inputs.length ? " with-inputs" : ""}${data.diff ? ` diff-${data.diff}` : ""}`}
       style={{ borderColor: PORT_COLORS[out?.type ?? ""] ?? "#94a3b8" }} data-testid={`node-${data.name}`}
       role="group" aria-label={`${data.name} (${data.type})`}>
+      <PeerMarks id={id} />
       <div className="resource-head">
         <span className="icon">{ICONS[data.manifest?.icon ?? "box"] ?? "▪"}</span>
         <span className="title" title={blockTitle(data.manifest, data.type)}>{data.name}</span>

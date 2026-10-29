@@ -332,6 +332,21 @@ class RunSearch(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class Presence(Base):
+    """G-4: a tab of the editor that has a workflow open (a session), refreshed by its heartbeat. Rows older than the
+    TTL (`services/presence.py`) are not shown and are deleted by later heartbeats; the workflow's deletion takes
+    them with it."""
+
+    __tablename__ = "presence"
+    __table_args__ = (Index("presence_seen_idx", "workflow_id", "seen_at"),)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(Text)
+    selected: Mapped[str | None] = mapped_column(Text)  # the block (node or resource id) the tab has selected
+    version: Mapped[int | None] = mapped_column(Integer)  # the workflow version the tab has
+    seen_at: Mapped[datetime] = _now()
+
+
 class InterruptTask(Base):
     __tablename__ = "interrupt_task"
     __table_args__ = (

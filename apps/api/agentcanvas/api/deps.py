@@ -191,6 +191,8 @@ ROLE_EXCEPTIONS = {
     ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server
     ("DELETE", "/projects/{project_id}/trace-export"): "admin",
     ("GET", "/deployments/{dep_id}/share"): "builder",  # the link is a capability: builders hand it out (S23)
+    ("POST", "/workflows/{wf_id}/presence"): "viewer",  # anyone who has the editor open is shown as being here (G-4)
+    ("DELETE", "/workflows/{wf_id}/presence/{session_id}"): "viewer",
     ("POST", "/knowledge/{kb_id}/search"): "viewer",
     ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
     ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)

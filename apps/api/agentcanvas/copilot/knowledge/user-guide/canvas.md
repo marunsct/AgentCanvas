@@ -85,6 +85,21 @@ or month budget by no more than one model call each.
   are copied in and output channels copied back. Double-click to work inside it.
 - **▭ Frame** draws a labelled box around the selected steps. It is purely visual.
 
+## Who else is here
+
+When someone else has the same workflow open, round avatars with their initials appear in the top bar (hover for the
+name and the block they are selecting; click to jump to that block), and a small coloured badge marks the block each
+person has selected on the canvas. The same person in two tabs counts once. Viewers show up too.
+
+Presence only tells you who is here: there is no live co-editing. Edits are still saved one batch at a time against
+the version you loaded, and if someone else saved first the editor reloads the latest version and puts your edits on
+top, as before. When another person's tab reports a newer version than yours, a notice says *Ada saved a newer
+version (v7; you have v6)* with an **Update** button, so you see their change before you make a conflicting one.
+
+Presence needs no setup: each open editor sends a heartbeat every ten seconds and listens on a small event stream,
+and a tab that closes or stops beating disappears after 30 seconds. It works across several API servers because the
+state is kept in the database.
+
 ## Problems
 
 The Problems dock validates the workflow continuously. Codes starting with **E** are errors (the workflow can't

@@ -34,6 +34,7 @@ from agentcanvas.api.v1 import (
     online,
     org,
     playground,
+    presence,
     projects,
     protocols,
     runs,
@@ -77,6 +78,7 @@ signed_in.include_router(gitsync.router)
 signed_in.include_router(datasets.router)
 signed_in.include_router(evaluators.router)
 signed_in.include_router(experiments.router)
+signed_in.include_router(presence.router)
 signed_in.include_router(finetune.router)
 signed_in.include_router(gates.router)
 signed_in.include_router(online.router)

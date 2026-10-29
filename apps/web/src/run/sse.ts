@@ -50,3 +50,29 @@ export async function postStream(
     signal?.removeEventListener("abort", stop);
   }
 }
+
+/** GET + read a Server-Sent-Events stream whose messages are JSON (the presence channel): the same reader as
+ * `postStream`, for a stream that is not a run. Resolves when the connection closes or `signal` aborts. */
+export async function getStream<T>(path: string, onMessage: (m: T) => void, signal?: AbortSignal): Promise<void> {
+  const res = await authFetch(`${API_BASE}${path}`, { headers: { accept: "text/event-stream" }, signal });
+  if (!res.ok || !res.body) throw await failed(res);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  const stop = () => void reader.cancel().catch(() => undefined);
+  signal?.addEventListener("abort", stop, { once: true });
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done || signal?.aborted) break;
+      buffer += value;
+      let sep: RegExpExecArray | null;
+      while ((sep = /\r?\n\r?\n/.exec(buffer))) {
+        const message = buffer.slice(0, sep.index);
+        buffer = buffer.slice(sep.index + sep[0].length);
+        for (const e of parseMessage(message)) onMessage(e as unknown as T);
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", stop);
+  }
+}

@@ -122,6 +122,7 @@ CHILD_PARAMS = {
     "file_id": "an uploaded file looked up within {project_id}",
     "token": "a share link's token: public visitor routes, the token is the capability (S23)",
     "page": "a page of the user guide shipped with the server, the same for every organisation",
+    "session_id": "an editor tab of {wf_id} (G-4): only the caller's own rows of that workflow are removed",
 }
 
 

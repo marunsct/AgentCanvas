@@ -34,6 +34,7 @@ SKIP = {
     "/v1/deployments/{dep_id}/a2a/.well-known/agent.json",
     "/v1/runs/{run_id}/events",
     "/v1/projects/{project_id}/events",
+    "/v1/workflows/{wf_id}/presence/stream",  # a stream; tests/test_presence.py checks it stays in the organisation
 }
 VALUE = re.compile(r"^[A-Za-z0-9_.:/@-]{1,80}$")
 HINTS = {  # parameters whose values are not ids with a prefix

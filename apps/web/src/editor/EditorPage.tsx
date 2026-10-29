@@ -24,6 +24,8 @@ import { CommandPalette } from "./CommandPalette";
 import { runErrorHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
 import { FrameworkBadges } from "./Frameworks";
+import { NewerVersionNotice, PresenceBar } from "./PresenceBar";
+import { usePresenceChannel } from "./presence";
 import { MoreMenu } from "./MoreMenu";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
@@ -64,6 +66,7 @@ export function EditorPage() {
   useEffect(() => { if (copilotRequest) setTab("copilot"); }, [copilotRequest]);
 
   useEffect(() => () => { stopStreaming(); stopCopilotStream(); }, []); // leaving the editor: stop reading streams
+  usePresenceChannel(id); // G-4: tell the others this workflow is open here, and hear who else has it
 
 /* oxlint-disable react-hooks/exhaustive-deps -- runs when the workflow id changes, not on every search-param change */
   useEffect(() => {
@@ -130,6 +133,7 @@ export function EditorPage() {
           ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
           : <span className="save-state" data-testid="view-only" title={`your role is ${role}`}>View only</span>}
         <FrameworkBadges />
+        <PresenceBar />
         <span className="spacer" />
         <div className="toolbar-group" role="group" aria-label="Editor mode">
           <button type="button" className={simple ? "active" : ""} aria-pressed={simple} data-testid="simple-toggle"
@@ -159,6 +163,7 @@ export function EditorPage() {
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
         <PersonMenu />
       </header>
+      <NewerVersionNotice />
       {notice && (
         <div className={`toast ${notice.kind}`} role="status">
           {notice.text}{notice.kind === "error" && <HelpText help={runErrorHelp(notice.text)} className="run-hint" />}

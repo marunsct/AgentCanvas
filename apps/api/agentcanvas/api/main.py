@@ -56,6 +56,7 @@ from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedde
 from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.org_settings import OrgSettingsCache
+from agentcanvas.services.presence import PresenceHub
 from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
@@ -236,6 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db, knowledge_embedder(adapter), lambda project_id: app.state.projects.secrets.get(project_id, {})
             )
             runner.finish_hooks.append(app.state.run_search.on_run_finished)
+            app.state.presence = PresenceHub(db)  # G-4: who has a workflow open
             app.state.trace_export = TraceExportHook(db, app.state.projects)
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
