@@ -299,8 +299,9 @@ export const useCopilot = create<CopilotState>((set, get) => ({
       editor.dispatch(commands);
       await editor.flush();
       const after = useEditor.getState();
-      // refused (error), not allowed (view only) or lost to someone else's save (conflict): not accepted
-      if (after.notice || after.version === before) return;
+      // refused (error), not allowed (view only: nothing saved) or no longer fitting someone else's save: not
+      // accepted. An info notice is not a failure: after a conflict the edits are saved on the latest version
+      if (after.notice?.kind === "error" || after.version === before) return;
     }
     set({ ghost: null, selection: null });
     const sorted = (s: Set<number>) => [...s].sort((a, b) => a - b);
