@@ -140,6 +140,10 @@ def rubric_scores(h: Any) -> list[RunScore]:
     return out
 
 
+RUNNING_BYTES = 64 * 1024 * 1024  # a running run's events in memory before its oldest text deltas are emptied
+KEEP_RECENT = 100  # events at the end that are never emptied
+
+
 def _without_secrets(text: str) -> str:
     """`text` with every project secret masked (the values traces are masked with)."""
     values = sorted({v for v in masking.provider() if len(v) >= 6}, key=len, reverse=True)
@@ -517,6 +521,8 @@ class Runner:
         event = {**event, "seq": len(h.events) + 1}
         h.events.append(event)
         h.size += len(json.dumps(event, default=str))
+        if h.size > RUNNING_BYTES:
+            self._trim(h)
         h.event_times.append(time.time_ns())
         async with h.changed:
             h.changed.notify_all()
@@ -807,10 +813,23 @@ class Runner:
                          "limit_usd": limit, "message": message}  # fmt: skip
                 await self._emit(h, {"type": "CUSTOM", "name": "ac.cost_alert", "value": value})
 
+    @staticmethod
+    def _trim(h: RunHandle) -> None:
+        """A run going on for hours keeps every token delta for late subscribers: past RUNNING_BYTES the oldest
+        deltas are emptied in place (their numbers stay, so `after=` still works; the full text is in the run's
+        final events and its checkpoint) (R-8)."""
+        for i, ev in enumerate(h.events[:-KEEP_RECENT]):  # the newest stay whole, whatever the size
+            if h.size <= RUNNING_BYTES * 3 // 4:
+                break
+            if ev.get("type") == "TEXT_MESSAGE_CONTENT" and ev.get("delta"):
+                before = len(json.dumps(ev, default=str))
+                h.events[i] = {**ev, "delta": "", "trimmed": True}
+                h.size -= before - len(json.dumps(h.events[i], default=str))
+
     def _evict(self) -> None:
         """Forget the oldest finished runs beyond `keep_finished` and `keep_bytes` of events (running ones stay)."""
         finished = [rid for rid, h in self.handles.items() if h.done.is_set()]
-        for rid in finished[: max(0, len(self.handles) - self._keep)]:
+        for rid in finished[: max(0, len(finished) - self._keep)]:  # running runs do not count (R-8)
             self.handles.pop(rid, None)
         total = sum(h.size for h in self.handles.values() if h.done.is_set())
         for rid in [rid for rid, h in self.handles.items() if h.done.is_set()]:
@@ -858,7 +877,10 @@ class Runner:
         self.draining = True
         running = [h for h in self.handles.values() if h.task and not h.done.is_set()]
         if running and grace_s > 0:
-            await asyncio.wait([asyncio.ensure_future(h.done.wait()) for h in running], timeout=grace_s)
+            waiters = [asyncio.ensure_future(h.done.wait()) for h in running]
+            _, pending = await asyncio.wait(waiters, timeout=grace_s)
+            for w in pending:  # runs that did not finish in time: their waiters would otherwise outlive the loop
+                w.cancel()
         left = [h for h in running if self._stoppable(h)]
         for h in left:
             h.drained = True

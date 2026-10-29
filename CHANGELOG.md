@@ -62,6 +62,10 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- With many runs going at once, a run that had just finished was forgotten straight away (running runs counted
+  against the finished ones a server keeps), so a client attaching to it a moment later got 404. A run going on for
+  hours no longer keeps every streamed token in memory: past 64 MB its oldest text pieces are emptied, and a server
+  restart no longer leaves waiting tasks behind (HARDENING R-8).
 - Two servers starting the same new caller-named conversation at once answered the second with a server error; it is
   the same 409 ("already has an active run") as two starts on one server (HARDENING R-6).
 - CrewAI, Google ADK, Mastra, OpenAI Agents SDK, the flow-engine frameworks and single-agent exports wrote a model

@@ -165,3 +165,38 @@ async def test_an_error_before_the_adapter_runs_does_not_show_a_secret(app, api_
     await asyncio.wait_for(h.done.wait(), 10)
     [err] = [e for e in h.events if e["type"] == "RUN_ERROR"]
     assert "sk-live-0123456789" not in err["message"] and "401 from" in err["message"]
+
+
+def test_running_runs_do_not_push_finished_ones_out(app):
+    """R-8: eviction counted running runs against the finished ones it may keep, so with many runs going a run that
+    had just finished was forgotten at once and a client attaching a moment later got 404."""
+    from agentcanvas.runtime.runner import RunHandle
+
+    runner = app.state.runner
+    monkey_keep, runner._keep = runner._keep, 2
+    try:
+        running = [RunHandle(run_id=f"run_r{i}", thread_id=f"th_r{i}", workflow_id="wf") for i in range(3)]
+        finished = [RunHandle(run_id=f"run_f{i}", thread_id=f"th_f{i}", workflow_id="wf") for i in range(2)]
+        for h in finished:
+            h.done.set()
+        for h in [*running, *finished]:
+            runner.handles[h.run_id] = h
+        runner._evict()
+        assert all(h.run_id in runner.handles for h in finished)
+    finally:
+        runner._keep = monkey_keep
+        for rid in [k for k in runner.handles if k.startswith(("run_r", "run_f"))]:
+            runner.handles.pop(rid)
+
+
+async def test_a_long_runs_oldest_text_is_trimmed_but_its_numbers_stay(app, monkeypatch):
+    from agentcanvas.runtime import runner as runner_module
+    from agentcanvas.runtime.runner import RunHandle
+
+    monkeypatch.setattr(runner_module, "RUNNING_BYTES", 20_000)
+    h = RunHandle(run_id="run_long", thread_id="th_long", workflow_id="wf")
+    for _ in range(400):
+        await app.state.runner._emit(h, {"type": "TEXT_MESSAGE_CONTENT", "delta": "x" * 100})
+    untrimmed = 400 * len('{"type": "TEXT_MESSAGE_CONTENT", "delta": "' + "x" * 100 + '", "seq": 400}')
+    assert h.size < untrimmed * 0.7 and [e["seq"] for e in h.events] == list(range(1, 401))
+    assert h.events[0]["delta"] == "" and all(e["delta"] == "x" * 100 for e in h.events[-100:])  # newest whole
