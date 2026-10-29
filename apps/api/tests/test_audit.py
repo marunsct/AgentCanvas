@@ -115,7 +115,7 @@ async def test_the_audit_log_filters_by_time(api_client):
 
 async def test_the_audit_target_filter_matches_its_text_literally(api_client):
     """C-11: `%` and `_` in the target filter are characters, not LIKE patterns that match everything."""
-    await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "x"})
+    await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "audit-value"})
     assert await log(api_client, target="AUDIT_T")
     assert await log(api_client, target="%") == []
     assert await log(api_client, target="AUDIT__") == []

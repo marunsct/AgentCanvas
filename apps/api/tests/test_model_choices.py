@@ -65,9 +65,8 @@ async def test_a_local_server_is_asked_at_the_projects_address(api_client, serve
 
 
 async def test_a_knowledge_base_reaches_an_embedding_model_on_the_projects_server(api_client, servers):
-    await api_client.put(
-        f"{P}/setup", json={"model": "lmstudio:openai/gpt-oss-20b", "base_url": "http://gpu:1234/v1", "api_key": "lm-k"}
-    )
+    setup = {"model": "lmstudio:openai/gpt-oss-20b", "base_url": "http://gpu:1234/v1", "api_key": "lm-key-1"}
+    await api_client.put(f"{P}/setup", json=setup)
     model = "lmstudio:text-embedding-nomic-embed-text-v1.5"
     kb = (await api_client.post(f"{P}/knowledge", json={"name": "near", "embedding": {"model": model}})).json()
     assert kb["embedding"] == {"model": model, "base_url": "http://gpu:1234/v1",
