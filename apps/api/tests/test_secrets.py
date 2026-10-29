@@ -168,3 +168,22 @@ async def test_secret_names_are_variable_safe(api_client):
     for name in ("9LIVES", "A.B", "A%20B"):
         assert (await api_client.put(f"{P}/secrets/{name}", json={"value": "x"})).status_code == 422, name
     assert (await api_client.delete(f"{P}/secrets/9LIVES")).status_code == 422
+
+
+def test_a_secret_is_masked_in_its_encoded_forms_too():
+    """S-9: a provider error can echo a key base64- or URL-encoded; those forms were not masked."""
+    import base64
+    from urllib.parse import quote
+
+    from agentcanvas.services.secrets import hide_secrets, redact
+
+    key = "sk-live/ab+cd=ef"
+    b64, url = base64.b64encode(key.encode()).decode(), quote(key, safe="")
+    said = f"auth {b64} url={url} raw={key}"
+    for out in (redact(said, [key]), str(hide_secrets({"error": said}, {"K": key}))):
+        assert key not in out and b64 not in out and url not in out, out
+
+
+async def test_a_secret_too_short_to_hide_is_refused(api_client):
+    r = await api_client.put(f"{P}/secrets/PIN", json={"value": "1234"})
+    assert r.status_code == 422 and "6 characters" in r.json()["detail"]

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import functools
 import hashlib
 import json
 import re
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote, quote_plus
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import delete, select, update
@@ -52,8 +54,8 @@ class SecretService:
     async def put(self, project_id: str, name: str, value: str, user_id: str | None) -> None:
         if not NAME.match(name):
             raise InvalidInput("secret names are UPPER_SNAKE_CASE, e.g. OPENAI_API_KEY")
-        if not value:
-            raise InvalidInput("a secret needs a value")
+        if len(value) < MIN_SECRET:  # it could not be masked where a run's output shows it
+            raise InvalidInput(f"a secret needs at least {MIN_SECRET} characters, so outputs can hide it")
         f = await self.keys.fernet(self.s, await _org_of(self.s, project_id))
         token = f.encrypt(value.encode())
         row = await self.s.scalar(select(Secret).where(Secret.project_id == project_id, Secret.name == name))
@@ -177,20 +179,41 @@ async def migrate_legacy(session: AsyncSession, keyring: Keyring) -> int:
 def hide_secrets(payload: Any, secrets: dict[str, str]) -> Any:
     """`payload` with every secret value (6+ characters) masked: state a run wrote can hold a value a tool or
     script read, and thread state, history and explanations return it (S12)."""
-    return hide_values(payload, sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True))
+    return hide_values(payload, [v for v in secrets.values() if len(v) >= MIN_SECRET])
+
+
+MIN_SECRET = 6  # shorter values cannot be masked in outputs without masking ordinary text too
+
+
+@functools.lru_cache(maxsize=4096)
+def encoded_forms(value: str) -> tuple[str, ...]:
+    """A secret as it may appear in an output: as is, base64 (standard and URL-safe, with or without padding),
+    URL-encoded, and JSON-escaped. A provider's error can echo a key in any of these (S-9)."""
+    raw = value.encode()
+    forms = {
+        value, base64.b64encode(raw).decode(), base64.b64encode(raw).decode().rstrip("="),
+        base64.urlsafe_b64encode(raw).decode().rstrip("="), quote(value, safe=""), quote_plus(value),
+        json.dumps(value)[1:-1],
+    }  # fmt: skip
+    return tuple(sorted((f for f in forms if len(f) >= MIN_SECRET), key=len, reverse=True))
+
+
+def _all_forms(values: list[str]) -> list[str]:
+    return sorted({f for v in values for f in encoded_forms(v)}, key=len, reverse=True)
 
 
 def hide_values(payload: Any, values: list[str]) -> Any:
-    """`payload` as JSON values with each of `values` (longest first) masked inside its strings. Masking the
-    strings, not the JSON text, also finds values with characters JSON escapes (quotes, backslashes, newlines)."""
+    """`payload` as JSON values with each of `values` (longest first, and their encoded forms) masked inside its
+    strings. Masking the strings, not the JSON text, also finds values with characters JSON escapes."""
     if not values:
         return payload
+    values = _all_forms(values)
     plain = json.loads(json.dumps(payload, default=str))
     masked = mask_strings(plain, values)
     return payload if masked == plain else masked
 
 
 def redact(text: str, values: list[str]) -> str:
-    for v in values:
+    for v in _all_forms(values):
         text = text.replace(v, "***")
     return text

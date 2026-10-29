@@ -85,8 +85,8 @@ def score_lead(state: dict, cfg: dict) -> dict:
 ## Secrets
 
 Store API keys and passwords in **Settings › Secrets** (**Save secret**; the Workspace page links there). Names are
-`UPPER_SNAKE_CASE`. Secrets are encrypted at rest, can't be read back through the API, and are masked as `***` in
-run events and traces.
+`UPPER_SNAKE_CASE`, values at least 6 characters. Secrets are encrypted at rest, can't be read back through the API,
+and are masked as `***` in run events, traces and error messages, also when they appear base64- or URL-encoded.
 
 - In widget settings: `{"$secret": "NAME"}`, e.g. an HTTP tool's header. A AI model block's **API key** field lets you
   pick a secret by name; a secret named after the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`…) is used by that

@@ -108,7 +108,7 @@ async def test_publish_refused_by_the_checklist(api_client):
     await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
     r = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
     assert r.status_code == 422 and "secrets: missing: CRM_TOKEN" in r.json()["detail"]
-    await api_client.put(f"{P}/secrets/CRM_TOKEN", json={"value": "t"})
+    await api_client.put(f"{P}/secrets/CRM_TOKEN", json={"value": "crm-token-1"})
     ok = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
     assert ok.status_code == 200, ok.text
 

@@ -12,6 +12,13 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### One decrypted secrets cache per API process stays (S-9)
+The review asked to decrypt secrets per project with a short lifetime instead of keeping every organisation's values
+in one process-wide dictionary. I did not: code that runs inside the API process can already read the KMS key and the
+database URL, so splitting the cache would not stop it, and the real defences are elsewhere (workspace code runs in
+the sandbox, which staging and production now require, S-8). The masking side of the item is done (encoded forms,
+a 6-character minimum). *Reverse:* make `SecretCache` load on first use per project with a TTL.
+
 ### HARDENING.md rewritten as an open list; the "Done" table is gone
 The deep review of 2026-10-29 (seven read-only passes over run-time, control plane, security, web, Copilot and
 evaluation, adapters and exports, docs and completeness, plus a check of MCP 2026-07-28, A2A 1.0, the Anthropic and

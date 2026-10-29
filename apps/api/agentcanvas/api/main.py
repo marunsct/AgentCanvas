@@ -54,7 +54,7 @@ from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.run_gate import RunGate
-from agentcanvas.services.secrets import SecretCache
+from agentcanvas.services.secrets import SecretCache, encoded_forms
 from agentcanvas.services.trace_export import TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -153,7 +153,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
             app.state.keyring = Keyring.from_settings(settings)
-            masking.provider = lambda: (v for values in app.state.projects.secrets.values() for v in values.values())
+            masking.provider = lambda: (  # traces: each secret and its encoded forms (S-9)
+                f for values in app.state.projects.secrets.values() for v in values.values() for f in encoded_forms(v)
+            )
             masking.install_langsmith()
             # decrypted at startup, reloaded when another instance changed them (each project's secrets_version)
             app.state.secrets = SecretCache(db, lambda: app.state.keyring, app.state.projects.secrets)

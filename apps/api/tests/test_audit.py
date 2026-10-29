@@ -98,7 +98,7 @@ async def test_mutations_without_an_id_in_the_path_name_their_target(api_client)
 async def test_the_audit_log_filters_by_time(api_client):
     from datetime import UTC, datetime, timedelta
 
-    await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "x"})
+    await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "audit-secret"})
     now = datetime.now(UTC)
     recent = await api_client.get("/v1/org/audit", params={"since": (now - timedelta(minutes=5)).isoformat()})
     assert any(e["action"] == "put_secret" for e in recent.json())

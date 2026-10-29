@@ -45,7 +45,7 @@ async def test_delete_a_project_with_everything_in_it(app, api_client, settings)
     assert (
         await api_client.put(f"/v1/projects/{pid}/files/scripts/mine.py", json={"content": "x = 1\n"})
     ).status_code < 300
-    assert (await api_client.put(f"/v1/projects/{pid}/secrets/TOKEN", json={"value": "v"})).status_code < 300
+    assert (await api_client.put(f"/v1/projects/{pid}/secrets/TOKEN", json={"value": "value-1"})).status_code < 300
     folder = Path(settings.workspaces_dir) / pid
     assert folder.is_dir()
 

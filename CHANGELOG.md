@@ -8,6 +8,9 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- A secret that a provider's error echoed base64- or URL-encoded (or JSON-escaped) was not masked, and a secret
+  under 6 characters was never masked at all. Every encoded form is masked now, in run events, traces and error
+  messages, and a secret needs at least 6 characters (HARDENING S-9).
 - The egress proxy forwarded a sandbox's own `Host` header (reaching another site on an allowed address) and hop-by-
   hop headers, accepted a request framed both by `Content-Length` and `Transfer-Encoding`, and honoured a call's
   credential for a minute past its time limit. It now names the checked host, drops hop-by-hop headers, refuses
