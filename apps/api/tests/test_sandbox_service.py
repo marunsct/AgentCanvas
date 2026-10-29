@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import os
 import tarfile
 
 import httpx
@@ -136,3 +138,39 @@ async def test_the_service_rejects_a_bad_workspace(remote):
         assert (await c.post("/run", json={**body, "import_path": "../../etc:x"})).status_code == 422
         assert (await c.get("/healthz")).json() == {"status": "ok"}
         assert (await c.get("/docs")).status_code == 404
+
+
+async def test_a_call_whose_caller_went_away_stops_its_code(remote, tmp_path):
+    """The API cancelled its run and dropped the connection: the service notices and stops the code, rather than
+    leaving it to its time limit with nobody waiting."""
+    import json
+
+    *_, ws, _, service = remote
+    pid_file = tmp_path / "pid"
+    (ws / "scripts" / "sleepy.py").write_text(
+        f"import os, pathlib, time\ndef run(state):\n    pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        "    time.sleep(60)\n"
+    )
+    body = json.dumps({"import_path": "scripts.sleepy:run", "payload": {"state": {}},
+                       "workspace": base64.b64encode(pack_workspace(ws)).decode()}).encode()  # fmt: skip
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST", "path": "/run",
+             "raw_path": b"/run", "query_string": b"", "scheme": "http", "server": ("sandbox", 80),
+             "headers": [(b"authorization", f"Bearer {TOKEN}".encode()),
+                         (b"content-type", b"application/json")]}  # fmt: skip
+    sent = False
+
+    async def receive():
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        while not pid_file.exists():  # the caller hangs up once the code is running
+            await asyncio.sleep(0.05)
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        pass
+
+    await asyncio.wait_for(service(scope, receive, send), 20)
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)

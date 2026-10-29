@@ -149,15 +149,23 @@ async def _exchange(
     try:
         out, err = await asyncio.wait_for(proc.communicate(json.dumps(payload).encode()), timeout)
     except TimeoutError:
+        await _stop(proc, mode, name)
+        raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
+    except BaseException:  # the run was cancelled (or its time budget ran out): its code must not live on
+        await asyncio.shield(_stop(proc, mode, name))
+        raise
+    return _parse(import_path, out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode)
+
+
+async def _stop(proc: asyncio.subprocess.Process, mode: str, name: str) -> None:
+    if proc.returncode is None:
         proc.kill()
         await proc.wait()
-        if mode == "docker":  # killing the client leaves the container running: stop the container itself
-            killer = await asyncio.create_subprocess_exec(
-                "docker", "kill", name, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-            )
-            await killer.wait()
-        raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
-    return _parse(import_path, out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode)
+    if mode == "docker":  # killing the client leaves the container running: stop the container itself
+        killer = await asyncio.create_subprocess_exec(
+            "docker", "kill", name, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+        await killer.wait()
 
 
 async def run_in_sandbox(

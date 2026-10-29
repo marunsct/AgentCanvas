@@ -98,6 +98,9 @@ class RunIn(BaseModel):
     )  # fmt: skip
 
 
+DISCONNECT_POLL_S = 0.5  # how soon a call whose caller went away is stopped
+
+
 def create_service(token: str | None = None, run: Callable[..., Any] = _exchange) -> FastAPI:
     secret = token if token is not None else os.environ.get("AGENTCANVAS_SANDBOX_TOKEN", "")
     if len(secret) < 16:
@@ -117,8 +120,9 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
         return {"status": "ok"}
 
     @app.post("/run", dependencies=[Depends(authorised)])
-    async def run_script(body: RunIn) -> dict[str, Any]:
-        """The child's result (`{"ok": true, "update": …}`), or `{"ok": false, "error": …, "timeout": bool}`."""
+    async def run_script(body: RunIn, request: Request) -> dict[str, Any]:
+        """The child's result (`{"ok": true, "update": …}`), or `{"ok": false, "error": …, "timeout": bool}`.
+        When the API stops waiting (its run was cancelled), the code is stopped too."""
         try:
             packed = base64.b64decode(body.workspace, validate=True)
             if len(packed) > MAX_WORKSPACE_BYTES:
@@ -127,21 +131,30 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
             raise HTTPException(422, str(exc)) from None
         async with slots:
             work = Path(tempfile.mkdtemp(prefix="ac-run-"))
+            job: asyncio.Future[Any] | None = None
             try:
                 try:
                     await asyncio.to_thread(unpack_workspace, packed, work)
                 except (ValueError, tarfile.TarError, OSError) as exc:
                     raise HTTPException(422, f"bad workspace: {exc}") from None
+                job = running = asyncio.ensure_future(run(
+                    "subprocess", work, body.import_path, body.payload, "", body.timeout_s, body.memory_mb,
+                    body.egress_proxy,
+                ))  # fmt: skip
                 try:
-                    return await run(
-                        "subprocess", work, body.import_path, body.payload, "", body.timeout_s, body.memory_mb,
-                        body.egress_proxy,
-                    )  # fmt: skip
+                    while not running.done():
+                        await asyncio.wait([running], timeout=DISCONNECT_POLL_S)
+                        if not running.done() and await request.is_disconnected():
+                            raise HTTPException(499, "the caller went away")
+                    return running.result()
                 except TimeoutError:
                     return {"ok": False, "timeout": True, "error": f"ran longer than {body.timeout_s:g} s"}
                 except ScriptError as exc:
                     return {"ok": False, "error": str(exc)}
             finally:
+                if job is not None and not job.done():  # the caller went away, or this handler was cancelled
+                    job.cancel()  # `_exchange` kills the child on the way out
+                    await asyncio.gather(job, return_exceptions=True)
                 shutil.rmtree(work, ignore_errors=True)
 
     return app

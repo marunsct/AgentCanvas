@@ -5,6 +5,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **Workspace code kept running after its run was cancelled**: a cancelled run, or one that ran out of its time
+  budget, left its script process (or Docker container) running with nobody waiting for it, and the sandbox service
+  let a call its caller had dropped run to its time limit. The code now stops with the run, on every sandbox mode
+  (HARDENING R-2).
 - **Clicking Cancel twice (or a server restart, or another server taking a stalled run over) could leave a
   conversation stuck as "running"**: the second stop landed while the run was saving its outcome, cut the save
   short, and the next message on that conversation was refused with 409 for a minute. A run that is saving itself is

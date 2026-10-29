@@ -313,3 +313,27 @@ async def test_network_rules_in_a_mode_without_a_network_are_reported_once(tmp_p
         await runner("h:f")({})
     warned = [e for e in logs if e["event"] == "sandbox.egress_not_enforced"]
     assert len(warned) == 1 and warned[0]["mode"] == "subprocess"
+
+
+async def test_a_cancelled_call_stops_its_code(tmp_path):
+    """A run cancelled (or out of time budget) while workspace code runs: the code stops with it, it does not live
+    on with nobody waiting for it."""
+    from agentcanvas.sandbox.runners import run_in_sandbox
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "sleepy.py").write_text(
+        "import os, pathlib, time\n\n\ndef run(state):\n"
+        f"    pathlib.Path({str(tmp_path / 'pid')!r}).write_text(str(os.getpid()))\n"
+        "    time.sleep(60)\n    return {}\n"
+    )
+    call = asyncio.create_task(run_in_sandbox("subprocess", tmp_path, "scripts.sleepy:run", {}, image="", timeout=30))
+    for _ in range(100):
+        if (tmp_path / "pid").exists():
+            break
+        await asyncio.sleep(0.05)
+    pid = int((tmp_path / "pid").read_text())
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
