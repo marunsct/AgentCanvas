@@ -187,3 +187,16 @@ async def test_a_matura_request_sees_only_its_organisation_even_without_filters(
             assert (
                 await client.get(f"/v1/workflows/{w.json()['id']}", headers=as_user(BEN, GLOBEX))
             ).status_code == 404
+            # knowledge is searched in the database under the policies too (G-6), and stays the organisation's
+            kb = await client.post(f"/v1/projects/{p}/knowledge", json={"name": "rls-docs"}, headers=h)
+            assert kb.status_code == 201, kb.text
+            k = f"/v1/knowledge/{kb.json()['id']}"
+            added = await client.post(
+                f"{k}/documents/text", json={"title": "IT", "text": "Report a lost laptop to IT."}, headers=h
+            )
+            assert added.status_code == 201, added.text
+            for mode in ("hybrid", "semantic", "keyword"):
+                r = await client.post(f"{k}/search", json={"query": "lost laptop", "mode": mode}, headers=h)
+                assert r.status_code == 200 and [x["title"] for x in r.json()["results"]] == ["IT"], (mode, r.text)
+            r = await client.post(f"{k}/search", json={"query": "lost laptop"}, headers=as_user(BEN, GLOBEX))
+            assert r.status_code == 404

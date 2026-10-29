@@ -6,8 +6,12 @@ fixed windows or markdown headings) and each chunk embedded, with the built-in o
 model. Search ranks chunks by keyword (BM25), meaning (cosine) or both (hybrid, reciprocal-rank fusion); the math
 is in `agentcanvas.knowledge_search`, shared with exported projects.
 
-Every change bumps the knowledge base's `version`, so each instance's in-memory index knows when to reload.
-Changing the embedding model or chunking marks the knowledge base stale until it is reindexed.
+On Postgres with pgvector (G-6) the chunks are searched in the database: by meaning with an HNSW index per embedding
+dimension (cosine), by keywords with full-text search (an IDF-weighted `ts_rank`, BM25-like), and hybrid fuses the
+two rankings as in process. Scores and citations are the same as the in-process engine's, which SQLite (and Postgres
+without pgvector) keeps using: there every change bumps the knowledge base's `version`, so each instance's in-memory
+index knows when to reload. Changing the embedding model or chunking marks the knowledge base stale until it is
+reindexed.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import hashlib
 import html.parser
 import io
 import ipaddress
+import json
 import socket
 from array import array
 from collections import OrderedDict
@@ -27,7 +32,7 @@ from typing import Any, ClassVar, Literal
 from urllib.parse import urljoin, urlsplit
 
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
@@ -40,7 +45,16 @@ from agentcanvas.ids import new_id
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TEXT_CHARS = 2_000_000  # extracted text per document
 MAX_DOCX_UNZIPPED = 100 * 1024 * 1024  # a Word file's parts, uncompressed: refuses zip bombs before parsing
-MAX_CHUNKS = 50_000  # per knowledge base: search runs in memory
+MAX_CHUNKS = 50_000  # per knowledge base searched in process (SQLite, Postgres without pgvector): held in memory
+# per knowledge base searched in Postgres: keyword search under row-level security cannot use the GIN index (Postgres
+# lets only leakproof operators reach an index there, and `@@` is not one), so it filters the base's own rows, about
+# a second per million chunks; the HNSW index of a million 1536-d vectors is about 6 GB
+MAX_CHUNKS_PG = 1_000_000
+# dimension -> the type its HNSW index casts to (migration e1b5c9d3f7a2); other dimensions are searched exactly
+ANN_INDEXES: dict[int, str] = {
+    384: "vector", 512: "vector", 768: "vector", 1024: "vector", 1536: "vector", 3072: "halfvec",
+}  # fmt: skip
+MAX_TERMS = 32  # query words a keyword search in Postgres weighs
 MAX_PAGE_BYTES = 5 * 1024 * 1024
 URL_TIMEOUT_S = 20.0
 EMBED_BATCH = 64
@@ -271,8 +285,35 @@ def unpack(data: bytes | None) -> list[float] | None:
     return a.tolist()
 
 
+def nearest_sql(dims: int) -> str:
+    """The query for the chunks of a knowledge base nearest to `:q` (cosine): its expression is the one the HNSW
+    index of `dims` dimensions is built on, so Postgres can use it."""
+    kind = ANN_INDEXES.get(dims)
+    column, q = (
+        (f"CAST(embedding AS {kind}({dims}))", f"CAST(:q AS {kind}({dims}))")
+        if kind
+        else ("embedding", "CAST(:q AS vector)")
+    )
+    return (
+        f"SELECT id, 1 - ({column} <=> {q}) AS score FROM knowledge_chunk WHERE kb_id = :kb AND dims = {int(dims)} "
+        f"ORDER BY {column} <=> {q} LIMIT :k"
+    )
+
+
+def literal(vector: Sequence[float]) -> str:
+    """A vector as pgvector's text input, `[0.1,0.2]`."""
+    return json.dumps([float(v) for v in vector], separators=(",", ":"))
+
+
 # ---------------------------------------------------------------- the index ----
 _INDEX: OrderedDict[str, tuple[int, ks.Index]] = OrderedDict()  # kb id -> (version, index)
+_PGVECTOR: dict[str, tuple[int, ...] | None] = {}  # database -> pgvector's version, when the chunks are searched there
+_COMPARABLE: OrderedDict[tuple[str, int, int], bool] = OrderedDict()  # (kb id, version, dims) -> one model's vectors
+_INSERT = text(
+    "INSERT INTO knowledge_chunk (id, kb_id, doc_id, ordinal, text, page, heading, dims, embedding, tsv) VALUES "
+    "(:id, :kb_id, :doc_id, :ordinal, :text, :page, :heading, :dims, CAST(:embedding AS vector), "
+    "to_tsvector('simple', concat_ws(' ', CAST(:title AS text), CAST(:heading AS text), CAST(:text AS text))))"
+)
 
 
 def forget(kb_id: str) -> None:
@@ -514,17 +555,11 @@ class KnowledgeService:
         ):
             raise Conflict(f"this knowledge base already has the same text ('{same}')")
         _, total = await self.counts(kb_id)
-        if total + len(pieces) > MAX_CHUNKS:
-            raise InvalidInput(f"a knowledge base holds at most {MAX_CHUNKS:,} chunks; this adds {len(pieces)}")
+        if total + len(pieces) > (cap := await self.max_chunks()):
+            raise InvalidInput(f"a knowledge base holds at most {cap:,} chunks; this adds {len(pieces)}")
         self.s.add(doc)
         await self.s.flush()
-        for i, (p, v) in enumerate(zip(pieces, vectors, strict=True)):
-            self.s.add(
-                KnowledgeChunk(
-                    id=f"{doc.id}_{i}", kb_id=kb_id, doc_id=doc.id, ordinal=i, text=p["text"], page=p["page"],
-                    heading=p["heading"], vector=pack(v),
-                )
-            )  # fmt: skip
+        await self._store(kb_id, doc.id, title, pieces, vectors)
         doc.chunks = len(pieces)
         if commit:
             await self._touch(kb)
@@ -557,25 +592,67 @@ class KnowledgeService:
         kb = await self._lock(kb_id)
         docs = await self.documents(kb_id)
         await self.s.execute(delete(KnowledgeChunk).where(KnowledgeChunk.kb_id == kb_id))
-        total = 0
+        total, cap = 0, await self.max_chunks()
         for doc in docs:
             title = self._title(doc)
             pieces = await asyncio.to_thread(self._chunks, kb, doc.content, title)
             total += len(pieces)
-            if total > MAX_CHUNKS:
-                raise InvalidInput(f"with these settings the knowledge base needs more than {MAX_CHUNKS:,} chunks")
+            if total > cap:
+                raise InvalidInput(f"with these settings the knowledge base needs more than {cap:,} chunks")
             vectors = await self._embed(kb, [ks.embed_text({**p, "title": title}) for p in pieces])
-            for i, (p, v) in enumerate(zip(pieces, vectors, strict=True)):
-                self.s.add(
-                    KnowledgeChunk(
-                        id=f"{doc.id}_{i}", kb_id=kb_id, doc_id=doc.id, ordinal=i, text=p["text"], page=p["page"],
-                        heading=p["heading"], vector=pack(v),
-                    )
-                )  # fmt: skip
+            await self._store(kb_id, doc.id, title, pieces, vectors)
             doc.chunks = len(pieces)
         kb.stale = False
         await self._touch(kb)
         return kb
+
+    async def pgvector(self) -> tuple[int, ...] | None:
+        """pgvector's version when this database searches the chunks itself (Postgres with the migration's
+        columns), else None: the in-process engine."""
+        bind = self.s.get_bind()
+        if bind.dialect.name != "postgresql":
+            return None
+        key = str(getattr(bind, "url", None) or bind.engine.url)
+        if key not in _PGVECTOR:
+            row = (
+                await self.s.execute(
+                    text(
+                        "SELECT (SELECT extversion FROM pg_extension WHERE extname = 'vector'), EXISTS (SELECT 1 FROM "
+                        "information_schema.columns WHERE table_schema = current_schema() AND table_name = "
+                        "'knowledge_chunk' AND column_name = 'embedding')"
+                    )
+                )
+            ).one()
+            version = tuple(int(n) for n in str(row[0]).split(".") if n.isdigit()) if row[0] and row[1] else None
+            _PGVECTOR[key] = version
+        return _PGVECTOR[key]
+
+    async def max_chunks(self) -> int:
+        return MAX_CHUNKS_PG if await self.pgvector() is not None else MAX_CHUNKS
+
+    async def _store(
+        self, kb_id: str, doc_id: str, title: str, pieces: list[dict[str, Any]], vectors: list[list[float]]
+    ) -> None:
+        """Save a document's chunks: in Postgres with the vector and the words to search, else the vector's bytes."""
+        if await self.pgvector() is None:
+            for i, (p, v) in enumerate(zip(pieces, vectors, strict=True)):
+                self.s.add(
+                    KnowledgeChunk(
+                        id=f"{doc_id}_{i}", kb_id=kb_id, doc_id=doc_id, ordinal=i, text=p["text"], page=p["page"],
+                        heading=p["heading"], vector=pack(v),
+                    )
+                )  # fmt: skip
+            return
+        rows = [
+            {
+                "id": f"{doc_id}_{i}", "kb_id": kb_id, "doc_id": doc_id, "ordinal": i, "text": p["text"],
+                "page": p["page"], "heading": p["heading"], "dims": len(v), "embedding": literal(v),
+                "title": title[:300],
+            }
+            for i, (p, v) in enumerate(zip(pieces, vectors, strict=True))
+        ]  # fmt: skip
+        if rows:
+            await self.s.execute(_INSERT, rows)
 
     def _chunks(self, kb: KnowledgeBase, text: str, title: str) -> list[dict[str, Any]]:
         """The document's chunks; a heading that only repeats the title is dropped (the title is searched too)."""
@@ -591,10 +668,7 @@ class KnowledgeService:
 
     @staticmethod
     def _title(doc: KnowledgeDocument) -> str:
-        if doc.source == "upload":
-            first = doc.content.lstrip().split("\n", 1)[0]
-            return first[2:].strip() if first.startswith("# ") else Path(doc.name).stem
-        return doc.name
+        return title_of(doc.source, doc.name, doc.content)
 
     def _embedder(self, spec: dict[str, Any], project_id: str) -> Embed:
         try:
@@ -623,21 +697,34 @@ class KnowledgeService:
             _INDEX.move_to_end(kb.id)
             return cached[1]
         docs = {d.id: d for d in await self.documents(kb.id)}
-        rows = (
-            await self.s.scalars(
-                select(KnowledgeChunk)
-                .where(KnowledgeChunk.kb_id == kb.id)
-                .order_by(KnowledgeChunk.doc_id, KnowledgeChunk.ordinal)
-            )
-        ).all()
+        if await self.pgvector() is None:
+            rows: Sequence[Any] = (
+                await self.s.scalars(
+                    select(KnowledgeChunk)
+                    .where(KnowledgeChunk.kb_id == kb.id)
+                    .order_by(KnowledgeChunk.doc_id, KnowledgeChunk.ordinal)
+                )
+            ).all()
+            vectors = [unpack(r.vector) for r in rows]
+        else:  # the vectors are in the pgvector column
+            rows = (
+                await self.s.execute(
+                    text(
+                        "SELECT id, doc_id, text, page, heading, CAST(embedding AS text) AS embedding FROM "
+                        "knowledge_chunk WHERE kb_id = :kb ORDER BY doc_id, ordinal"
+                    ),
+                    {"kb": kb.id},
+                )
+            ).all()
+            vectors = [json.loads(r.embedding) if r.embedding else None for r in rows]
         chunks = []
-        for r in rows:
+        for r, vector in zip(rows, vectors, strict=True):
             doc = docs.get(r.doc_id)
             if doc is None:
                 continue
             chunks.append({
                 "id": r.id, "doc_id": r.doc_id, "title": self._title(doc), "source": doc.url or doc.name,
-                "text": r.text, "page": r.page, "heading": r.heading, "vector": unpack(r.vector),
+                "text": r.text, "page": r.page, "heading": r.heading, "vector": vector,
             })  # fmt: skip
         index = await asyncio.to_thread(ks.Index, chunks)
         _INDEX[kb.id] = (kb.version, index)
@@ -650,13 +737,111 @@ class KnowledgeService:
     ) -> list[dict[str, Any]]:
         if mode not in ks.MODES:
             raise InvalidInput(f"unknown search mode '{mode}'; use one of {', '.join(ks.MODES)}")
-        index = await self.index(kb)
         if kb.stale:  # the vectors may be another model's: a query embedded with the new one would give noise
             mode = "keyword"
+        if (version := await self.pgvector()) is not None:
+            return await self._search_in_database(kb, query, mode, top_k, min_score, version)
+        index = await self.index(kb)
         qv = None
         if mode != "keyword" and query.strip() and index.chunks:
             qv = (await self._embed(kb, [query]))[0]
         return ks.search(index, query, mode=mode, top_k=top_k, min_score=min_score, query_vector=qv)
+
+    async def _search_in_database(
+        self, kb: KnowledgeBase, query: str, mode: str, top_k: int, min_score: float, version: tuple[int, ...]
+    ) -> list[dict[str, Any]]:
+        """`ks.search` run by Postgres: the same modes, scores (0-1) and citations, without loading the chunks."""
+        _, total = await self.counts(kb.id)
+        if not total or not query.strip():
+            return []
+        qv = None if mode == "keyword" else (await self._embed(kb, [query]))[0]
+        if qv is not None and not await self._comparable(kb, len(qv)):
+            qv = None  # another model's vectors (or none): by keywords, as in process
+        ranked: list[tuple[str, float]]
+        if qv is None:
+            ranked = await self._keyword(kb.id, query, total, top_k)
+            top = ranked[0][1] if ranked else 1.0
+            ranked = [(i, s / top) for i, s in ranked]
+        elif mode == "semantic":
+            ranked = [(i, min(s, 1.0)) for i, s in await self._nearest(kb.id, qv, top_k, version)]
+        else:
+            keyword = await self._keyword(kb.id, query, total, ks.FUSED)
+            ranked = ks.fuse(keyword, await self._nearest(kb.id, qv, ks.FUSED, version))
+        ranked = [(i, s) for i, s in ranked if s > 0 and s >= min_score][:top_k]
+        found = await self._details([i for i, _ in ranked])
+        return [{**found[i], "score": round(score, 4), "cite": n} for n, (i, score) in enumerate(ranked, start=1)]
+
+    async def _comparable(self, kb: KnowledgeBase, dims: int) -> bool:
+        """Whether every chunk has a vector of `dims` dimensions, i.e. from the query's model (cached per version)."""
+        key = (kb.id, kb.version, dims)
+        if key not in _COMPARABLE:
+            other = await self.s.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM knowledge_chunk WHERE kb_id = :kb AND (dims IS NULL OR dims <> :d))"
+                ),
+                {"kb": kb.id, "d": dims},
+            )
+            _COMPARABLE[key] = not other
+            while len(_COMPARABLE) > 256:
+                _COMPARABLE.popitem(last=False)
+        return _COMPARABLE[key]
+
+    async def _keyword(self, kb_id: str, query: str, total: int, limit: int) -> list[tuple[str, float]]:
+        """The best `limit` chunks by keywords: Postgres full-text search over the query's words (the in-process
+        stop words left out), each word's `ts_rank` (length-normalised) weighted by its BM25 idf in this base."""
+        terms = list(dict.fromkeys(ks.words(query)))[:MAX_TERMS]
+        if not terms:
+            return []
+        q = [f"plainto_tsquery('simple', :t{i})" for i in range(len(terms))]
+        any_term = " || ".join(q)
+        df = ", ".join(f"count(*) FILTER (WHERE tsv @@ {t}) AS d{i}" for i, t in enumerate(q))
+        score = " + ".join(
+            f"ln(1 + (CAST(:n AS float8) - df.d{i} + 0.5) / (df.d{i} + 0.5)) * ts_rank(m.tsv, {t}, 1)"
+            for i, t in enumerate(q)
+        )
+        sql = (
+            f"WITH m AS (SELECT id, tsv FROM knowledge_chunk WHERE kb_id = :kb AND tsv @@ ({any_term})), "
+            f"df AS (SELECT {df} FROM m) SELECT m.id, {score} AS score FROM m, df ORDER BY score DESC, m.id LIMIT :k"
+        )
+        params: dict[str, Any] = {"kb": kb_id, "n": total, "k": limit} | {f"t{i}": t for i, t in enumerate(terms)}
+        return [(r.id, float(r.score)) for r in (await self.s.execute(text(sql), params)).all() if r.score > 0]
+
+    async def _nearest(
+        self, kb_id: str, vector: list[float], limit: int, version: tuple[int, ...]
+    ) -> list[tuple[str, float]]:
+        """The `limit` chunks nearest to `vector` by cosine, through the HNSW index of its dimension when there is
+        one (scanning on past other bases' rows until enough of this one's are found), else exactly."""
+        if ANN_INDEXES.get(len(vector)):
+            await self.s.execute(text(f"SET LOCAL hnsw.ef_search = {min(1000, max(100, 2 * limit))}"))
+            if version >= (0, 8):  # iterative index scans: the kb filter does not cut the results short
+                await self.s.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+        rows = await self.s.execute(
+            text(nearest_sql(len(vector))),
+            {"kb": kb_id, "q": literal(vector), "k": limit},
+        )
+        found = [(r.id, float(r.score)) for r in rows.all() if r.score > 0]
+        return sorted(found, key=lambda x: -x[1])  # a relaxed-order scan may be slightly out of order
+
+    async def _details(self, ids: list[str]) -> dict[str, dict[str, Any]]:
+        """What a search result shows of each chunk: its text, page and heading, its document's title and source."""
+        if not ids:
+            return {}
+        rows = await self.s.execute(
+            select(
+                KnowledgeChunk.id, KnowledgeChunk.doc_id, KnowledgeChunk.text, KnowledgeChunk.page,
+                KnowledgeChunk.heading, KnowledgeDocument.source, KnowledgeDocument.name, KnowledgeDocument.url,
+                func.substr(KnowledgeDocument.content, 1, 2000).label("head"),
+            )
+            .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.doc_id)
+            .where(KnowledgeChunk.id.in_(ids))
+        )  # fmt: skip
+        return {
+            r.id: {
+                "id": r.id, "doc_id": r.doc_id, "title": title_of(r.source, r.name, r.head or ""),
+                "source": r.url or r.name, "text": r.text, "page": r.page, "heading": r.heading,
+            }
+            for r in rows.all()
+        }  # fmt: skip
 
     async def export(self, kb: KnowledgeBase) -> str:
         """The knowledge base as `knowledge/<name>.jsonl` for exported projects. A stale one ships without its
@@ -679,6 +864,14 @@ class KnowledgeService:
             title, text = extract(path.name, path.read_bytes())
             await self.add(kb.id, title=title, text=text, kind="upload", name=path.name, user_id=user_id)
         return kb
+
+
+def title_of(source: str, name: str, content: str) -> str:
+    """The title a document is searched and cited by: an upload's first `# ` heading or its file name."""
+    if source == "upload":
+        first = content.lstrip().split("\n", 1)[0]
+        return first[2:].strip() if first.startswith("# ") else Path(name).stem
+    return name
 
 
 def used_knowledge_bases(ir: dict[str, Any]) -> set[str]:

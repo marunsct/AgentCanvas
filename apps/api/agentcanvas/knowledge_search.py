@@ -21,6 +21,7 @@ DIM = 512
 MODES = ("hybrid", "semantic", "keyword")
 STRATEGIES = ("paragraphs", "sentences", "fixed", "markdown")
 RRF_K = 60  # reciprocal-rank fusion constant (Cormack et al. 2009)
+FUSED = 50  # hybrid search fuses the best 50 of each ranking
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")  # a knowledge base's name: also its file name in exports
 
 _WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
@@ -222,12 +223,7 @@ def search(
         if mode == "semantic":
             ranked = [(i, min(s, 1.0)) for i, s in semantic]
         else:
-            fused: dict[int, float] = {}
-            best = 2.0 / (RRF_K + 1)  # first in both rankings
-            for ranking in (_ranked(index.bm25(query)), semantic):
-                for rank, (i, _) in enumerate(ranking[:50]):
-                    fused[i] = fused.get(i, 0.0) + 1.0 / (RRF_K + rank + 1) / best
-            ranked = sorted(fused.items(), key=lambda x: -x[1])
+            ranked = fuse(_ranked(index.bm25(query)), semantic)
     out = []
     for i, score in ranked:
         if len(out) >= top_k:
@@ -241,6 +237,17 @@ def search(
             "cite": len(out) + 1,
         })  # fmt: skip
     return out
+
+
+def fuse(keyword: Sequence[tuple[Any, float]], semantic: Sequence[tuple[Any, float]]) -> list[tuple[Any, float]]:
+    """Reciprocal-rank fusion of the best `FUSED` of two rankings (best first), scored relative to the most possible
+    (1: first in both)."""
+    fused: dict[Any, float] = {}
+    best = 2.0 / (RRF_K + 1)  # first in both rankings
+    for ranking in (keyword, semantic):
+        for rank, (key, _) in enumerate(ranking[:FUSED]):
+            fused[key] = fused.get(key, 0.0) + 1.0 / (RRF_K + rank + 1) / best
+    return sorted(fused.items(), key=lambda x: -x[1])
 
 
 def _ranked(scores: list[float]) -> list[tuple[int, float]]:

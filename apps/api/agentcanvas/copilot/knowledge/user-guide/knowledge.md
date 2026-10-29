@@ -105,6 +105,11 @@ search finds the right page in the top 3 for 95% of questions against 93% for ke
 
 ## Limits
 
-- Search runs in memory on each server: up to 50,000 chunks per knowledge base.
-- PostgreSQL's pgvector is not used yet; vectors are stored with the chunks and compared in Python.
+- On PostgreSQL with pgvector (the Docker image) search runs in the database and holds up to 1,000,000 chunks per
+  knowledge base: meaning uses an approximate nearest-neighbour index (HNSW, cosine) per embedding size, keywords
+  use full-text search weighted like BM25, and hybrid fuses both as before. Scores and citations are the same as
+  above. Embedding sizes of 384, 512, 768, 1024, 1536 and 3072 are indexed; another size is searched exactly, which
+  is slower on large bases.
+- On SQLite (and PostgreSQL without pgvector) search runs in memory on each server: up to 50,000 chunks per
+  knowledge base.
 - Roles: everyone can search; builders add, change and delete.
