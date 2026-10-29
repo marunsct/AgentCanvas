@@ -95,19 +95,19 @@ export function RunsPage() {
             const s = STATUS[t.status] ?? { label: t.status, tone: "neutral" as Tone };
             return (
               <tr key={t.id}>
-                {canBuild && <td><input type="checkbox" aria-label={`select conversation ${t.id}`} checked={picked.includes(t.id)}
+                {canBuild && <td className="pick"><input type="checkbox" aria-label={`select conversation ${t.id}`} checked={picked.includes(t.id)}
                   onChange={(e) => pick(t.id, e.target.checked)} /></td>}
-                <td><Badge tone={s.tone}>{s.label}</Badge></td>
-                <td>
+                <td data-label="Status"><Badge tone={s.tone}>{s.label}</Badge></td>
+                <td data-label="Workflow">
                   <Link to={`/workflows/${t.workflow_id}?thread=${t.id}`} title="Open in the editor's timeline">{t.workflow_name ?? t.workflow_id}</Link>
                   {t.title && <div className="muted small">{t.title}</div>}
                   {t.last_error && <div className="error-text small" title={t.last_error}>{t.last_error.slice(0, 120)}</div>}
                 </td>
-                <td className="small">{t.deployment_id ? "API" : "Editor"}</td>
-                <td className="small" title={t.last_started_at ? exact(t.last_started_at) : undefined}>{t.last_started_at ? ago(t.last_started_at) : "—"}</td>
-                <td className="small">{duration(t) || "—"}</td>
-                <td className="small">{t.runs}</td>
-                <td className="small">{t.cost_usd ? `$${t.cost_usd.toFixed(4)}` : "—"}</td>
+                <td className="small" data-label="From">{t.deployment_id ? "API" : "Editor"}</td>
+                <td className="small" data-label="Started" title={t.last_started_at ? exact(t.last_started_at) : undefined}>{t.last_started_at ? ago(t.last_started_at) : "—"}</td>
+                <td className="small" data-label="Took">{duration(t) || "—"}</td>
+                <td className="small" data-label="Runs">{t.runs}</td>
+                <td className="small" data-label="Cost">{t.cost_usd ? `$${t.cost_usd.toFixed(4)}` : "—"}</td>
                 <td className="actions">{canBuild && (
                   <button type="button" className="link small" aria-label={`delete conversation ${t.id}`} disabled={remove.isPending}
                     onClick={async () => {

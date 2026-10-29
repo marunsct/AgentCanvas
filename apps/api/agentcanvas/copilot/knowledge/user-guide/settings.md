@@ -19,7 +19,8 @@ asks first). Below the list is the template gallery.
 **Runs** lists the project's conversations, newest first: status (done, running, waiting for a person, failed),
 which workflow, where the run came from (the editor, a deployment, a schedule, an event), how long it took and what
 it cost. Filter by status, workflow or when it started (last 24 hours, 7 or 30 days); open one to see it in the editor's timeline, or delete it. Builders can tick
-conversations and add them to an [evaluation dataset](evaluation.md#datasets) as examples.
+conversations and add them to an [evaluation dataset](evaluation.md#datasets) as examples. The Inbox, Runs and a share page are laid out
+for a phone (the rest of the app is a desktop tool; the editor is usable on a phone but not designed for it).
 
 ## Settings
 

@@ -1128,7 +1128,23 @@ button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background:
 .list-tools { margin-top: 12px; flex-wrap: wrap; }
 .list-tools h2 { margin: 0; }
 .list-tools input[type=search] { width: 220px; }
-.list-tools select { width: auto; }
+.list-tools select { width: auto; max-width: 100%; }
+
+/* phones (PLAN section 5: Inbox, a share page and Runs work at 390 px): the Runs table becomes one card per conversation */
+@media (max-width: 640px) {
+  .runs-table, .runs-table tbody, .runs-table tr, .runs-table td { display: block; }
+  .runs-table { border: 0; background: transparent; }
+  .runs-table thead { display: none; } /* each value carries its own label (data-label) */
+  .runs-table tr { position: relative; margin: 0 0 10px; padding: 10px 12px 8px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .runs-table td { display: flex; gap: 10px; padding: 2px 0; border: 0; min-width: 0; }
+  .runs-table td[data-label]::before { content: attr(data-label); flex: none; width: 64px; color: var(--muted); font-size: 12px; }
+  .runs-table td > :not(.badge) { min-width: 0; overflow-wrap: anywhere; }
+  .runs-table td.actions { justify-content: flex-end; padding-top: 6px; }
+  .runs-table td.pick { position: absolute; top: 10px; right: 12px; padding: 0; }
+  .runs-table td.pick input { width: 20px; height: 20px; }
+  .add-to-dataset > * { max-width: 100%; }
+  .add-to-dataset select { min-width: 0; flex: 1 1 180px; }
+}
 .wf-list .row-menu > button { padding: 2px 6px; }
 /* home: the project's workflows as a compact table, five a page */
 .wf-table { margin-top: 10px; }
