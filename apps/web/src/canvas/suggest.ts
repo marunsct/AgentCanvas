@@ -2,6 +2,7 @@
 import type { NodeManifest } from "../api/types";
 import type { Command } from "../ir/commands";
 import type { IREdge, WF } from "../ir/model";
+import { paletteTypes } from "../editor/simple";
 import { categoryRank, firstSentence, typeName } from "../help/glossary";
 import { checkConnection, flowPort, nextOrder } from "./connect";
 
@@ -48,8 +49,9 @@ const byRank = (a: NodeManifest, b: NodeManifest) => {
 const choice = (m: NodeManifest, port: string | null): NewChoice =>
   ({ type: m.type, label: m.label, blurb: firstSentence(m.description), category: m.category, port });
 
-export function suggest(wf: WF, manifests: Map<string, NodeManifest>, at: PortRef): Suggestions | null {
-  const all = [...manifests.values()];
+/** `simple`: offer only the blocks Simple mode shows (the port menu used to offer every block there). */
+export function suggest(wf: WF, manifests: Map<string, NodeManifest>, at: PortRef, simple = false): Suggestions | null {
+  const all = paletteTypes([...manifests.values()], simple);
   const res = wf.resources.find((r) => r.id === at.node);
   const node = wf.nodes.find((n) => n.id === at.node);
   const self = res ?? node;

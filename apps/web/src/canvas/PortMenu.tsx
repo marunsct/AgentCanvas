@@ -25,6 +25,7 @@ export function PortMenu() {
   const menu = useUi((s) => s.portMenu);
   const wf = useEditor((s) => s.wf);
   const drill = useEditor((s) => s.drill);
+  const simple = useUi((s) => s.simple);
   const manifests = useManifests();
   const rf = useReactFlow();
   const [q, setQ] = useState("");
@@ -51,7 +52,7 @@ export function PortMenu() {
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("pointerdown", onDown, true); };
   }, [menu]);
 
-  const s = useMemo(() => (menu && wf ? suggest(wf, manifests, menu) : null), [menu, wf, manifests]);
+  const s = useMemo(() => (menu && wf ? suggest(wf, manifests, menu, simple) : null), [menu, wf, manifests, simple]);
   if (!menu || !wf || !s || drill.length) return null;
 
   const needle = q.trim().toLowerCase();
