@@ -310,7 +310,7 @@ class A2AReply(Base):
 
 
 class AnswerCacheRow(Base):
-    """A model answer kept by the gateway's answer cache (`services/answer_cache.py`), shared by every replica (G-8)."""
+    """A model answer kept by the gateway's answer cache (`adapters/langchain/answer_cache.py`), shared by replicas."""
 
     __tablename__ = "answer_cache"
     __table_args__ = (Index("answer_cache_expires_idx", "project_id", "expires_at"),)

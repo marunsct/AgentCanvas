@@ -24,6 +24,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 from agentcanvas import observability
 from agentcanvas.adapters import get_adapter, installed_adapters, model_service
 from agentcanvas.adapters.langchain import interop
+from agentcanvas.adapters.langchain.answer_cache import DatabaseAnswerCache
 from agentcanvas.adapters.langchain.persistence import MemoryEmbedding
 from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
@@ -46,7 +47,6 @@ from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services import routing
-from agentcanvas.services.answer_cache import DatabaseAnswerCache
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob

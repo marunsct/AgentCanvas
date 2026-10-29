@@ -8,7 +8,7 @@ SDK through the model bridge), so the gateway works the same for all of them, an
   order and the first answer wins. A streamed call fails over only before its first token.
 * Answer cache: an identical request (same models, messages, tools and options) within `cache_ttl` seconds gets the
   stored answer without calling a provider, so it costs nothing. One cache per project: in the process's memory, or,
-  on a server, in its database (`services/answer_cache.py`), so every replica shares it.
+  on a server, in its database (`adapters/langchain/answer_cache.py`), so every replica shares it.
 
 Each answer carries `response_metadata["ac_gateway"]`: which model answered, whether it came from the cache, and the
 models that failed first. The real model calls run as child runs of the gateway's, so usage is counted, and priced,

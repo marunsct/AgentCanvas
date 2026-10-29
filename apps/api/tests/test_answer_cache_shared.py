@@ -12,8 +12,8 @@ from test_durable_state import _events, _workflow, instance
 from test_gateway import Counting, _llm_ir
 
 from agentcanvas.adapters.langchain import nodes
+from agentcanvas.adapters.langchain.answer_cache import DatabaseAnswerCache
 from agentcanvas.db.models import AnswerCacheRow
-from agentcanvas.services.answer_cache import DatabaseAnswerCache
 
 
 @pytest.fixture
