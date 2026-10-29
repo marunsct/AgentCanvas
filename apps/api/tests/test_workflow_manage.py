@@ -28,3 +28,20 @@ async def test_rename_and_duplicate_a_workflow(api_client):
     assert named["name"] == "Hello again"
     run = await api_client.post(f"/v1/workflows/{c['id']}/runs/stream", json={"input": {"who": "Ada"}})
     assert run.status_code == 200 and "Hello Ada" in run.text  # the copy runs on its own
+
+
+async def test_times_are_sent_in_utc_with_their_timezone(api_client):
+    """SQLite keeps no timezone, and a time without one reads as local time in a browser: a workflow changed a
+    minute ago showed as "9 hours ago" in Tokyo."""
+    from datetime import UTC, datetime
+
+    made = (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "Clock"})).json()
+    listed = (await api_client.get("/v1/projects/prj_default/workflows")).json()["items"]
+    for stamp in (
+        made["created_at"],
+        made["updated_at"],
+        next(w for w in listed if w["id"] == made["id"])["updated_at"],
+    ):
+        when = datetime.fromisoformat(stamp)
+        assert when.tzinfo is not None, stamp
+        assert abs((datetime.now(UTC) - when).total_seconds()) < 120

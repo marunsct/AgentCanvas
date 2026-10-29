@@ -5,6 +5,10 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
 ### Fixed
+- **Every "changed … ago" was off by the viewer's time zone on SQLite** (the local edition without Docker): SQLite
+  keeps no time zone, the API sent `2026-10-29T02:31:47`, and browsers read that as local time, so a workflow
+  changed a minute ago showed as "9 hours ago" in Tokyo. Every timestamp column now reads back in UTC with its
+  zone (`UtcDateTime`); Postgres already did.
 - **A local embedding model could not be chosen for knowledge, and every model choice offered models that could
   not answer**: Settings › Models › By purpose took free text with the chat catalogue as suggestions, so a local
   server's models never appeared and a chat model could be saved as the embedding model. Every choice (judges,

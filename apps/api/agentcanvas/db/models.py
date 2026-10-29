@@ -6,7 +6,7 @@ JSONB on Postgres, `inet` becomes text, `bytea` becomes a blob.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
 
@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Dialect,
     Float,
     ForeignKey,
     Index,
@@ -30,17 +31,30 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
+
+
+class UtcDateTime(TypeDecorator[datetime]):
+    """A timestamp read back in UTC with its timezone: SQLite stores none, and a time without one reads as local
+    time in a browser (a workflow changed a minute ago showed as "9 hours ago" in Tokyo)."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
 
 Json = JSON().with_variant(JSONB(), "postgresql")
 BigId = BigInteger().with_variant(Integer(), "sqlite")  # SQLite autoincrement needs INTEGER
 
 
 class Base(DeclarativeBase):
-    type_annotation_map: ClassVar[dict[Any, Any]] = {dict[str, Any]: Json, list[Any]: Json}
+    type_annotation_map: ClassVar[dict[Any, Any]] = {dict[str, Any]: Json, list[Any]: Json, datetime: UtcDateTime()}
 
 
 def _now() -> Mapped[datetime]:
-    return mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    return mapped_column(UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), nullable=False)
 
 
 class Organization(Base):
@@ -62,7 +76,7 @@ class OrgDataKey(Base):
     master_key_id: Mapped[str] = mapped_column(Text)  # which master key wrapped it ("local:…", "aws:…", "gcp:…")
     wrapped_key: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = _now()
-    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class AppUser(Base):
@@ -83,7 +97,7 @@ class Membership(Base):
     role: Mapped[str] = mapped_column(Text)
     # false: an invitation to someone who already belongs to another organisation, until they accept it (S11)
     accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the default organisation
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())  # the default organisation
 
 
 class Project(Base):
@@ -113,7 +127,7 @@ class WorkflowRow(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
 
 
@@ -183,7 +197,7 @@ class DeploymentShare(Base):
     updated_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
 
 
@@ -213,7 +227,7 @@ class Thread(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
     # a paused run of a framework without its own checkpoints (runtime/paused.py), as that framework's JSON
     paused_state: Mapped[str | None] = mapped_column(Text)
@@ -248,11 +262,11 @@ class Run(Base):
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
-    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
     labels: Mapped[dict[str, Any] | None] = mapped_column(Json)
     started_at: Mapped[datetime] = _now()
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class InterruptTask(Base):
@@ -273,7 +287,7 @@ class InterruptTask(Base):
     decision: Mapped[dict[str, Any] | None] = mapped_column(Json)
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class Secret(Base):
@@ -419,10 +433,10 @@ class Experiment(Base):
     error: Mapped[str | None] = mapped_column(Text)
     owner: Mapped[str | None] = mapped_column(Text)  # the instance working on it (S13); taking over changes it
     # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over
-    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class ExperimentResult(Base):
@@ -539,7 +553,7 @@ class EvalAlert(Base):
     value: Mapped[float] = mapped_column(Float)  # the window mean that broke the rule
     baseline: Mapped[float | None] = mapped_column(Float)  # the trailing mean ("drop")
     created_at: Mapped[datetime] = _now()
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class CostAlert(Base):
@@ -717,9 +731,9 @@ class CopilotConversation(Base):
     usage: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     title: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str | None] = mapped_column(Text)  # chosen for this conversation (within policy); null: the project's
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    busy_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    busy_until: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
