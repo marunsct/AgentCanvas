@@ -608,6 +608,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- Masking secrets in a run's events no longer copies every event through JSON: an event without a secret (nearly
+  all, every streamed token among them) is checked in one pass, about twice as fast (HARDENING F-1).
 - Exports and framework environments now install openai-agents 0.24.0, CrewAI 1.15.33, Google ADK 2.13.0 (with
   LiteLLM 1.105.7; 1.106 needs the mcp package it does not declare), Pydantic AI 2.63.0, Agno 3.1.11, Strands
   1.62.0, Agent Framework 1.23.0 / 1.17.0, Claude Agent SDK 0.2.174, and @mastra/core 1.80.0 with @ai-sdk/openai-

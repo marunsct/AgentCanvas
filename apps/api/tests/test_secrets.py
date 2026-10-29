@@ -187,3 +187,19 @@ def test_a_secret_is_masked_in_its_encoded_forms_too():
 async def test_a_secret_too_short_to_hide_is_refused(api_client):
     r = await api_client.put(f"{P}/secrets/PIN", json={"value": "1234"})
     assert r.status_code == 422 and "6 characters" in r.json()["detail"]
+
+
+def test_an_event_without_a_secret_is_not_copied(monkeypatch):
+    """F-1: every event of a run (each streamed token too) was dumped to JSON and loaded back to be masked; one
+    without a secret, nearly all of them, is now checked in one pass and returned as it is."""
+    import json as json_module
+
+    from agentcanvas.services import secrets as secrets_module
+
+    loads: list[str] = []
+    real = json_module.loads
+    monkeypatch.setattr(secrets_module.json, "loads", lambda text, **kw: loads.append(text) or real(text, **kw))
+    event = {"type": "TEXT_MESSAGE_CONTENT", "delta": "hello"}
+    assert secrets_module.hide_values(event, ["sk-secret-123456"]) is event and loads == []
+    masked = secrets_module.hide_values({"delta": "key sk-secret-123456"}, ["sk-secret-123456"])
+    assert "sk-secret" not in json_module.dumps(masked) and len(loads) == 1

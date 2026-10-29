@@ -208,7 +208,10 @@ def hide_values(payload: Any, values: list[str]) -> Any:
     if not values:
         return payload
     values = _all_forms(values)
-    plain = json.loads(json.dumps(payload, default=str))
+    text = json.dumps(payload, default=str, ensure_ascii=False)
+    if not any(v in text for v in values):  # the usual case (a token, a step event): one pass, no copy (F-1)
+        return payload
+    plain = json.loads(text)
     masked = mask_strings(plain, values)
     return payload if masked == plain else masked
 
