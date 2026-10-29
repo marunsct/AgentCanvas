@@ -71,18 +71,24 @@ export function debugAids(): { pins?: Record<string, unknown>; mocks?: Record<st
 
 export async function startRun(input: Record<string, unknown>, opts: { continueThread?: boolean } = {}) {
   const { wf, breakpoints, flush } = useEditor.getState();
-  if (!wf) return;
-  await flush();
-  const run = useRun.getState();
-  const threadId = opts.continueThread ? run.threadId ?? undefined : undefined;
-  run.reset();
-  const aids = debugAids();
-  const debug = breakpoints.length > 0 || Object.keys(aids).length > 0;
-  run.setInput(threadId ? null : input); // a continued thread's result depends on its history
-  await stream(`/workflows/${wf.id}/runs/stream`, {
-    input, thread_id: threadId, ...aids,
-    ...(debug ? { mode: "debug", breakpoints: { before: breakpoints } } : {}),
-  });
+  // a double-click on Run or Send started two server runs: `running` only arrives with the first event
+  if (!wf || useRun.getState().starting) return;
+  useRun.setState({ starting: true });
+  try {
+    await flush();
+    const run = useRun.getState();
+    const threadId = opts.continueThread ? run.threadId ?? undefined : undefined;
+    run.reset();
+    const aids = debugAids();
+    const debug = breakpoints.length > 0 || Object.keys(aids).length > 0;
+    run.setInput(threadId ? null : input); // a continued thread's result depends on its history
+    await stream(`/workflows/${wf.id}/runs/stream`, {
+      input, thread_id: threadId, ...aids,
+      ...(debug ? { mode: "debug", breakpoints: { before: breakpoints } } : {}),
+    });
+  } finally {
+    useRun.setState({ starting: false });
+  }
 }
 
 export async function resumeRun(value: unknown, interruptId?: string) {

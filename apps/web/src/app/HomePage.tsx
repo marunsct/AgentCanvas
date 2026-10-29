@@ -55,7 +55,8 @@ export function HomePage() {
       <PageHeader title="Workflows" description={`Everything built in ${PROJECT_NAME}.`}
         actions={canBuild ? <>
           <a className="button" href="#new-workflow">+ New workflow</a>
-          <button type="button" data-testid="start-tour" onClick={() => tour.mutate()} title="Build a real workflow in six short steps">Guided build</button>
+          <button type="button" data-testid="start-tour" disabled={tour.isPending} onClick={() => tour.mutate()}
+            title="Build a real workflow in six short steps">Guided build</button>
         </> : undefined} />
       <Invitations />
       {!canBuild && (
@@ -68,7 +69,7 @@ export function HomePage() {
           <h2>New here?</h2>
           <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
           <div className="row gap">
-            <button type="button" className="primary" onClick={() => tour.mutate()}>Start the guided build</button>
+            <button type="button" className="primary" disabled={tour.isPending} onClick={() => tour.mutate()}>Start the guided build</button>
             <Link to="/playground" className="button" data-testid="try-playground">Try a model in the playground</Link>
           </div>
         </section>
@@ -81,7 +82,7 @@ export function HomePage() {
         <h2>New workflow</h2>
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); create.mutate({ name: name.trim() || "Untitled workflow" }); }}>
           <input placeholder="Workflow name" value={name} onChange={(e) => setName(e.target.value)} aria-label="workflow name" />
-          <button type="submit" className="primary">Create empty</button>
+          <button type="submit" className="primary" disabled={create.isPending}>Create empty</button>
         </form>
         <h3>…or start from a template</h3>
         <QueryStatus q={templates} what="templates" />

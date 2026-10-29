@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { normalize } from "../ir/model";
 import type { RunEvent } from "./events";
 
 /** What the fake stream delivers before it ends. */
@@ -11,8 +12,10 @@ vi.mock("./sse", () => ({
 vi.stubGlobal("requestAnimationFrame", (fn: () => void) => setTimeout(fn, 0) as unknown as number);
 vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 
-const { continueRun } = await import("./session");
+const { continueRun, startRun } = await import("./session");
 const { useRun } = await import("./runStore");
+const { useEditor } = await import("../editor/store");
+const { postStream } = await import("./sse");
 
 describe("run stream (W-2)", () => {
   beforeEach(() => useRun.setState({ threadId: "t1", running: false, error: null }));
@@ -31,5 +34,18 @@ describe("run stream (W-2)", () => {
     ];
     await continueRun();
     expect(useRun.getState()).toMatchObject({ running: false, error: null });
+  });
+});
+
+describe("startRun (W-4)", () => {
+  it("starts one server run on a double-click of Run", async () => {
+    useEditor.setState({ wf: normalize({ id: "wf_1", name: "w", state: { channels: [] } }), workflowId: null, breakpoints: [] });
+    vi.mocked(postStream).mockClear();
+    events = [{ type: "RUN_STARTED", threadId: "t1", workflowId: "wf_1" }, { type: "RUN_FINISHED", threadId: "t1", outcome: "success" }];
+    await Promise.all([startRun({}), startRun({})]); // the second click lands before the first run's first event
+    expect(postStream).toHaveBeenCalledTimes(1);
+    expect(useRun.getState().starting).toBe(false);
+    await startRun({}); // and Run works again once it has ended
+    expect(postStream).toHaveBeenCalledTimes(2);
   });
 });

@@ -26,6 +26,7 @@ export interface RunState {
   rubric: RubricRound[]; // grading rounds of this run's agents, live
   error: string | null;
   running: boolean;
+  starting: boolean; // Run or Send was pressed and the run has not started yet (saving the edits, the request)
   breakpoint: boolean;
   runSeq: number; // increments whenever a run ends (timeline/explain/chat refetch)
   highlight: string[]; // node ids emphasised by the timeline/explain views
@@ -51,7 +52,7 @@ const empty = {
 };
 
 export const useRun = create<RunState>((set) => ({
-  threadId: null, runId: null, running: false, runSeq: 0, ...empty,
+  threadId: null, runId: null, running: false, starting: false, runSeq: 0, ...empty,
   reset: () => set({ ...empty }),
   apply: (ev) => set((s) => reduce(s, ev)),
   setHighlight: (highlight) => set({ highlight }),

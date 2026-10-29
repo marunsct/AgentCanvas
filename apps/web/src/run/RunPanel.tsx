@@ -66,7 +66,7 @@ export function RunPanel() {
   const [chatOverride, setChatOverride] = useState<boolean | null>(null);
   if (!wf) return null;
   const builder = can("builder"); // running needs builder (the API answers 403 otherwise)
-  const blocked = run.running || errors > 0 || !builder;
+  const blocked = run.running || run.starting || errors > 0 || !builder;
   const chat = chatOverride ?? isChat(wf);
 
   return (
@@ -178,7 +178,7 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
         <input type="checkbox" checked={cont} disabled={!run.threadId} onChange={(e) => setCont(e.target.checked)} />
         continue thread <code>{run.threadId ?? "—"}</code>
       </label>
-      <button type="button" className="primary" onClick={start} disabled={disabled}>{run.running ? "Running…" : "▶ Run"}</button>
+      <button type="button" className="primary" onClick={start} disabled={disabled}>{run.running || run.starting ? "Running…" : "▶ Run"}</button>
     </>
   );
 }
