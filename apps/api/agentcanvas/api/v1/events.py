@@ -82,7 +82,8 @@ async def event_log(
     if status:
         q = q.where(EventLog.status == status)
     if before:
-        if (await session.get(EventLog, before)) is None:
+        cursor = await session.get(EventLog, before)
+        if cursor is None or cursor.project_id != project_id:  # another project's event is unknown here too
             raise InvalidInput(f"unknown event '{before}'")
         # compared in SQL: SQLite keeps CURRENT_TIMESTAMP as text a bound datetime never equals
         at = select(EventLog.created_at).where(EventLog.id == before).scalar_subquery()

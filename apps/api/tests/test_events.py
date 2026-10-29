@@ -277,6 +277,10 @@ async def test_the_event_log_pages_back_through_older_events_and_filters_by_type
     lost = (await api_client.get(f"{P}/events", params={"type": "crm.lead.lost"})).json()
     assert len(lost) == 3 and {e["type"] for e in lost} == {"crm.lead.lost"}
     assert (await api_client.get(f"{P}/events", params={"before": "evt_nope"})).status_code == 422
+    # C-11: another project's event is unknown here too, not a page that tells it exists
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    foreign = await api_client.get(f"/v1/projects/{other}/events", params={"before": everything[0]})
+    assert foreign.status_code == 422, foreign.text
 
 
 async def test_an_event_emitted_by_code_in_a_sandbox_reaches_the_run_and_the_handlers(app, api_client):

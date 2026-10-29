@@ -166,7 +166,7 @@ class DatasetService:
 
     async def version(self, ds_id: str, number: int | None = None) -> DatasetVersion:
         q = select(DatasetVersion).where(DatasetVersion.dataset_id == ds_id)
-        q = q.where(DatasetVersion.number == number) if number else q.order_by(DatasetVersion.number.desc())
+        q = q.where(DatasetVersion.number == number) if number is not None else q.order_by(DatasetVersion.number.desc())
         v = await self.s.scalar(q.limit(1))
         if v is None:
             raise NotFound(f"dataset '{ds_id}' has no version {number}")

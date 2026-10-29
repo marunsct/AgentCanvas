@@ -41,6 +41,10 @@ class UtcDateTime(TypeDecorator[datetime]):
     impl = DateTime(timezone=True)
     cache_ok = True
 
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        # SQLite keeps the wall clock and drops the offset: `?since=10:00+02:00` would compare as 10:00 UTC
+        return value.astimezone(UTC) if value is not None and value.tzinfo is not None else value
+
     def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
         return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
 

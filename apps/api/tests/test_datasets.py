@@ -49,6 +49,7 @@ async def test_examples_are_checked_and_every_change_is_a_version(api_client):
 
     old = (await api_client.get(f"{base}?version=2")).json()  # versions never change
     assert old["version"] == 2 and old["items"][0]["reference"] == {"out": "Hello Ada"}
+    assert (await api_client.get(f"{base}?version=0")).status_code == 404  # C-11: not the latest
     versions = (await api_client.get(f"{base}/versions")).json()
     assert [(v["number"], v["examples"]) for v in versions] == [(4, 1), (3, 2), (2, 2), (1, 0)]
     listed = (await api_client.get(f"/v1/workflows/{wf}/datasets")).json()

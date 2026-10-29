@@ -282,7 +282,7 @@ class AuditRepo:
         if until is not None:
             q = q.where(AuditLog.created_at < until)
         if target:
-            q = q.where(AuditLog.target.contains(target))
+            q = q.where(AuditLog.target.contains(target, autoescape=True))  # `%` and `_` are characters here
         if before:
             q = q.where(AuditLog.id < before)
         rows = await self.s.execute(q.order_by(AuditLog.id.desc()).limit(limit))

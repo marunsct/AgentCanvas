@@ -96,7 +96,7 @@ async def test_mutations_without_an_id_in_the_path_name_their_target(api_client)
 
 
 async def test_the_audit_log_filters_by_time(api_client):
-    from datetime import UTC, datetime, timedelta
+    from datetime import UTC, datetime, timedelta, timezone
 
     await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "audit-secret"})
     now = datetime.now(UTC)
@@ -106,3 +106,16 @@ async def test_the_audit_log_filters_by_time(api_client):
     assert later.json() == []
     earlier = await api_client.get("/v1/org/audit", params={"until": (now - timedelta(days=1)).isoformat()})
     assert all(e["action"] != "put_secret" for e in earlier.json())
+    # C-11: a time with another offset means the same instant (SQLite kept its wall clock and dropped the offset)
+    tokyo, new_york = timezone(timedelta(hours=9)), timezone(timedelta(hours=-5))
+    recent = await log(api_client, since=(now - timedelta(minutes=5)).astimezone(tokyo).isoformat())
+    assert any(e["action"] == "put_secret" for e in recent)
+    assert await log(api_client, since=(now + timedelta(minutes=5)).astimezone(new_york).isoformat()) == []
+
+
+async def test_the_audit_target_filter_matches_its_text_literally(api_client):
+    """C-11: `%` and `_` in the target filter are characters, not LIKE patterns that match everything."""
+    await api_client.put("/v1/projects/prj_default/secrets/AUDIT_T", json={"value": "x"})
+    assert await log(api_client, target="AUDIT_T")
+    assert await log(api_client, target="%") == []
+    assert await log(api_client, target="AUDIT__") == []
