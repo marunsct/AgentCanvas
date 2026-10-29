@@ -293,15 +293,24 @@ class KnowledgeService:
 
     # ------------------------------------------------------------ knowledge bases ----
     async def list(self, project_id: str) -> list[tuple[KnowledgeBase, int, int]]:
-        """(knowledge base, documents, chunks) for each knowledge base of a project."""
-        kbs = list(
-            (
-                await self.s.scalars(
-                    select(KnowledgeBase).where(KnowledgeBase.project_id == project_id).order_by(KnowledgeBase.name)
-                )
-            ).all()
+        """(knowledge base, documents, chunks) for each knowledge base of a project, counted in one query."""
+        counts = (
+            select(
+                KnowledgeDocument.kb_id,
+                func.count().label("documents"),
+                func.coalesce(func.sum(KnowledgeDocument.chunks), 0).label("chunks"),
+            )
+            .where(KnowledgeDocument.kb_id.in_(select(KnowledgeBase.id).where(KnowledgeBase.project_id == project_id)))
+            .group_by(KnowledgeDocument.kb_id)
+            .subquery()
         )
-        return [(k, *(await self.counts(k.id))) for k in kbs]
+        q = (
+            select(KnowledgeBase, counts.c.documents, counts.c.chunks)
+            .outerjoin(counts, counts.c.kb_id == KnowledgeBase.id)
+            .where(KnowledgeBase.project_id == project_id)
+            .order_by(KnowledgeBase.name)
+        )
+        return [(k, int(n or 0), int(c or 0)) for k, n, c in (await self.s.execute(q)).all()]
 
     async def counts(self, kb_id: str) -> tuple[int, int]:
         row = (
