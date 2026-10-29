@@ -413,6 +413,13 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Long-term memory can be searched by meaning: set the memory embedding model on the server and Recall returns the
+  best matches directly from the database instead of scanning up to 1000 memories. (HARDENING F-7).
+- A knowledge base can add a sitemap and fetch its web pages again every few hours or on demand, so changed pages
+  replace their old text, new pages are added and removed ones are dropped. (HARDENING G-6).
+- On Postgres, knowledge bases are searched inside the database (pgvector nearest-neighbour index plus full-text
+  search) instead of loading every chunk, so a base can hold a million chunks; SQLite still searches in memory up to
+  50,000. (HARDENING G-6).
 - The Copilot panel's Stop button now asks the server to end the answer (POST /v1/workflows/{id}/copilot/stop)
   instead of only closing the browser's connection. The model call is cancelled at once, the part already said is
   saved as stopped, and viewers can stop their own Ask answers. (HARDENING G-11).

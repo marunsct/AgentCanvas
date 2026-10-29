@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### Knowledge and memory at scale: what was built, what was not
+Knowledge search on Postgres uses pgvector and full-text search (1,000,000 chunks per base); SQLite keeps the in-process
+engine (50,000). Memory's semantic index is a **server** setting (`AGENTCANVAS_MEMORY_EMBEDDING`), not per project: the
+LangGraph store's vector column has one size per store. Re-crawl is an interval per knowledge base with its own job,
+not a cron trigger (cron triggers belong to workflows). OCR for scanned PDFs was not added: no pure-Python engine is
+installed and a real one is a heavy system or model dependency; the "needs OCR first" message stays. Reindexing memories
+refreshes their `updated_at`, which restarts their retention clock (documented). *Reverse:* none needed.
+
 ### The Copilot's default engine stays the loop; AG-UI was not built
 A review agent made Deep Agents the default engine and every Copilot suite passes with it, but the real-model
 evaluation (`make copilot-evals` against Sonnet 5.5 and a local model) has never run, and the browser tests were not run
