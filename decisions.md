@@ -10,6 +10,23 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-10-29
+
+### HARDENING.md rewritten as an open list; the "Done" table is gone
+The deep review of 2026-10-29 (seven read-only passes over run-time, control plane, security, web, Copilot and
+evaluation, adapters and exports, docs and completeness, plus a check of MCP 2026-07-28, A2A 1.0, the Anthropic and
+OpenAI platforms and the competitors) produced about 90 findings and a plan. The old file was two thirds history.
+The rewrite keeps only open work, with ids (`R-1`, `S-2`, …) so a PR can name its item, and marks each finding
+*confirmed* (reproduced in this repository) or *plausible* (from reading). What was done lives in `CHANGELOG.md`
+and this log, which git already keeps. *Reverse:* `git show 8304610:HARDENING.md` has the last version with the
+Done table. **Nothing in the new list is fixed yet**; the review found them, the fixes are the next passes, in the
+order the file's last section suggests (the confirmed highs and the one critical first).
+
+### Reviewers' reproductions stay out of the repository
+The scripts that confirmed findings (`scratchpad/test_double_cancel.py`, `n8n_loop.py`, `egr.py`, `blk.py`,
+`repro1-5.py`, `wipe/store.wipe.test.ts`) are throwaway probes in the session's scratchpad, not tests: each fix
+lands with its own regression test written against the fixed behaviour, as the standing rule says.
+
 ## 2026-10-28
 
 ### The RLS migration stays one transaction (the plan said split it)
