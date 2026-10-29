@@ -19,7 +19,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from agentcanvas import designs
-from agentcanvas.copilot import docs, rules
+from agentcanvas.copilot import docs, rules, skillbook
 from agentcanvas.copilot.pack import block_summary
 from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_commands
@@ -472,6 +472,16 @@ async def export_plan(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+async def read_skill(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """A skill (`copilot/skills`) for the loop engine, which has no file system: the Deep Agents engine reads the same
+    text from its files. A framework skill carries the framework's facts as of the running manifests."""
+    found = skillbook.skills()
+    name = str(args.get("name") or "").strip()
+    if name not in found:
+        return {"ok": False, "error": f"no skill '{name}'; known: {', '.join(found)}"}
+    return {"ok": True, "skill": found[name]}
+
+
 MAX_READ = 20_000  # characters of a workspace file given to the model
 
 
@@ -628,6 +638,16 @@ TOOLS: dict[str, Tool] = {
             "The AI models and providers this server knows, and which project secrets are set (names only).",
             {"type": "object", "properties": {}},
             list_models,
+        ),
+        Tool(
+            "read_skill",
+            "Read a skill: guidance for a kind of task. `build-for-<framework>` (build-for-crewai, "
+            "build-for-openai-agents, build-for-google-adk, build-for-pydantic-ai-agno, "
+            "build-for-microsoft-agent-framework, build-for-strands-llamaindex, build-for-mastra, "
+            "build-for-claude-agent-sdk) says what that framework runs, emulates or refuses on the canvas; "
+            "others: debug-a-run, human-approval, write-tests, answer-from-documents, model-reliability.",
+            {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+            read_skill,
         ),
         Tool(
             "list_secrets",

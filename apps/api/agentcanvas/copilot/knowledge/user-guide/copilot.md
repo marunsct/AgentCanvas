@@ -61,6 +61,15 @@ The Copilot can find, explain and fix problems:
 
 Ask "explain" to get only an explanation; ask "fix" to get a proposal. In Ask mode it never changes or runs anything.
 
+## Building for another framework
+
+Ask "make this run on CrewAI" (or the OpenAI Agents SDK, Google ADK, Pydantic AI, Agno, the Microsoft Agent
+Framework, Strands, LlamaIndex or Mastra) and the Copilot first reads what that framework can do, then checks
+your workflow against it. It tells you which blocks the framework runs as they are, which it only emulates and how
+(the validator's P002 warnings), and which it refuses (P001), and then proposes the framework change and the
+replacements for blocks that do not fit. This list is built from the same framework descriptions the validator and
+the framework picker use, so it is always current. See [Frameworks](frameworks.md).
+
 ## Project notes
 
 Notes in **Settings › Copilot** are read on every message: conventions ("drafts use
