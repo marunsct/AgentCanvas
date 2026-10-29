@@ -20,6 +20,7 @@ from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
 from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -331,6 +332,7 @@ def package(
     version: str = "0.0.0",
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated workflow is `source`."""
+    refuse_plain_secrets(wf)
     pkg = package_name(wf.name)
     root = f"{pkg.replace('_', '-')}-google-adk"
     models = model_specs(wf)

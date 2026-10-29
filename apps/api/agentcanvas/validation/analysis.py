@@ -6,12 +6,26 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
-from agentcanvas.ir.models import Node
+from pydantic import ValidationError
+
+from agentcanvas.errors import InvalidInput
+from agentcanvas.ir.models import Node, Workflow
 from agentcanvas.registry import NodeManifest
 
 STATE_REF = re.compile(r"\bstate\.([a-z][a-z0-9_]*)\b(?!\s*\()")  # `state.get(…)` is a method, not a channel
 JINJA_BLOCK = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.S)
 TEMPLATE_FORMATS = frozenset({"prompt", "template", "url_template"})  # text with {{ … }}: only those parts run
+SECRET_PATTERNS = [
+    re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_\-]{20,}"),  # OpenAI / Anthropic style keys
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key id
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"),  # GitHub tokens
+    re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),  # Slack tokens
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"),  # Google API key
+]
+PLAIN_VALUE_MAPS = ("headers", "env")  # config maps whose values may be keys typed in directly
+_KEY_NAME = re.compile(r"auth|token|key|secret|passw|cookie|session|credential|signature", re.IGNORECASE)
+_KEY_VALUE = re.compile(r"^\s*(?:bearer|basic|digest|token)\s+\S", re.IGNORECASE)
 
 
 def iter_strings(value: Any, path: str = "config") -> Iterator[tuple[str, str]]:
@@ -103,3 +117,45 @@ def node_side_effects(node: Node, m: NodeManifest) -> set[str]:
     declared = node.config.get("side_effects")
     extra = {x for x in declared if isinstance(x, str)} if isinstance(declared, list) else set()
     return set(m.side_effects) | extra
+
+
+def plain_secrets(config: dict[str, Any]) -> list[tuple[str, str]]:
+    """(`headers` or `env`, entry name) of each value in a block's settings that looks like a key typed in as plain
+    text: named like one (Authorization, X-API-Key, GITHUB_TOKEN…) or holding one (`Bearer …`, `sk-…`). A secret
+    reference (`{"$secret": NAME}`) names a secret without holding it and is never one."""
+    found = []
+    for key in PLAIN_VALUE_MAPS:
+        values = config.get(key)
+        for name, value in values.items() if isinstance(values, dict) else ():
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if _KEY_NAME.search(str(name)) or _KEY_VALUE.match(value) or any(p.search(value) for p in SECRET_PATTERNS):
+                found.append((key, str(name)))
+    return found
+
+
+def secrets_in_plain_text(wf: Workflow) -> list[tuple[str, str, str]]:
+    """(block, `headers` or `env`, entry name) of every `plain_secrets` value of the workflow, subgraphs included
+    (their blocks as `subgraph / block`)."""
+    found = [(el.name, key, name) for el in [*wf.nodes, *wf.resources] for key, name in plain_secrets(el.config)]
+    for n in wf.nodes:
+        if n.type == "core.subgraph":
+            try:
+                inner = wf.subworkflow(n)
+            except ValidationError:
+                continue  # E018 says so, and an export refuses it
+            found += [(f"{n.name} / {where}", key, name) for where, key, name in secrets_in_plain_text(inner)]
+    return found
+
+
+def refuse_plain_secrets(wf: Workflow) -> None:
+    """Raise InvalidInput naming each key typed in as plain text: an export writes settings into its code and into
+    its copy of the workflow, so the key would go wherever the project goes."""
+    found = secrets_in_plain_text(wf)
+    if found:
+        what = {"headers": "header", "env": "variable"}
+        named = ", ".join(f"'{where}' ({what[key]} {name})" for where, key, name in found)
+        raise InvalidInput(
+            f"keys typed in as plain text would be written into the export: {named}; store each as a project secret "
+            'and use {"$secret": "NAME"} in its place, then export again'
+        )

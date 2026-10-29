@@ -43,6 +43,7 @@ from agentcanvas.designs import article
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
 from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -524,6 +525,7 @@ def package(
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated code is `source`, with the
     deploy kit for `target` (one of deploykit.TARGETS)."""
+    refuse_plain_secrets(wf)
     pkg = package_name(wf.name)
     root = pkg.replace("_", "-")
     secrets = sorted(_secret_names(wf.model_dump(mode="json")))

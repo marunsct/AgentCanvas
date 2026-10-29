@@ -18,6 +18,7 @@ import uuid
 from typing import Any
 
 from agentcanvas.ir.models import IDENT, RESERVED_NAMES, Workflow
+from agentcanvas.validation.analysis import PLAIN_VALUE_MAPS
 
 VERSION = "25.4.2"  # 25.4.2 adds A2AAgent; nothing here needs a later one
 _NS = uuid.UUID("6b1f3c0e-6a0e-4f5e-9a51-6167656e7473")
@@ -294,9 +295,6 @@ class _Exporter:
         return flow, list(dict.fromkeys(self.report))
 
 
-_PLAIN_VALUES = {"headers", "env"}  # config maps whose values may be keys typed in directly (not secret references)
-
-
 def _scrub(x: Any, report: list[str], where: str = "") -> Any:
     """`x` without header or environment values typed in as plain text: the file is meant to be shared. Secret
     references (`{"$secret": NAME}`) name a secret without holding it and stay."""
@@ -308,7 +306,7 @@ def _scrub(x: Any, report: list[str], where: str = "") -> Any:
         where = x["name"]
     out: dict[str, Any] = {}
     for k, v in x.items():
-        if k in _PLAIN_VALUES and isinstance(v, dict):
+        if k in PLAIN_VALUE_MAPS and isinstance(v, dict):
             kept = {h: val if isinstance(val, dict) and "$secret" in val else "" for h, val in v.items()}
             if kept != v:
                 report.append(f"'{where}': values of {k} typed in directly are left out of the file (they may be "

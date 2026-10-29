@@ -24,6 +24,7 @@ from typing import Any
 from agentcanvas import agentspec, designs
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.validation.analysis import refuse_plain_secrets
 
 KIT = Path(__file__).resolve().parent / "kit"
 FAKE_MODEL = Path(designs.__file__).resolve().parent / "kit" / "fake_model.py"
@@ -153,6 +154,7 @@ def export_files(wf: Workflow, target: str) -> dict[str, str]:
     t = TARGETS[target]
     if any(n.type == "core.subgraph" for n in wf.nodes):
         raise InvalidInput("whole-flow exports to other frameworks do not take subflows yet")
+    refuse_plain_secrets(wf)
     doc, _ = agentspec.export_flow(wf)
     found = gaps(wf, target)
     root = f"{_slug(wf.name)}-{target.replace('_', '-')}"

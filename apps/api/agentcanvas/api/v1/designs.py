@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from agentcanvas import designs
 from agentcanvas.api.deps import attachment
 from agentcanvas.api.v1.workflows import service
-from agentcanvas.designs.export import export_zip
+from agentcanvas.designs.export import all_export_problems, export_zip
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ir.models import Node, Workflow
 from agentcanvas.services.workflows import WorkflowService
@@ -76,7 +76,7 @@ async def agent_code(
         label=designs.AGENT_FRAMEWORKS[fw].label,
         code=designs.generate(fw, design),
         problems=designs.problems(fw, design),
-        export_problems=designs.export_problems(fw, design),
+        export_problems=all_export_problems(fw, design),
     )
 
 

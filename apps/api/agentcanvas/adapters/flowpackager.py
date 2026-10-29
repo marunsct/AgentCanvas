@@ -29,6 +29,7 @@ from agentcanvas.adapters.strands.codegen import STRANDS_VERSION
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
 from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[1]  # the `agentcanvas` package directory
@@ -573,6 +574,7 @@ def package(
     version: str = "0.0.0",
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated flow for `framework` is `source`."""
+    refuse_plain_secrets(wf)
     t = TARGETS[framework]
     found = bundle.collect(workspace, wf.id, wf.model_dump_json(), source) if workspace is not None else None
     if found is not None and found.missing:

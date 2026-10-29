@@ -18,6 +18,7 @@ from agentcanvas.designs import AGENT_FRAMEWORKS, AgentDesign, article, export_p
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import SECRET_NAME, Workflow
 from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import plain_secrets
 from agentcanvas.workspace import bundle
 
 KIT = Path(__file__).parent / "kit"
@@ -206,11 +207,22 @@ print(await ask(agent, "Hello!"))
 """
 
 
+def all_export_problems(framework: str, design: AgentDesign) -> list[str]:
+    """`export_problems`, and every key the agent's tools have typed in as plain text: `agent_tools.py` would hold
+    it."""
+    return export_problems(framework, design) + [
+        f"the tool '{t.resource}' has the {'header' if key == 'headers' else 'variable'} {name} typed in as plain "
+        "text, which would be written into the code: store it as a project secret"
+        for t in design.tools
+        for key, name in plain_secrets(t.config)
+    ]
+
+
 def export_files(
     wf: Workflow, design: AgentDesign, framework: str, workspace: Path | None = None
 ) -> dict[str, str | bytes]:
     """The project's files by path. Raises InvalidInput (with every reason) when the design cannot be exported."""
-    problems = export_problems(framework, design)
+    problems = all_export_problems(framework, design)
     if problems:
         raise InvalidInput("this agent cannot be exported for " + AGENT_FRAMEWORKS[framework].label + ": "
                            + "; ".join(problems))  # fmt: skip

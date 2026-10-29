@@ -244,6 +244,10 @@
       "what": "This model does not take a temperature (or top_p, top_k), so the setting is left out.",
       "fix": "Clear the setting. To make answers more varied or more exact, say so in the prompt."
     },
+    "W021": {
+      "what": "A header or environment value that looks like a key is typed in as plain text. Runs work, but an export would write it into the code, so exports refuse it.",
+      "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."
+    },
     "W023": {
       "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
       "fix": "Pick a newer model from the list before that day (the provider names a successor)."
