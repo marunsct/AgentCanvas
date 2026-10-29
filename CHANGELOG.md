@@ -413,6 +413,20 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- The Copilot panel's Stop button now asks the server to end the answer (POST /v1/workflows/{id}/copilot/stop)
+  instead of only closing the browser's connection. The model call is cancelled at once, the part already said is
+  saved as stopped, and viewers can stop their own Ask answers. (HARDENING G-11).
+- `make copilot-evals` runs the Copilot's build and debug evaluations with a model you choose (Ollama by default)
+  and writes one JSON report. With no reachable model it says so and runs an offline demo Copilot, so the command
+  always finishes. (HARDENING G-11).
+- Ask the Copilot to build or move a workflow for CrewAI, the OpenAI Agents SDK, Google ADK, Pydantic AI, Agno, the
+  Microsoft Agent Framework, Strands, LlamaIndex or Mastra and it first reads which blocks that framework runs, only
+  emulates or refuses. That list is generated from the same framework descriptions the validator uses, so it cannot
+  go out of date. (HARDENING G-11).
+- The Copilot can now list the project's secret names (never values), its knowledge bases with document counts,
+  embedding model and whether one needs reindexing, and what an export of the workflow would hold and lack. It uses
+  them in both modes to explain and point you to the right page; it still never adds secrets or exports by itself.
+  (HARDENING G-11).
 - **Import OpenAI Agents SDK code**, which is what OpenAI's Agent Builder exports before it closes on 30 November
   2026: **Import a file…** takes a `.py` file and reads it without running it. Agents become AI agent steps with
   their instructions, model and answer shape, in the order the code runs them; handoffs make a Planning Agent with

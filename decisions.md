@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-10-29
 
+### The Copilot's default engine stays the loop; AG-UI was not built
+A review agent made Deep Agents the default engine and every Copilot suite passes with it, but the real-model
+evaluation (`make copilot-evals` against Sonnet 5.5 and a local model) has never run, and the browser tests were not run
+against it. That commit (`6423f66` on the agent's branch `feat-copilot`) was left out; `AGENTCANVAS_COPILOT_ENGINE`
+still selects the engine. *Reverse:* cherry-pick it once the evaluation scores match. The AG-UI wire for the Copilot
+(PLAN.md) was not built: it would run beside the SSE format the web reads, with no `ag-ui` dependency to build on
+and no gain except CopilotKit interop, which the plan itself rejects.
+
 ### S-10 needed a test, not a change
 The designed-agent header puts the block's name and the workflow's name into a docstring. The block's name is
 restricted to an identifier by the IR, and the workflow's name goes through `json.dumps`, which escapes quotes, so
