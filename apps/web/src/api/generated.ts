@@ -2713,10 +2713,42 @@ export type WorkflowId8 = string;
 export type WorkflowName1 = string | null;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
+export type CanvasNodeId1 = string | null;
+export type Children = TrajectoryNode[];
+/**
+ * what the row shows when opened: arguments, replies, …
+ */
+export type Detail4 = {
+  [k: string]: unknown;
+} | null;
+export type DurationMs1 = number | null;
+export type Id57 = string;
+export type Kind9 =
+  "run" | "group" | "step" | "agent" | "model" | "tool" | "message" | "part" | "interrupt" | "error" | "note";
+export type Label20 = string;
+/**
+ * milliseconds since the run began
+ */
+export type StartMs = number | null;
+/**
+ * runs: when it began
+ */
+export type StartedAt2 = string | null;
+/**
+ * steps and runs: running, ok, error, interrupted, success, …
+ */
+export type Status16 = string | null;
+export type Tokens3 = number;
+/**
+ * one per run of the conversation, oldest first
+ */
+export type Runs8 = TrajectoryNode[];
+export type ThreadId13 = string;
+export type WorkflowId9 = string;
 export type CreatedAt32 = string;
 export type Email4 = string;
 export type ExpiresAt1 = string | null;
-export type Id57 = string;
+export type Id58 = string;
 export type LastUsedAt = string | null;
 export type Name59 = string;
 /**
@@ -2745,7 +2777,7 @@ export type Role7 = ("admin" | "builder" | "reviewer" | "viewer") | null;
 export type CreatedAt33 = string;
 export type Email5 = string;
 export type ExpiresAt2 = string | null;
-export type Id58 = string;
+export type Id59 = string;
 export type LastUsedAt1 = string | null;
 export type Name61 = string;
 /**
@@ -2770,7 +2802,7 @@ export type Endpoint2 = string;
  * send inputs, outputs and model replies (masked)
  */
 export type IncludeContent = boolean;
-export type Kind9 = "langfuse" | "phoenix" | "datadog" | "otlp";
+export type Kind10 = "langfuse" | "phoenix" | "datadog" | "otlp";
 /**
  * Langfuse public key, as a secret
  */
@@ -2787,17 +2819,17 @@ export type MissingSecrets = string[];
 export type CreatedAt34 = string;
 export type DeploymentId4 = string | null;
 export type Enabled11 = boolean;
-export type Id59 = string;
-export type Kind10 = string;
+export type Id60 = string;
+export type Kind11 = string;
 export type Secret = string | null;
 export type Url4 = string | null;
 export type DeploymentId5 = string | null;
-export type Kind11 = "webhook" | "cron";
+export type Kind12 = "webhook" | "cron";
 export type CreatedAt35 = string;
 export type DeploymentId6 = string | null;
 export type Enabled12 = boolean;
-export type Id60 = string;
-export type Kind12 = string;
+export type Id61 = string;
+export type Kind13 = string;
 export type Url5 = string | null;
 export type Url6 = string;
 /**
@@ -2806,7 +2838,7 @@ export type Url6 = string;
 export type CopilotChanges = CopilotChange[];
 export type CreatedAt36 = string;
 export type CreatedBy2 = string | null;
-export type Id61 = string;
+export type Id62 = string;
 export type IrHash4 = string;
 export type Message12 = string;
 export type Semver1 = string;
@@ -2819,7 +2851,7 @@ export type Message13 = string;
 export type CopilotChanges1 = CopilotChange[];
 export type CreatedAt37 = string;
 export type CreatedBy3 = string | null;
-export type Id62 = string;
+export type Id63 = string;
 export type IrHash5 = string;
 export type Message14 = string;
 export type Semver2 = string;
@@ -2968,28 +3000,28 @@ export type Tools4 =
     ];
 export type CreatedAt38 = string;
 export type Diagnostics5 = Diagnostic[];
-export type Id63 = string;
+export type Id64 = string;
 export type IrHash6 = string;
 export type Name63 = string;
 export type ProjectId6 = string;
 export type UpdatedAt12 = string;
 export type Version13 = number;
-export type Id64 = string;
+export type Id65 = string;
 export type Name64 = string;
 export type UpdatedAt13 = string;
 export type Version14 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
 export type Name65 = string;
-export type Id65 = string;
+export type Id66 = string;
 export type IsDefault = boolean;
 export type Name66 = string;
 /**
  * default: the latest version
  */
 export type Version15 = number | null;
-export type Id66 = string;
-export type Kind13 = string;
+export type Id67 = string;
+export type Kind14 = string;
 /**
  * what the content is, read from its first bytes
  */
@@ -3011,7 +3043,7 @@ export type Version16 = string | null;
 export type Error11 = string | null;
 export type Ok4 = boolean;
 export type Reply1 = string | null;
-export type Detail4 = string;
+export type Detail5 = string;
 export type Ok5 = boolean;
 
 export interface ApiSchemas {
@@ -3277,6 +3309,7 @@ export interface ApiSchemas {
   TextIn?: TextIn;
   ThreadOut?: ThreadOut;
   ThreadPage?: ThreadPage;
+  ThreadTrajectory?: ThreadTrajectory;
   TimeoutPolicySpec?: TimeoutPolicySpec;
   TokenCreated?: TokenCreated;
   TokenIn?: TokenIn;
@@ -3284,6 +3317,7 @@ export interface ApiSchemas {
   ToolUse?: ToolUse;
   TraceExport?: TraceExport;
   TraceExportOut?: TraceExportOut;
+  TrajectoryNode?: TrajectoryNode;
   TriggerCreated?: TriggerCreated;
   TriggerIn?: TriggerIn;
   TriggerOut?: TriggerOut;
@@ -6735,13 +6769,39 @@ export interface ThreadPage {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ThreadTrajectory".
+ */
+export interface ThreadTrajectory {
+  runs: Runs8;
+  thread_id: ThreadId13;
+  workflow_id: WorkflowId9;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "TrajectoryNode".
+ */
+export interface TrajectoryNode {
+  canvas_node_id?: CanvasNodeId1;
+  children?: Children;
+  detail?: Detail4;
+  duration_ms?: DurationMs1;
+  id: Id57;
+  kind: Kind9;
+  label: Label20;
+  start_ms?: StartMs;
+  started_at?: StartedAt2;
+  status?: Status16;
+  tokens?: Tokens3;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "TokenCreated".
  */
 export interface TokenCreated {
   created_at: CreatedAt32;
   email: Email4;
   expires_at: ExpiresAt1;
-  id: Id57;
+  id: Id58;
   last_used_at: LastUsedAt;
   name: Name59;
   prefix: Prefix2;
@@ -6767,7 +6827,7 @@ export interface TokenOut {
   created_at: CreatedAt33;
   email: Email5;
   expires_at: ExpiresAt2;
-  id: Id58;
+  id: Id59;
   last_used_at: LastUsedAt1;
   name: Name61;
   prefix: Prefix3;
@@ -6787,7 +6847,7 @@ export interface TraceExport {
   endpoint?: Endpoint2;
   headers?: Headers1;
   include_content?: IncludeContent;
-  kind: Kind9;
+  kind: Kind10;
   public_key?: PublicKey;
   secret_key?: SecretKey;
 }
@@ -6826,8 +6886,8 @@ export interface TriggerCreated {
   created_at: CreatedAt34;
   deployment_id: DeploymentId4;
   enabled: Enabled11;
-  id: Id59;
-  kind: Kind10;
+  id: Id60;
+  kind: Kind11;
   secret?: Secret;
   url?: Url4;
 }
@@ -6841,7 +6901,7 @@ export interface Config7 {
 export interface TriggerIn {
   config?: Config8;
   deployment_id?: DeploymentId5;
-  kind: Kind11;
+  kind: Kind12;
 }
 export interface Config8 {
   [k: string]: unknown;
@@ -6855,8 +6915,8 @@ export interface TriggerOut {
   created_at: CreatedAt35;
   deployment_id: DeploymentId6;
   enabled: Enabled12;
-  id: Id60;
-  kind: Kind12;
+  id: Id61;
+  kind: Kind13;
   url?: Url5;
 }
 export interface Config9 {
@@ -6877,7 +6937,7 @@ export interface VersionDetail {
   copilot_changes?: CopilotChanges;
   created_at: CreatedAt36;
   created_by: CreatedBy2;
-  id: Id61;
+  id: Id62;
   ir: Ir4;
   ir_hash: IrHash4;
   layout: Layout3;
@@ -6907,7 +6967,7 @@ export interface VersionOut {
   copilot_changes?: CopilotChanges1;
   created_at: CreatedAt37;
   created_by: CreatedBy3;
-  id: Id62;
+  id: Id63;
   ir_hash: IrHash5;
   message: Message14;
   semver: Semver2;
@@ -6931,7 +6991,7 @@ export interface WorkflowIn {
 export interface WorkflowOut {
   created_at: CreatedAt38;
   diagnostics: Diagnostics5;
-  id: Id63;
+  id: Id64;
   ir: Ir5;
   ir_hash: IrHash6;
   /**
@@ -6963,7 +7023,7 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id64;
+  id: Id65;
   name: Name64;
   updated_at: UpdatedAt13;
   version: Version14;
@@ -6980,7 +7040,7 @@ export interface WorkflowPatch {
  * via the `definition` "WorkspaceOut".
  */
 export interface WorkspaceOut {
-  id: Id65;
+  id: Id66;
   is_default: IsDefault;
   name: Name66;
 }
@@ -6998,8 +7058,8 @@ export interface PushIn {
  * via the `definition` "agentcanvas__api__v1__files__FileOut".
  */
 export interface FileOut1 {
-  id: Id66;
-  kind?: Kind13;
+  id: Id67;
+  kind?: Kind14;
   media_type: MediaType;
   name: Name67;
   size: Size3;
@@ -7027,6 +7087,6 @@ export interface TestOut {
  * via the `definition` "agentcanvas__api__v1__traces__TestOut".
  */
 export interface TestOut1 {
-  detail: Detail4;
+  detail: Detail5;
   ok: Ok5;
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
@@ -23,16 +24,18 @@ from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
-from agentcanvas.db.repositories import delete_thread_rows
+from agentcanvas.db.repositories import LIGHT_RUN, delete_thread_rows
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
+from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.secrets import hide_secrets
+from agentcanvas.services.trajectory import ThreadTrajectory, build_run
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -172,10 +175,6 @@ class InterruptOut(BaseModel):
 
 class Decision(BaseModel):
     value: Any
-
-
-# a run as lists show it: without its recording (every model reply and tool output) and context (F-2)
-LIGHT_RUN = (defer(Run.recording), defer(Run.context))
 
 
 # ----------------------------------------------------------------- helpers ----
@@ -518,6 +517,36 @@ async def thread_runs(thread_id: str, session: AsyncSession = Depends(get_sessio
     q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread_id).order_by(Run.id)
     rows = (await session.scalars(q)).all()
     return [_run_out(x) for x in rows]
+
+
+@router.get("/threads/{thread_id}/trajectory", response_model=ThreadTrajectory)
+async def thread_trajectory(
+    thread_id: str,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    r: Runner = Depends(runner),
+) -> ThreadTrajectory:
+    """The conversation as a tree (G-10): each run's steps, helper agents, model replies, tool calls and framework
+    parts, with times and tokens. A run still going on shows what it did so far."""
+    t = await _thread(session, thread_id)
+    try:
+        wf: Workflow | None = (await _thread_target(session, settings, t, runnable=False))[0]
+    except NotFound:  # its deployment is gone: the tree still shows, with step ids for labels
+        wf = None
+    q = select(Run).options(defer(Run.recording), defer(Run.context)).where(Run.thread_id == thread_id)
+    runs = (await session.scalars(q.order_by(Run.started_at, Run.id))).all()
+    out = []
+    for i, run in enumerate(runs, 1):
+        events = run.events
+        h = r.handles.get(run.id)
+        if h is not None and not h.done.is_set():  # still running here: what it did so far
+            events = compact(list(h.events), h.event_times, time.time_ns())
+        out.append(build_run(run.id, events, wf, status=run.status, started_at=run.started_at, index=i,
+                             error=run.error))  # fmt: skip
+    res = r.resources(thread_id, wf) if wf is not None else None
+    return ThreadTrajectory.model_validate(
+        hide_secrets(ThreadTrajectory(thread_id=t.id, workflow_id=t.workflow_id, runs=out).model_dump(), _secrets(res))
+    )
 
 
 @router.post("/threads/{thread_id}/resume")

@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.deps import get_session, get_settings_dep
 from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start, own_thread
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
+from agentcanvas.db.repositories import LIGHT_RUN
 from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
@@ -600,7 +601,8 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
     """A task's state: the run that started it, or the latest run that answered it (labelled with the task)."""
     task_id = str(params.get("id") or "")
     thread = await _task_thread(session, dep, task_id)
-    runs = (await session.scalars(select(Run).where(Run.thread_id == thread.id).order_by(Run.started_at.desc()))).all()
+    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread.id).order_by(Run.started_at.desc())
+    runs = (await session.scalars(q)).all()
     latest = next((r for r in runs if r.id == task_id or (r.labels or {}).get("a2a_task") == task_id), None)
     handle = request.app.state.runner.handles.get(latest.id) if latest else None
     if handle is not None and handle.done.is_set():

@@ -34,6 +34,7 @@ from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
+from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 
@@ -659,6 +660,7 @@ class Runner:
                         cache_hits=h.usage["cache_hits"],
                         fallbacks=h.usage["fallbacks"],
                         recording=_recording(h, status),
+                        events=compact([*h.events, *h.held], h.event_times, time.time_ns()),
                         handover=h.drained,
                     )
                 )

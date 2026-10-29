@@ -12146,6 +12146,33 @@
         "title": "ThreadPage",
         "type": "object"
       },
+      "ThreadTrajectory": {
+        "properties": {
+          "runs": {
+            "description": "one per run of the conversation, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/TrajectoryNode"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "workflow_id",
+          "runs"
+        ],
+        "title": "ThreadTrajectory",
+        "type": "object"
+      },
       "TimeoutPolicySpec": {
         "additionalProperties": false,
         "properties": {
@@ -12587,6 +12614,126 @@
           "missing_secrets"
         ],
         "title": "TraceExportOut",
+        "type": "object"
+      },
+      "TrajectoryNode": {
+        "properties": {
+          "canvas_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Node Id"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/TrajectoryNode"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "what the row shows when opened: arguments, replies, \u2026",
+            "title": "Detail"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "run",
+              "group",
+              "step",
+              "agent",
+              "model",
+              "tool",
+              "message",
+              "part",
+              "interrupt",
+              "error",
+              "note"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "milliseconds since the run began",
+            "title": "Start Ms"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "runs: when it began",
+            "title": "Started At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "steps and runs: running, ok, error, interrupted, success, \u2026",
+            "title": "Status"
+          },
+          "tokens": {
+            "default": 0,
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "title": "TrajectoryNode",
         "type": "object"
       },
       "TriggerCreated": {
@@ -27101,6 +27248,72 @@
           }
         ],
         "summary": "Edit State",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/threads/{thread_id}/trajectory": {
+      "get": {
+        "description": "The conversation as a tree (G-10): each run's steps, helper agents, model replies, tool calls and framework\nparts, with times and tokens. A run still going on shows what it did so far.",
+        "operationId": "thread_trajectory_v1_threads__thread_id__trajectory_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadTrajectory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Thread Trajectory",
         "tags": [
           "runs"
         ]

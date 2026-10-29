@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 from sqlalchemy.orm.exc import StaleDataError
 
 from agentcanvas.db.models import (
@@ -522,6 +523,10 @@ class WorkflowRepo:
         await self.require(wf_id)
         await self.s.execute(delete(WorkflowRow).where(WorkflowRow.id == wf_id))
         await self.s.commit()
+
+
+# a run as lists show it: without its recording (every model reply and tool output), context and events (F-2)
+LIGHT_RUN = (defer(Run.recording), defer(Run.context), defer(Run.events))
 
 
 async def delete_thread_rows(session: AsyncSession, thread_id: str) -> None:

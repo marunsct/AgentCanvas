@@ -9,6 +9,7 @@ import { editState, forkRun } from "./session";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { ScoreOut } from "../api/generated";
 import { ScoreBadge } from "../evaluation/ScoreBadge";
+import { TrajectoryView } from "./TrajectoryView";
 
 export interface Checkpoint {
   checkpoint_id: string;
@@ -37,6 +38,7 @@ export function Timeline() {
   const index = ticks.findIndex((t) => t.checkpoint_id === selected);
   const cp = index >= 0 ? ticks[index] : undefined;
   const [draft, setDraft] = useState("");
+  const [view, setView] = useState<"checkpoints" | "trajectory">("checkpoints");
   useEffect(() => setDraft(cp ? JSON.stringify(cp.values ?? {}, null, 2) : ""), [cp]);
   useEffect(() => () => setHighlight([]), [setHighlight]);
 
@@ -56,9 +58,28 @@ export function Timeline() {
     return Object.keys(out).length ? out : undefined;
   };
 
+  const views = (
+    <div className="toolbar-group" role="group" aria-label="Timeline view">
+      {(["checkpoints", "trajectory"] as const).map((v) => (
+        <button type="button" key={v} className={view === v ? "active" : ""} aria-pressed={view === v} onClick={() => setView(v)}
+          title={v === "trajectory" ? "What each step, agent and helper did, as a tree with times" : "Every saved state: inspect, edit, fork"}>
+          {v === "trajectory" ? "Trajectory" : "Checkpoints"}
+        </button>
+      ))}
+    </div>
+  );
+  if (view === "trajectory") {
+    return (
+      <div className="timeline" data-testid="timeline">
+        <div className="row gap"><ThreadScores threadId={threadId} runSeq={runSeq} /><span className="spacer" />{views}</div>
+        <TrajectoryView threadId={threadId} runSeq={runSeq} onPick={(id) => setHighlight([id])} />
+      </div>
+    );
+  }
+
   return (
     <div className="timeline" data-testid="timeline">
-      <ThreadScores threadId={threadId} runSeq={runSeq} />
+      <div className="row gap"><ThreadScores threadId={threadId} runSeq={runSeq} /><span className="spacer" />{views}</div>
       <div className="ticks" role="listbox" aria-label="checkpoints">
         {ticks.map((t, i) => (
           <button type="button" role="option" key={t.checkpoint_id} aria-selected={t.checkpoint_id === selected}

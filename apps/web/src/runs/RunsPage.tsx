@@ -17,6 +17,8 @@ import { Table } from "../ui/Table";
 import { AddToDataset } from "./AddToDataset";
 import { sinceFor, WHEN, type When } from "./runs";
 import { Activity } from "lucide-react";
+import { Fragment } from "react";
+import { TrajectoryView } from "../run/TrajectoryView";
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   idle: { label: "done", tone: "ok" },
@@ -36,6 +38,7 @@ export function RunsPage() {
   const [status, setStatus] = useState("");
   const [workflow, setWorkflow] = useState("");
   const [when, setWhen] = useState<When>("");
+  const [opened, setOpened] = useState<string | null>(null); // the conversation whose trajectory shows
   const workflows = useWorkflows();
   const canBuild = useCan("builder");
   const qc = useQueryClient();
@@ -94,7 +97,8 @@ export function RunsPage() {
           {items.map((t) => {
             const s = STATUS[t.status] ?? { label: t.status, tone: "neutral" as Tone };
             return (
-              <tr key={t.id}>
+              <Fragment key={t.id}>
+              <tr>
                 {canBuild && <td className="pick"><input type="checkbox" aria-label={`select conversation ${t.id}`} checked={picked.includes(t.id)}
                   onChange={(e) => pick(t.id, e.target.checked)} /></td>}
                 <td data-label="Status"><Badge tone={s.tone}>{s.label}</Badge></td>
@@ -108,13 +112,21 @@ export function RunsPage() {
                 <td className="small" data-label="Took">{duration(t) || "—"}</td>
                 <td className="small" data-label="Runs">{t.runs}</td>
                 <td className="small" data-label="Cost">{t.cost_usd ? `$${t.cost_usd.toFixed(4)}` : "—"}</td>
-                <td className="actions">{canBuild && (
-                  <button type="button" className="link small" aria-label={`delete conversation ${t.id}`} disabled={remove.isPending}
-                    onClick={async () => {
-                      if (await confirmDialog({ title: "Delete this conversation?", body: "Its runs, checkpoints and pending decisions are deleted.", confirm: "Delete", danger: true })) remove.mutate(t.id);
-                    }}>Delete</button>
-                )}</td>
+                <td className="actions">
+                  <button type="button" className="link small" aria-expanded={opened === t.id} aria-label={`trajectory of ${t.id}`}
+                    onClick={() => setOpened(opened === t.id ? null : t.id)}>{opened === t.id ? "Hide steps" : "Trajectory"}</button>
+                  {canBuild && (
+                    <button type="button" className="link small" aria-label={`delete conversation ${t.id}`} disabled={remove.isPending}
+                      onClick={async () => {
+                        if (await confirmDialog({ title: "Delete this conversation?", body: "Its runs, checkpoints and pending decisions are deleted.", confirm: "Delete", danger: true })) remove.mutate(t.id);
+                      }}>Delete</button>
+                  )}
+                </td>
               </tr>
+              {opened === t.id && (
+                <tr className="runs-trajectory"><td colSpan={canBuild ? 9 : 8}><TrajectoryView threadId={t.id} /></td></tr>
+              )}
+              </Fragment>
             );
           })}
         </Table>

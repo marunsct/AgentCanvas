@@ -49,6 +49,16 @@ at that moment, including **lineage** (which step or input last wrote each chann
 **⑂ Fork from here** to re-run from that point with the change, without touching the original run. This is the
 quickest way to try "what if the classifier had said *high*?".
 
+## Trajectory: who did what
+
+The **Timeline** tab has a **Trajectory** view next to **Checkpoints**, and the **Runs** page has a **Trajectory**
+button on each conversation. It shows the whole conversation as a tree, one branch per run: the steps that ran,
+under a step the model replies and tool calls, the **helper agents** a Planning Agent handed tasks to (with their
+own replies and tools), agents of other frameworks that answered, steps inside subflows, and the frames you drew
+around steps. Each row shows its time, tokens and a bar placed on the run's timeline; click a row's name to show
+that step on the canvas, and the arrow to open arguments, replies and results. Runs are kept with their events,
+so the tree works for past runs too; runs from before this version show a note instead.
+
 ## Explain
 
 The **Explain** tab narrates the run in plain language: which step ran, what each router chose and why

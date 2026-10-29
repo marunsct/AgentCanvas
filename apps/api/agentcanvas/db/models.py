@@ -302,6 +302,8 @@ class Run(Base):
     context: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # FR-X-13 cassette of a fresh run: its input, each model resource's replies, status, route and output
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # G-10: the run's events, compact (`runtime/trajectory.py`): the trajectory view once they left memory
+    events: Mapped[list[Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance

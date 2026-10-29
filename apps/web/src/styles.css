@@ -1228,3 +1228,13 @@ ul.plain.files { max-height: none; }
 .file-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted); }
 .file-name { flex: 1; overflow-wrap: anywhere; }
 .share-attached { display: block; font-size: 12px; opacity: .85; }
+
+/* trajectory (G-10) */
+.trajectory ul { list-style: none; margin: 0; padding: 0; }
+.trajectory-row > .row { align-items: center; min-height: 26px; font-size: 12px; }
+.trajectory-label { max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trajectory-toggle { width: 18px; padding: 0; }
+.trajectory-bar { position: relative; width: 120px; height: 6px; border-radius: 3px; background: var(--border, #ccc); flex-shrink: 0; }
+.trajectory-bar > span { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+.trajectory-detail { margin: 2px 0 6px 40px; max-height: 220px; overflow: auto; }
+.runs-trajectory > td { padding: 6px 10px; }
