@@ -40,7 +40,7 @@ def router_routes(ctx: ValidationContext) -> Iterator[Diagnostic]:
         cases = n.config.get("cases", []) if isinstance(n.config.get("cases"), list) else []
         routes = {c.get("route") for c in cases if isinstance(c, dict)} | {n.config.get("default", "default")}
         wired = [e.source.route for e in ctx.wf.flow_edges() if e.source.node == n.id and e.source.port]
-        for r in sorted(r for r in routes - set(wired) if isinstance(r, str)):
+        for r in sorted(r for r in routes - set(wired) if isinstance(r, str) and r):  # '' is E004 already
             yield error("E012", f"router '{n.name}' route '{r}' has no outgoing edge", node_id=n.id)
         for r in sorted({w for w in wired if wired.count(w) > 1}):
             yield error("E012", f"router '{n.name}' route '{r}' has more than one outgoing edge", node_id=n.id)

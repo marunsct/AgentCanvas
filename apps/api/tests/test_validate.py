@@ -34,6 +34,13 @@ def test_router_route_without_edge(triage):
     assert "E012" in codes(triage)
 
 
+def test_an_empty_router_path_name_is_reported_once(triage):
+    """E-4: a router with `default: ""` gave E004 (the name's pattern) and also E012 for a route named ''."""
+    triage.require_node("n_rt").config["default"] = ""
+    found = codes(triage)
+    assert "E004" in found and "E012" not in found
+
+
 def test_bad_condition(triage):
     triage.require_node("n_rt").config["cases"][0]["when"] = "state.urgency =="
     assert "E013" in codes(triage)
