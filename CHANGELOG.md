@@ -417,6 +417,21 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- The editor's top bar shows avatars of the other people who have the workflow open, with a badge on the block each
+  one is selecting, and a notice when someone saves a newer version than yours. It works across several API servers
+  and does not change how saving or conflicts work. (HARDENING G-4).
+- The Evaluation page has a Fine-tuning tab that exports well-rated conversations (reviewed in annotation queues or
+  given a thumbs up) or a dataset as JSONL, in OpenAI's chat fine-tuning format or plain messages, with tool calls
+  and results included. A preview shows what is left out and why. (HARDENING G-10).
+- Experiments have a red-team mode that makes adversarial inputs (prompt injection, jailbreaks, PII extraction, off-
+  topic) from a built-in list or a model, runs them through the workflow and scores whether a safety block, a
+  refusal or the agent held. It needs no model key to try. (HARDENING G-10).
+- The Runs page has a search box that finds conversations by what was asked and answered, ranked with the project's
+  embedding model (the built-in offline one by default). Runs are indexed after they finish, follow retention and
+  stay inside the organisation; older runs can be indexed with one click. (HARDENING G-10).
+- The Runs page and the editor's Timeline have a Trajectory view that shows a whole conversation as a tree: each
+  run's steps, the helper agents a Planning Agent handed tasks to, model replies, tool calls, framework parts and
+  frames, with time and tokens. Runs now keep their events, so it works for past runs too. (HARDENING G-10).
 - App connectors that need a sign-in, such as Linear and Atlassian, now have a Connect button: each person signs in
   with their own account, and a run uses the connection of whoever started it, or the organisation's service
   connection when the block is set to that (for schedules, webhooks and deployments). Hosted app connectors no
