@@ -10409,6 +10409,285 @@
         "title": "SpendPeriod",
         "type": "object"
       },
+      "SpendPerson": {
+        "properties": {
+          "cache_hits": {
+            "description": "model answers taken from the answer cache",
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "fallbacks": {
+            "description": "model calls a backup model answered",
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: runs of no person",
+            "title": "Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "cache_hits",
+          "fallbacks",
+          "id",
+          "name",
+          "email"
+        ],
+        "title": "SpendPerson",
+        "type": "object"
+      },
+      "SpendProject": {
+        "properties": {
+          "cache_hits": {
+            "description": "model answers taken from the answer cache",
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "fallbacks": {
+            "description": "model calls a backup model answered",
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: runs of no person",
+            "title": "Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "cache_hits",
+          "fallbacks",
+          "id",
+          "name"
+        ],
+        "title": "SpendProject",
+        "type": "object"
+      },
+      "SpendTotal": {
+        "properties": {
+          "cache_hits": {
+            "description": "model answers taken from the answer cache",
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "fallbacks": {
+            "description": "model calls a backup model answered",
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "cache_hits",
+          "fallbacks"
+        ],
+        "title": "SpendTotal",
+        "type": "object"
+      },
+      "SpendWorkflow": {
+        "properties": {
+          "cache_hits": {
+            "description": "model answers taken from the answer cache",
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "fallbacks": {
+            "description": "model calls a backup model answered",
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: runs of no person",
+            "title": "Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "cache_hits",
+          "fallbacks",
+          "id",
+          "name",
+          "project_id"
+        ],
+        "title": "SpendWorkflow",
+        "type": "object"
+      },
+      "SpendingOut": {
+        "properties": {
+          "by_person": {
+            "items": {
+              "$ref": "#/components/schemas/SpendPerson"
+            },
+            "title": "By Person",
+            "type": "array"
+          },
+          "by_project": {
+            "items": {
+              "$ref": "#/components/schemas/SpendProject"
+            },
+            "title": "By Project",
+            "type": "array"
+          },
+          "by_workflow": {
+            "items": {
+              "$ref": "#/components/schemas/SpendWorkflow"
+            },
+            "title": "By Workflow",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/SpendTotal"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "since",
+          "until",
+          "total",
+          "by_project",
+          "by_workflow",
+          "by_person"
+        ],
+        "title": "SpendingOut",
+        "type": "object"
+      },
       "StateEdit": {
         "properties": {
           "as_node": {
@@ -18962,6 +19241,115 @@
           }
         ],
         "summary": "Put Org Settings",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/spending": {
+      "get": {
+        "description": "What the organisation's runs spent in a period (UTC; a time without an offset is UTC): in total and per\nproject, workflow and person (who started the conversation), with tokens and cache hits (G-8).",
+        "operationId": "org_spending_v1_org_spending_get",
+        "parameters": [
+          {
+            "description": "runs started at or after this time (default: 30 days ago)",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "runs started at or after this time (default: 30 days ago)",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "runs started before this time (default: now)",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "runs started before this time (default: now)",
+              "title": "Until"
+            }
+          },
+          {
+            "description": "entries in each list, biggest spenders first",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "entries in each list, biggest spenders first",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpendingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Org Spending",
         "tags": [
           "organisation"
         ]

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -17,6 +17,7 @@ from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
 from agentcanvas.services import matura
+from agentcanvas.services.spending import spending
 from agentcanvas.validation.policies import check_policy
 
 router = APIRouter(prefix="/org", tags=["organisation"])
@@ -275,3 +276,59 @@ async def delete_policy(
 ) -> Response:
     await PolicyRepo(session).delete(user.org_id, policy_id)
     return Response(status_code=204)
+
+
+class SpendTotal(BaseModel):
+    runs: int
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    cache_hits: int = Field(description="model answers taken from the answer cache")
+    fallbacks: int = Field(description="model calls a backup model answered")
+
+
+class SpendEntry(SpendTotal):
+    id: str | None = Field(description="null: runs of no person")
+    name: str
+
+
+class SpendProject(SpendEntry):
+    pass
+
+
+class SpendWorkflow(SpendEntry):
+    project_id: str
+
+
+class SpendPerson(SpendEntry):
+    email: str | None
+
+
+class SpendingOut(BaseModel):
+    since: datetime
+    until: datetime
+    total: SpendTotal
+    by_project: list[SpendProject]
+    by_workflow: list[SpendWorkflow]
+    by_person: list[SpendPerson]
+
+
+@router.get("/spending", response_model=SpendingOut)
+async def org_spending(
+    since: datetime | None = Query(None, description="runs started at or after this time (default: 30 days ago)"),
+    until: datetime | None = Query(None, description="runs started before this time (default: now)"),
+    limit: int = Query(100, ge=1, le=500, description="entries in each list, biggest spenders first"),
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> dict[str, Any]:
+    """What the organisation's runs spent in a period (UTC; a time without an offset is UTC): in total and per
+    project, workflow and person (who started the conversation), with tokens and cache hits (G-8)."""
+    until = _utc(until) if until else datetime.now(UTC)
+    since = _utc(since) if since else until - timedelta(days=30)
+    if since >= until:
+        raise InvalidInput("'since' must be before 'until'")
+    return await spending(session, user.org_id, since, until, limit=limit)
+
+
+def _utc(when: datetime) -> datetime:
+    return when.replace(tzinfo=UTC) if when.tzinfo is None else when.astimezone(UTC)

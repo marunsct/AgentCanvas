@@ -15,6 +15,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettings } from "./SandboxSettings";
 import { SecretsSettings } from "./SecretsSettings";
 import { ServerSettings } from "./ServerSettings";
+import { SpendingSettings } from "./SpendingSettings";
 
 const ModelSettings = lazy(() => import("../app/SetupPage").then((m) => ({ default: m.SetupPage })));
 const MembersPage = lazy(() => import("../app/MembersPage").then((m) => ({ default: m.MembersPage })));
@@ -33,6 +34,7 @@ export const SECTIONS: Section[] = [
   { id: "organisation", group: "Organisation", label: "General", render: () => <OrgSettings /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },
+  { id: "spending", group: "Organisation", label: "Spending", read: "admin", render: () => <SpendingSettings /> },
   { id: "audit", group: "Organisation", label: "Audit log", read: "admin", render: () => <AuditPage /> },
   { id: "server", group: "Organisation", label: "Server", read: "admin", render: () => <ServerSettings /> },
   { id: "appearance", group: "You", label: "Appearance", render: () => <Appearance /> },
