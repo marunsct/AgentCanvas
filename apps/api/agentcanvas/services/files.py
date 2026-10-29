@@ -113,6 +113,7 @@ class FileService:
         created_by: str | None = None,
         deployment_id: str | None = None,
         visitor_hash: str | None = None,
+        accept: str | None = None,
         commit: bool = True,
     ) -> StoredFile:
         clean = safe_name(name)
@@ -129,8 +130,11 @@ class FileService:
                     f"this project keeps at most {self.quota_bytes / (1024 * 1024):.4g} MB of attached files; "
                     "they are deleted when no conversation has used them for the retention time"
                 )
+        media_type = sniff(clean, data)
+        if not type_matches(media_type, accept):
+            raise InvalidInput(f"'{clean}' is {media_type}; this takes {accept}")
         row = StoredFile(
-            id=new_id("fil"), project_id=project_id, name=clean, media_type=sniff(clean, data), size=len(data),
+            id=new_id("fil"), project_id=project_id, name=clean, media_type=media_type, size=len(data),
             sha256=hashlib.sha256(data).hexdigest(), data=data, source=source, created_by=created_by,
             deployment_id=deployment_id, visitor_hash=visitor_hash,
         )  # fmt: skip

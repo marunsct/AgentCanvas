@@ -14,6 +14,9 @@ import { useUi } from "../editor/ui";
 import { testCaseFromRun } from "../release/testcases";
 import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
 import { promptDialog } from "../ui/dialog";
+import { FilePicker } from "../ui/FilePicker";
+import { isFileSchema, type FileRef } from "../ir/files";
+import { fileFields, uploadProjectFile, withFiles } from "./files";
 
 /** Open the run's LangSmith trace in a new tab (asks the API for the URL: a plain link carries no sign-in). */
 async function openTrace(runId: string) {
@@ -48,7 +51,7 @@ const EMPTY: Record<string, unknown> = { string: "", array: [], object: {}, numb
 /** A starter input: one key per input channel, typed (`topics: []`, `question: ""`). */
 export function sampleInput(wf: WF): string {
   const inputs = wf.state.channels.filter((c) => (c.io ?? "inout") === "inout" || c.io === "in");
-  const fields = inputs.filter((c) => c.reducer !== "add_messages").slice(0, 4);
+  const fields = inputs.filter((c) => c.reducer !== "add_messages" && !isFileSchema(c.type)).slice(0, 4); // files: attached below
   const empty = (c: (typeof fields)[number]) => EMPTY[(c.type as { type?: string } | undefined)?.type ?? "string"] ?? "";
   return JSON.stringify(Object.fromEntries(fields.map((c) => [c.name, empty(c)])), null, 2);
 }
@@ -157,6 +160,8 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
   const initial = useMemo(() => sampleInput(wf), [wf]);
   const [input, setInput] = useState(initial);
   const [cont, setCont] = useState(false);
+  const [attached, setAttached] = useState<Record<string, FileRef[]>>({});
+  const files = useMemo(() => fileFields(wf), [wf]);
   const run = useRun();
   const start = () => {
     let parsed: Record<string, unknown>;
@@ -166,7 +171,7 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
       run.apply({ type: "RUN_ERROR", message: "input is not valid JSON" });
       return;
     }
-    void startRun(parsed, { continueThread: cont });
+    void startRun(withFiles(parsed, files, attached), { continueThread: cont });
   };
   return (
     <>
@@ -174,6 +179,11 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
         Input (JSON)
         <textarea className="mono" rows={5} value={input} onChange={(e) => setInput(e.target.value)} aria-label="run input" />
       </label>
+      {files.map((f) => (
+        <FilePicker key={f.name} label={f.name} accept={f.accept} multiple={f.multiple} disabled={disabled}
+          value={attached[f.name] ?? []} upload={(file) => uploadProjectFile(file, f.accept)}
+          onChange={(v) => setAttached((a) => ({ ...a, [f.name]: v }))} />
+      ))}
       <label className="row">
         <input type="checkbox" checked={cont} disabled={!run.threadId} onChange={(e) => setCont(e.target.checked)} />
         continue thread <code>{run.threadId ?? "—"}</code>

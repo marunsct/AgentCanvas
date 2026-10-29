@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.db.models import Deployment, DeploymentShare, ShareThread, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ir.contract import contract
+from agentcanvas.ir.files import accepts, is_file_schema
 from agentcanvas.ir.models import Workflow
 
 TOKEN_PREFIX = "sh_"
@@ -120,6 +121,22 @@ def text_inputs(wf: Workflow) -> list[str]:
     """The inputs a visitor's message could go to: the text inputs and the message list, in the contract's order."""
     messages = _messages_field(wf)
     return [k for k, v in contract(wf).input.items() if k == messages or v.get("type") in (None, "string")]
+
+
+class AttachShape(BaseModel):
+    field: str = Field(description="the file input a visitor's attachments go to")
+    accept: str | None = Field(default=None, description="the media types it takes, e.g. image/*")
+    multiple: bool = Field(default=False, description="true: the field is a list of files")
+
+
+def attach_shape(wf: Workflow) -> AttachShape | None:
+    """The first file input of the workflow (G-5): where a visitor's attached files go."""
+    inputs = contract(wf).input
+    name = next((k for k, v in inputs.items() if is_file_schema(v)), None)
+    if name is None:
+        return None
+    schema = inputs[name]
+    return AttachShape(field=name, accept=accepts(schema), multiple=schema.get("type") == "array")
 
 
 def run_input(shape: InputShape, text: str) -> dict[str, Any]:

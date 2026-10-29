@@ -27,8 +27,8 @@ from agentcanvas.db.models import AuditLog, Organization, Project, Thread, Workf
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
-from agentcanvas.settings import Settings
 from agentcanvas.services.files import expire_files
+from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
 

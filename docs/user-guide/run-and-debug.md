@@ -7,6 +7,10 @@ Open the **Run** tab (or click **▶ Test** in the toolbar).
 - **JSON** mode: edit the input (pre-filled with the workflow's input channels) and click **▶ Run**.
 - **Chat** mode: for workflows built around the `messages` channel. Type a message and **Send**; each message
   continues the same conversation (thread).
+- **File and image inputs**: a workflow input typed *file* or *image* ([File and image fields](canvas.md#file-and-image-fields))
+  gets a box under the JSON: **Attach a file** or drop one on it. Images show a preview; the box refuses a file that is
+  too large or the wrong kind before sending it, and the server checks what the file really is. The run input then
+  holds a reference to the file, not the file. Remove it with ✕.
 - **continue thread**: tick it to run on the previous thread, keeping its state, instead of starting fresh.
 - **Dry run (stub risky tools)**: every tool that can write, send, execute or spend is replaced by a recorder, so
   the run has no side effects. The output shows what would have been called.

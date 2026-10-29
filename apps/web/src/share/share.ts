@@ -1,11 +1,17 @@
+import type { FileRef } from "../ir/files";
+
 /** Share links (S23): the public chat page's talk with the API. No sign-in: the link's token is the capability, so
  * this module never sends the signed-in user's token (it does not use the authenticated client). */
+
+/** The file field a visitor may attach files to (G-5), when the workflow has one. */
+export interface ShareAttachments { field: string; accept?: string | null; multiple: boolean }
 
 export interface ShareInfo {
   title: string;
   greeting: string;
   suggestions: string[];
   input: { field?: string | null; chat?: boolean };
+  attachments?: ShareAttachments | null;
 }
 
 export interface ShareQuestion { id: string | null; kind: "approval" | "tool_approval" | "input" | string; question: string }
@@ -108,10 +114,24 @@ async function stream(path: string, body: unknown, onEvent: (e: ShareEvent) => v
   }
 }
 
+/** Send a file to the link (the visitor's own: only this browser's conversations can use it). */
+export async function uploadShareFile(token: string, file: File): Promise<FileRef> {
+  const form = new FormData();
+  form.append("visitor", visitorId());
+  form.append("file", file);
+  const res = await fetch(`${BASE}/${encodeURIComponent(token)}/files`, { method: "POST", credentials: "omit", body: form });
+  if (!res.ok) throw await problem(res);
+  return (await res.json()) as FileRef;
+}
+
 export function sendMessage(
   token: string, message: string, threadId: string | null, onEvent: (e: ShareEvent) => void, signal?: AbortSignal,
+  files: FileRef[] = [],
 ): Promise<void> {
-  const body = { message, visitor: visitorId(), ...(threadId ? { thread_id: threadId } : {}) };
+  const body = {
+    message, visitor: visitorId(), ...(threadId ? { thread_id: threadId } : {}),
+    ...(files.length ? { files: files.map((f) => f.id) } : {}),
+  };
   return stream(`${encodeURIComponent(token)}/runs/stream`, body, onEvent, signal);
 }
 

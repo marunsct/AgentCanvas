@@ -582,6 +582,38 @@
         "title": "ApiRunIn",
         "type": "object"
       },
+      "AttachShape": {
+        "properties": {
+          "accept": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the media types it takes, e.g. image/*",
+            "title": "Accept"
+          },
+          "field": {
+            "description": "the file input a visitor's attachments go to",
+            "title": "Field",
+            "type": "string"
+          },
+          "multiple": {
+            "default": false,
+            "description": "true: the field is a list of files",
+            "title": "Multiple",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "AttachShape",
+        "type": "object"
+      },
       "AuditOut": {
         "properties": {
           "action": {
@@ -762,6 +794,29 @@
           }
         },
         "title": "BlastRadius",
+        "type": "object"
+      },
+      "Body_share_upload_v1_share__token__files_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "an image, PDF, .docx or text file",
+            "title": "File",
+            "type": "string"
+          },
+          "visitor": {
+            "maxLength": 128,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Visitor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "visitor",
+          "file"
+        ],
+        "title": "Body_share_upload_v1_share__token__files_post",
         "type": "object"
       },
       "Body_upload_documents_v1_knowledge__kb_id__documents_post": {
@@ -10149,6 +10204,17 @@
       },
       "ShareInfo": {
         "properties": {
+          "attachments": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachShape"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the file input visitors may attach files to (G-5); none: the workflow takes no files"
+          },
           "greeting": {
             "title": "Greeting",
             "type": "string"
@@ -10340,9 +10406,18 @@
       },
       "ShareRunIn": {
         "properties": {
+          "files": {
+            "description": "ids of files this visitor uploaded",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Files",
+            "type": "array"
+          },
           "message": {
+            "description": "may be empty when files are attached",
             "maxLength": 20000,
-            "minLength": 1,
             "title": "Message",
             "type": "string"
           },
@@ -22568,6 +22643,25 @@
             }
           },
           {
+            "description": "refuse other media types, e.g. image/*",
+            "in": "query",
+            "name": "accept",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "refuse other media types, e.g. image/*",
+              "title": "Accept"
+            }
+          },
+          {
             "description": "organisation to act in (default: last used)",
             "in": "header",
             "name": "X-Org-Id",
@@ -23715,6 +23809,59 @@
           }
         },
         "summary": "Share Info",
+        "tags": [
+          "share"
+        ]
+      }
+    },
+    "/v1/share/{token}/files": {
+      "post": {
+        "description": "A visitor attaches a file: kept in the deployment's project for the same time as conversations, usable only by\nthis visitor on this link, and only for the workflow's file input (its media types and the size limit apply).",
+        "operationId": "share_upload_v1_share__token__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_share_upload_v1_share__token__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentcanvas__api__v1__files__FileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Upload",
         "tags": [
           "share"
         ]

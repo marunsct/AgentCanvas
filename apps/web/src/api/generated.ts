@@ -103,6 +103,18 @@ export type ThreadId1 = string | null;
  * your end user's id; context fields with source 'user' get api:<deployment>:<user_id>
  */
 export type UserId = string | null;
+/**
+ * the media types it takes, e.g. image/*
+ */
+export type Accept = string | null;
+/**
+ * the file input a visitor's attachments go to
+ */
+export type Field = string;
+/**
+ * true: the field is a list of files
+ */
+export type Multiple = boolean;
 export type Action = string;
 export type ActorEmail = string | null;
 export type ActorId = string | null;
@@ -126,13 +138,18 @@ export type NodeId1 = string;
 export type Nodes = NodeBlast[];
 export type Ungated = string[];
 /**
+ * an image, PDF, .docx or text file
+ */
+export type File1 = string;
+export type Visitor = string;
+/**
  * PDF, Word, HTML, Markdown, text, CSV or JSON files
  */
 export type Files = string[];
 /**
  * an image (PNG, JPEG, GIF, WebP), a PDF, a .docx or a text file
  */
-export type File1 = string;
+export type File2 = string;
 export type After = string[];
 export type Before = string[];
 export type Blocks1 = boolean;
@@ -503,7 +520,7 @@ export type Version1 = number;
 export type Name13 = string;
 export type What = string;
 export type Where = string;
-export type Field = string;
+export type Field1 = string;
 export type Message3 = string;
 export type Severity1 = "breaking" | "compatible";
 export type Where1 = "input" | "output" | "context" | "pauses";
@@ -1106,7 +1123,7 @@ export type Code4 = string | null;
 /**
  * The JSON a Langflow, Flowise, n8n or Agent Spec export downloads
  */
-export type File2 = {
+export type File3 = {
   [k: string]: unknown;
 } | null;
 export type Name31 = string | null;
@@ -1141,7 +1158,7 @@ export type Chat = boolean;
 /**
  * the input field the visitor's message goes to
  */
-export type Field1 = string | null;
+export type Field2 = string | null;
 export type CanvasNodeId = string;
 export type CreatedAt16 = string;
 export type DecidedAt = string | null;
@@ -2348,7 +2365,7 @@ export type Rating1 = "up" | "down";
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
-export type Visitor = string;
+export type Visitor1 = string;
 export type Greeting = string;
 export type Suggestions = string[];
 export type Title5 = string;
@@ -2387,7 +2404,27 @@ export type Text6 = string | null;
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
-export type Visitor1 = string;
+export type Visitor2 = string;
+/**
+ * ids of files this visitor uploaded
+ *
+ * @maxItems 10
+ */
+export type Files4 =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string];
+/**
+ * may be empty when files are attached
+ */
 export type Message11 = string;
 /**
  * continue one of this visitor's conversations
@@ -2396,7 +2433,7 @@ export type ThreadId11 = string | null;
 /**
  * a random secret the visitor's browser keeps; only it continues the conversations it started
  */
-export type Visitor2 = string;
+export type Visitor3 = string;
 export type Enabled7 = boolean | null;
 /**
  * sites allowed to show the chat page in a frame (the chat widget); empty: any site
@@ -2843,9 +2880,11 @@ export interface ApiSchemas {
   ApiResult?: ApiResult;
   ApiResumeIn?: ApiResumeIn;
   ApiRunIn?: ApiRunIn;
+  AttachShape?: AttachShape;
   AuditOut?: AuditOut;
   AuthConfig?: AuthConfig;
   BlastRadius?: BlastRadius;
+  Body_share_upload_v1_share__token__files_post?: BodyShareUploadV1Share_Token_FilesPost;
   Body_upload_documents_v1_knowledge__kb_id__documents_post?: BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost;
   Body_upload_file_v1_projects__project_id__uploads_post?: BodyUploadFileV1Projects_ProjectId_UploadsPost;
   Breakpoints?: Breakpoints;
@@ -3420,6 +3459,15 @@ export interface Metadata1 {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "AttachShape".
+ */
+export interface AttachShape {
+  accept?: Accept;
+  field: Field;
+  multiple?: Multiple;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "AuditOut".
  */
 export interface AuditOut {
@@ -3480,6 +3528,14 @@ export interface Summary {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Body_share_upload_v1_share__token__files_post".
+ */
+export interface BodyShareUploadV1Share_Token_FilesPost {
+  file: File1;
+  visitor: Visitor;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "Body_upload_documents_v1_knowledge__kb_id__documents_post".
  */
 export interface BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost {
@@ -3490,7 +3546,7 @@ export interface BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost {
  * via the `definition` "Body_upload_file_v1_projects__project_id__uploads_post".
  */
 export interface BodyUploadFileV1Projects_ProjectId_UploadsPost {
-  file: File1;
+  file: File2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3931,7 +3987,7 @@ export interface ConnectorSecret {
  * via the `definition` "ContractChange".
  */
 export interface ContractChange {
-  field: Field;
+  field: Field1;
   message: Message3;
   severity: Severity1;
   where: Where1;
@@ -4922,7 +4978,7 @@ export interface Headers {
  */
 export interface ImportFile {
   code?: Code4;
-  file?: File2;
+  file?: File3;
   name?: Name31;
 }
 /**
@@ -5003,7 +5059,7 @@ export interface InlineRequest {
  */
 export interface InputShape {
   chat?: Chat;
-  field?: Field1;
+  field?: Field2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6073,13 +6129,17 @@ export interface SetupOut {
 export interface ShareFeedbackIn {
   comment?: Comment5;
   rating: Rating1;
-  visitor: Visitor;
+  visitor: Visitor1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ShareInfo".
  */
 export interface ShareInfo {
+  /**
+   * the file input visitors may attach files to (G-5); none: the workflow takes no files
+   */
+  attachments?: AttachShape | null;
   greeting: Greeting;
   input: InputShape;
   suggestions: Suggestions;
@@ -6111,16 +6171,17 @@ export interface ShareResumeIn {
   approve?: Approve;
   interrupt_id?: InterruptId2;
   text?: Text6;
-  visitor: Visitor1;
+  visitor: Visitor2;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ShareRunIn".
  */
 export interface ShareRunIn {
+  files?: Files4;
   message: Message11;
   thread_id?: ThreadId11;
-  visitor: Visitor2;
+  visitor: Visitor3;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

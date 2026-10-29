@@ -1215,3 +1215,13 @@ kbd { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border: 1px s
 .menu-list > button[role="menuitemradio"][aria-checked="true"]::before { content: "✓"; color: var(--accent); }
 ul.plain.files { max-height: none; }
 .file-preview pre { max-height: 240px; overflow: auto; white-space: pre; margin: 4px 0; }
+
+/* file fields: attach by drop or picker (G-5) */
+.file-picker { border: 1px dashed var(--border); border-radius: 8px; padding: 8px; margin: 6px 0; }
+.file-picker.over { border-color: var(--accent); background: var(--accent-soft); }
+.file-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.file-list li { display: flex; align-items: center; gap: 8px; }
+.file-preview { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+.file-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+.file-name { flex: 1; overflow-wrap: anywhere; }
+.share-attached { display: block; font-size: 12px; opacity: .85; }

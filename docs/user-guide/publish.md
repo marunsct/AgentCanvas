@@ -96,6 +96,12 @@ thumbs-down can put the run in an annotation queue). If the workflow asks a ques
 chat. Approvals are not the visitor's to give: the chat says the conversation waits for approval, and it waits in
 your inbox. Each visitor's address has its own rate limit (`AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT`, 30 a minute by default).
 
+**Files.** When the published version has a *file* or *image* input ([File and image fields](canvas.md#file-and-image-fields)),
+the chat page shows an **Attach a file** box above the message line (drag and drop works too; an image shows a
+preview). The visitor can send a file with or without a message. Files are limited like uploads in the editor
+(10 MB, images, PDF, Word and text files, or only images when the input says so), belong to the visitor who sent them
+(at most 30 per link), and are kept as long as conversations. Nobody can download them through the link.
+
 **Put a chat button on your website.** Paste the snippet shown under **Chat widget** before `</body>` on any page:
 
 ```html

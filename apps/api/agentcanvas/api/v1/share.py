@@ -18,17 +18,18 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.deployments import FeedbackIn, _continue_on, count_call
+from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.protocols import _pending, answer_value
 from agentcanvas.api.v1.runs import SSE_HEADERS, _context
-from agentcanvas.db.models import Deployment, DeploymentShare, Project, Run, RunScore, WorkflowRow
+from agentcanvas.db.models import Deployment, DeploymentShare, Project, Run, RunScore, StoredFile, WorkflowRow
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -37,11 +38,14 @@ from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation
 from agentcanvas.services.deployments import DeploymentService
+from agentcanvas.services.files import FileService, ref_of
 from agentcanvas.services.share import (
+    AttachShape,
     InputShape,
     ShareService,
     ShareSettingsIn,
     answer_text,
+    attach_shape,
     frame_ancestors,
     input_shape,
     question_of,
@@ -143,12 +147,19 @@ class ShareInfo(BaseModel):
     greeting: str
     suggestions: list[str]
     input: InputShape
+    attachments: AttachShape | None = Field(
+        None, description="the file input visitors may attach files to (G-5); none: the workflow takes no files"
+    )
+
+
+MAX_VISITOR_FILES = 30  # files one visitor keeps on one link
 
 
 class ShareRunIn(BaseModel):
-    message: str = Field(min_length=1, max_length=20_000)
+    message: str = Field(max_length=20_000, description="may be empty when files are attached")
     visitor: Visitor
     thread_id: str | None = Field(None, description="continue one of this visitor's conversations")
+    files: list[str] = Field(default_factory=list, max_length=10, description="ids of files this visitor uploaded")
 
 
 class ShareResumeIn(BaseModel):
@@ -180,8 +191,58 @@ async def share_info(token: str, request: Request, session: AsyncSession = Depen
     share, _, wf = await _open(request, session, token, count=False)
     return ShareInfo(
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
-        input=input_shape(wf, share.input_field),
+        input=input_shape(wf, share.input_field), attachments=attach_shape(wf),
     )  # fmt: skip
+
+
+async def _project_of(session: AsyncSession, dep: Deployment) -> str:
+    row = await session.get(WorkflowRow, dep.workflow_id)
+    if row is None:
+        raise NotFound("this link does not work any more; ask its owner for a new one")
+    return row.project_id
+
+
+@public_router.post("/share/{token}/files", response_model=FileOut, status_code=201)
+async def share_upload(
+    token: str,
+    request: Request,
+    visitor: Annotated[str, Form(min_length=16, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")],
+    file: Annotated[UploadFile, File(description="an image, PDF, .docx or text file")],
+    session: AsyncSession = Depends(get_session),
+) -> FileOut:
+    """A visitor attaches a file: kept in the deployment's project for the same time as conversations, usable only by
+    this visitor on this link, and only for the workflow's file input (its media types and the size limit apply)."""
+    _, dep, wf = await _open(request, session, token)
+    shape = attach_shape(wf)
+    if shape is None:
+        raise InvalidInput("this assistant does not take files")
+    files, who = file_service(request, session), visitor_hash(visitor)
+    kept = await session.scalar(
+        select(func.count())
+        .select_from(StoredFile)
+        .where(StoredFile.deployment_id == dep.id, StoredFile.visitor_hash == who)
+    )
+    if (kept or 0) >= MAX_VISITOR_FILES:
+        raise InvalidInput(f"at most {MAX_VISITOR_FILES} files can be attached on one link")
+    row = await files.add(
+        await _project_of(session, dep), file.filename, await read_upload(file, files), source="share",
+        deployment_id=dep.id, visitor_hash=who, accept=shape.accept,
+    )  # fmt: skip
+    return file_out(row)
+
+
+async def _attached(session: AsyncSession, dep: Deployment, wf: Workflow, body: ShareRunIn) -> dict[str, Any]:
+    """The run input for the files a visitor attached: the workflow's file input holds their references."""
+    if not body.files:
+        return {}
+    shape = attach_shape(wf)
+    if shape is None:
+        raise InvalidInput("this assistant does not take files")
+    if len(set(body.files)) != len(body.files) or (len(body.files) > 1 and not shape.multiple):
+        raise InvalidInput("this assistant takes one file at a time" if not shape.multiple else "a file twice")
+    rows = await FileService(session).of_visitor(dep.id, visitor_hash(body.visitor), body.files)
+    refs = [ref_of(r) for r in rows]
+    return {shape.field: refs if shape.multiple else refs[0]}
 
 
 @public_router.get("/share/{token}/frame", status_code=204, include_in_schema=False)
@@ -290,7 +351,11 @@ async def share_run_stream(
     share, dep, wf = await _open(request, session, token)
     shares = ShareService(session)
     shape = input_shape(wf, share.input_field)
-    payload = run_input(shape, body.message)
+    attached = await _attached(session, dep, wf, body)
+    if not body.message.strip() and not attached:
+        raise InvalidInput("write a message or attach a file")
+    message = body.message if body.message.strip() else "Please look at the attached file."
+    payload = {**run_input(shape, message), **attached}
     version_id, thread_id = dep.version_id, body.thread_id
     if thread_id:
         await shares.check_thread(dep.id, thread_id, body.visitor)

@@ -2,14 +2,17 @@
  * iframe (?embed=1). No sign-in; the visitor's conversations are theirs only (see share.ts). */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
-  answerQuestion, isEmbed, loadShare, rate, sendMessage, ShareError, tokenFromPath,
+  answerQuestion, isEmbed, loadShare, rate, sendMessage, ShareError, tokenFromPath, uploadShareFile,
   type ShareEvent, type ShareInfo, type ShareQuestion,
 } from "./share";
+import type { FileRef } from "../ir/files";
+import { FilePicker } from "../ui/FilePicker";
 
 interface Message {
   id: number;
   role: "user" | "assistant";
   text: string;
+  attached?: string[]; // names of the files sent with a visitor's message
   runId?: string;
   pending?: boolean;
   error?: boolean;
@@ -27,6 +30,7 @@ export function SharePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [files, setFiles] = useState<FileRef[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -47,9 +51,9 @@ export function SharePage() {
   const update = (id: number, patch: (m: Message) => Partial<Message>) =>
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch(m) } : m)));
 
-  const run = useCallback(async (start: (onEvent: (e: ShareEvent) => void, signal: AbortSignal) => Promise<void>, userText: string | null) => {
+  const run = useCallback(async (start: (onEvent: (e: ShareEvent) => void, signal: AbortSignal) => Promise<void>, userText: string | null, attached: string[] = []) => {
     const reply: Message = { id: nextId++, role: "assistant", text: "", pending: true };
-    setMessages((ms) => [...ms, ...(userText !== null ? [{ id: nextId++, role: "user" as const, text: userText }] : []), reply]);
+    setMessages((ms) => [...ms, ...(userText !== null ? [{ id: nextId++, role: "user" as const, text: userText, attached }] : []), reply]);
     setBusy(true);
     setNotice(null);
     const ctrl = new AbortController();
@@ -80,12 +84,16 @@ export function SharePage() {
 
   const send = (text: string) => {
     const t = text.trim();
-    if (!t || busy) return;
-    setDraft("");
+    if ((!t && files.length === 0) || busy) return;
     if (waiting && threadId) {
+      if (!t) return;
+      setDraft("");
       void run((on, signal) => answerQuestion(token, threadId, waiting, { text: t }, on, signal), t);
     } else {
-      void run((on, signal) => sendMessage(token, t, threadId, on, signal), t);
+      const sent = files;
+      setDraft("");
+      setFiles([]);
+      void run((on, signal) => sendMessage(token, t, threadId, on, signal, sent), t, sent.map((f) => f.name));
     }
   };
 
@@ -101,6 +109,7 @@ export function SharePage() {
     setMessages([]);
     setThreadId(null);
     setDraft("");
+    setFiles([]);
     setNotice("Started a new conversation.");
     input.current?.focus();
   };
@@ -150,6 +159,7 @@ export function SharePage() {
           <div key={m.id} className={`share-msg ${m.role}${m.error ? " error" : ""}${m.question ? " question" : ""}`}
                data-testid={`share-${m.role}`} aria-busy={m.pending || undefined}>
             <span className="visually-hidden">{m.role === "user" ? "You:" : "Assistant:"} </span>
+            {m.attached?.map((n) => <span key={n} className="share-attached">📎 {n}</span>)}
             {m.text || (m.pending ? <span className="share-typing" aria-label="Writing an answer">…</span> : null)}
             {m.role === "assistant" && !m.pending && !m.error && !m.question && m.runId && (
               <span className="share-rate">
@@ -168,12 +178,17 @@ export function SharePage() {
           <button type="button" onClick={() => decide(false)}>No</button>
         </div>
       )}
+      {info.attachments && !waiting && (
+        <FilePicker label={info.attachments.field.replace(/_/g, " ")} accept={info.attachments.accept ?? undefined}
+          multiple={info.attachments.multiple} value={files} onChange={setFiles} disabled={busy}
+          upload={(f) => uploadShareFile(token, f)} />
+      )}
       <form className="share-composer" onSubmit={onSubmit}>
         <label htmlFor="share-input" className="visually-hidden">{waiting ? "Your answer" : "Your message"}</label>
         <textarea id="share-input" ref={input} rows={1} value={draft} maxLength={20000}
                   placeholder={waiting ? (approval ? "Or reply with a comment…" : "Type your answer…") : "Type a message…"}
                   onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} />
-        <button type="submit" className="primary" disabled={busy || !draft.trim()}>{busy ? "…" : "Send"}</button>
+        <button type="submit" className="primary" disabled={busy || (!draft.trim() && files.length === 0)}>{busy ? "…" : "Send"}</button>
       </form>
       {!embed && <p className="share-foot">Answers are written by an AI assistant and can be wrong.</p>}
     </main>

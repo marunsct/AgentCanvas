@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,13 +69,14 @@ async def upload_file(
     project_id: str,
     request: Request,
     file: Annotated[UploadFile, File(description="an image (PNG, JPEG, GIF, WebP), a PDF, a .docx or a text file")],
+    accept: Annotated[str | None, Query(max_length=200, description="refuse other media types, e.g. image/*")] = None,
     files: FileService = Depends(service),
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> FileOut:
     """Upload a file for a run's file field (10 MB at most by default). Its type is read from its content."""
     await ProjectRepo(session).require(project_id)
-    row = await files.add(project_id, file.filename, await read_upload(file, files), created_by=user.id)
+    row = await files.add(project_id, file.filename, await read_upload(file, files), created_by=user.id, accept=accept)
     note(request, file=row.id, media_type=row.media_type, size=row.size)
     return file_out(row)
 

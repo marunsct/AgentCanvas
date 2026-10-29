@@ -197,3 +197,10 @@ async def test_a_project_keeps_a_limited_amount_of_files(app, api_client):
     assert (await upload(api_client, "a.txt", b"a" * 6000)).status_code == 201
     r = await upload(api_client, "b.txt", b"b" * 6000)
     assert r.status_code == 422 and "keeps at most" in r.json()["detail"]
+
+
+async def test_an_upload_can_ask_for_one_kind_of_file(api_client):
+    ok = await api_client.post(f"{P}/uploads", params={"accept": "image/*"}, files={"file": ("a.png", PNG)})
+    assert ok.status_code == 201
+    bad = await api_client.post(f"{P}/uploads", params={"accept": "image/*"}, files={"file": ("a.png", b"<html>")})
+    assert bad.status_code == 422 and "image/*" in bad.json()["detail"]
