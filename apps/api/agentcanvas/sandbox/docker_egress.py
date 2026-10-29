@@ -45,7 +45,8 @@ async def _docker(*args: str) -> tuple[int, str]:
 async def ensure(settings: Settings) -> str:
     """The proxy's address on the sandbox network (`agentcanvas-egress:3128`), starting it when needed."""
     key = secret(settings)
-    fingerprint = hashlib.sha256(key.encode()).hexdigest()[:16]
+    private = "1" if settings.egress_allow_private else "0"
+    fingerprint = hashlib.sha256(f"{key}:{private}".encode()).hexdigest()[:16]
     if fingerprint in _ready:
         return _ready[fingerprint]
     async with _lock:
@@ -64,7 +65,8 @@ async def ensure(settings: Settings) -> str:
                 "run", "-d", "--name", CONTAINER, "--label", f"agentcanvas.egress={fingerprint}",
                 "--restart", "unless-stopped", "--user", "65534:65534", "--read-only", "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges", "--memory", "256m", "--pids-limit", "256",
-                "-e", f"AGENTCANVAS_EGRESS_SECRET={key}", "-v", f"{PROXY_FILE}:/egress.py:ro",
+                "-e", f"AGENTCANVAS_EGRESS_SECRET={key}", "-e", f"AGENTCANVAS_EGRESS_ALLOW_PRIVATE={private}",
+                "-v", f"{PROXY_FILE}:/egress.py:ro",
                 settings.sandbox_image, "python", "-I", "/egress.py", "--port", str(PORT),
             )  # fmt: skip
             if code != 0:

@@ -4,6 +4,13 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 
 ## Unreleased — Product pass: one app shell, Settings, the Copilot (PLAN.md)
 
+### Security
+- **A project could open the sandbox to the cloud metadata service or the database by naming the address in
+  `sandbox.json`**: the egress proxy refused private addresses a host name resolved to, but let any address the list
+  named literally through, and the list is written by the project. Private addresses now need the operator
+  (`AGENTCANVAS_EGRESS_ALLOW_PRIVATE=1` on the proxy, `egress_allow_private` for the local Docker proxy), link-local
+  and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
+
 ### Fixed
 - **Workspace code kept running after its run was cancelled**: a cancelled run, or one that ran out of its time
   budget, left its script process (or Docker container) running with nobody waiting for it, and the sandbox service

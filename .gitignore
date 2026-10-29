@@ -20,3 +20,4 @@ infra/.env.prod
 infra/.env.local
 site/
 .ci-tmp/
+.claude/worktrees/

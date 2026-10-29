@@ -96,19 +96,26 @@ def allowed(host: str, port: int, allow: list[str]) -> str | None:
     return None
 
 
-def _named_literally(host: str) -> bool:
-    try:
-        ipaddress.ip_address(host.strip("[]"))
-    except ValueError:
-        return False
-    return True
-
-
-def _private(address: str) -> bool:
+def _ip(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     ip = ipaddress.ip_address(address.split("%")[0])
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    return ip
+
+
+def _private(address: str) -> bool:
+    ip = _ip(address)
     return not ip.is_global or ip.is_multicast
+
+
+METADATA = (ipaddress.ip_network("fd00:ec2::254/128"),)  # AWS's IPv6 metadata address (IPv4's is link-local)
+
+
+def _never(address: str) -> bool:
+    """Link-local (cloud metadata services: 169.254.169.254), unspecified and the metadata addresses: no sandbox
+    reaches these, whatever the list says or the proxy allows."""
+    ip = _ip(address)
+    return ip.is_link_local or ip.is_unspecified or any(ip in net for net in METADATA)
 
 
 async def _resolve(host: str, port: int) -> list[str]:
@@ -167,10 +174,16 @@ class EgressProxy:
             addresses = await asyncio.wait_for(self.resolve(host, port), self.timeout_s)
         except (OSError, TimeoutError):
             return await _refuse(writer, 502, f"{host} does not resolve")
-        if not self.allow_private and not _named_literally(host):
+        addresses = [a for a in addresses if not _never(a)]
+        if not addresses:
+            return await _refuse(writer, 403, f"{host} is a link-local or metadata address, which no sandbox reaches")
+        if not self.allow_private:  # the list is the project's to write: only the proxy's operator opens the inside
             addresses = [a for a in addresses if not _private(a)]
             if not addresses:
-                return await _refuse(writer, 403, f"{host} resolves to a private address; name the address itself")
+                return await _refuse(
+                    writer, 403,
+                    f"{host} is a private address; the proxy reaches one only with AGENTCANVAS_EGRESS_ALLOW_PRIVATE=1",
+                )  # fmt: skip
         upstream = await self._connect(addresses, port)
         if upstream is None:
             return await _refuse(writer, 502, f"{host}:{port} is not reachable")

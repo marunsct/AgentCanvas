@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container
     egress_proxy: str | None = None
     egress_secret: str | None = None  # signs each call's list; shared with the proxy (docker: derived when unset)
+    # the proxy reaches private addresses (10.x, 172.16.x, the database, 127.x) only when the operator says so: a
+    # project's sandbox.json cannot open them. Link-local and cloud metadata addresses are never reached.
+    egress_allow_private: bool = False
     langsmith_snapshot: str | None = None  # snapshot name/id to boot from; None = LangSmith's default snapshot
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)

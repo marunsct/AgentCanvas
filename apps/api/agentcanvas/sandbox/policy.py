@@ -17,12 +17,15 @@ secret values never enter it; their hosts are allowed on port 443 automatically.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from agentcanvas.sandbox.egress import _never
 
 POLICY_FILE = "sandbox.json"
 SECRET_REF = re.compile(r"\{\{\s*secret\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
@@ -70,6 +73,21 @@ class SandboxPolicy(BaseModel):
 DEFAULT = SandboxPolicy()
 
 
+def _metadata(entry: str) -> bool:
+    """An entry naming a link-local (169.254.x, fe80::) or cloud metadata address: the egress proxy never connects
+    there, so the list is refused rather than failing at the first call."""
+    host = entry.strip()
+    if host.startswith("["):  # [IPv6] or [IPv6]:port
+        host = host[1:].partition("]")[0]
+    elif host.count(":") == 1:  # IPv4:port or name:port
+        host = host.partition(":")[0]
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return _never(host)
+
+
 def parse_policy(text: str) -> SandboxPolicy:
     try:
         raw = json.loads(text or "{}")
@@ -84,6 +102,12 @@ def parse_policy(text: str) -> SandboxPolicy:
     bad = [e for e in policy.egress if not _EGRESS.match(e.strip())]
     if bad:
         raise PolicyError(f"{POLICY_FILE}: egress: '{bad[0]}' is not a host, host:port or *.domain (no scheme or path)")
+    unreachable = [e for e in policy.egress if _metadata(e)]
+    if unreachable:
+        raise PolicyError(
+            f"{POLICY_FILE}: egress: '{unreachable[0]}' is a link-local or cloud metadata address, which no sandbox "
+            "reaches"
+        )
     for rule in policy.inject:
         bad = [h for h in rule.hosts if not _HOST.match(h)]
         if bad:

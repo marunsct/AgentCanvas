@@ -62,7 +62,8 @@ services:
     restart: unless-stopped
 
   # The sandbox network's only way out (sandbox.json egress): admits the hosts each call's project lists, signed by the
-  # API, and refuses names that resolve to private addresses (the database, the API, cloud metadata).
+  # API, and refuses private addresses (the database, the API) and link-local ones (cloud metadata), even when a
+  # project lists them. AGENTCANVAS_EGRESS_ALLOW_PRIVATE=1 opens private addresses (never link-local) to every project.
   egress:
     image: ${API_IMAGE:-agentcanvas-api:latest}
     command: ["python", "-m", "agentcanvas.sandbox.egress", "--port", "3128"]

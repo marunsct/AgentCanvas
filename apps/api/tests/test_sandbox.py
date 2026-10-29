@@ -36,6 +36,13 @@ POLICY = {
 }
 
 
+@pytest.mark.parametrize("entry", ["169.254.169.254", "169.254.169.254:80", "[fe80::1]:443", "[fd00:ec2::254]"])
+def test_a_list_naming_a_metadata_address_is_refused(entry):
+    with pytest.raises(PolicyError, match="metadata"):
+        parse_policy(json.dumps({"egress": [entry]}))
+    assert parse_policy(json.dumps({"egress": ["10.0.0.5:5432", "api.github.com"]})).egress  # the operator decides
+
+
 def test_policy_parse_and_proxy_config(tmp_path):
     policy = parse_policy(json.dumps(POLICY))
     assert policy.secret_names() == {"CRM_TOKEN"}

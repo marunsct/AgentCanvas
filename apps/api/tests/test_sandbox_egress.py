@@ -116,16 +116,37 @@ async def test_names_that_resolve_to_private_addresses_are_refused(upstream):
         proxy, port = await _proxy(resolve_to=address, allow_private=False)
         try:
             r = await _get(port, f"http://metadata.example.com:{upstream}/", [f"metadata.example.com:{upstream}"])
-            assert r.status_code == 403 and "private address" in r.text, address
+            assert r.status_code == 403 and "address" in r.text, address
         finally:
             await proxy.close()
-    # an address named in the list itself is the admin's explicit choice
-    proxy, port = await _proxy(resolve_to="127.0.0.1", allow_private=False)
+
+
+async def test_a_private_address_named_in_the_list_is_still_refused(upstream):
+    """The list is written by the project (sandbox.json), so naming an address there opens nothing: a project could
+    otherwise list the cloud metadata service or the database. Only the proxy's operator opens private addresses."""
+    for address in ("127.0.0.1", "10.0.0.5", "172.18.0.2"):
+        proxy, port = await _proxy(resolve_to=address, allow_private=False)
+        try:
+            r = await _get(port, f"http://{address}:{upstream}/", [f"{address}:{upstream}"])
+            assert r.status_code == 403 and "AGENTCANVAS_EGRESS_ALLOW_PRIVATE" in r.text, address
+        finally:
+            await proxy.close()
+    proxy, port = await _proxy(resolve_to="127.0.0.1", allow_private=True)  # the operator's choice
     try:
         r = await _get(port, f"http://127.0.0.1:{upstream}/", [f"127.0.0.1:{upstream}"])
         assert r.status_code == 200 and r.text == "hello"
     finally:
         await proxy.close()
+
+
+async def test_metadata_addresses_are_refused_even_when_private_ones_are_allowed(upstream):
+    for address in ("169.254.169.254", "fe80::1", "fd00:ec2::254", "0.0.0.0"):
+        proxy, port = await _proxy(resolve_to=address, allow_private=True)
+        try:
+            r = await _get(port, f"http://metadata.example.com:{upstream}/", [f"metadata.example.com:{upstream}"])
+            assert r.status_code == 403 and "metadata" in r.text, address
+        finally:
+            await proxy.close()
 
 
 async def test_garbage_does_not_take_the_proxy_down(upstream):

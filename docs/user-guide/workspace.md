@@ -109,8 +109,10 @@ and it holds no database credentials, keys or other projects' files. Use it, or 
 **Network.** Code has no network unless the project lists hosts (`api.github.com`, `files.example.com:8443`,
 `*.googleapis.com`). With Docker, the sandbox service or LangSmith it then reaches those hosts and nothing else:
 its only way out is the egress proxy, which checks every connection against the list (signed by the server for
-each call, so code cannot widen it) and never reaches a private address (the database, cloud metadata) unless the
-list names that address. HTTP clients that read `HTTPS_PROXY` (requests, httpx, urllib) work as usual; others get
+each call, so code cannot widen it). It never reaches a link-local or cloud metadata address (`169.254.169.254`),
+and reaches a private one (the database, `10.x`, `172.16.x`) only when whoever runs the server allows it with
+`AGENTCANVAS_EGRESS_ALLOW_PRIVATE=1`: naming the address in `sandbox.json` is not enough, since the project writes
+that file. HTTP clients that read `HTTPS_PROXY` (requests, httpx, urllib) work as usual; others get
 no connection. The in-process and child-process modes cannot limit the network: Settings does not offer the list
 there, and a staging or production server refuses to run code that has one. Headers injected into outgoing
 requests (`inject`, so code can call an API without seeing its key) are applied by the LangSmith Sandbox only.

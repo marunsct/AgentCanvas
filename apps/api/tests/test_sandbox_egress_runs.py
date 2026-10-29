@@ -62,7 +62,7 @@ async def upstream():
 
 
 async def test_remote_code_reaches_only_the_listed_hosts(tmp_path, monkeypatch, upstream):
-    proxy = EgressProxy(SECRET, timeout_s=5)
+    proxy = EgressProxy(SECRET, allow_private=True, timeout_s=5)  # the upstream is on this machine
     port = await proxy.start("127.0.0.1", 0)
     try:
         ws = tmp_path / "ws"
@@ -145,7 +145,8 @@ UPSTREAM = (
 @pytest.mark.skipif(not _docker_ready(), reason="needs a Docker daemon (CI has one)")
 async def test_docker_code_reaches_only_the_listed_hosts(tmp_path):
     """The real thing: the sandbox container sits on the internal network, the proxy container is the only way out.
-    The allowed host is a container on Docker's default bridge (named by its address, as an admin would)."""
+    The allowed host is a container on Docker's default bridge (named by its address; private addresses need the
+    operator's `egress_allow_private`)."""
     import subprocess
     import uuid
 
@@ -169,7 +170,10 @@ async def test_docker_code_reaches_only_the_listed_hosts(tmp_path):
         (ws / "sandbox.json").write_text(json.dumps({"egress": [f"{ip}:8080"]}))
         for p in [ws, *ws.parents][:4]:  # pytest's tmp dirs are private; the sandbox user is nobody
             p.chmod(0o755)
-        settings = Settings(script_execution="docker", sandbox_image="python:3.12-slim", secret_key="d" * 64)
+        settings = Settings(
+            script_execution="docker", sandbox_image="python:3.12-slim", secret_key="d" * 64,
+            egress_allow_private=True,  # the upstream is a container on this machine's bridge network
+        )  # fmt: skip
         runner = SandboxRunner(settings, ws, {})
         state = {"ok": f"http://{ip}:8080/", "no": "http://example.com/", "host": ip, "port": 8080}
         for _ in range(20):  # the upstream needs a moment to listen
