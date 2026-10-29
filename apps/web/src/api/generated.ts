@@ -129,6 +129,10 @@ export type Ungated = string[];
  * PDF, Word, HTML, Markdown, text, CSV or JSON files
  */
 export type Files = string[];
+/**
+ * an image (PNG, JPEG, GIF, WebP), a PDF, a .docx or a text file
+ */
+export type File1 = string;
 export type After = string[];
 export type Before = string[];
 export type Blocks1 = boolean;
@@ -936,10 +940,10 @@ export type Path4 = string;
  * its new path (a new name, or another folder)
  */
 export type To = string;
+export type Content3 = string;
 export type Modified = number;
 export type Path5 = string;
 export type Size1 = number;
-export type Content3 = string;
 export type Files1 = FileOut[];
 /**
  * the workflow's own code folder, when `workflow_id` was given
@@ -1102,7 +1106,7 @@ export type Code4 = string | null;
 /**
  * The JSON a Langflow, Flowise, n8n or Agent Spec export downloads
  */
-export type File1 = {
+export type File2 = {
   [k: string]: unknown;
 } | null;
 export type Name31 = string | null;
@@ -2798,6 +2802,14 @@ export type Name63 = string;
  * default: the latest version
  */
 export type Version15 = number | null;
+export type Id63 = string;
+export type Kind13 = string;
+/**
+ * what the content is, read from its first bytes
+ */
+export type MediaType = string;
+export type Name64 = string;
+export type Size3 = number;
 /**
  * the commit message
  */
@@ -2835,6 +2847,7 @@ export interface ApiSchemas {
   AuthConfig?: AuthConfig;
   BlastRadius?: BlastRadius;
   Body_upload_documents_v1_knowledge__kb_id__documents_post?: BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost;
+  Body_upload_file_v1_projects__project_id__uploads_post?: BodyUploadFileV1Projects_ProjectId_UploadsPost;
   Breakpoints?: Breakpoints;
   BridgeOut?: BridgeOut;
   BridgesOut?: BridgesOut;
@@ -2910,7 +2923,6 @@ export interface ApiSchemas {
   FieldChange?: FieldChange;
   FileContent?: FileContent;
   FileMove?: FileMove;
-  FileOut?: FileOut;
   FileSave?: FileSave;
   FilesOut?: FilesOut;
   FilterIn?: FilterIn;
@@ -3090,9 +3102,11 @@ export interface ApiSchemas {
   WorkflowSummary?: WorkflowSummary;
   WorkspaceOut?: WorkspaceOut;
   agentcanvas__api__v1__datasets__PushIn?: PushIn;
+  agentcanvas__api__v1__files__FileOut?: FileOut1;
   agentcanvas__api__v1__gitsync__PushIn?: PushIn1;
   agentcanvas__api__v1__setup__TestOut?: TestOut;
   agentcanvas__api__v1__traces__TestOut?: TestOut1;
+  agentcanvas__api__v1__workspace__FileOut?: FileOut;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -3473,6 +3487,13 @@ export interface BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Body_upload_file_v1_projects__project_id__uploads_post".
+ */
+export interface BodyUploadFileV1Projects_ProjectId_UploadsPost {
+  file: File1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "Breakpoints".
  */
 export interface Breakpoints {
@@ -3574,6 +3595,9 @@ export interface Channel {
 export interface Default {
   [k: string]: unknown;
 }
+/**
+ * JSON Schema of the value; `{"type": "object", "format": "file"}` holds a file a person attached (a reference to an upload, see agentcanvas/ir/files.py)
+ */
 export interface Type2 {
   [k: string]: unknown;
 }
@@ -4644,15 +4668,6 @@ export interface FileMove {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "FileOut".
- */
-export interface FileOut {
-  modified: Modified;
-  path: Path5;
-  size: Size1;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "FileSave".
  */
 export interface FileSave {
@@ -4665,6 +4680,15 @@ export interface FileSave {
 export interface FilesOut {
   files: Files1;
   folder?: Folder;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "agentcanvas__api__v1__workspace__FileOut".
+ */
+export interface FileOut {
+  modified: Modified;
+  path: Path5;
+  size: Size1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4898,7 +4922,7 @@ export interface Headers {
  */
 export interface ImportFile {
   code?: Code4;
-  file?: File1;
+  file?: File2;
   name?: Name31;
 }
 /**
@@ -6581,6 +6605,19 @@ export interface WorkspaceOut {
  */
 export interface PushIn {
   version?: Version15;
+}
+/**
+ * A file reference, as a run's input carries it.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "agentcanvas__api__v1__files__FileOut".
+ */
+export interface FileOut1 {
+  id: Id63;
+  kind?: Kind13;
+  media_type: MediaType;
+  name: Name64;
+  size: Size3;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

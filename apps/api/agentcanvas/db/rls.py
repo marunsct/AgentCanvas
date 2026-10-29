@@ -50,6 +50,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "knowledge_base": ("project_id", "project"),
     "event_log": ("project_id", "project"),
     "event_dedup": ("project_id", "project"),
+    "stored_file": ("project_id", "project"),
     "workflow_version": ("workflow_id", "workflow"),
     "test_case": ("workflow_id", "workflow"),
     "deployment": ("workflow_id", "workflow"),

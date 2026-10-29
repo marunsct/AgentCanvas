@@ -34,6 +34,7 @@ from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -273,6 +274,8 @@ class Runner:
         self.draining = False  # shutting down: no new runs (FR-X-10)
         # picks the models of blocks that list `cheapest_of` (db session, workflow, project id -> workflow, notes)
         self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
+        # G-5: files sent inline in a run's input (AGENTCANVAS_MAX_UPLOAD_MB, AGENTCANVAS_MAX_PROJECT_FILES_MB)
+        self.max_file_bytes, self.max_project_file_bytes = DEFAULT_MAX_BYTES, 0
 
     @property
     def models(self) -> ModelService:
@@ -384,6 +387,11 @@ class Runner:
                         routed, routing = await self.router(s, wf, project_id)
                     except Exception:
                         log.exception("run.routing_failed", run_id=run_id)
+                if input and project_id is not None:  # G-5: files as the project keeps them, bytes stored first
+                    schemas = {c.name: c.type for c in wf.state.channels}
+                    input = await FileService(s, self.max_file_bytes, self.max_project_file_bytes).claim(
+                        project_id, input, schemas
+                    )
                 await s.flush()
                 s.add(
                     Run(

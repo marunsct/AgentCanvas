@@ -40,6 +40,26 @@ timeout and cache that a block uses unless it sets its own under Runtime policie
 them), **Hide these fields from traces** (comma-separated field names whose values never reach a trace), a
 **budget**, and the **state channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** adds one.
 
+### File and image fields
+
+Pick **file** or **image** as a channel's type for something a person attaches: a screenshot, a photo, a PDF, a
+Word document or a text file. *image* takes pictures only (PNG, JPEG, GIF, WebP); *file* takes any of them. In the
+Workflow JSON it is an ordinary JSON Schema, `{"type": "object", "format": "file"}` (an image field adds
+`"contentMediaType": "image/*"`), so workflows from before file fields open unchanged.
+
+A file field holds a reference to the file, never the file itself:
+`{"kind": "file", "id": "fil_…", "name": "invoice.pdf", "media_type": "application/pdf", "size": 48213}`. The file
+stays on the server, in the project. Upload one with `POST /v1/projects/{project_id}/uploads` (multipart field `file`)
+and put the answer in the run's input; an API caller may instead send the bytes inline as
+`{"kind": "file", "name": "a.png", "data": "<base64>"}`, which the server stores before the run starts, so
+conversations keep only the reference.
+
+- A file is at most 10 MB (`AGENTCANVAS_MAX_UPLOAD_MB`). Its type is read from its content, not from its name: a
+  `.png` that is really a web page is kept as plain text. Other kinds of file (archives, programs) are refused.
+- Files are kept as long as conversations: one that no run has used for the organisation's conversation retention
+  (90 days by default, Settings › Organisation) is deleted, and all of them go with their project.
+- Changing a published input field to a file is a breaking change: callers that sent text must send a file now.
+
 ### Budgets
 
 A budget stops a run that spends too much: maximum tokens, cost (USD, from model prices: the catalog prices the Claude and OpenAI models, an operator adds others with `AGENTCANVAS_MODEL_PRICES`) or seconds per run,

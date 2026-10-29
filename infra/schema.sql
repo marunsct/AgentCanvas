@@ -93,6 +93,23 @@ CREATE TABLE thread (
 );
 CREATE INDEX thread_workflow_idx ON thread(workflow_id, updated_at DESC);
 
+CREATE TABLE stored_file (                      -- G-5: files people attach to runs; runs keep a reference
+  id            text PRIMARY KEY,                 -- fil_<ulid>
+  project_id    text NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  name          text NOT NULL,                    -- the uploader's file name, without any folder
+  media_type    text NOT NULL,                    -- read from the content, not from the upload
+  size          integer NOT NULL,
+  sha256        text NOT NULL,
+  data          bytea NOT NULL,
+  source        text NOT NULL DEFAULT 'upload',   -- upload | share | api
+  deployment_id text REFERENCES deployment(id) ON DELETE CASCADE, -- a share link's visitor uploaded it
+  visitor_hash  text,
+  created_by    text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_used_at  timestamptz NOT NULL DEFAULT now() -- retention: deleted when unused as long as conversations are kept
+);
+CREATE INDEX stored_file_project_idx ON stored_file(project_id, last_used_at);
+
 CREATE TABLE share_thread (                     -- S23: conversations visitors of a share link started
   thread_id     text PRIMARY KEY REFERENCES thread(id) ON DELETE CASCADE,
   deployment_id text NOT NULL REFERENCES deployment(id) ON DELETE CASCADE,

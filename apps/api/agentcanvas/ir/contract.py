@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from agentcanvas.ir.files import is_file_schema
 from agentcanvas.ir.models import Workflow
 
 PAUSE_TYPES = {"core.approval": "approval", "core.human_input": "input"}
@@ -57,6 +58,9 @@ def _enum(schema: dict[str, Any]) -> set[Any] | None:
 
 
 def _type(schema: dict[str, Any]) -> Any:
+    """A field's type as callers see it: a file field (G-5) is a `file`, not the `object` that carries it."""
+    if is_file_schema(schema):
+        return "file" if schema.get("type") != "array" else "file list"
     return schema.get("type")
 
 

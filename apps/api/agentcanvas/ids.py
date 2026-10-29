@@ -42,6 +42,7 @@ PREFIXES = {
     "kb",  # knowledge base (S24)
     "kdoc",  # knowledge document
     "cal",  # cost alert (S26)
+    "fil",  # a file a person attached to a run (G-5)
 }
 
 

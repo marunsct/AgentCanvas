@@ -99,6 +99,9 @@ export interface Channel {
   io?: Io;
   description?: Description1;
 }
+/**
+ * JSON Schema of the value; `{"type": "object", "format": "file"}` holds a file a person attached (a reference to an upload, see agentcanvas/ir/files.py)
+ */
 export interface Type {
   [k: string]: unknown;
 }

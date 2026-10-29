@@ -7,6 +7,8 @@ for a person (interrupted) are kept whatever their age.
 
 The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS` (default 400) and, when
 `AGENTCANVAS_MEMORY_RETENTION_DAYS` is set (off by default), long-term memories not updated for that long (S12).
+Files people attached to runs (G-5) follow conversations: one no run has used for the organisation's conversation
+retention is deleted.
 
 Every API replica runs the job; deleting is idempotent, so replicas that overlap only repeat work.
 """
@@ -26,6 +28,7 @@ from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
 from agentcanvas.settings import Settings
+from agentcanvas.services.files import expire_files
 
 log = get_logger(__name__)
 
@@ -100,6 +103,11 @@ class RetentionJob:
                 gone += 1
             if gone:
                 log.info("retention.deleted", org_id=org_id, threads=gone, days=days)
+            async with self.db.sessionmaker() as s:  # G-5: files no run has used for as long go too
+                files = await expire_files(s, org_id, now - timedelta(days=days))
+                await s.commit()
+            if files:
+                log.info("retention.files_deleted", org_id=org_id, files=files, days=days)
         DELETED.inc(len(deleted))
         await self.expire_audit(now)
         await self.expire_memory(now, [org_id for org_id, _ in orgs])

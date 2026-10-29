@@ -782,6 +782,21 @@
         "title": "Body_upload_documents_v1_knowledge__kb_id__documents_post",
         "type": "object"
       },
+      "Body_upload_file_v1_projects__project_id__uploads_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "an image (PNG, JPEG, GIF, WebP), a PDF, a .docx or a text file",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_file_v1_projects__project_id__uploads_post",
+        "type": "object"
+      },
       "Breakpoints": {
         "properties": {
           "after": {
@@ -1160,6 +1175,7 @@
           },
           "type": {
             "additionalProperties": true,
+            "description": "JSON Schema of the value; `{\"type\": \"object\", \"format\": \"file\"}` holds a file a person attached (a reference to an upload, see agentcanvas/ir/files.py)",
             "title": "Type",
             "type": "object"
           }
@@ -4243,29 +4259,6 @@
         "title": "FileMove",
         "type": "object"
       },
-      "FileOut": {
-        "properties": {
-          "modified": {
-            "title": "Modified",
-            "type": "number"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          },
-          "size": {
-            "title": "Size",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "path",
-          "size",
-          "modified"
-        ],
-        "title": "FileOut",
-        "type": "object"
-      },
       "FileSave": {
         "properties": {
           "content": {
@@ -4283,7 +4276,7 @@
         "properties": {
           "files": {
             "items": {
-              "$ref": "#/components/schemas/FileOut"
+              "$ref": "#/components/schemas/agentcanvas__api__v1__workspace__FileOut"
             },
             "title": "Files",
             "type": "array"
@@ -12604,6 +12597,41 @@
         "title": "PushIn",
         "type": "object"
       },
+      "agentcanvas__api__v1__files__FileOut": {
+        "description": "A file reference, as a run's input carries it.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "file",
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "description": "what the content is, read from its first bytes",
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "media_type",
+          "size"
+        ],
+        "title": "FileOut",
+        "type": "object"
+      },
       "agentcanvas__api__v1__gitsync__PushIn": {
         "properties": {
           "message": {
@@ -12692,6 +12720,29 @@
           "detail"
         ],
         "title": "TestOut",
+        "type": "object"
+      },
+      "agentcanvas__api__v1__workspace__FileOut": {
+        "properties": {
+          "modified": {
+            "title": "Modified",
+            "type": "number"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "modified"
+        ],
+        "title": "FileOut",
         "type": "object"
       }
     },
@@ -20471,7 +20522,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/FileOut"
+                    "$ref": "#/components/schemas/agentcanvas__api__v1__workspace__FileOut"
                   },
                   "title": "Response List Files V1 Projects  Project Id  Files Get",
                   "type": "array"
@@ -20550,7 +20601,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FileOut"
+                  "$ref": "#/components/schemas/agentcanvas__api__v1__workspace__FileOut"
                 }
               }
             },
@@ -22499,6 +22550,153 @@
         "summary": "Test Trace Export",
         "tags": [
           "trace export"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/uploads": {
+      "post": {
+        "description": "Upload a file for a run's file field (10 MB at most by default). Its type is read from its content.",
+        "operationId": "upload_file_v1_projects__project_id__uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_v1_projects__project_id__uploads_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentcanvas__api__v1__files__FileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/uploads/{file_id}": {
+      "get": {
+        "description": "The file's bytes, as a download.",
+        "operationId": "download_file_v1_projects__project_id__uploads__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download File",
+        "tags": [
+          "files"
         ]
       }
     },

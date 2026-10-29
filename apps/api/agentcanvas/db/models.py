@@ -207,6 +207,30 @@ class DeploymentShare(Base):
     )
 
 
+class StoredFile(Base):
+    """A file a person attached to a run (G-5): uploaded in the Run tab, through a share link, or sent inline to the
+    API. Runs carry a reference (`agentcanvas/ir/files.py`), never the bytes; the bytes are read from here when a
+    model is shown the file. Deleted with its project, or by the retention job once no run has used it for as long
+    as the organisation keeps conversations."""
+
+    __tablename__ = "stored_file"
+    __table_args__ = (Index("stored_file_project_idx", "project_id", "last_used_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # fil_<ulid>
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)  # the uploader's file name, without any folder
+    media_type: Mapped[str] = mapped_column(Text)  # what the content is (sniffed), not what the uploader said
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    source: Mapped[str] = mapped_column(Text, server_default=text("'upload'"), default="upload")  # upload|share|api
+    # a share link's visitor (S23): only the visitor who uploaded it may use it, and only on that link
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    visitor_hash: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    last_used_at: Mapped[datetime] = _now()
+
+
 class ShareThread(Base):
     """A conversation a visitor of a share link started: only that visitor (holding the visitor secret whose hash
     is kept here) continues it, and only through the link it was started on."""

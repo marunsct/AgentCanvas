@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { useEditor } from "../editor/store";
 import type { Command } from "../ir/commands";
+import { schemaFor, typeLabel } from "../ir/files";
 import { type Channel, nameProblem, type WF } from "../ir/model";
 
-const TYPES = ["string", "number", "integer", "boolean", "array", "object"];
+const TYPES = ["string", "number", "integer", "boolean", "array", "object", "file", "image"]; // file, image: G-5
 const REDUCERS = ["replace", "append", "add_messages", "sum", "merge"] as const;
 const IO = ["inout", "in", "out", "private"] as const;
 const NAME = /^[a-z][a-z0-9_]{0,62}$/;
@@ -70,7 +71,8 @@ export function StateDesigner() {
               <td><ChannelName value={c.name} taken={channels.filter((_, j) => j !== i).map((x) => x.name)}
                 onCommit={(name) => rename(i, name)} /></td>
               <td>
-                <select aria-label={`${c.name} type`} value={(c.type?.type as string) ?? "string"} onChange={(e) => edit(i, { type: { type: e.target.value } })}>
+                <select aria-label={`${c.name} type`} value={typeLabel(c.type)} onChange={(e) => edit(i, { type: schemaFor(e.target.value) })}
+                  title="file and image: a person attaches one in the Run tab or on the share page">
                   {TYPES.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </td>

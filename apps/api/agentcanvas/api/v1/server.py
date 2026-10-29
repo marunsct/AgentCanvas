@@ -22,6 +22,10 @@ def _days(n: int) -> str:
     return "kept forever" if n == 0 else f"{n} days"
 
 
+def _mb(n: float) -> str:
+    return "no limit" if n == 0 else f"{n:g} MB"
+
+
 @router.get("/server/settings", response_model=list[ServerSetting])
 async def server_settings(request: Request) -> list[ServerSetting]:
     """The effective server settings an admin may want to know (never a secret's value)."""
@@ -75,6 +79,8 @@ async def server_settings(request: Request) -> list[ServerSetting]:
             "AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT",
         ),
         ("Limits", "Steps per run", str(s.recursion_limit), "AGENTCANVAS_RECURSION_LIMIT"),
+        ("Limits", "Largest attached file", _mb(s.max_upload_mb), "AGENTCANVAS_MAX_UPLOAD_MB"),
+        ("Limits", "Attached files kept per project", _mb(s.max_project_files_mb), "AGENTCANVAS_MAX_PROJECT_FILES_MB"),
         (
             "Retention",
             "Conversations (unless the organisation sets its own)",

@@ -21,6 +21,7 @@ from agentcanvas.api.v1 import (
     evaluators,
     events,
     experiments,
+    files,
     gates,
     gitsync,
     guide,
@@ -60,6 +61,7 @@ signed_in.include_router(runs.router)
 signed_in.include_router(tools.router)
 signed_in.include_router(memory.router)
 signed_in.include_router(knowledge.router)
+signed_in.include_router(files.router)
 signed_in.include_router(workspace.router)
 signed_in.include_router(secrets.router)
 signed_in.include_router(setup.router)

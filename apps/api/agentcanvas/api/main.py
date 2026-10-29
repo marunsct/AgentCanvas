@@ -197,6 +197,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.runner = runner
             runner.router = lambda session, wf, project_id: routing.route_run(app, session, wf, project_id)
+            runner.max_file_bytes = int(settings.max_upload_mb * 1024 * 1024)
+            runner.max_project_file_bytes = int(settings.max_project_files_mb * 1024 * 1024)
             runner.prepare_hooks.append(
                 lambda wf: app.state.secrets.refresh(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT))
             )

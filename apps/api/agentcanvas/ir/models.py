@@ -69,7 +69,11 @@ class Channel(_Base):
     """One field of the shared graph state."""
 
     name: str
-    type: dict[str, Any] = Field(default_factory=lambda: {"type": "string"})  # JSON Schema
+    type: dict[str, Any] = Field(
+        default_factory=lambda: {"type": "string"},
+        description='JSON Schema of the value; `{"type": "object", "format": "file"}` holds a file a person attached '
+        "(a reference to an upload, see agentcanvas/ir/files.py)",
+    )
     reducer: Reducer = "replace"
     default: Any = None
     storage: Storage = "full"
