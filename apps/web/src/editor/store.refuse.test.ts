@@ -65,6 +65,28 @@ describe("a refused edit (W-1)", () => {
     expect(useEditor.getState()).toMatchObject({ version: 2, pending: [], inflight: false });
   });
 
+  it("keeps an undo step the server refuses, and moves one it takes to redo (W-11)", async () => {
+    useEditor.setState({ undoStack: [[rename("before")], [rename("taken")]], redoStack: [] });
+    useEditor.getState().undo();
+    await tick();
+    release!();
+    for (let i = 0; i < 4; i++) await tick();
+    expect(useEditor.getState().undoStack).toEqual([[rename("before")], [rename("taken")]]); // popped before, it was lost
+    useEditor.setState({ undoStack: [[rename("before")]] });
+    useEditor.getState().undo();
+    await tick();
+    release!();
+    for (let i = 0; i < 4; i++) await tick();
+    expect(useEditor.getState()).toMatchObject({ undoStack: [], redoStack: [[{ op: "UpdateMeta", name: "a" }]] });
+  });
+
+  it("drops an undo step that no longer applies to the workflow", () => {
+    useEditor.setState({ undoStack: [[rename("before")], [{ op: "RemoveNode", id: "gone" } as Command]] });
+    useEditor.getState().undo();
+    expect(useEditor.getState().undoStack).toEqual([[rename("before")]]);
+    expect(useEditor.getState().notice).toMatchObject({ kind: "error", text: "unknown node 'gone'" });
+  });
+
   it("names the refused command by its target", () => {
     const batch = [rename("x"), { op: "RemoveNode", id: "n_7" } as Command];
     expect(describeRefused(batch, "command #1 (RemoveNode): unknown node 'n_7'")).toBe("RemoveNode 'n_7': unknown node 'n_7'.");

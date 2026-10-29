@@ -195,8 +195,9 @@ async function save(workflowId: string): Promise<void> {
       irHash: res.ir_hash,
       diagnostics: res.diagnostics,
       wf: rest.length ? applyAll(normalize(res.ir), rest) : normalize(res.ir),
-      undoStack: mode === "undo" ? undoStack : [...undoStack, res.inverse].slice(-200),
-      redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack : [],
+      // an undo or redo step leaves its stack once the server took it (popped before, a refused step was lost)
+      undoStack: mode === "undo" ? undoStack.slice(0, -1) : [...undoStack, res.inverse].slice(-200),
+      redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack.slice(0, -1) : [],
     });
   } catch (e) {
     if (get().workflowId !== workflowId) return;
@@ -281,7 +282,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = applyAll(wf, cmds);
       set({ wf: next, pending: cmds.reduce(coalesce, pending), notice: null });
     } catch (e) {
-      if (e instanceof CommandError) set({ notice: { kind: "error", text: e.message } });
+      if (!(e instanceof CommandError)) return;
+      // an undo or redo step that no longer applies to the workflow never will: it leaves its stack
+      const { undoStack, redoStack } = get();
+      const drop = opts.history === "undo" ? { undoStack: undoStack.slice(0, -1) }
+        : opts.history === "redo" ? { redoStack: redoStack.slice(0, -1) } : {};
+      set({ notice: { kind: "error", text: e.message }, ...drop });
       return;
     }
     historyMode.next = opts.history ?? "push";
@@ -305,8 +311,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (pending.length || inflight) return; // let queued edits land first; history stays linear
     const batch = undoStack[undoStack.length - 1];
     if (!batch) return;
-    set({ undoStack: undoStack.slice(0, -1) });
-    get().dispatch(batch, { history: "undo" });
+    get().dispatch(batch, { history: "undo" }); // the step leaves the stack when it is saved
   },
 
   redo: () => {
@@ -314,7 +319,6 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (pending.length || inflight) return;
     const batch = redoStack[redoStack.length - 1];
     if (!batch) return;
-    set({ redoStack: redoStack.slice(0, -1) });
     get().dispatch(batch, { history: "redo" });
   },
 
