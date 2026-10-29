@@ -10,6 +10,8 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+from agentcanvas.registry import token_counts
+
 
 class LangChainModels:
     async def complete(
@@ -27,8 +29,8 @@ class LangChainModels:
             [SystemMessage(content=system), HumanMessage(content=prompt)]
         )
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
-            usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
-            usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+            for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                usage[k] = usage.get(k, 0) + n
         return reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
 
     async def chat(
@@ -74,8 +76,8 @@ class LangChainModels:
         llm = resources.model("copilot", {**(config or {}), "model": model})
         reply = await (llm.bind_tools(specs) if specs else llm).ainvoke(converted)
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
-            usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
-            usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+            for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                usage[k] = usage.get(k, 0) + n
         content = reply.content
         if isinstance(content, list):  # content blocks: keep the text ones
             content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
@@ -100,8 +102,8 @@ class LangChainModels:
         llm = resources.model("copilot", {**(config or {}), "model": model})
         async for chunk in llm.astream(converted):
             if usage is not None and (meta := getattr(chunk, "usage_metadata", None)):
-                usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
-                usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+                for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                    usage[k] = usage.get(k, 0) + n
             content = chunk.content
             if isinstance(content, list):  # content blocks: keep the text ones
                 content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)

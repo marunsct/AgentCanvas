@@ -31,6 +31,7 @@ from langgraph.errors import GraphRecursionError
 from agentcanvas import copilot as copilot_package
 from agentcanvas.copilot.service import MAX_ERROR, MAX_STEPS, ROLE, CopilotTurn, Mode, _now
 from agentcanvas.copilot.tools import READ_ONLY, TOOLS, compact_workflow, result_text, run_tool
+from agentcanvas.registry import token_counts
 
 SKILLS = Path(copilot_package.__file__).with_name("skills")  # one folder per skill, each with a SKILL.md
 SHELL = "execute"  # the harness's shell tool: the Copilot has no shell
@@ -247,11 +248,11 @@ class _Meter(BaseCallbackHandler):
 
     def __init__(self) -> None:
         super().__init__()
-        self.totals = {"input_tokens": 0, "output_tokens": 0}
+        self.totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         for generations in response.generations:
             for g in generations:
-                usage = getattr(getattr(g, "message", None), "usage_metadata", None) or {}
-                for k in self.totals:
-                    self.totals[k] += int(usage.get(k, 0) or 0)
+                usage = getattr(getattr(g, "message", None), "usage_metadata", None)
+                for k, n in token_counts(usage).items():
+                    self.totals[k] += n

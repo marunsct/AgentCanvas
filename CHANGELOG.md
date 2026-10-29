@@ -22,6 +22,12 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- **The Copilot charged prompt-cache reads at full price**, so its token limit ended a chat after one or two builds
+  and the cost it showed was five to ten times the bill: it re-sends its knowledge pack on every call, and Anthropic
+  serves that from the cache at a tenth of the price. Costs now price cache reads and writes at their own rates (the
+  catalog has them for the Claude models; `AGENTCANVAS_MODEL_PRICES` takes `[in, out, cache read, cache write]`),
+  workflow runs included, and the limit counts what was sent and received less what came from the cache (HARDENING
+  E-1).
 - **Workspace code kept running after its run was cancelled**: a cancelled run, or one that ran out of its time
   budget, left its script process (or Docker container) running with nobody waiting for it, and the sandbox service
   let a call its caller had dropped run to its time limit. The code now stops with the run, on every sandbox mode

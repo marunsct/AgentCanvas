@@ -8,6 +8,14 @@ import { useEditor } from "../editor/store";
 import { postStream } from "../run/sse";
 import { dependencies, preview, type ReviewDiff, toggle } from "./review";
 
+/** A conversation's or an answer's tokens; `input_tokens` includes what was read from or written to the prompt cache. */
+export type Usage = { input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cache_write_tokens?: number };
+
+/** The tokens the chat's limit counts: cache reads cost a tenth or less, so they do not use it up (as on the server). */
+export function billedTokens(u: Usage | undefined): number {
+  return (u?.input_tokens ?? 0) - (u?.cache_read_tokens ?? 0) + (u?.output_tokens ?? 0);
+}
+
 export type Mode = "build" | "ask";
 
 export interface Brief {
@@ -45,7 +53,7 @@ export interface Proposal {
 
 export interface ChatMessage {
   role: "user" | "assistant"; content: string; proposal_id?: string; mode?: Mode; stopped?: boolean;
-  usage?: { input_tokens?: number; output_tokens?: number }; cost_usd?: number | null; model?: string; // an answer's own
+  usage?: Usage; cost_usd?: number | null; model?: string; // an answer's own
   sources?: { page: string; section: string }[]; // the guide sections the answer read
 }
 
@@ -66,7 +74,7 @@ export interface Conversation {
   brief: Brief | null;
   proposals: Proposal[];
   pending: Proposal | null;
-  usage: { input_tokens?: number; output_tokens?: number };
+  usage: Usage;
   cost_usd?: number | null; // the answers' costs, summed (where the model's price is known)
   chosen_model?: string | null; // a model chosen for this conversation; null: the project's
   token_cap: number;

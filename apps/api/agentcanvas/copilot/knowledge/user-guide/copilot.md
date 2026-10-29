@@ -93,7 +93,8 @@ policies and privacy setting apply; **New chat** goes back to the project's choi
 **Private** limits the Copilot to models running on your own machines (Ollama, LM Studio, vLLM, llama.cpp), so
 your workflows never leave them.
 
-**Token limit per chat** caps what one conversation can spend (input plus output tokens). The chat shows how much
+**Token limit per chat** caps what one conversation can spend (input plus output tokens; input read from the
+provider's prompt cache costs a tenth or less and does not count). The chat shows how much
 is used; **New chat** starts over with a fresh limit.
 
 ## What it knows
@@ -101,7 +102,7 @@ is used; **New chat** starts over with a fresh limit.
 The Copilot gets a knowledge pack built from the running product on every message: how workflows are put together,
 every block with its ports and settings (including your workspace's own blocks), the starter templates and the edit
 commands and the meaning of every problem code. Providers that support prompt caching (Anthropic) cache it, so it is
-cheap after the first message. Its tools look up a block's full settings, read a template, read your workflow with
+cheap after the first message: the cost shown prices cache reads and writes at their own rates. Its tools look up a block's full settings, read a template, read your workflow with
 its problems, read past runs, search this user guide, and list the models and which secrets are set (names only).
 An answer that used this guide ends with **From: Guide › page › section** links, which open the section in the
 app's own copy of the guide. Each answer also shows the tokens it used, and its cost when the model has a price.

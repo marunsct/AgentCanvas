@@ -14,6 +14,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.errors import GraphBubbleUp
 
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import token_counts
 
 
 def node_index(wf: Workflow) -> dict[str, str]:
@@ -153,19 +154,19 @@ class UsageTracker(BaseCallbackHandler):
                      "output_tokens": 0, "cached": bool(note.get("cached")), "failed": note.get("failed") or []}
                 )  # fmt: skip
             return
-        tokens_in = tokens_out = 0
+        counts = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
         for gens in response.generations:
             for g in gens:
-                usage = getattr(getattr(g, "message", None), "usage_metadata", None) or {}
-                tokens_in += int(usage.get("input_tokens") or 0)
-                tokens_out += int(usage.get("output_tokens") or 0)
-        if not (tokens_in or tokens_out):
+                for k, n in token_counts(getattr(getattr(g, "message", None), "usage_metadata", None)).items():
+                    counts[k] += n
+        if not (counts["input_tokens"] or counts["output_tokens"]):
             legacy = (response.llm_output or {}).get("token_usage") or {}
-            tokens_in, tokens_out = int(legacy.get("prompt_tokens") or 0), int(legacy.get("completion_tokens") or 0)
-        if tokens_in or tokens_out:
-            self._records.append(
-                {"canvas_node_id": node_id, "model": model, "input_tokens": tokens_in, "output_tokens": tokens_out}
-            )
+            counts["input_tokens"] = int(legacy.get("prompt_tokens") or 0)
+            counts["output_tokens"] = int(legacy.get("completion_tokens") or 0)
+        if counts["input_tokens"] or counts["output_tokens"]:
+            cached = {k: v for k, v in counts.items() if k.startswith("cache_") and v}  # priced apart (prompt cache)
+            self._records.append({"canvas_node_id": node_id, "model": model, "input_tokens": counts["input_tokens"],
+                                  "output_tokens": counts["output_tokens"], **cached})  # fmt: skip
 
     def on_llm_error(self, error: BaseException, *, run_id: UUID, **kw: Any) -> None:
         self._calls.pop(run_id, None)

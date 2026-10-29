@@ -11,7 +11,7 @@ import type { ModelOption, CopilotThreadOut, GuidePageRef } from "../api/generat
 import { confirmDialog } from "../ui/dialog";
 import { Markdown, slug } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
-import { type Brief, type ChatMessage, type Conversation, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
+import { billedTokens, type Brief, type ChatMessage, type Conversation, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
 import { describe, preview } from "./review";
 
 const STARTERS = [
@@ -202,7 +202,7 @@ export function CopilotPanel() {
   if (!conversation) return <div className="panel copilot muted" role="status">{error ?? "Loading the Copilot…"}</div>;
   if (!conversation.enabled) return <div className="panel copilot muted">The Copilot is switched off for this project.</div>;
   const pending = conversation.pending;
-  const used = (conversation.usage.input_tokens ?? 0) + (conversation.usage.output_tokens ?? 0);
+  const used = billedTokens(conversation.usage);
 
   return (
     <div className="panel copilot" data-testid="copilot-panel">
@@ -320,7 +320,7 @@ function AnswerCost({ m }: { m: ChatMessage }) {
   const usd = m.cost_usd;
   return (
     <div className="copilot-cost small muted" data-testid="answer-cost"
-      title={`${(m.usage?.input_tokens ?? 0).toLocaleString()} in, ${(m.usage?.output_tokens ?? 0).toLocaleString()} out${m.model ? ` on ${m.model}` : ""}`}>
+      title={`${(m.usage?.input_tokens ?? 0).toLocaleString()} in${m.usage?.cache_read_tokens ? ` (${m.usage.cache_read_tokens.toLocaleString()} from the cache)` : ""}, ${(m.usage?.output_tokens ?? 0).toLocaleString()} out${m.model ? ` on ${m.model}` : ""}`}>
       {tokens.toLocaleString()} tokens{usd != null && usd > 0 ? ` · $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}` : ""}
     </div>
   );

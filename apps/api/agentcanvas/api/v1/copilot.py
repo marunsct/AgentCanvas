@@ -38,8 +38,8 @@ from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
-from agentcanvas.registry import Registry, default_registry
-from agentcanvas.runtime.runner import price
+from agentcanvas.registry import Registry, billed_tokens, default_registry
+from agentcanvas.runtime.runner import usage_price
 from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
@@ -286,7 +286,7 @@ async def _start_turn(
         raise Conflict("the Copilot is still answering your last message") from exc
     leased.append(conv.id)
     usage: dict[str, int] = dict(conv.usage or {})
-    if usage.get("input_tokens", 0) + usage.get("output_tokens", 0) >= cs.token_cap:
+    if billed_tokens(usage) >= cs.token_cap:
         raise TooManyRequests("this conversation reached its token limit; start a new chat")
     registry = svc.registry(project_id) or default_registry()
     templates = list_templates(settings)
@@ -332,7 +332,7 @@ async def _start_turn(
             spent = {k: v - usage_before.get(k, 0) for k, v in turn.usage.items() if v > usage_before.get(k, 0)}
             answer = next((m for m in reversed(new) if m.get("role") == "assistant"), None)
             if answer is not None and spent:  # what this answer cost, shown under it and summed for the conversation
-                cost = price(model.model, spent.get("input_tokens", 0), spent.get("output_tokens", 0))
+                cost = usage_price(model.model, spent)
                 answer.update(usage=spent, model=model.model, cost_usd=cost)
             row.messages = [*(row.messages or []), *new]
             row.busy_until = None
@@ -353,11 +353,8 @@ async def _start_turn(
                 event = raw
                 if event["type"] in ("usage", "done"):  # what the conversation has cost so far, when the price is known
                     used = event["usage"]
-                    now = price(
-                        model.model,
-                        used.get("input_tokens", 0) - usage_before.get("input_tokens", 0),
-                        used.get("output_tokens", 0) - usage_before.get("output_tokens", 0),
-                    )  # this turn, on top of the earlier answers: the same total a reload shows
+                    turn_used = {k: v - usage_before.get(k, 0) for k, v in used.items() if isinstance(v, int)}
+                    now = usage_price(model.model, turn_used)  # this turn, on top of the earlier answers (as a reload)
                     total = None if now is None and spent_before is None else (spent_before or 0) + (now or 0)
                     event = {**event, "cost_usd": total}
                 if event["type"] == "proposal":  # older open proposals are replaced by the new one

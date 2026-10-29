@@ -23,6 +23,7 @@ from agentcanvas.copilot.tools import READ_ONLY, TOOLS, ToolContext, compact_wor
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import adapters as adapter_manifests
+from agentcanvas.registry import billed_tokens
 
 Mode = Literal["build", "ask"]
 MAX_STEPS = 16  # model calls per turn
@@ -166,7 +167,7 @@ class CopilotTurn:
         return msgs
 
     def _over_cap(self) -> bool:
-        return self.usage.get("input_tokens", 0) + self.usage.get("output_tokens", 0) >= self.token_cap
+        return billed_tokens(self.usage) >= self.token_cap
 
     async def run(self, text: str, mode: Mode) -> AsyncIterator[dict[str, Any]]:
         allowed = list(TOOLS) if mode == "build" else READ_ONLY

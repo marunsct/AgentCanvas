@@ -85,6 +85,32 @@ class ModelInfo(BaseModel):
     context_window: int | None = None
     price_in_per_mtok: float | None = None  # USD per 1M input tokens; None = unknown (AGENTCANVAS_MODEL_PRICES)
     price_out_per_mtok: float | None = None
+    # prompt caching: reading cached input, and writing it (5-minute cache); None = charged as ordinary input
+    price_cache_read_per_mtok: float | None = None
+    price_cache_write_per_mtok: float | None = None
+
+
+def token_counts(meta: Any) -> dict[str, int]:
+    """A model reply's token counts from LangChain's `usage_metadata` (or any mapping shaped like it): input and
+    output, and the part of the input read from or written to the provider's prompt cache. `input_tokens`
+    includes the cached part, as LangChain reports it."""
+    meta = meta or {}
+    details = meta.get("input_token_details") or {}
+    return {
+        "input_tokens": int(meta.get("input_tokens") or 0),
+        "output_tokens": int(meta.get("output_tokens") or 0),
+        "cache_read_tokens": int(details.get("cache_read") or 0),
+        "cache_write_tokens": int(details.get("cache_creation") or 0),
+    }
+
+
+def billed_tokens(usage: dict[str, Any]) -> int:
+    """Tokens a token cap counts: what was sent and received, less what was read from the prompt cache (a tenth of
+    the price or less; the Copilot re-sends its whole knowledge pack on every call, so counting it in full ended a
+    chat after one or two builds)."""
+    return (
+        int(usage.get("input_tokens", 0)) - int(usage.get("cache_read_tokens", 0)) + int(usage.get("output_tokens", 0))
+    )
 
 
 class ProviderInfo(BaseModel):
@@ -157,20 +183,21 @@ def priced(models: list[ModelInfo], raw: str | None) -> list[ModelInfo]:
         return models
     try:
         table = json.loads(raw)
-        prices = {str(k): (float(v[0]), float(v[1])) for k, v in table.items()}
+        prices = {str(k): tuple(float(x) for x in v) for k, v in table.items()}
+        if any(len(v) not in (2, 4) for v in prices.values()):
+            raise ValueError("each model takes [in, out] or [in, out, cache read, cache write]")
     except (ValueError, TypeError, IndexError, AttributeError) as exc:
-        raise ValueError(f'AGENTCANVAS_MODEL_PRICES must be JSON like {{"provider:model": [in, out]}}: {exc}') from None
+        raise ValueError(
+            f'AGENTCANVAS_MODEL_PRICES must be JSON like {{"provider:model": [in, out]}} (or [in, out, cache read, '
+            f"cache write]): {exc}"
+        ) from None
     known = {m.id for m in models}
     if unknown := sorted(set(prices) - known):
         raise ValueError(f"AGENTCANVAS_MODEL_PRICES names models not in the catalog: {', '.join(unknown)}")
     if any(x < 0 for pair in prices.values() for x in pair):
         raise ValueError("AGENTCANVAS_MODEL_PRICES: prices cannot be negative")
-    return [
-        m.model_copy(update={"price_in_per_mtok": prices[m.id][0], "price_out_per_mtok": prices[m.id][1]})
-        if m.id in prices
-        else m
-        for m in models
-    ]
+    fields = ("price_in_per_mtok", "price_out_per_mtok", "price_cache_read_per_mtok", "price_cache_write_per_mtok")
+    return [m.model_copy(update=dict(zip(fields, prices[m.id], strict=False))) if m.id in prices else m for m in models]
 
 
 @cache

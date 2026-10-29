@@ -137,12 +137,29 @@ def rubric_scores(h: Any) -> list[RunScore]:
     return out
 
 
-def price(model_id: str | None, tokens_in: int, tokens_out: int) -> float | None:
-    """USD for a model call from catalog prices; None when the model or its prices are unknown."""
+def price(
+    model_id: str | None, tokens_in: int, tokens_out: int, cache_read: int = 0, cache_write: int = 0
+) -> float | None:
+    """USD for a model call from catalog prices; None when the model or its prices are unknown. `tokens_in`
+    includes the input read from (`cache_read`) and written to (`cache_write`) the prompt cache, each at its own
+    price when the catalog has one."""
     info = default_registry().model(model_id or "")
     if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
         return None
-    return (tokens_in * info.price_in_per_mtok + tokens_out * info.price_out_per_mtok) / 1_000_000
+    read = info.price_cache_read_per_mtok if info.price_cache_read_per_mtok is not None else info.price_in_per_mtok
+    write = info.price_cache_write_per_mtok if info.price_cache_write_per_mtok is not None else info.price_in_per_mtok
+    plain = max(0, tokens_in - cache_read - cache_write)
+    return (
+        plain * info.price_in_per_mtok + cache_read * read + cache_write * write + tokens_out * info.price_out_per_mtok
+    ) / 1_000_000
+
+
+def usage_price(model_id: str | None, usage: dict[str, Any]) -> float | None:
+    """`price` of a usage record (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`)."""
+    return price(
+        model_id, int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)),
+        int(usage.get("cache_read_tokens", 0)), int(usage.get("cache_write_tokens", 0)),
+    )  # fmt: skip
 
 
 @dataclass
@@ -703,7 +720,7 @@ class Runner:
         if v.get("failed"):  # ... or a backup model answered
             h.usage["fallbacks"] += 1
         has_tokens = v["input_tokens"] or v["output_tokens"]
-        v["cost_usd"] = price(v.get("model"), v["input_tokens"], v["output_tokens"]) if has_tokens else 0.0
+        v["cost_usd"] = usage_price(v.get("model"), v) if has_tokens else 0.0
         h.usage["input_tokens"] += v["input_tokens"]
         h.usage["output_tokens"] += v["output_tokens"]
         if v["cost_usd"] is None:
