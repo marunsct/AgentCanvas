@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { triage } from "../test/fixtures";
@@ -34,6 +34,25 @@ describe("names (W-10)", () => {
     fireEvent.blur(name);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(dispatch).toHaveBeenCalledWith([{ op: "UpdateNode", id: "n_cls", patch: { name: "sorter" } }]);
+  });
+
+  it("follows undo and redo: the name and label shown are the block's current ones", () => {
+    useEditor.setState({ dispatch: useEditor.getInitialState().dispatch, selected: "n_cls" });
+    render(withQueries(<Inspector />));
+    const name = () => screen.getByLabelText("node name") as HTMLInputElement;
+    const label = () => screen.getByLabelText("node label") as HTMLInputElement;
+    fireEvent.change(name(), { target: { value: "sorter" } });
+    fireEvent.blur(name());
+    fireEvent.change(label(), { target: { value: "The sorter" } });
+    fireEvent.blur(label());
+    expect(name().value).toBe("sorter");
+    expect(label().value).toBe("The sorter");
+    const patch = (p: Record<string, unknown>) => act(() => useEditor.getState().dispatch([{ op: "UpdateNode", id: "n_cls", patch: p }])); // as undo would
+    patch({ name: "classify", label: null });
+    expect(name().value).toBe("classify"); // the field used to keep what was typed
+    expect(label().value).toBe("");
+    patch({ label: "The sorter" }); // and redo
+    expect(label().value).toBe("The sorter");
   });
 
   it("says why a channel name cannot be used", () => {

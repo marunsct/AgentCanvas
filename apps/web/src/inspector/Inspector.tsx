@@ -23,7 +23,7 @@ function NameField({ el, taken, onRename }: { el: IRNode | IRResource; taken: st
   return (
     <label>
       Name (letters, digits and _ only; used to refer to it)
-      <input className="mono" defaultValue={el.name} aria-label="node name" aria-invalid={Boolean(problem)}
+      <input className="mono" defaultValue={el.name} key={`name-${el.id}-${el.name}`} aria-label="node name" aria-invalid={Boolean(problem)}
         aria-describedby={problem ? `name-problem-${el.id}` : undefined}
         onChange={() => setProblem(null)}
         onBlur={(e) => {
@@ -73,7 +73,7 @@ export function Inspector() {
       {!res && (
         <label>
           Label
-          <input defaultValue={el.label ?? ""} aria-label="node label"
+          <input defaultValue={el.label ?? ""} key={`label-${el.id}-${el.label ?? ""}`} aria-label="node label"
             onBlur={(e) => e.target.value !== (el.label ?? "") && update({ label: e.target.value || null })} />
         </label>
       )}

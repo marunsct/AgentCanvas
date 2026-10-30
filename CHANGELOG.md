@@ -62,6 +62,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The block Name and Label fields in the inspector now follow undo and redo instead of showing what was typed before.
 - A workflow's day and month USD budgets now count what runs on every server have spent so far, so runs started
   together on several replicas can no longer pass the limit by whole runs. (HARDENING G-8).
 - Runs paused for a person or for a remote A2A agent's question can be answered on another replica or after a
