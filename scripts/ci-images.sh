@@ -20,8 +20,16 @@ export AGENTCANVAS_OIDC_ISSUER=https://login.example.com/realms/ci AGENTCANVAS_O
 export AGENTCANVAS_OIDC_CLIENT_ID=agentcanvas-web
 TRIVY_IMAGE=aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
 
-prod() { WEB_PORT=$PROD_PORT docker compose -p ac-ci-prod -f infra/compose.prod.yml "$@"; }
-local_() { WEB_PORT=$LOCAL_PORT docker compose -p ac-ci-local -f infra/compose.local.yml "$@"; }
+# The compose files pin their two internal networks to fixed subnets (the API trusts forwarded addresses from one of
+# them), so a second stack on this machine, such as a running `make docker-up`, needs subnets of its own
+prod() {
+  WEB_PORT=$PROD_PORT SANDBOX_CONTROL_SUBNET=10.251.250.0/24 FRONT_SUBNET=10.251.251.0/24 \
+    docker compose -p ac-ci-prod -f infra/compose.prod.yml "$@"
+}
+local_() {
+  WEB_PORT=$LOCAL_PORT SANDBOX_CONTROL_SUBNET=10.252.250.0/24 FRONT_SUBNET=10.252.251.0/24 \
+    docker compose -p ac-ci-local -f infra/compose.local.yml "$@"
+}
 cleanup() { prod down -v >/dev/null 2>&1 || true; local_ down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 fail() { echo "images: $*" >&2; prod logs --no-color --tail 80 2>&1 | tail -80 >&2 || true; exit 1; }

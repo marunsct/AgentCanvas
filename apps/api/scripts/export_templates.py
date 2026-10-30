@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -20,7 +21,8 @@ from agentcanvas.adapters.langchain.deploykit import TARGETS
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
-from agentcanvas.services import knowledge
+from agentcanvas.services import knowledge, template_kit
+from agentcanvas.workspace.catalog import scan
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "agentcanvas/registry/templates"
 SAMPLES = Path(__file__).resolve().parents[1] / "agentcanvas/registry/knowledge"
@@ -40,15 +42,34 @@ def with_knowledge(wf: Workflow, data: bytes) -> bytes:
     return knowledge.bundle(data, {name: ks.dump_jsonl(name, {}, chunks) for name in used})
 
 
+def kit_workspace(wf: Workflow, root: Path):
+    """A template's own workspace code (`metadata.kit.files`: custom blocks, tools), written where a project's would
+    be, with the registry that knows its blocks: what the API's export has for a project that opened the template."""
+    files = ((wf.metadata or {}).get("kit") or {}).get("files") or {}
+    if not files:
+        return default_registry(), None
+    for rel, text in files.items():
+        path = root / template_kit.fill(rel, wf.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(template_kit.fill(text, wf.id), encoding="utf-8")
+    builtin = {m.type for m in default_registry().all()}
+    custom = [m for m in scan(root).nodes if m.type not in builtin]
+    return default_registry().with_manifests(custom), root
+
+
 def main(out: Path) -> None:
     files = sorted(TEMPLATES.glob("*.ir.json"))
     for f in files:
         wf = Workflow.model_validate(json.loads(f.read_text()))
-        for target in TARGETS:
-            _, data = get_adapter(wf.framework).package(wf, default_registry(), target=target, version="1.0.0")
-            zipfile.ZipFile(io.BytesIO(with_knowledge(wf, data))).extractall(
-                out / target / f.name.removesuffix(".ir.json")
-            )
+        with tempfile.TemporaryDirectory() as tmp:
+            registry, workspace = kit_workspace(wf, Path(tmp))
+            for target in TARGETS:
+                _, data = get_adapter(wf.framework).package(
+                    wf, registry, workspace=workspace, target=target, version="1.0.0"
+                )
+                zipfile.ZipFile(io.BytesIO(with_knowledge(wf, data))).extractall(
+                    out / target / f.name.removesuffix(".ir.json")
+                )
     counts = {}
     frameworks = (
         "openai_agents",
