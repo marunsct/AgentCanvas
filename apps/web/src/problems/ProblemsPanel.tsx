@@ -15,7 +15,7 @@ export function ProblemsPanel() {
   const counts = { error: 0, warning: 0, info: 0 };
   for (const d of diagnostics) counts[d.severity] += 1;
   return (
-    <div className="problems" aria-label="Problems">
+    <div className="problems" role="region" aria-label="Problems" tabIndex={0}>
       <div className="problems-head">
         Problems <span className="badge err">{counts.error}</span> <span className="badge warn">{counts.warning}</span>{" "}
         <span className="badge">{counts.info}</span>

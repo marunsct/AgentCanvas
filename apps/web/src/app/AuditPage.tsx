@@ -74,8 +74,11 @@ export function AuditPage() {
           <tbody>
             {rows.map((e) => (
               <Fragment key={e.id}>
-                <tr className="clickable" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id}>
-                  <td className="small muted" title={exact(e.created_at)}>{ago(e.created_at)}</td>
+                <tr className="clickable" onClick={() => setOpen(open === e.id ? null : e.id)}>
+                  <td className="small muted" title={exact(e.created_at)}>
+                    <button type="button" className="link small" aria-expanded={open === e.id} aria-label={`details of the change ${ago(e.created_at)}`}
+                      onClick={(ev) => { ev.stopPropagation(); setOpen(open === e.id ? null : e.id); }}>{ago(e.created_at)}</button>
+                  </td>
                   <td>{e.actor_email ?? (e.actor_id ? e.actor_id : <span className="muted">{String(e.detail.caller ?? "system")}</span>)}</td>
                   <td title={e.action}>{actionLabel(e.action)}</td>
                   <td className="small">{e.target}</td>

@@ -11,16 +11,16 @@
   --border-strong: #cfd4e0;
   --text: #11142a;
   --text-2: #3a3f55;
-  --muted: #687089;
-  --accent: #6c47ff;
-  --accent-2: #2563eb;
+  --muted: #5a6178;
+  --accent: #5a35e8;
+  --accent-2: #1d4fd1;
   --accent-fg: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
   --accent-ring: color-mix(in srgb, var(--accent) 35%, transparent);
-  --err: #dc2626;
-  --warn: #c2700a;
-  --ok: #15924a;
-  --run: #2563eb;
+  --err: #c01d1d;
+  --warn: #7d4300;
+  --ok: #0d7035;
+  --run: #1d4fd1;
   --wait: #e59a0b;
   --code-bg: #0f1324;
   --code-fg: #e3e7f2;
@@ -79,7 +79,7 @@
   --border-strong: #31384b;
   --text: #e9ebf3;
   --text-2: #c3c8d6;
-  --muted: #8a92a8;
+  --muted: #a0a8bd;
   --accent: #8c78ff;
   --accent-2: #4c9bff;
   --accent-fg: #0b0d14;
@@ -106,7 +106,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #0b0d14; --bg-subtle: #10131c; --panel: #13161f; --panel-2: #0f121a; --raised: #1a1e2a; --border: #232838;
-    --border-strong: #31384b; --text: #e9ebf3; --text-2: #c3c8d6; --muted: #8a92a8; --accent: #8c78ff; --accent-2: #4c9bff; --accent-fg: #0b0d14;
+    --border-strong: #31384b; --text: #e9ebf3; --text-2: #c3c8d6; --muted: #a0a8bd; --accent: #8c78ff; --accent-2: #4c9bff; --accent-fg: #0b0d14;
     --err: #f87171; --warn: #fbbf24; --ok: #4ade80; --run: #60a5fa; --code-bg: #070910; --hl: #1d2333; --flow: #8590a6;
     --canvas-dot: #262c3c; --glass: rgb(19 22 31 / 80%); color-scheme: dark;
   }
@@ -405,7 +405,10 @@ html { overflow-x: clip; }
 .react-flow__controls-button { border-bottom: 1px solid var(--border); box-shadow: none; }
 .react-flow__controls-button svg { fill: currentColor; }
 .react-flow__attribution { color: var(--muted); }
-.react-flow__attribution a { color: var(--muted); }
+.react-flow .react-flow__attribution a { color: var(--muted); }
+.react-flow__attribution { background: var(--glass); }
+/* a link inside running text must not rely on its colour alone (WCAG 1.4.1) */
+p a, small a, .small a, li > a:not([class]), td a:not([class]), td a[title] { text-decoration: underline; text-underline-offset: 2px; }
 .react-flow__edge-path { stroke-linecap: round; }
 .connect-hint {
   position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--tooltip-bg); color: var(--tooltip-fg);
@@ -507,7 +510,7 @@ html { overflow-x: clip; }
 .code-view { font-family: var(--mono); font-size: 12px; white-space: pre; background: var(--code-bg); color: var(--code-fg); min-height: 100%; padding: 8px 0; line-height: 1.55; }
 .code-view > div { padding: 0 10px; }
 .code-view .hl { background: var(--hl); border-left: 3px solid var(--accent); }
-.code-view .ln { display: inline-block; width: 38px; color: #64748b; user-select: none; }
+.code-view .ln { display: inline-block; width: 38px; color: #8b97ab; user-select: none; }
 
 /* ---------- debug & run UX ---------- */
 .dock-tabs { justify-content: flex-start; }
@@ -984,7 +987,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .dialog-field { display: flex; flex-direction: column; gap: 4px; }
 .dialog-field span { font-size: 12px; color: var(--muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-button.danger-solid { background: var(--err); color: #fff; border-color: transparent; }
+button.danger-solid { background: var(--err); color: var(--accent-fg); border-color: transparent; }
 button.danger-solid:hover:not(:disabled) { filter: brightness(1.08); background: var(--err); border-color: transparent; }
 .toasts { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .toast-item {

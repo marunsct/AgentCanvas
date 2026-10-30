@@ -62,6 +62,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Accessibility, found by an automated scan of every page in the light and dark themes: text and status colours that were too faint now meet WCAG AA contrast, links inside text are underlined, the audit log's rows open with a keyboard button, the Problems panel can be scrolled with the keyboard, and code line numbers are readable.
 - The block Name and Label fields in the inspector now follow undo and redo instead of showing what was typed before.
 - A workflow's day and month USD budgets now count what runs on every server have spent so far, so runs started
   together on several replicas can no longer pass the limit by whole runs. (HARDENING G-8).
