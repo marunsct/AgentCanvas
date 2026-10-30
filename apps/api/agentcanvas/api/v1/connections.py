@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,6 +80,82 @@ async def list_connections(
         q = q.where(OAuthConnection.owner.in_([user.id, oauth.SERVICE]))
     rows = (await session.scalars(q.order_by(OAuthConnection.resource, OAuthConnection.owner))).all()
     return [_out(c, user) for c in rows]
+
+
+class ClientIn(BaseModel):
+    server_url: str = Field(max_length=2000, description="the app connector's server URL; its sign-in server is found")
+    client_id: str = Field(min_length=1, max_length=500)
+    client_secret: str | None = Field(None, max_length=2000, description="for a confidential client; kept encrypted")
+
+
+class ClientOut(BaseModel):
+    issuer: str = Field(description="the sign-in server these credentials are for")
+    host: str
+    client_id: str
+    has_secret: bool
+    created_at: datetime
+
+
+class ClientsOut(BaseModel):
+    redirect_uri: str = Field(description="register this as the redirect (callback) address at the provider")
+    clients: list[ClientOut]
+
+
+def _client_out(c: Any) -> ClientOut:
+    return ClientOut(
+        issuer=c.issuer, host=oauth.host_of(c.issuer), client_id=c.client_id, has_secret=bool(c.client_secret_enc),
+        created_at=c.created_at,
+    )  # fmt: skip
+
+
+def _admin(user: CurrentUser) -> None:
+    if user.role != "admin":
+        raise Forbidden("only an admin manages the sign-in credentials of app connectors")
+
+
+@router.get("/connections/clients", response_model=ClientsOut)
+async def list_clients(
+    request: Request, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> ClientsOut:
+    """The client credentials this organisation uses to sign in to app connectors' servers (admins)."""
+    _admin(user)
+    conns = _connections(request)
+    return ClientsOut(
+        redirect_uri=conns.redirect_uri, clients=[_client_out(c) for c in await conns.clients(session, user.org_id)]
+    )
+
+
+@router.put("/connections/clients", response_model=ClientOut)
+async def put_client(
+    body: ClientIn,
+    request: Request,
+    user: CurrentUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ClientOut:
+    """Use a client id (and secret) made at the provider, for providers without client ID metadata documents or
+    dynamic registration (admins). Replaces the registration for that sign-in server."""
+    _admin(user)
+    row = await _connections(request).set_client(
+        session, org_id=user.org_id, server_url=body.server_url, client_id=body.client_id.strip(),
+        client_secret=body.client_secret or None,
+    )  # fmt: skip
+    note(request, target=f"server={oauth.host_of(row.issuer)}", has_secret=bool(row.client_secret_enc))
+    return _client_out(row)
+
+
+@router.delete("/connections/clients", status_code=204)
+async def delete_client(
+    request: Request,
+    issuer: str = Query(description="the sign-in server (as the list shows it)"),
+    user: CurrentUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Forget the credentials for a sign-in server (admins); the next sign-in registers again if the server allows."""
+    _admin(user)
+    if not await _connections(request).remove_client(session, user.org_id, issuer):
+        raise NotFound("no client credentials for that sign-in server")
+    note(request, target=f"server={oauth.host_of(issuer)}")
+    return Response(status_code=204)
 
 
 @router.post("/connections/authorize", response_model=AuthorizeOut)

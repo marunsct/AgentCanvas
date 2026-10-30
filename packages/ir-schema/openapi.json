@@ -1600,6 +1600,98 @@
         "title": "Chunking",
         "type": "object"
       },
+      "ClientIn": {
+        "properties": {
+          "client_id": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Client Id",
+            "type": "string"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for a confidential client; kept encrypted",
+            "title": "Client Secret"
+          },
+          "server_url": {
+            "description": "the app connector's server URL; its sign-in server is found",
+            "maxLength": 2000,
+            "title": "Server Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_url",
+          "client_id"
+        ],
+        "title": "ClientIn",
+        "type": "object"
+      },
+      "ClientOut": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "has_secret": {
+            "title": "Has Secret",
+            "type": "boolean"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "issuer": {
+            "description": "the sign-in server these credentials are for",
+            "title": "Issuer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "host",
+          "client_id",
+          "has_secret",
+          "created_at"
+        ],
+        "title": "ClientOut",
+        "type": "object"
+      },
+      "ClientsOut": {
+        "properties": {
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/ClientOut"
+            },
+            "title": "Clients",
+            "type": "array"
+          },
+          "redirect_uri": {
+            "description": "register this as the redirect (callback) address at the provider",
+            "title": "Redirect Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirect_uri",
+          "clients"
+        ],
+        "title": "ClientsOut",
+        "type": "object"
+      },
       "CodeHelpIn": {
         "properties": {
           "action": {
@@ -15651,6 +15743,187 @@
           }
         ],
         "summary": "Callback",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/clients": {
+      "delete": {
+        "description": "Forget the credentials for a sign-in server (admins); the next sign-in registers again if the server allows.",
+        "operationId": "delete_client_v1_connections_clients_delete",
+        "parameters": [
+          {
+            "description": "the sign-in server (as the list shows it)",
+            "in": "query",
+            "name": "issuer",
+            "required": true,
+            "schema": {
+              "description": "the sign-in server (as the list shows it)",
+              "title": "Issuer",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Client",
+        "tags": [
+          "connections"
+        ]
+      },
+      "get": {
+        "description": "The client credentials this organisation uses to sign in to app connectors' servers (admins).",
+        "operationId": "list_clients_v1_connections_clients_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Clients",
+        "tags": [
+          "connections"
+        ]
+      },
+      "put": {
+        "description": "Use a client id (and secret) made at the provider, for providers without client ID metadata documents or\ndynamic registration (admins). Replaces the registration for that sign-in server.",
+        "operationId": "put_client_v1_connections_clients_put",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Client",
         "tags": [
           "connections"
         ]

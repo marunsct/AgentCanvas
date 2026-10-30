@@ -168,8 +168,11 @@ one shared key. Each person connects their own account, once:
 Behind the scenes AgentCanvas follows the MCP authorization standard against whatever server the block points at: it finds
 the server's sign-in settings itself, uses the server's client-metadata-document support or registers itself with the
 server, and signs in with PKCE. Tokens are stored encrypted with the organisation's key and renewed as needed; if the app
-revokes access, the connection shows *expired* and runs say to connect it again. A server that supports neither client
-metadata documents nor dynamic registration cannot be used yet. The operator sets `AGENTCANVAS_PUBLIC_URL`
+revokes access, the connection shows *expired* and runs say to connect it again. A provider that supports neither client
+metadata documents nor dynamic registration (GitHub and Slack style) needs an app made at the provider: an admin registers the
+redirect address shown under **Settings › Connections › Sign-in credentials** there, then enters the client id and secret with
+the connector's server address. The secret is stored encrypted and never shown again, and entered credentials are used before
+the other two ways. The operator sets `AGENTCANVAS_PUBLIC_URL`
 ([Deploy](deploy.md)). A workflow exported as code cannot sign in: connectors with this setting need the AgentCanvas server.
 
 ## Send traces to your observability tool

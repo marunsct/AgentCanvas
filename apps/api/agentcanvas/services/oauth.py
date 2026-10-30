@@ -292,13 +292,13 @@ class Connections:
     async def _client(self, s: AsyncSession, org_id: str, meta: ServerAuth) -> tuple[str, str | None]:
         """The client id (and secret) to use at this authorization server: ours by metadata document if it takes
         those, else a registration made once per organisation and server."""
-        if meta.cimd and self.public_url.startswith("https://"):
-            return self.public_url + CLIENT_METADATA_PATH, None
-        found = await s.get(OAuthClient, (org_id, meta.issuer, self.redirect_uri))
+        found = await s.get(OAuthClient, (org_id, meta.issuer, self.redirect_uri))  # entered by an admin, or registered
         fernet = await self.keyring.fernet(s, org_id)
         if found is not None:
             secret = fernet.decrypt(found.client_secret_enc).decode() if found.client_secret_enc else None
             return found.client_id, secret
+        if meta.cimd and self.public_url.startswith("https://"):
+            return self.public_url + CLIENT_METADATA_PATH, None
         if not meta.registration_endpoint:
             raise InvalidInput(
                 f"{host_of(meta.issuer)} supports neither client ID metadata documents nor dynamic client "
@@ -320,6 +320,36 @@ class Connections:
         ))  # fmt: skip
         await s.commit()
         return client_id, secret
+
+    async def clients(self, s: AsyncSession, org_id: str) -> list[OAuthClient]:
+        """The client registrations of this organisation at this address of ours."""
+        q = select(OAuthClient).where(OAuthClient.org_id == org_id, OAuthClient.redirect_uri == self.redirect_uri)
+        return list((await s.scalars(q.order_by(OAuthClient.issuer))).all())
+
+    async def set_client(
+        self, s: AsyncSession, *, org_id: str, server_url: str, client_id: str, client_secret: str | None
+    ) -> OAuthClient:
+        """Use the client id (and secret) an admin made at the provider, for the authorization server of this MCP
+        server: for providers that take neither client ID metadata documents nor dynamic registration (N-5). Replaces
+        a registration made earlier."""
+        meta = await discover(secure_url(server_url, "the server"), public_only=self.public_only)
+        fernet = await self.keyring.fernet(s, org_id)
+        enc = fernet.encrypt(client_secret.encode()) if client_secret else None
+        row = await s.get(OAuthClient, (org_id, meta.issuer, self.redirect_uri))
+        if row is None:
+            row = OAuthClient(org_id=org_id, issuer=meta.issuer, redirect_uri=self.redirect_uri)
+            s.add(row)
+        row.client_id, row.client_secret_enc = client_id, enc
+        await s.commit()
+        return row
+
+    async def remove_client(self, s: AsyncSession, org_id: str, issuer: str) -> bool:
+        row = await s.get(OAuthClient, (org_id, issuer, self.redirect_uri))
+        if row is None:
+            return False
+        await s.delete(row)
+        await s.commit()
+        return True
 
     async def begin(
         self, s: AsyncSession, *, org_id: str, user_id: str, server_url: str, service: bool = False,

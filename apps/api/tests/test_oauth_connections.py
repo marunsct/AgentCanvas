@@ -408,3 +408,55 @@ def test_urls_are_checked():
             oauth.secure_url(bad, "x")
     verifier, challenge = oauth.pkce()
     assert len(verifier) >= 43 and challenge != verifier
+
+
+async def test_an_admin_enters_the_client_credentials_of_a_provider_without_registration(app, client, world):
+    """N-5: GitHub- and Slack-style providers take neither metadata documents nor dynamic registration."""
+    world.dcr = False
+    assert (await authorize(client)).status_code == 422
+    put = await client.put(
+        "/v1/connections/clients",
+        json={"server_url": MCP, "client_id": "gh_client_1", "client_secret": "s3cret-value-xyz"}, headers=ALICE,
+    )  # fmt: skip
+    assert put.status_code == 200, put.text
+    assert put.json() | {"created_at": None} == {"issuer": AS, "host": "as.test", "client_id": "gh_client_1",
+                                                  "has_secret": True, "created_at": None}  # fmt: skip
+    assert "s3cret-value-xyz" not in put.text
+    listed = (await client.get("/v1/connections/clients", headers=ALICE)).json()
+    assert listed["redirect_uri"] == "https://canvas.test/oauth/callback"  # what the admin registers at the provider
+    assert [c["client_id"] for c in listed["clients"]] == ["gh_client_1"] and "s3cret" not in str(listed)
+    done = await connect(client, world)  # now the sign-in works, with the entered client id and no registration
+    assert done["connection"]["status"] == "active" and world.registrations == []
+    row = await row_of(app, id=done["connection"]["id"])
+    assert row.client_id == "gh_client_1"
+    async with app.state.db.sessionmaker() as s:
+        stored = await s.get(oauth.OAuthClient, (ORG, AS, "https://canvas.test/oauth/callback"))
+        fernet = await app.state.keyring.fernet(s, ORG)
+    assert stored is not None and stored.client_secret_enc is not None
+    assert b"s3cret-value-xyz" not in stored.client_secret_enc
+    assert fernet.decrypt(stored.client_secret_enc).decode() == "s3cret-value-xyz"
+    assert "s3cret-value-xyz" not in str((await client.get("/v1/org/audit", headers=ALICE)).json())
+
+
+async def test_entered_credentials_win_over_a_metadata_document_and_can_be_removed(client, world):
+    world.cimd = True
+    await client.put("/v1/connections/clients", json={"server_url": MCP, "client_id": "mine_1"}, headers=ALICE)
+    url = (await authorize(client)).json()["authorization_url"]
+    assert "client_id=mine_1" in url and "client-metadata.json" not in url
+    gone = await client.delete("/v1/connections/clients", params={"issuer": AS}, headers=ALICE)
+    assert gone.status_code == 204
+    assert (await client.get("/v1/connections/clients", headers=ALICE)).json()["clients"] == []
+    assert "client-metadata.json" in (await authorize(client)).json()["authorization_url"]  # back to the document
+    again = await client.delete("/v1/connections/clients", params={"issuer": AS}, headers=ALICE)
+    assert again.status_code == 404
+
+
+async def test_only_an_admin_manages_client_credentials(client, world):
+    body = {"server_url": MCP, "client_id": "x"}
+    assert (await client.put("/v1/connections/clients", json=body, headers=BOB)).status_code == 403
+    assert (await client.get("/v1/connections/clients", headers=BOB)).status_code == 403
+    assert (await client.delete("/v1/connections/clients", params={"issuer": AS}, headers=BOB)).status_code == 403
+    bad = await client.put(
+        "/v1/connections/clients", json={**body, "server_url": "http://plain.test/mcp"}, headers=ALICE
+    )
+    assert bad.status_code == 422  # the server address must be https, as for any sign-in

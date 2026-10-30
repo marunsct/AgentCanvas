@@ -417,6 +417,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- App connectors whose provider has neither client ID metadata documents nor dynamic registration can be used: an admin enters the client id and secret made at the provider under Settings › Connections.
 - A schedule or webhook now warns when the workflow has an app connector that signs in as the person who started the run: a trigger's runs have no person, so the connector needs the service connection instead.
 - Settings › Spending has a table by deployment, so what the runs of each published workflow cost can be told apart.
 - Scanned PDFs and pictures can be added to a knowledge base: pages without text and PNG, JPEG, TIFF, BMP and WebP

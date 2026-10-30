@@ -434,6 +434,28 @@ export type Overlap = number;
  */
 export type Size = number;
 export type Strategy = "paragraphs" | "sentences" | "fixed" | "markdown";
+export type ClientId1 = string;
+/**
+ * for a confidential client; kept encrypted
+ */
+export type ClientSecret = string | null;
+/**
+ * the app connector's server URL; its sign-in server is found
+ */
+export type ServerUrl1 = string;
+export type ClientId2 = string;
+export type CreatedAt5 = string;
+export type HasSecret = boolean;
+export type Host1 = string;
+/**
+ * the sign-in server these credentials are for
+ */
+export type Issuer1 = string;
+export type Clients = ClientOut[];
+/**
+ * register this as the redirect (callback) address at the provider
+ */
+export type RedirectUri = string;
 export type Action1 = "write" | "explain" | "fix";
 /**
  * the file as it is in the editor, unsaved edits included
@@ -544,7 +566,7 @@ export type Metadata2 = {
 } | null;
 export type Name11 = string | null;
 export type Op15 = "UpdateMeta";
-export type CreatedAt5 = string;
+export type CreatedAt6 = string;
 export type Diagnostics1 = Diagnostic[];
 export type Id17 = string;
 export type Inverse = (
@@ -651,7 +673,7 @@ export type Source2 = "workflow" | "separate";
  * per conversation, in + out
  */
 export type TokenCap1 = number;
-export type CreatedAt6 = string;
+export type CreatedAt7 = string;
 export type Id19 = string;
 export type Messages2 = number;
 /**
@@ -661,7 +683,7 @@ export type Open = boolean;
 export type Title = string | null;
 export type UpdatedAt3 = string;
 export type Title1 = string;
-export type CreatedAt7 = string;
+export type CreatedAt8 = string;
 export type Id20 = string;
 export type LimitUsd = number;
 export type Message4 = string;
@@ -682,7 +704,7 @@ export type PassAt = number;
  * points; 2 is a yes/no
  */
 export type Scale = number;
-export type CreatedAt8 = string;
+export type CreatedAt9 = string;
 export type Description4 = string;
 export type Examples = number;
 export type Id21 = string;
@@ -715,7 +737,7 @@ export type VersionId = string;
 export type WorkflowId = string;
 export type Description5 = string;
 export type Name18 = string;
-export type CreatedAt9 = string;
+export type CreatedAt10 = string;
 export type Description6 = string;
 export type Examples1 = number;
 export type Id23 = string;
@@ -725,7 +747,7 @@ export type Version4 = number;
 export type WorkflowId1 = string;
 export type Description7 = string | null;
 export type Name20 = string | null;
-export type CreatedAt10 = string;
+export type CreatedAt11 = string;
 export type CreatedBy = string | null;
 export type Examples2 = number;
 export type Id24 = string;
@@ -746,7 +768,7 @@ export type ApiKey1 = {
 export type BaseUrl1 = string | null;
 export type Model6 = string;
 export type Active = boolean;
-export type CreatedAt11 = string;
+export type CreatedAt12 = string;
 export type Endpoint1 = string;
 export type Environment = string;
 export type Id25 = string;
@@ -766,7 +788,7 @@ export type Summary3 = string;
 export type Workflow = FieldChange[];
 export type Characters = number;
 export type Chunks = number;
-export type CreatedAt12 = string;
+export type CreatedAt13 = string;
 export type Id27 = string;
 export type Name22 = string;
 /**
@@ -811,7 +833,7 @@ export type Description8 = string;
 export type ExperimentsOnly = boolean;
 export type Kind4 = string;
 export type Label7 = string;
-export type CreatedAt13 = string;
+export type CreatedAt14 = string;
 export type EffectiveThreshold = number;
 export type Id28 = string;
 export type Kind5 =
@@ -845,7 +867,7 @@ export type Mean1 = number | null;
 export type PassRate1 = number | null;
 export type Scored1 = number;
 export type Type4 = string;
-export type CreatedAt14 = string;
+export type CreatedAt15 = string;
 export type Id29 = string;
 export type Results = {
   [k: string]: unknown;
@@ -934,7 +956,7 @@ export type Label8 = string | null;
  */
 export type Version5 = string | null;
 export type Concurrency1 = number;
-export type CreatedAt15 = string;
+export type CreatedAt16 = string;
 export type DatasetId4 = string;
 export type DatasetVersion1 = number;
 export type EndedAt = string | null;
@@ -1264,7 +1286,7 @@ export type Split5 = string | null;
  * split for examples that name none
  */
 export type Split6 = string | null;
-export type CreatedAt16 = string;
+export type CreatedAt17 = string;
 export type Diagnostics3 = Diagnostic[];
 /**
  * langflow, flowise, n8n, agentspec or openai_agents
@@ -1287,7 +1309,7 @@ export type Chat = boolean;
  */
 export type Field2 = string | null;
 export type CanvasNodeId = string;
-export type CreatedAt17 = string;
+export type CreatedAt18 = string;
 export type DecidedAt = string | null;
 export type Decision1 = {
   [k: string]: unknown;
@@ -1312,7 +1334,7 @@ export type OrgId = string;
 export type OrgName = string;
 export type Role1 = string;
 export type Annotations = AnnotationOut[];
-export type CreatedAt18 = string;
+export type CreatedAt19 = string;
 export type Error5 = string | null;
 export type Id37 = string;
 export type Input6 = {
@@ -1328,7 +1350,7 @@ export type Reviews = number;
 export type RunId5 = string;
 export type RunStatus1 = string;
 export type Comment4 = string;
-export type CreatedAt19 = string;
+export type CreatedAt20 = string;
 export type CreatedBy1 = string | null;
 export type Evaluator4 = string;
 export type Id38 = string;
@@ -1345,7 +1367,7 @@ export type ThreadId5 = string;
 export type Scores3 = ScoreOut[];
 export type Status9 = string;
 export type ThreadId6 = string;
-export type CreatedAt20 = string;
+export type CreatedAt21 = string;
 export type Id39 = string;
 export type QueueId1 = string;
 export type Reason2 = string;
@@ -1370,7 +1392,7 @@ export type Name34 = string;
  */
 export type Sample = "handbook" | null;
 export type Chunks1 = number;
-export type CreatedAt21 = string;
+export type CreatedAt22 = string;
 export type Description11 = string;
 export type Documents = number;
 export type Id40 = string;
@@ -1446,7 +1468,7 @@ export type Email2 = string;
 export type Invited = boolean;
 export type Role4 = "admin" | "builder" | "reviewer" | "viewer";
 export type UserId2 = string;
-export type CreatedAt22 = string | null;
+export type CreatedAt23 = string | null;
 export type Key = string;
 export type Namespace = string[];
 export type UpdatedAt9 = string | null;
@@ -1574,7 +1596,7 @@ export type AlertBelow1 = number | null;
  * alert when the window mean is this far below the trailing 7-day mean
  */
 export type AlertDrop1 = number | null;
-export type CreatedAt23 = string;
+export type CreatedAt24 = string;
 export type DeploymentId1 = string;
 export type Evaluator5 = string;
 export type EvaluatorId1 = string;
@@ -1819,7 +1841,7 @@ export type Require = string;
  */
 export type Scope1 = "node" | "resource" | "workflow";
 export type Severity2 = "error" | "warning";
-export type CreatedAt24 = string;
+export type CreatedAt25 = string;
 /**
  * shown with every violation
  */
@@ -1858,7 +1880,7 @@ export type Pending1 = number;
 export type Total = number;
 export type Name46 = string;
 export type WorkspaceId = string | null;
-export type CreatedAt25 = string;
+export type CreatedAt26 = string;
 export type Id47 = string;
 export type Name47 = string;
 export type WorkspaceId1 = string | null;
@@ -2131,7 +2153,7 @@ export type Failed1 = boolean;
  * runs an end user rated down through the deployment API
  */
 export type ThumbsDown = boolean;
-export type CreatedAt26 = string;
+export type CreatedAt27 = string;
 export type Id49 = string;
 export type Instructions1 = string;
 export type Name50 = string;
@@ -2491,7 +2513,7 @@ export type Available = boolean;
  * behind the web container: https://<host>/api/scim/v2
  */
 export type BasePath = string;
-export type CreatedAt27 = string | null;
+export type CreatedAt28 = string | null;
 export type Enabled5 = boolean;
 /**
  * the token's first characters, to tell it from another
@@ -2509,7 +2531,7 @@ export type Available1 = boolean;
  * behind the web container: https://<host>/api/scim/v2
  */
 export type BasePath1 = string;
-export type CreatedAt28 = string | null;
+export type CreatedAt29 = string | null;
 export type Enabled6 = boolean;
 /**
  * the token's first characters, to tell it from another
@@ -2538,7 +2560,7 @@ export type Text6 = string;
 export type Title4 = string | null;
 export type Results1 = SearchResult[];
 export type Value5 = string;
-export type CreatedAt29 = string;
+export type CreatedAt30 = string;
 export type Name53 = string;
 /**
  * used for this request only; omit to use the saved key
@@ -2842,7 +2864,7 @@ export type Name60 = string;
 export type Context7 = {
   [k: string]: unknown;
 } | null;
-export type CreatedAt30 = string;
+export type CreatedAt31 = string;
 export type Id56 = string;
 export type Name61 = string;
 /**
@@ -2859,7 +2881,7 @@ export type Results2 = CaseResult[];
 export type Text8 = string;
 export type Title8 = string;
 export type CostUsd9 = number;
-export type CreatedAt31 = string;
+export type CreatedAt32 = string;
 /**
  * set when the conversation came through a deployment's API
  */
@@ -2910,7 +2932,7 @@ export type Tokens3 = number;
 export type Runs9 = TrajectoryNode[];
 export type ThreadId14 = string;
 export type WorkflowId11 = string;
-export type CreatedAt32 = string;
+export type CreatedAt33 = string;
 export type Email4 = string;
 export type ExpiresAt1 = string | null;
 export type Id59 = string;
@@ -2939,7 +2961,7 @@ export type Name63 = string;
  * the most it may do; default: your role now
  */
 export type Role7 = ("admin" | "builder" | "reviewer" | "viewer") | null;
-export type CreatedAt33 = string;
+export type CreatedAt34 = string;
 export type Email5 = string;
 export type ExpiresAt2 = string | null;
 export type Id60 = string;
@@ -2981,7 +3003,7 @@ export type SecretKey = {
   [k: string]: string;
 } | null;
 export type MissingSecrets = string[];
-export type CreatedAt34 = string;
+export type CreatedAt35 = string;
 export type DeploymentId4 = string | null;
 export type Enabled11 = boolean;
 export type Id61 = string;
@@ -2994,7 +3016,7 @@ export type Url4 = string | null;
 export type Warnings = string[];
 export type DeploymentId5 = string | null;
 export type Kind12 = "webhook" | "cron";
-export type CreatedAt35 = string;
+export type CreatedAt36 = string;
 export type DeploymentId6 = string | null;
 export type Enabled12 = boolean;
 export type Id62 = string;
@@ -3009,7 +3031,7 @@ export type Url6 = string;
  * the Copilot proposals accepted since the version before, and by whom
  */
 export type CopilotChanges = CopilotChange[];
-export type CreatedAt36 = string;
+export type CreatedAt37 = string;
 export type CreatedBy2 = string | null;
 export type Id63 = string;
 export type IrHash4 = string;
@@ -3022,7 +3044,7 @@ export type Message13 = string;
  * the Copilot proposals accepted since the version before, and by whom
  */
 export type CopilotChanges1 = CopilotChange[];
-export type CreatedAt37 = string;
+export type CreatedAt38 = string;
 export type CreatedBy3 = string | null;
 export type Id64 = string;
 export type IrHash5 = string;
@@ -3171,7 +3193,7 @@ export type Tools4 =
       string,
       string
     ];
-export type CreatedAt38 = string;
+export type CreatedAt39 = string;
 export type Diagnostics5 = Diagnostic[];
 export type Id65 = string;
 export type IrHash6 = string;
@@ -3261,6 +3283,9 @@ export interface ApiSchemas {
   Check?: Check;
   ChunkOut?: ChunkOut;
   Chunking?: Chunking;
+  ClientIn?: ClientIn;
+  ClientOut?: ClientOut;
+  ClientsOut?: ClientsOut;
   CodeHelpIn?: CodeHelpIn;
   CodeHelpOut?: CodeHelpOut;
   CommandBatch?: CommandBatch;
@@ -4176,6 +4201,34 @@ export interface Chunking {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ClientIn".
+ */
+export interface ClientIn {
+  client_id: ClientId1;
+  client_secret?: ClientSecret;
+  server_url: ServerUrl1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ClientOut".
+ */
+export interface ClientOut {
+  client_id: ClientId2;
+  created_at: CreatedAt5;
+  has_secret: HasSecret;
+  host: Host1;
+  issuer: Issuer1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ClientsOut".
+ */
+export interface ClientsOut {
+  clients: Clients;
+  redirect_uri: RedirectUri;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "CodeHelpIn".
  */
 export interface CodeHelpIn {
@@ -4387,7 +4440,7 @@ export interface UpdateMeta {
  * via the `definition` "CommandResult".
  */
 export interface CommandResult {
-  created_at: CreatedAt5;
+  created_at: CreatedAt6;
   diagnostics: Diagnostics1;
   id: Id17;
   inverse: Inverse;
@@ -4527,7 +4580,7 @@ export interface CopilotSettings {
  * via the `definition` "CopilotThreadOut".
  */
 export interface CopilotThreadOut {
-  created_at: CreatedAt6;
+  created_at: CreatedAt7;
   id: Id19;
   messages: Messages2;
   open: Open;
@@ -4546,7 +4599,7 @@ export interface CopilotThreadPatch {
  * via the `definition` "CostAlertOut".
  */
 export interface CostAlertOut {
-  created_at: CreatedAt7;
+  created_at: CreatedAt8;
   id: Id20;
   limit_usd: LimitUsd;
   message: Message4;
@@ -4579,7 +4632,7 @@ export interface Criterion {
  * via the `definition` "DatasetDetail".
  */
 export interface DatasetDetail {
-  created_at: CreatedAt8;
+  created_at: CreatedAt9;
   description: Description4;
   examples: Examples;
   id: Id21;
@@ -4651,7 +4704,7 @@ export interface DatasetIn {
  * via the `definition` "DatasetOut".
  */
 export interface DatasetOut {
-  created_at: CreatedAt9;
+  created_at: CreatedAt10;
   description: Description6;
   examples: Examples1;
   id: Id23;
@@ -4684,7 +4737,7 @@ export interface DatasetPatch {
  * via the `definition` "DatasetVersionOut".
  */
 export interface DatasetVersionOut {
-  created_at: CreatedAt10;
+  created_at: CreatedAt11;
   created_by: CreatedBy;
   examples: Examples2;
   id: Id24;
@@ -4727,7 +4780,7 @@ export interface DefaultModel {
  */
 export interface DeploymentOut {
   active: Active;
-  created_at: CreatedAt11;
+  created_at: CreatedAt12;
   endpoint: Endpoint1;
   environment: Environment;
   id: Id25;
@@ -4789,7 +4842,7 @@ export interface Before1 {
 export interface DocumentOut {
   characters: Characters;
   chunks: Chunks;
-  created_at: CreatedAt12;
+  created_at: CreatedAt13;
   id: Id27;
   name: Name22;
   source: Source3;
@@ -4855,7 +4908,7 @@ export interface ConfigSchema {
  */
 export interface EvaluatorOut {
   config?: Config3;
-  created_at: CreatedAt13;
+  created_at: CreatedAt14;
   effective_threshold: EffectiveThreshold;
   id: Id28;
   kind: Kind5;
@@ -4902,7 +4955,7 @@ export interface Data {
  * via the `definition` "EventLogOut".
  */
 export interface EventLogOut {
-  created_at: CreatedAt14;
+  created_at: CreatedAt15;
   data: Data1;
   id: Id29;
   results: Results;
@@ -5000,7 +5053,7 @@ export interface Overrides {
  */
 export interface ExperimentOut {
   concurrency: Concurrency1;
-  created_at: CreatedAt15;
+  created_at: CreatedAt16;
   dataset_id: DatasetId4;
   dataset_version: DatasetVersion1;
   ended_at: EndedAt;
@@ -5527,7 +5580,7 @@ export interface Reference3 {
  * via the `definition` "Imported".
  */
 export interface Imported {
-  created_at: CreatedAt16;
+  created_at: CreatedAt17;
   diagnostics: Diagnostics3;
   format: Format2;
   id: Id35;
@@ -5571,7 +5624,7 @@ export interface InputShape {
  */
 export interface InterruptOut {
   canvas_node_id: CanvasNodeId;
-  created_at: CreatedAt17;
+  created_at: CreatedAt18;
   decided_at: DecidedAt;
   decision: Decision1;
   id: Id36;
@@ -5604,7 +5657,7 @@ export interface InvitationOut {
  */
 export interface ItemDetail {
   annotations: Annotations;
-  created_at: CreatedAt18;
+  created_at: CreatedAt19;
   error: Error5;
   id: Id37;
   input: Input6;
@@ -5625,7 +5678,7 @@ export interface ItemDetail {
  */
 export interface ScoreOut {
   comment: Comment4;
-  created_at: CreatedAt19;
+  created_at: CreatedAt20;
   created_by: CreatedBy1;
   evaluator: Evaluator4;
   id: Id38;
@@ -5642,7 +5695,7 @@ export interface ScoreOut {
  * via the `definition` "ItemOut".
  */
 export interface ItemOut {
-  created_at: CreatedAt20;
+  created_at: CreatedAt21;
   id: Id39;
   queue_id: QueueId1;
   reason: Reason2;
@@ -5684,7 +5737,7 @@ export interface KnowledgeBaseIn {
 export interface KnowledgeBaseOut {
   chunking: Chunking;
   chunks: Chunks1;
-  created_at: CreatedAt21;
+  created_at: CreatedAt22;
   description: Description11;
   documents: Documents;
   embedding: Embedding1;
@@ -5857,7 +5910,7 @@ export interface MemberOut {
  * via the `definition` "MemoryItem".
  */
 export interface MemoryItem {
-  created_at?: CreatedAt22;
+  created_at?: CreatedAt23;
   key: Key;
   namespace: Namespace;
   updated_at?: UpdatedAt9;
@@ -6056,7 +6109,7 @@ export interface OnlineIn {
 export interface OnlineOut {
   alert_below?: AlertBelow1;
   alert_drop?: AlertDrop1;
-  created_at: CreatedAt23;
+  created_at: CreatedAt24;
   deployment_id: DeploymentId1;
   evaluator: Evaluator5;
   evaluator_id: EvaluatorId1;
@@ -6192,7 +6245,7 @@ export interface PolicyIn {
  * via the `definition` "PolicyOut".
  */
 export interface PolicyOut {
-  created_at: CreatedAt24;
+  created_at: CreatedAt25;
   description?: Description18;
   enabled?: Enabled4;
   environments?: Environments3;
@@ -6236,7 +6289,7 @@ export interface ProjectIn {
  * via the `definition` "ProjectOut".
  */
 export interface ProjectOut {
-  created_at: CreatedAt25;
+  created_at: CreatedAt26;
   id: Id47;
   name: Name47;
   workspace_id?: WorkspaceId1;
@@ -6372,7 +6425,7 @@ export interface ScoresBelow {
  */
 export interface QueueOut {
   agreement?: Agreement;
-  created_at: CreatedAt26;
+  created_at: CreatedAt27;
   id: Id49;
   instructions?: Instructions1;
   name: Name50;
@@ -6581,7 +6634,7 @@ export interface SavedFile {
 export interface ScimCreated {
   available: Available;
   base_path?: BasePath;
-  created_at: CreatedAt27;
+  created_at: CreatedAt28;
   enabled: Enabled5;
   prefix: Prefix;
   token: Token;
@@ -6593,7 +6646,7 @@ export interface ScimCreated {
 export interface ScimStatus {
   available: Available1;
   base_path?: BasePath1;
-  created_at: CreatedAt28;
+  created_at: CreatedAt29;
   enabled: Enabled6;
   prefix: Prefix1;
 }
@@ -6652,7 +6705,7 @@ export interface SecretIn {
  * via the `definition` "SecretOut".
  */
 export interface SecretOut {
-  created_at: CreatedAt29;
+  created_at: CreatedAt30;
   name: Name53;
 }
 /**
@@ -6984,7 +7037,7 @@ export interface Pins3 {
  */
 export interface TestCaseOut {
   context?: Context7;
-  created_at: CreatedAt30;
+  created_at: CreatedAt31;
   expect?: Expect;
   id: Id56;
   input?: Input10;
@@ -7041,7 +7094,7 @@ export interface TextIn {
  */
 export interface ThreadOut {
   cost_usd?: CostUsd9;
-  created_at: CreatedAt31;
+  created_at: CreatedAt32;
   deployment_id?: DeploymentId3;
   id: Id57;
   last_ended_at?: LastEndedAt;
@@ -7095,7 +7148,7 @@ export interface TrajectoryNode {
  * via the `definition` "TokenCreated".
  */
 export interface TokenCreated {
-  created_at: CreatedAt32;
+  created_at: CreatedAt33;
   email: Email4;
   expires_at: ExpiresAt1;
   id: Id59;
@@ -7121,7 +7174,7 @@ export interface TokenIn {
  * via the `definition` "TokenOut".
  */
 export interface TokenOut {
-  created_at: CreatedAt33;
+  created_at: CreatedAt34;
   email: Email5;
   expires_at: ExpiresAt2;
   id: Id60;
@@ -7180,7 +7233,7 @@ export interface Guides {
  */
 export interface TriggerCreated {
   config: Config7;
-  created_at: CreatedAt34;
+  created_at: CreatedAt35;
   deployment_id: DeploymentId4;
   enabled: Enabled11;
   id: Id61;
@@ -7210,7 +7263,7 @@ export interface Config8 {
  */
 export interface TriggerOut {
   config: Config9;
-  created_at: CreatedAt35;
+  created_at: CreatedAt36;
   deployment_id: DeploymentId6;
   enabled: Enabled12;
   id: Id62;
@@ -7234,7 +7287,7 @@ export interface UrlIn {
  */
 export interface VersionDetail {
   copilot_changes?: CopilotChanges;
-  created_at: CreatedAt36;
+  created_at: CreatedAt37;
   created_by: CreatedBy2;
   id: Id63;
   ir: Ir4;
@@ -7264,7 +7317,7 @@ export interface VersionIn {
  */
 export interface VersionOut {
   copilot_changes?: CopilotChanges1;
-  created_at: CreatedAt37;
+  created_at: CreatedAt38;
   created_by: CreatedBy3;
   id: Id64;
   ir_hash: IrHash5;
@@ -7288,7 +7341,7 @@ export interface WorkflowIn {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt38;
+  created_at: CreatedAt39;
   diagnostics: Diagnostics5;
   id: Id65;
   ir: Ir5;
