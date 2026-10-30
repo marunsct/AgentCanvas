@@ -10,13 +10,14 @@ import asyncio
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
 from agentcanvas.api.v1.runs import _context, _respond
@@ -340,6 +341,36 @@ async def api_run_wait(
     h = await _start(request, session, dep_id, body, authorization)
     await session.close()  # no connection held while the run works
     return await _result(h)
+
+
+@public_router.post("/deployments/{dep_id}/files", response_model=FileOut, status_code=201)
+async def api_upload(
+    dep_id: str,
+    request: Request,
+    file: Annotated[UploadFile, File(description="an image, PDF, .docx or text file")],
+    authorization: str | None = Header(None),
+    session: AsyncSession = Depends(get_session),
+) -> FileOut:
+    """Upload a file for the workflow's file input, with the deployment's key (N-4): the answer is the reference to
+    put in the run's input, instead of sending the bytes inline as base64. Its media types and the size limit are the
+    ones of the file input; only a workflow that has one takes files."""
+    from agentcanvas.db.models import WorkflowRow
+    from agentcanvas.services.share import attach_shape
+
+    dep, wf = await _caller(request, session, dep_id, authorization)
+    shape = attach_shape(wf)
+    if shape is None:
+        raise InvalidInput("this deployment's workflow has no file input")
+    row = await session.get(WorkflowRow, dep.workflow_id)
+    if row is None:
+        raise NotFound("this deployment's workflow no longer exists")
+    files = file_service(request, session)
+    stored = await files.add(
+        row.project_id, file.filename, await read_upload(file, files), source="api", deployment_id=dep.id,
+        accept=shape.accept,
+    )  # fmt: skip
+    note(request, file=stored.id, media_type=stored.media_type, size=stored.size)
+    return file_out(stored)
 
 
 @public_router.post("/deployments/{dep_id}/runs/stream")

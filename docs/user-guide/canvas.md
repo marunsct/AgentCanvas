@@ -50,7 +50,9 @@ Workflow JSON it is an ordinary JSON Schema, `{"type": "object", "format": "file
 A file field holds a reference to the file, never the file itself:
 `{"kind": "file", "id": "fil_…", "name": "invoice.pdf", "media_type": "application/pdf", "size": 48213}`. The file
 stays on the server, in the project. Upload one with `POST /v1/projects/{project_id}/uploads` (multipart field `file`)
-and put the answer in the run's input; an API caller may instead send the bytes inline as
+and put the answer in the run's input. A caller with a deployment key uploads with
+`POST /v1/deployments/{id}/files` (multipart field `file`, `Authorization: Bearer <key>`) and puts the answer in the run's
+input the same way; the file input's types and the size limit apply. A caller may instead send the bytes inline as
 `{"kind": "file", "name": "a.png", "data": "<base64>"}`, which the server stores before the run starts, so
 conversations keep only the reference.
 

@@ -169,6 +169,10 @@ export type Ungated = string[];
  * an image, PDF, .docx or text file
  */
 export type File1 = string;
+/**
+ * an image, PDF, .docx or text file
+ */
+export type File2 = string;
 export type Visitor = string;
 /**
  * PDF, Word, HTML, Markdown, text, CSV or JSON files
@@ -177,7 +181,7 @@ export type Files = string[];
 /**
  * an image (PNG, JPEG, GIF, WebP), a PDF, a .docx or a text file
  */
-export type File2 = string;
+export type File3 = string;
 export type After = string[];
 export type Before = string[];
 export type Blocks1 = boolean;
@@ -1272,7 +1276,7 @@ export type Code5 = string | null;
 /**
  * The JSON a Langflow, Flowise, n8n or Agent Spec export downloads
  */
-export type File3 = {
+export type File4 = {
   [k: string]: unknown;
 } | null;
 export type Name32 = string | null;
@@ -3263,6 +3267,7 @@ export interface ApiSchemas {
   AuthorizeOut?: AuthorizeOut;
   Beat?: Beat;
   BlastRadius?: BlastRadius;
+  Body_api_upload_v1_deployments__dep_id__files_post?: BodyApiUploadV1Deployments_DepId_FilesPost;
   Body_share_upload_v1_share__token__files_post?: BodyShareUploadV1Share_Token_FilesPost;
   Body_upload_documents_v1_knowledge__kb_id__documents_post?: BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost;
   Body_upload_file_v1_projects__project_id__uploads_post?: BodyUploadFileV1Projects_ProjectId_UploadsPost;
@@ -3957,10 +3962,17 @@ export interface Summary {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Body_api_upload_v1_deployments__dep_id__files_post".
+ */
+export interface BodyApiUploadV1Deployments_DepId_FilesPost {
+  file: File1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "Body_share_upload_v1_share__token__files_post".
  */
 export interface BodyShareUploadV1Share_Token_FilesPost {
-  file: File1;
+  file: File2;
   visitor: Visitor;
 }
 /**
@@ -3975,7 +3987,7 @@ export interface BodyUploadDocumentsV1Knowledge_KbId_DocumentsPost {
  * via the `definition` "Body_upload_file_v1_projects__project_id__uploads_post".
  */
 export interface BodyUploadFileV1Projects_ProjectId_UploadsPost {
-  file: File2;
+  file: File3;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5535,7 +5547,7 @@ export interface Peer {
  */
 export interface ImportFile {
   code?: Code5;
-  file?: File3;
+  file?: File4;
   name?: Name32;
 }
 /**

@@ -28,7 +28,7 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 |---|---|---|
 | N-2 | AG-UI wire for the Copilot, a Copilot checkpointer with time travel, a per-thread `/run` route (PLAN.md) | Would run beside the SSE format the web already reads, with no gain except CopilotKit interop, which the plan itself rejects. Revisit if interop becomes a goal |
 | N-3 | Live co-editing (merging simultaneous edits, cursors) | Presence is built (who is here, which block, "saved a newer version"); merging edits needs a CRDT over the IR with the command log kept as the source of truth |
-| N-4 | Multi-turn red teaming, audio and video ports, files for Planning Agents, file upload by deployment-key callers (they send inline `data`), file downloads for share visitors | Scope; documented in the guide pages for each |
+| N-4 | Multi-turn red teaming, audio and video ports, files for Planning Agents, file downloads for share visitors | Scope; documented in the guide pages for each |
 | N-5 | OAuth connectors in exported code | A workflow exported as code cannot sign people in (the AgentCanvas server holds the connections); the export fails with a clear message. (Hand-entered client credentials and the schedule warning are done.) |
 | N-6 | A memory embedding model per project | The LangGraph store's vector column has one size per store, so the model is a server setting (`AGENTCANVAS_MEMORY_EMBEDDING`). Per project would need a store per vector size |
 | N-7 | Decrypting secrets per project with a short lifetime instead of one cache per API process | Code that could read the cache could also read the KMS key; no tenant code runs in the API process (the sandbox is required in staging and production). See `decisions.md` |

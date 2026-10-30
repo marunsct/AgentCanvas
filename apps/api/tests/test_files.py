@@ -204,3 +204,36 @@ async def test_an_upload_can_ask_for_one_kind_of_file(api_client):
     assert ok.status_code == 201
     bad = await api_client.post(f"{P}/uploads", params={"accept": "image/*"}, files={"file": ("a.png", b"<html>")})
     assert bad.status_code == 422 and "image/*" in bad.json()["detail"]
+
+
+async def test_a_deployment_key_uploads_a_file_and_the_run_takes_its_reference(api_client):
+    """N-4: callers with a deployment key upload the file (multipart) instead of sending its bytes as base64."""
+    from test_publish import bearer, make_greeter
+
+    wf = await make_photo_flow(api_client)
+    pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    dep, key = pub["deployment"]["id"], pub["api_key"]
+    url = f"/v1/deployments/{dep}/files"
+    r = await api_client.post(url, files={"file": ("me.png", PNG, "image/png")}, headers=bearer(key))
+    assert r.status_code == 201, r.text
+    ref = r.json()
+    assert ref["kind"] == "file" and ref["media_type"] == "image/png" and ref["name"] == "me.png"
+    run = await api_client.post(
+        f"/v1/deployments/{dep}/runs/wait", json={"input": {"who": "Ada", "photo": ref}}, headers=bearer(key)
+    )
+    assert run.status_code == 200 and run.json()["status"] == "success", run.text
+    assert (await upload(api_client, "x.png", PNG)).status_code == 201  # signed-in uploads are unchanged
+    # the file input's media types apply, a key is needed, and a workflow with no file input takes none
+    pdf = await api_client.post(url, files={"file": ("a.pdf", PDF, "application/pdf")}, headers=bearer(key))
+    assert pdf.status_code == 422 and "image/*" in pdf.text
+    assert (await api_client.post(url, files={"file": ("me.png", PNG)})).status_code == 401
+    assert (await api_client.post(url, files={"file": ("me.png", PNG)}, headers=bearer("ac_wrong"))).status_code == 401
+    plain = await make_greeter(api_client)
+    pub2 = (await api_client.post(f"/v1/workflows/{plain}/publish", json={})).json()
+    none = await api_client.post(
+        f"/v1/deployments/{pub2['deployment']['id']}/files", files={"file": ("me.png", PNG)},
+        headers=bearer(pub2["api_key"]),
+    )  # fmt: skip
+    assert none.status_code == 422 and "no file input" in none.text
+    # the file is kept in the deployment's project, where the project's own people can open it
+    assert (await api_client.get(f"{P}/uploads/{ref['id']}")).status_code == 200

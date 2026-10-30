@@ -881,6 +881,21 @@
         "title": "BlastRadius",
         "type": "object"
       },
+      "Body_api_upload_v1_deployments__dep_id__files_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "an image, PDF, .docx or text file",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_api_upload_v1_deployments__dep_id__files_post",
+        "type": "object"
+      },
       "Body_share_upload_v1_share__token__files_post": {
         "properties": {
           "file": {
@@ -17148,6 +17163,75 @@
         "summary": "A2A Card",
         "tags": [
           "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/files": {
+      "post": {
+        "description": "Upload a file for the workflow's file input, with the deployment's key (N-4): the answer is the reference to\nput in the run's input, instead of sending the bytes inline as base64. Its media types and the size limit are the\nones of the file input; only a workflow that has one takes files.",
+        "operationId": "api_upload_v1_deployments__dep_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_api_upload_v1_deployments__dep_id__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/agentcanvas__api__v1__files__FileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Upload",
+        "tags": [
+          "deployments"
         ]
       }
     },
