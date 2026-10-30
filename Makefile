@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals screenshots lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -60,6 +60,10 @@ ENGINE ?= loop
 OUT ?= $(CURDIR)/copilot-evals.json
 copilot-evals: ## the Copilot evaluation, both suites, on this computer: MODEL=ollama:qwen3 (or provider:model; the offline demo Copilot when it cannot be reached) ENGINE=loop|deepagents OUT=report.json
 	cd apps/api && uv run python -m agentcanvas.copilot.evals --model "$(MODEL)" --engine "$(ENGINE)" --suite both --out "$(OUT)" --fallback-to-demo
+
+screenshots: ## retake the pictures in docs/user-guide/img (fake-model server, made-up data)
+	d=$$(mktemp -d) && cd apps/web && DATABASE_URL="sqlite+aiosqlite:///$$d/shots.db" AGENTCANVAS_WORKSPACES_DIR="$$d/ws" \
+	  SCREENSHOTS=1 E2E_PROD=1 npx playwright test e2e/screenshots.spec.ts; rc=$$?; rm -rf "$$d"; exit $$rc
 
 lint:       ## ruff, pyright, import contracts, tsc, oxlint
 	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run lint-imports
