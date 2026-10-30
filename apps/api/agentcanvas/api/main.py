@@ -176,8 +176,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.keyring = Keyring.from_settings(settings)
             hosted = settings.edition == "hosted"
             app.state.oauth = oauth.Connections(
-                app.state.keyring, settings.public_url or settings.cors_origins[0], public_only=hosted
-            )  # sign-ins to app connectors (G-7)
+                app.state.keyring, settings.public_url or next(iter(settings.cors_origins), ""), public_only=hosted
+            )  # sign-ins to app connectors (G-7); with no address for the web app, a sign-in says so when it starts
             app.state.oauth_tokens = oauth.ConnectionTokens(db, app.state.keyring, public_only=hosted)
             oauth.install(app.state.oauth_tokens)
             masking.provider = lambda: (  # traces: each secret and its encoded forms (S-9)

@@ -460,3 +460,22 @@ async def test_only_an_admin_manages_client_credentials(client, world):
         "/v1/connections/clients", json={**body, "server_url": "http://plain.test/mcp"}, headers=ALICE
     )
     assert bad.status_code == 422  # the server address must be https, as for any sign-in
+
+
+async def test_without_a_public_address_the_server_starts_and_a_sign_in_says_what_to_set(app, client):
+    """The production stack has no CORS origin and may have no public URL: that must not stop the API from starting."""
+    app.state.oauth.public_url = ""
+    r = await authorize(client)
+    assert r.status_code == 422 and "AGENTCANVAS_PUBLIC_URL" in r.text
+    put = await client.put("/v1/connections/clients", json={"server_url": MCP, "client_id": "x"}, headers=ALICE)
+    assert put.status_code == 422 and "AGENTCANVAS_PUBLIC_URL" in put.text
+
+
+async def test_the_api_starts_with_no_cors_origin_and_no_public_url(app):
+    """The production compose files set neither; start-up read the first CORS origin and crashed on the empty list."""
+    from agentcanvas.api.main import create_app
+
+    bare = app.state.settings.model_copy(update={"cors_origins": [], "public_url": ""})
+    application = create_app(bare)
+    async with application.router.lifespan_context(application):
+        assert application.state.oauth.public_url == ""

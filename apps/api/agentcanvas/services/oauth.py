@@ -321,6 +321,12 @@ class Connections:
         await s.commit()
         return client_id, secret
 
+    def _need_public_url(self) -> None:
+        if not self.public_url:
+            raise InvalidInput(
+                "signing in to app connectors needs the address people reach this app at: set AGENTCANVAS_PUBLIC_URL"
+            )
+
     async def clients(self, s: AsyncSession, org_id: str) -> list[OAuthClient]:
         """The client registrations of this organisation at this address of ours."""
         q = select(OAuthClient).where(OAuthClient.org_id == org_id, OAuthClient.redirect_uri == self.redirect_uri)
@@ -332,6 +338,7 @@ class Connections:
         """Use the client id (and secret) an admin made at the provider, for the authorization server of this MCP
         server: for providers that take neither client ID metadata documents nor dynamic registration (N-5). Replaces
         a registration made earlier."""
+        self._need_public_url()
         meta = await discover(secure_url(server_url, "the server"), public_only=self.public_only)
         fernet = await self.keyring.fernet(s, org_id)
         enc = fernet.encrypt(client_secret.encode()) if client_secret else None
@@ -355,6 +362,7 @@ class Connections:
         self, s: AsyncSession, *, org_id: str, user_id: str, server_url: str, service: bool = False,
         return_to: str | None = None,
     ) -> Begun:  # fmt: skip
+        self._need_public_url()
         meta = await discover(server_url, public_only=self.public_only)
         client_id, client_secret = await self._client(s, org_id, meta)
         verifier, challenge = pkce()
