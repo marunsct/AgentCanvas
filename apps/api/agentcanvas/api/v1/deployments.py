@@ -343,12 +343,21 @@ async def api_run_wait(
     return await _result(h)
 
 
-@public_router.post("/deployments/{dep_id}/files", response_model=FileOut, status_code=201)
-async def api_upload(
+async def key_caller(
     dep_id: str,
     request: Request,
-    file: Annotated[UploadFile, File(description="an image, PDF, .docx or text file")],
     authorization: str | None = Header(None),
+    session: AsyncSession = Depends(get_session),
+) -> tuple[Deployment, Workflow]:
+    """The deployment and workflow of the request's key, as a dependency: the key is checked before the body is read."""
+    return await _caller(request, session, dep_id, authorization)
+
+
+@public_router.post("/deployments/{dep_id}/files", response_model=FileOut, status_code=201)
+async def api_upload(
+    request: Request,
+    file: Annotated[UploadFile, File(description="an image, PDF, .docx or text file")],
+    caller: tuple[Deployment, Workflow] = Depends(key_caller),
     session: AsyncSession = Depends(get_session),
 ) -> FileOut:
     """Upload a file for the workflow's file input, with the deployment's key (N-4): the answer is the reference to
@@ -357,7 +366,7 @@ async def api_upload(
     from agentcanvas.db.models import WorkflowRow
     from agentcanvas.services.share import attach_shape
 
-    dep, wf = await _caller(request, session, dep_id, authorization)
+    dep, wf = caller
     shape = attach_shape(wf)
     if shape is None:
         raise InvalidInput("this deployment's workflow has no file input")
