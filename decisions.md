@@ -10,6 +10,45 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-10-30
+
+### Closing the open items: what was built, and what was left
+Built: OCR (Tesseract; the Docker image now includes it), the retaken guide screenshots, `infra/schema.sql` regenerated,
+the Spending page by deployment, a trigger warning for per-person connectors, hand-entered OAuth client credentials,
+file upload with a deployment key, scripted multi-turn red teaming, an automated accessibility scan with its fixes, and
+broader cross-organisation tests. Left, with the reason in `HARDENING.md`: anything that needs a paid model or a
+service account (the Copilot score on a hosted model, the real `ant` and GitHub round trips), audio and video ports,
+live co-editing, OAuth in exported code, and an interactive attacker model.
+
+### OCR: pypdfium2 renders, Tesseract reads, nothing else
+Scanned PDF pages are rendered with pypdfium2 (a wheel with its own PDFium, no system library) and read by the
+`tesseract` program, called with fixed arguments and the picture on standard input. Only pages with under 20 characters
+of text are read, so a text PDF costs nothing. `AGENTCANVAS_OCR=auto` uses Tesseract when it is on the path, so the
+feature switches on by installing it; the image installs English, other languages are a build argument. *Reverse:*
+`AGENTCANVAS_OCR=off`. On this machine Tesseract and Ollama were installed under `~/.local` (no root here), not
+system-wide.
+
+### Entered OAuth credentials win over a metadata document
+An admin who types a client id for a sign-in server wants that one used, even when the server also takes metadata
+documents. They are stored in the table dynamic registration already used, so no migration. The secret is encrypted with
+the organisation's key and never returned.
+
+### The trigger warning is on the trigger, not in the validator
+The validator sees only the workflow, and schedules and webhooks are stored beside it. The trigger endpoints return
+`warnings` instead, shown in the editor. *Reverse:* delete `TriggerService.warnings`.
+
+### Colours: the light theme's tokens got darker
+The accessibility scan failed text and status colours at contrast ratios of 2.6 to 4.2. Muted text, the accent, the run
+blue, ok green, warn amber and error red are darker in the light theme; the dark theme only lightened its muted text.
+Buttons look the same at a glance. *Reverse:* the values are the first block of `src/styles.css`; the scan
+(`e2e/axe.spec.ts`) tells you what a change breaks.
+
+### Image CI no longer clashes with a running stack
+The compose files pin two internal subnets (the API trusts forwarded addresses from one of them). `scripts/ci-images.sh`
+now gives its two stacks subnets of their own, so it runs beside `make docker-up`. Running it found two real bugs, fixed
+the same day: the API failed to start when neither a public URL nor a CORS origin was set (the production compose files
+set neither), and the template export did not give a template its own workspace code.
+
 ## 2026-10-29
 
 ### Observability and presence: what they do and do not do
