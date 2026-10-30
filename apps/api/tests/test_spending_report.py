@@ -100,3 +100,26 @@ async def test_spending_is_for_admins_and_of_the_callers_organisation(app, api_c
     finally:
         app.dependency_overrides.pop(current_user, None)
     assert rep["total"]["cost_usd"] == 7.0 and [w["name"] for w in rep["by_workflow"]] == ["B flow"]
+
+
+async def test_spending_by_deployment_names_the_deployments_and_the_runs_outside_them(app, api_client):
+    from test_publish import make_greeter
+
+    from agentcanvas.db.models import Thread
+
+    await _seed(app, api_client)
+    wf = await make_greeter(api_client)
+    dep = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()["deployment"]["id"]
+    async with app.state.db.sessionmaker() as s:
+        s.add(Thread(id="t_published", workflow_id=wf, created_by=None, deployment_id=dep))
+        await s.flush()
+        s.add(_run("t_published", "3", 1))
+        await s.commit()
+    rep = (await api_client.get("/v1/org/spending")).json()
+    by = {d["id"]: d for d in rep["by_deployment"]}
+    assert by[dep]["name"] == "Greeter (prod)" and by[dep]["cost_usd"] == 3.0 and by[dep]["workflow_id"] == wf
+    outside = by[None]  # the seeded conversations that no deployment started
+    assert outside["name"].startswith("Not through a deployment") and outside["workflow_id"] is None
+    assert outside["runs"] == 5 and outside["cost_usd"] == 4.25
+    assert [d["id"] for d in rep["by_deployment"]] == [None, dep]  # biggest spender first (4.25, then 3)
+    assert round(sum(d["cost_usd"] for d in rep["by_deployment"]), 6) == rep["total"]["cost_usd"]

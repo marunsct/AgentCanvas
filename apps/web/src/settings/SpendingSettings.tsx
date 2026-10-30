@@ -1,9 +1,9 @@
 /** Settings › Organisation › Spending (admins): what the organisation's runs cost over a date range, in total and by
- * project, workflow and person, with tokens and answers taken from the cache. */
+ * project, workflow, person and deployment, with tokens and answers taken from the cache. */
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
-import type { SpendPerson, SpendProject, SpendTotal, SpendWorkflow, SpendingOut } from "../api/generated";
+import type { SpendDeployment, SpendPerson, SpendProject, SpendTotal, SpendWorkflow, SpendingOut } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
 
 const DAY = 86_400_000;
@@ -35,7 +35,8 @@ export function SpendingSettings() {
       <p className="muted small">
         What this organisation's runs cost, by day of the range in your time zone. The cost counts models with a price
         (the catalog's, or <code>AGENTCANVAS_MODEL_PRICES</code>); a person is whoever started the conversation, and
-        runs started by deployments, schedules and events belong to no one.
+        runs started by deployments, schedules and events belong to no one, and the deployment table shows which
+        deployment they came through.
       </p>
       <div className="row gap wrap">
         <label className="row small">from <input type="date" aria-label="from date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
@@ -52,6 +53,8 @@ export function SpendingSettings() {
             extra={{ head: "Project id", cell: (r: SpendWorkflow) => r.project_id }} />
           <Breakdown title="By person" what="Person" rows={q.data.by_person} testid="spend-people"
             extra={{ head: "Email", cell: (r: SpendPerson) => r.email }} />
+          <Breakdown title="By deployment" what="Deployment" rows={q.data.by_deployment} testid="spend-deployments"
+            extra={{ head: "Workflow id", cell: (r: SpendDeployment) => r.workflow_id }} />
         </>
       )}
     </section>
@@ -70,7 +73,7 @@ function Totals({ total }: { total: SpendTotal }) {
   );
 }
 
-type Row = SpendProject | SpendWorkflow | SpendPerson;
+type Row = SpendProject | SpendWorkflow | SpendPerson | SpendDeployment;
 
 function Breakdown<T extends Row>({ title, what, rows, testid, extra }: {
   title: string; what: string; rows: T[]; testid: string; extra?: { head: string; cell: (r: T) => React.ReactNode };

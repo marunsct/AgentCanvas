@@ -11485,6 +11485,77 @@
         "title": "Skipped",
         "type": "object"
       },
+      "SpendDeployment": {
+        "properties": {
+          "cache_hits": {
+            "description": "model answers taken from the answer cache",
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "fallbacks": {
+            "description": "model calls a backup model answered",
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: runs of no person",
+            "title": "Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the deployed workflow; null: runs not made through a deployment",
+            "title": "Workflow Id"
+          }
+        },
+        "required": [
+          "runs",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "cache_hits",
+          "fallbacks",
+          "id",
+          "name",
+          "workflow_id"
+        ],
+        "title": "SpendDeployment",
+        "type": "object"
+      },
       "SpendOut": {
         "properties": {
           "alerts": {
@@ -11797,6 +11868,13 @@
       },
       "SpendingOut": {
         "properties": {
+          "by_deployment": {
+            "items": {
+              "$ref": "#/components/schemas/SpendDeployment"
+            },
+            "title": "By Deployment",
+            "type": "array"
+          },
           "by_person": {
             "items": {
               "$ref": "#/components/schemas/SpendPerson"
@@ -11838,7 +11916,8 @@
           "total",
           "by_project",
           "by_workflow",
-          "by_person"
+          "by_person",
+          "by_deployment"
         ],
         "title": "SpendingOut",
         "type": "object"
@@ -22065,7 +22144,7 @@
     },
     "/v1/org/spending": {
       "get": {
-        "description": "What the organisation's runs spent in a period (UTC; a time without an offset is UTC): in total and per\nproject, workflow and person (who started the conversation), with tokens and cache hits (G-8).",
+        "description": "What the organisation's runs spent in a period (UTC; a time without an offset is UTC): in total and per\nproject, workflow, person (who started the conversation) and deployment, with tokens and cache hits (G-8).",
         "operationId": "org_spending_v1_org_spending_get",
         "parameters": [
           {

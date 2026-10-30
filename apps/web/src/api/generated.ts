@@ -2708,38 +2708,42 @@ export type Title7 = string | null;
  * a sitemap.xml (or a sitemap index) on a public host
  */
 export type Url3 = string;
-export type Alerts = CostAlertOut[];
-export type CacheHits = number;
-export type Fallbacks = number;
-export type LimitUsd1 = number | null;
-export type Period1 = string;
-export type PeriodStart1 = string;
-export type Runs2 = number;
-export type SpentUsd1 = number;
-export type Tokens1 = number;
 /**
  * model answers taken from the answer cache
  */
-export type CacheHits1 = number;
+export type CacheHits = number;
 export type CostUsd4 = number;
-export type Email3 = string | null;
 /**
  * model calls a backup model answered
  */
-export type Fallbacks1 = number;
+export type Fallbacks = number;
 /**
  * null: runs of no person
  */
 export type Id51 = string | null;
 export type Name54 = string;
-export type Runs3 = number;
+export type Runs2 = number;
 export type TokensIn2 = number;
 export type TokensOut2 = number;
+/**
+ * the deployed workflow; null: runs not made through a deployment
+ */
+export type WorkflowId9 = string | null;
+export type Alerts = CostAlertOut[];
+export type CacheHits1 = number;
+export type Fallbacks1 = number;
+export type LimitUsd1 = number | null;
+export type Period1 = string;
+export type PeriodStart1 = string;
+export type Runs3 = number;
+export type SpentUsd1 = number;
+export type Tokens1 = number;
 /**
  * model answers taken from the answer cache
  */
 export type CacheHits2 = number;
 export type CostUsd5 = number;
+export type Email3 = string | null;
 /**
  * model calls a backup model answered
  */
@@ -2761,6 +2765,11 @@ export type CostUsd6 = number;
  * model calls a backup model answered
  */
 export type Fallbacks3 = number;
+/**
+ * null: runs of no person
+ */
+export type Id53 = string | null;
+export type Name56 = string;
 export type Runs5 = number;
 export type TokensIn4 = number;
 export type TokensOut4 = number;
@@ -2773,15 +2782,28 @@ export type CostUsd7 = number;
  * model calls a backup model answered
  */
 export type Fallbacks4 = number;
-/**
- * null: runs of no person
- */
-export type Id53 = string | null;
-export type Name56 = string;
-export type ProjectId5 = string;
 export type Runs6 = number;
 export type TokensIn5 = number;
 export type TokensOut5 = number;
+/**
+ * model answers taken from the answer cache
+ */
+export type CacheHits5 = number;
+export type CostUsd8 = number;
+/**
+ * model calls a backup model answered
+ */
+export type Fallbacks5 = number;
+/**
+ * null: runs of no person
+ */
+export type Id54 = string | null;
+export type Name57 = string;
+export type ProjectId5 = string;
+export type Runs7 = number;
+export type TokensIn6 = number;
+export type TokensOut6 = number;
+export type ByDeployment = SpendDeployment[];
 export type ByPerson = SpendPerson[];
 export type ByProject = SpendProject[];
 export type ByWorkflow = SpendWorkflow[];
@@ -2793,7 +2815,7 @@ export type CheckpointId1 = string | null;
  * a turn was answering on this server and has been ended; its text is kept
  */
 export type Stopped = boolean;
-export type Name57 = string | null;
+export type Name58 = string | null;
 /**
  * @minItems 1
  */
@@ -2802,12 +2824,12 @@ export type BlockCount = number;
 export type Category2 = string | null;
 export type Description19 = string;
 export type Difficulty = ("beginner" | "intermediate" | "advanced") | null;
-export type Id54 = string;
+export type Id55 = string;
 /**
  * what it adds beside the workflow, e.g. '2 workspace files', 'a dataset'
  */
 export type Kit = string[];
-export type Name58 = string;
+export type Name59 = string;
 export type NodeCount = number;
 export type SampleInput = {
   [k: string]: unknown;
@@ -2816,13 +2838,13 @@ export type Tags = string[];
 export type Context6 = {
   [k: string]: unknown;
 } | null;
-export type Name59 = string;
+export type Name60 = string;
 export type Context7 = {
   [k: string]: unknown;
 } | null;
 export type CreatedAt30 = string;
-export type Id55 = string;
-export type Name60 = string;
+export type Id56 = string;
+export type Name61 = string;
 /**
  * run only these cases (default: all)
  */
@@ -2836,23 +2858,23 @@ export type Passed3 = number;
 export type Results2 = CaseResult[];
 export type Text8 = string;
 export type Title8 = string;
-export type CostUsd8 = number;
+export type CostUsd9 = number;
 export type CreatedAt31 = string;
 /**
  * set when the conversation came through a deployment's API
  */
 export type DeploymentId3 = string | null;
-export type Id56 = string;
+export type Id57 = string;
 export type LastEndedAt = string | null;
 export type LastError1 = string | null;
 export type LastRunId = string | null;
 export type LastStartedAt = string | null;
-export type Runs7 = number;
+export type Runs8 = number;
 export type Status15 = string;
 export type Title9 = string | null;
 export type Tokens2 = number;
 export type UpdatedAt11 = string;
-export type WorkflowId9 = string;
+export type WorkflowId10 = string;
 export type WorkflowName2 = string | null;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
@@ -2865,7 +2887,7 @@ export type Detail4 = {
   [k: string]: unknown;
 } | null;
 export type DurationMs1 = number | null;
-export type Id57 = string;
+export type Id58 = string;
 export type Kind9 =
   "run" | "group" | "step" | "agent" | "model" | "tool" | "message" | "part" | "interrupt" | "error" | "note";
 export type Label20 = string;
@@ -2885,15 +2907,15 @@ export type Tokens3 = number;
 /**
  * one per run of the conversation, oldest first
  */
-export type Runs8 = TrajectoryNode[];
+export type Runs9 = TrajectoryNode[];
 export type ThreadId14 = string;
-export type WorkflowId10 = string;
+export type WorkflowId11 = string;
 export type CreatedAt32 = string;
 export type Email4 = string;
 export type ExpiresAt1 = string | null;
-export type Id58 = string;
+export type Id59 = string;
 export type LastUsedAt = string | null;
-export type Name61 = string;
+export type Name62 = string;
 /**
  * the token's first characters, to tell tokens apart
  */
@@ -2912,7 +2934,7 @@ export type ExpiresInDays = number | null;
 /**
  * what the token is for, e.g. 'CI pipeline'
  */
-export type Name62 = string;
+export type Name63 = string;
 /**
  * the most it may do; default: your role now
  */
@@ -2920,9 +2942,9 @@ export type Role7 = ("admin" | "builder" | "reviewer" | "viewer") | null;
 export type CreatedAt33 = string;
 export type Email5 = string;
 export type ExpiresAt2 = string | null;
-export type Id59 = string;
+export type Id60 = string;
 export type LastUsedAt1 = string | null;
-export type Name63 = string;
+export type Name64 = string;
 /**
  * the token's first characters, to tell tokens apart
  */
@@ -2962,7 +2984,7 @@ export type MissingSecrets = string[];
 export type CreatedAt34 = string;
 export type DeploymentId4 = string | null;
 export type Enabled11 = boolean;
-export type Id60 = string;
+export type Id61 = string;
 export type Kind11 = string;
 export type Secret = string | null;
 export type Url4 = string | null;
@@ -2971,7 +2993,7 @@ export type Kind12 = "webhook" | "cron";
 export type CreatedAt35 = string;
 export type DeploymentId6 = string | null;
 export type Enabled12 = boolean;
-export type Id61 = string;
+export type Id62 = string;
 export type Kind13 = string;
 export type Url5 = string | null;
 export type Url6 = string;
@@ -2981,7 +3003,7 @@ export type Url6 = string;
 export type CopilotChanges = CopilotChange[];
 export type CreatedAt36 = string;
 export type CreatedBy2 = string | null;
-export type Id62 = string;
+export type Id63 = string;
 export type IrHash4 = string;
 export type Message12 = string;
 export type Semver1 = string;
@@ -2994,13 +3016,13 @@ export type Message13 = string;
 export type CopilotChanges1 = CopilotChange[];
 export type CreatedAt37 = string;
 export type CreatedBy3 = string | null;
-export type Id63 = string;
+export type Id64 = string;
 export type IrHash5 = string;
 export type Message14 = string;
 export type Semver2 = string;
 export type WorkspaceCommit1 = string | null;
 export type Model13 = string | null;
-export type Name64 = string;
+export type Name65 = string;
 export type SystemPrompt1 = string;
 export type Temperature1 = number | null;
 /**
@@ -3143,33 +3165,33 @@ export type Tools4 =
     ];
 export type CreatedAt38 = string;
 export type Diagnostics5 = Diagnostic[];
-export type Id64 = string;
+export type Id65 = string;
 export type IrHash6 = string;
-export type Name65 = string;
+export type Name66 = string;
 export type ProjectId6 = string;
 export type UpdatedAt12 = string;
 export type Version15 = number;
-export type Id65 = string;
-export type Name66 = string;
+export type Id66 = string;
+export type Name67 = string;
 export type UpdatedAt13 = string;
 export type Version16 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
-export type Name67 = string;
-export type Id66 = string;
-export type IsDefault = boolean;
 export type Name68 = string;
+export type Id67 = string;
+export type IsDefault = boolean;
+export type Name69 = string;
 /**
  * default: the latest version
  */
 export type Version17 = number | null;
-export type Id67 = string;
+export type Id68 = string;
 export type Kind14 = string;
 /**
  * what the content is, read from its first bytes
  */
 export type MediaType = string;
-export type Name69 = string;
+export type Name70 = string;
 export type Size3 = number;
 /**
  * the commit message
@@ -3439,6 +3461,7 @@ export interface ApiSchemas {
   Simulation?: Simulation;
   SitemapIn?: SitemapIn;
   Skipped?: Skipped1;
+  SpendDeployment?: SpendDeployment;
   SpendOut?: SpendOut;
   SpendPeriod?: SpendPeriod;
   SpendPerson?: SpendPerson;
@@ -6770,6 +6793,21 @@ export interface SitemapIn {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SpendDeployment".
+ */
+export interface SpendDeployment {
+  cache_hits: CacheHits;
+  cost_usd: CostUsd4;
+  fallbacks: Fallbacks;
+  id: Id51;
+  name: Name54;
+  runs: Runs2;
+  tokens_in: TokensIn2;
+  tokens_out: TokensOut2;
+  workflow_id: WorkflowId9;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "SpendOut".
  */
 export interface SpendOut {
@@ -6782,12 +6820,12 @@ export interface SpendOut {
  * via the `definition` "SpendPeriod".
  */
 export interface SpendPeriod {
-  cache_hits: CacheHits;
-  fallbacks: Fallbacks;
+  cache_hits: CacheHits1;
+  fallbacks: Fallbacks1;
   limit_usd: LimitUsd1;
   period: Period1;
   period_start: PeriodStart1;
-  runs: Runs2;
+  runs: Runs3;
   spent_usd: SpentUsd1;
   tokens: Tokens1;
 }
@@ -6796,23 +6834,9 @@ export interface SpendPeriod {
  * via the `definition` "SpendPerson".
  */
 export interface SpendPerson {
-  cache_hits: CacheHits1;
-  cost_usd: CostUsd4;
-  email: Email3;
-  fallbacks: Fallbacks1;
-  id: Id51;
-  name: Name54;
-  runs: Runs3;
-  tokens_in: TokensIn2;
-  tokens_out: TokensOut2;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "SpendProject".
- */
-export interface SpendProject {
   cache_hits: CacheHits2;
   cost_usd: CostUsd5;
+  email: Email3;
   fallbacks: Fallbacks2;
   id: Id52;
   name: Name55;
@@ -6822,36 +6846,51 @@ export interface SpendProject {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "SpendTotal".
+ * via the `definition` "SpendProject".
  */
-export interface SpendTotal {
+export interface SpendProject {
   cache_hits: CacheHits3;
   cost_usd: CostUsd6;
   fallbacks: Fallbacks3;
+  id: Id53;
+  name: Name56;
   runs: Runs5;
   tokens_in: TokensIn4;
   tokens_out: TokensOut4;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "SpendWorkflow".
+ * via the `definition` "SpendTotal".
  */
-export interface SpendWorkflow {
+export interface SpendTotal {
   cache_hits: CacheHits4;
   cost_usd: CostUsd7;
   fallbacks: Fallbacks4;
-  id: Id53;
-  name: Name56;
-  project_id: ProjectId5;
   runs: Runs6;
   tokens_in: TokensIn5;
   tokens_out: TokensOut5;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "SpendWorkflow".
+ */
+export interface SpendWorkflow {
+  cache_hits: CacheHits5;
+  cost_usd: CostUsd8;
+  fallbacks: Fallbacks5;
+  id: Id54;
+  name: Name57;
+  project_id: ProjectId5;
+  runs: Runs7;
+  tokens_in: TokensIn6;
+  tokens_out: TokensOut6;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "SpendingOut".
  */
 export interface SpendingOut {
+  by_deployment: ByDeployment;
   by_person: ByPerson;
   by_project: ByProject;
   by_workflow: ByWorkflow;
@@ -6883,7 +6922,7 @@ export interface StopOut {
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
-  name?: Name57;
+  name?: Name58;
   node_ids: NodeIds;
 }
 /**
@@ -6895,9 +6934,9 @@ export interface TemplateInfo {
   category?: Category2;
   description: Description19;
   difficulty?: Difficulty;
-  id: Id54;
+  id: Id55;
   kit?: Kit;
-  name: Name58;
+  name: Name59;
   node_count: NodeCount;
   sample_input?: SampleInput;
   tags?: Tags;
@@ -6911,7 +6950,7 @@ export interface TestCaseIn {
   expect?: Expect;
   input?: Input9;
   mocks?: Mocks3;
-  name: Name59;
+  name: Name60;
   pins?: Pins3;
 }
 export interface Input9 {
@@ -6939,11 +6978,11 @@ export interface TestCaseOut {
   context?: Context7;
   created_at: CreatedAt30;
   expect?: Expect;
-  id: Id55;
+  id: Id56;
   input?: Input10;
   last_result?: CaseResult | null;
   mocks?: Mocks4;
-  name: Name60;
+  name: Name61;
   pins?: Pins4;
 }
 export interface Input10 {
@@ -6993,20 +7032,20 @@ export interface TextIn {
  * via the `definition` "ThreadOut".
  */
 export interface ThreadOut {
-  cost_usd?: CostUsd8;
+  cost_usd?: CostUsd9;
   created_at: CreatedAt31;
   deployment_id?: DeploymentId3;
-  id: Id56;
+  id: Id57;
   last_ended_at?: LastEndedAt;
   last_error?: LastError1;
   last_run_id?: LastRunId;
   last_started_at?: LastStartedAt;
-  runs?: Runs7;
+  runs?: Runs8;
   status: Status15;
   title: Title9;
   tokens?: Tokens2;
   updated_at: UpdatedAt11;
-  workflow_id: WorkflowId9;
+  workflow_id: WorkflowId10;
   workflow_name?: WorkflowName2;
 }
 /**
@@ -7022,9 +7061,9 @@ export interface ThreadPage {
  * via the `definition` "ThreadTrajectory".
  */
 export interface ThreadTrajectory {
-  runs: Runs8;
+  runs: Runs9;
   thread_id: ThreadId14;
-  workflow_id: WorkflowId10;
+  workflow_id: WorkflowId11;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7035,7 +7074,7 @@ export interface TrajectoryNode {
   children?: Children;
   detail?: Detail4;
   duration_ms?: DurationMs1;
-  id: Id57;
+  id: Id58;
   kind: Kind9;
   label: Label20;
   start_ms?: StartMs;
@@ -7051,9 +7090,9 @@ export interface TokenCreated {
   created_at: CreatedAt32;
   email: Email4;
   expires_at: ExpiresAt1;
-  id: Id58;
+  id: Id59;
   last_used_at: LastUsedAt;
-  name: Name61;
+  name: Name62;
   prefix: Prefix2;
   revoked_at: RevokedAt;
   role: Role6;
@@ -7066,7 +7105,7 @@ export interface TokenCreated {
  */
 export interface TokenIn {
   expires_in_days?: ExpiresInDays;
-  name: Name62;
+  name: Name63;
   role?: Role7;
 }
 /**
@@ -7077,9 +7116,9 @@ export interface TokenOut {
   created_at: CreatedAt33;
   email: Email5;
   expires_at: ExpiresAt2;
-  id: Id59;
+  id: Id60;
   last_used_at: LastUsedAt1;
-  name: Name63;
+  name: Name64;
   prefix: Prefix3;
   revoked_at: RevokedAt1;
   role: Role8;
@@ -7136,7 +7175,7 @@ export interface TriggerCreated {
   created_at: CreatedAt34;
   deployment_id: DeploymentId4;
   enabled: Enabled11;
-  id: Id60;
+  id: Id61;
   kind: Kind11;
   secret?: Secret;
   url?: Url4;
@@ -7165,7 +7204,7 @@ export interface TriggerOut {
   created_at: CreatedAt35;
   deployment_id: DeploymentId6;
   enabled: Enabled12;
-  id: Id61;
+  id: Id62;
   kind: Kind13;
   url?: Url5;
 }
@@ -7187,7 +7226,7 @@ export interface VersionDetail {
   copilot_changes?: CopilotChanges;
   created_at: CreatedAt36;
   created_by: CreatedBy2;
-  id: Id62;
+  id: Id63;
   ir: Ir4;
   ir_hash: IrHash4;
   layout: Layout3;
@@ -7217,7 +7256,7 @@ export interface VersionOut {
   copilot_changes?: CopilotChanges1;
   created_at: CreatedAt37;
   created_by: CreatedBy3;
-  id: Id63;
+  id: Id64;
   ir_hash: IrHash5;
   message: Message14;
   semver: Semver2;
@@ -7229,7 +7268,7 @@ export interface VersionOut {
  */
 export interface WorkflowIn {
   model?: Model13;
-  name?: Name64;
+  name?: Name65;
   system_prompt?: SystemPrompt1;
   temperature?: Temperature1;
   tools?: Tools4;
@@ -7241,7 +7280,7 @@ export interface WorkflowIn {
 export interface WorkflowOut {
   created_at: CreatedAt38;
   diagnostics: Diagnostics5;
-  id: Id64;
+  id: Id65;
   ir: Ir5;
   ir_hash: IrHash6;
   /**
@@ -7249,7 +7288,7 @@ export interface WorkflowOut {
    */
   kit?: KitOut | null;
   layout: Layout4;
-  name: Name65;
+  name: Name66;
   project_id: ProjectId6;
   updated_at: UpdatedAt12;
   version: Version15;
@@ -7273,8 +7312,8 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id65;
-  name: Name66;
+  id: Id66;
+  name: Name67;
   updated_at: UpdatedAt13;
   version: Version16;
 }
@@ -7283,16 +7322,16 @@ export interface WorkflowSummary {
  * via the `definition` "WorkflowPatch".
  */
 export interface WorkflowPatch {
-  name: Name67;
+  name: Name68;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "WorkspaceOut".
  */
 export interface WorkspaceOut {
-  id: Id66;
+  id: Id67;
   is_default: IsDefault;
-  name: Name68;
+  name: Name69;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7308,10 +7347,10 @@ export interface PushIn {
  * via the `definition` "agentcanvas__api__v1__files__FileOut".
  */
 export interface FileOut1 {
-  id: Id67;
+  id: Id68;
   kind?: Kind14;
   media_type: MediaType;
-  name: Name69;
+  name: Name70;
   size: Size3;
 }
 /**

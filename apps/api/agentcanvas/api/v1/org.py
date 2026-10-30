@@ -406,6 +406,10 @@ class SpendPerson(SpendEntry):
     email: str | None
 
 
+class SpendDeployment(SpendEntry):
+    workflow_id: str | None = Field(description="the deployed workflow; null: runs not made through a deployment")
+
+
 class SpendingOut(BaseModel):
     since: datetime
     until: datetime
@@ -413,6 +417,7 @@ class SpendingOut(BaseModel):
     by_project: list[SpendProject]
     by_workflow: list[SpendWorkflow]
     by_person: list[SpendPerson]
+    by_deployment: list[SpendDeployment]
 
 
 @router.get("/spending", response_model=SpendingOut)
@@ -424,7 +429,7 @@ async def org_spending(
     user: CurrentUser = Depends(current_user),
 ) -> dict[str, Any]:
     """What the organisation's runs spent in a period (UTC; a time without an offset is UTC): in total and per
-    project, workflow and person (who started the conversation), with tokens and cache hits (G-8)."""
+    project, workflow, person (who started the conversation) and deployment, with tokens and cache hits (G-8)."""
     until = _utc(until) if until else datetime.now(UTC)
     since = _utc(since) if since else until - timedelta(days=30)
     if since >= until:

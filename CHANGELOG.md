@@ -417,6 +417,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Settings › Spending has a table by deployment, so what the runs of each published workflow cost can be told apart.
 - Scanned PDFs and pictures can be added to a knowledge base: pages without text and PNG, JPEG, TIFF, BMP and WebP
   files are read with Tesseract OCR, which the Docker image now includes (`AGENTCANVAS_OCR`, `_OCR_LANGUAGES`,
   `_OCR_MAX_PAGES`; build-time languages with `OCR_LANGS`).

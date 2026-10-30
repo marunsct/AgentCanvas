@@ -12,6 +12,8 @@ const REPORT = {
   by_workflow: [entry({ id: "wf_1", name: "Triage", project_id: "prj_default", cost_usd: 4, runs: 3 })],
   by_person: [entry({ id: "usr_a", name: "Ana", email: "ana@example.com", cost_usd: 2.25, cache_hits: 2 }),
     entry({ id: null, name: "No person (deployments, schedules, events)", email: null })],
+  by_deployment: [entry({ id: "dep_1", name: "Triage (prod)", workflow_id: "wf_1", cost_usd: 3 }),
+    entry({ id: null, name: "Not through a deployment (the editor, the Playground)", workflow_id: null, cost_usd: 1.25 })],
 };
 
 let urls: string[] = [];
@@ -40,6 +42,9 @@ describe("Settings › Spending", () => {
     expect(within(people).getByText("Ana")).toBeTruthy();
     expect(within(people).getByText("ana@example.com")).toBeTruthy();
     expect(within(people).getByText(/No person/)).toBeTruthy();
+    const deployments = screen.getByTestId("spend-deployments");
+    expect(within(deployments).getByText("Triage (prod)")).toBeTruthy();
+    expect(within(deployments).getByText(/Not through a deployment/)).toBeTruthy();
   });
 
   it("asks for the chosen dates, the whole last day included", async () => {
