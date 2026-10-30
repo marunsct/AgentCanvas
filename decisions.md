@@ -56,7 +56,7 @@ Runs keep up to 2,000 compact events (long text clipped) in `run.events` for the
 project secrets before embedding; with a hosted embedding model the masked text goes to that provider (the docs say so).
 Red teaming is an experiment option, not just an evaluator kind, because an evaluator cannot generate inputs; without a
 judge model, "nothing leaked" counts as a hold for the first three categories and off-topic needs a refusal; multi-turn
-red teaming is not built. The fine-tuning export approximates a conversation for multi-step pipelines (the final model
+red teaming was not built on 2026-10-29 (a scripted multi-turn category was added on 2026-10-30; an interactive attacker is not). The fine-tuning export approximates a conversation for multi-step pipelines (the final model
 step with the run's input as the user message), and the OpenAI `tools` list is inferred from observed calls: check it
 before uploading. Presence is database-backed (works across replicas); each open stream polls every 2 seconds. It shows
 who is in the workflow and a "saved a newer version" notice; it is not live co-editing (no merging of simultaneous edits).
