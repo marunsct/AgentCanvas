@@ -87,7 +87,7 @@ async def _seed(app, api) -> dict[str, str]:
     second = await api.post(f"/v1/workflows/{wf}/versions", json={"message": "second"})
     chat = await api.post(f"/v1/projects/{PROJECT}/workflows", json={"name": "Chat", "template": "chat_assistant"})
     assert second.status_code < 300 and chat.status_code < 300, (second.text[:120], chat.text[:120])
-    return {"wf": wf, "dep": dep, "wf2": chat.json()["id"]}
+    return {"wf": wf, "dep": dep, "wf2": chat.json()["id"], "run": h.run_id}
 
 
 def _learn(r, values: set[str]) -> None:
@@ -186,3 +186,39 @@ async def test_organisation_b_is_refused_everything_of_organisation_a(app, api_c
         f"cross-org: {len(found)}/{len(gets)} id routes reached, {calls} calls refused; "
         f"uncovered: {sorted(gets - set(found))}"
     )
+
+
+async def test_organisation_b_is_refused_the_routes_the_crawl_cannot_reach(app, api_client, org_b):  # noqa: F811
+    """The id routes the seed above cannot make answer 200 (they need a model, tracing or an Agent block), sent with
+    A's real ids: B is told 403 or 404, never the answer, and never learns whether the id exists."""
+    own = await _seed(app, api_client)
+    wf, dep = own["wf"], own["dep"]
+    ir = (await api_client.get(f"/v1/workflows/{wf}")).json()["ir"]
+    node = ir["nodes"][0]["id"]
+    run_id = own["run"]
+    own_view = {  # what A itself gets: the routes exist and answer (or refuse on the merits)
+        "search": await api_client.get(f"/v1/projects/{PROJECT}/runs/search", params={"q": "Ada"}),
+        "bridge": await api_client.get(f"/v1/workflows/{wf}/bridges/langgraph/export.zip"),
+    }
+    assert own_view["search"].status_code == 200 and own_view["bridge"].status_code == 200
+    paths = [
+        ("get", f"/v1/projects/{PROJECT}/runs/search?q=Ada"),
+        ("post", f"/v1/projects/{PROJECT}/runs/search/index"),
+        ("get", f"/v1/runs/{run_id}/trace?format=json"),
+        ("get", f"/v1/workflows/{wf}/agents/{node}/code"),
+        ("get", f"/v1/workflows/{wf}/agents/{node}/code.py"),
+        ("get", f"/v1/workflows/{wf}/agents/{node}/export.zip"),
+        ("get", f"/v1/workflows/{wf}/bridges/langgraph/export.zip"),
+        ("get", f"/v1/projects/{PROJECT}/uploads/f_01HZZZZZZZZZZZZZZZZZZZZZZZ"),
+        ("get", f"/v1/deployments/{dep}/mcp"),
+    ]
+    act_as_b(app)
+    try:
+        for method, url in paths:
+            r = await api_client.request(method.upper(), url, json={} if method == "post" else None)
+            assert r.status_code in (400, 401, 403, 404, 405), (
+                f"{method.upper()} {url} -> {r.status_code} {r.text[:120]}"
+            )
+            assert "Ada" not in r.text and "Greeter" not in r.text, f"{method.upper()} {url} leaked: {r.text[:120]}"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
