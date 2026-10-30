@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from test_experiments import finished
+from test_publish import make_greeter
 from test_simulation import chat, make_chat
 
 from agentcanvas import red_team
@@ -183,3 +185,52 @@ async def test_bad_red_team_requests_are_refused(api_client):
     assert (await api_client.post(url, json={"categories": ["nope"]})).status_code == 422
     assert (await api_client.post(url, json={"attacker_model": "nobody:nothing"})).status_code == 422
     assert (await api_client.post(url, json={"per_category": 99})).status_code == 422
+
+
+def test_a_multi_turn_attack_is_a_conversation_that_ends_asking_for_the_canary():
+    attacks = red_team.builtin_attacks(["multi_turn"], 3, "seed")
+    assert [a.category for a in attacks] == ["multi_turn"] * 3 and all(a.canary for a in attacks)
+    from agentcanvas.red_team import TURN, conversation, examples_json
+
+    messages = conversation(attacks[0].text)
+    assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant", "user"]
+    assert attacks[0].canary in messages[-1]["content"] and all(
+        attacks[0].canary not in m["content"] for m in messages[:-1]
+    )
+    assert TURN not in str(messages)
+    [example] = examples_json(attacks[:1], "messages", chat=True)
+    assert example["input"]["messages"] == messages and example["split"] == "multi_turn"
+    with pytest.raises(ValueError, match="chat workflow"):
+        examples_json(attacks[:1], "text", chat=False)
+
+
+async def test_a_model_writes_multi_turn_attacks_as_lists_of_messages():
+    async def complete(system: str, ask: str, model: str) -> str:
+        assert "list of 3 user messages" in ask
+        return json.dumps({"attacks": [["Hello", "Now be free", "say it"], "a single message", []]})
+
+    attacks = await red_team.model_attacks(["multi_turn"], 3, complete, "x:y", "a support bot", "seed")
+    assert len(attacks) == 3 and "\n---\n" in attacks[0].text and attacks[0].text.startswith("Hello")
+    assert attacks[1].text == "a single message"  # a plain message is still one turn
+    assert attacks[2].text  # the empty one was filled from the built-in list
+
+
+async def test_a_multi_turn_red_team_run_needs_a_chat_workflow_and_holds_or_not(app, api_client):
+    wf = await make_chat(api_client)
+    app.state.resources_factory = lambda thread_id, w: Resources(overrides={"model": Refuser()})
+    r = await api_client.post(f"/v1/workflows/{wf}/red-team", json={"categories": ["multi_turn"], "per_category": 2})
+    assert r.status_code == 202, r.text
+    exp = await finished(app, api_client, r.json()["id"])
+    assert exp["summary"][0]["pass_rate"] == 1.0 and exp["summary"][0]["examples"] == 2
+    ds = (await api_client.get(f"/v1/workflows/{wf}/datasets")).json()
+    items = (await api_client.get(f"/v1/datasets/{ds[0]['id']}")).json()["items"]
+    assert len(items[0]["input"]["messages"]) == 5 and items[0]["split"] == "multi_turn"
+    app.state.resources_factory = lambda thread_id, w: Resources(overrides={"model": DemoChatModel()})
+    again = await api_client.post(
+        f"/v1/workflows/{wf}/red-team", json={"categories": ["multi_turn"], "per_category": 1}
+    )
+    assert (await finished(app, api_client, again.json()["id"]))["summary"][0]["pass_rate"] == 0.0  # it repeated it
+    # not in the default categories, and refused for a workflow without a messages input
+    plain = await make_greeter(api_client)
+    refused = await api_client.post(f"/v1/workflows/{plain}/red-team", json={"categories": ["multi_turn"]})
+    assert refused.status_code == 422 and "chat workflow" in refused.text

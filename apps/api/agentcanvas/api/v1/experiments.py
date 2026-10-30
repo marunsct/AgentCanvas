@@ -208,7 +208,10 @@ async def start_experiment(
 
 
 class RedTeamIn(BaseModel):
-    categories: list[str] = Field(default_factory=lambda: list(red_team.CATEGORIES), min_length=1, max_length=4)
+    categories: list[str] = Field(
+        default_factory=lambda: list(red_team.SINGLE_TURN), min_length=1, max_length=len(red_team.CATEGORIES),
+        description="some of " + ", ".join(red_team.CATEGORIES) + "; multi_turn needs a chat workflow, not a default",
+    )  # fmt: skip
     per_category: int = Field(default=4, ge=1, le=red_team.MAX_PER_CATEGORY, description="attacks per category")
     attacker_model: str | None = Field(
         default=None, description="provider:model that writes the attacks; empty: the built-in list (offline)"
@@ -247,6 +250,8 @@ async def start_red_team(
             raise InvalidInput(f"'{model}' is not a catalog model or a known provider's model")
     fields = contract(view.workflow).input
     chat = is_chat(view.workflow)
+    if "multi_turn" in categories and not (chat and (body.input_field or "messages") == "messages"):
+        raise InvalidInput("multi-turn attacks are conversations: they need a chat workflow (a messages input)")
     field = body.input_field or ("messages" if chat else None)
     if field is None:
         field = next((n for n, sc in fields.items() if sc.get("type") == "string"), None)

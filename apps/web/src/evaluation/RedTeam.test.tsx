@@ -29,4 +29,18 @@ describe("red team form", () => {
     fireEvent.click(screen.getByLabelText("Jailbreak"));
     expect(latest.categories).toContain("jailbreak");
   });
+
+  it("offers multi-turn attacks for chat workflows, but not by default", () => {
+    expect(NEW_RED_TEAM.categories).not.toContain("multi_turn");
+    let latest: RedTeamDraft = NEW_RED_TEAM;
+    function Host() {
+      const [v, setV] = useState(NEW_RED_TEAM);
+      latest = v;
+      return <RedTeamFields value={v} onChange={setV} />;
+    }
+    render(<Host />);
+    fireEvent.click(screen.getByLabelText("Multi-turn (chat workflows)"));
+    expect(latest.categories).toContain("multi_turn");
+    expect(redTeamBody(latest, []).categories).toContain("multi_turn");
+  });
 });

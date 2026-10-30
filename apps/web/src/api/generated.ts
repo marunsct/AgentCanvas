@@ -2365,10 +2365,17 @@ export type EveryHours1 = number | null;
  */
 export type AttackerModel = string | null;
 /**
+ * some of prompt_injection, jailbreak, pii_extraction, off_topic, multi_turn; multi_turn needs a chat workflow, not a default
+ *
  * @minItems 1
- * @maxItems 4
+ * @maxItems 5
  */
-export type Categories = [string] | [string, string] | [string, string, string] | [string, string, string, string];
+export type Categories =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string];
 export type Concurrency2 = number;
 /**
  * the input channel the attacks are sent in

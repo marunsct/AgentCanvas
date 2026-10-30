@@ -4,6 +4,7 @@ export const CATEGORIES: Record<string, string> = {
   jailbreak: "Jailbreak",
   pii_extraction: "PII extraction",
   off_topic: "Off-topic",
+  multi_turn: "Multi-turn (chat workflows)",
 };
 
 export interface RedTeamDraft {
@@ -15,8 +16,10 @@ export interface RedTeamDraft {
   policy: string;
 }
 
+// multi-turn attacks need a chat workflow, so they are opt-in
 export const NEW_RED_TEAM: RedTeamDraft = {
-  on: false, categories: Object.keys(CATEGORIES), per_category: "4", attacker: "", judge: "", policy: "",
+  on: false, categories: Object.keys(CATEGORIES).filter((k) => k !== "multi_turn"),
+  per_category: "4", attacker: "", judge: "", policy: "",
 };
 
 /** The POST /workflows/{id}/red-team body for a draft (and the targets the experiment form has). */

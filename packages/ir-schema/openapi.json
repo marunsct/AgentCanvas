@@ -9422,10 +9422,11 @@
             "title": "Attacker Model"
           },
           "categories": {
+            "description": "some of prompt_injection, jailbreak, pii_extraction, off_topic, multi_turn; multi_turn needs a chat workflow, not a default",
             "items": {
               "type": "string"
             },
-            "maxItems": 4,
+            "maxItems": 5,
             "minItems": 1,
             "title": "Categories",
             "type": "array"
