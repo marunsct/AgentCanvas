@@ -102,6 +102,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
   else echo "export: neither helm nor docker is here, the Kubernetes charts are not linted"; fi
   if need docker; then
     for d in "$ex"/local/*/* "$ex"/server/*/*; do
+      [ -d "$d/deploy" ] || continue   # a framework's own project (CrewAI, Agno...) has no deploy files: its tests run below
       touch "$d/.env"
       DOMAIN=a.example.com POSTGRES_PASSWORD=x docker compose -f "$d"/deploy/*/docker-compose.yml config -q || { rm "$d/.env"; return 1; }
       rm "$d/.env"
@@ -111,6 +112,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
   # ~150 projects, each with its own environment: one at a time, and each environment is deleted once its tests ran
   # (the cloud runners had a disk for this; a laptop fills up)
   for d in "$ex"/local/*/*; do
+    [ -f "$d/Makefile" ] || continue   # the framework projects are tested in their own loop below
     ( cd "$d" && make -s test ); rc=$?; rm -rf "$d/.venv" "$d"/*/.venv
     [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
   done

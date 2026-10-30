@@ -287,6 +287,7 @@ jobs:
               --set autoscaling.enabled=true | docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7-alpine -strict -summary -kubernetes-version 1.31.0 - >/dev/null
           done
           for d in "$EXPORTS"/local/*/* "$EXPORTS"/server/*/*; do
+            [ -d "$d/deploy" ] || continue  # a framework's own project has no deploy files; its tests run below
             touch "$d/.env"
             DOMAIN=a.example.com POSTGRES_PASSWORD=x docker compose -f "$d"/deploy/*/docker-compose.yml config -q
             rm "$d/.env"  # make setup creates the real one below
@@ -294,7 +295,7 @@ jobs:
           for t in "$EXPORTS"/aws/*/*/deploy/aws/task-definition.json; do python3 -m json.tool "$t" >/dev/null; done
       - name: Each export passes its own tests (uv sync with the exported pins)
         run: |
-          for d in "$EXPORTS"/local/*/*; do (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
+          for d in "$EXPORTS"/local/*/*; do [ -f "$d/Makefile" ] || continue; (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
           for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/* "$EXPORTS"/google_adk/*/* "$EXPORTS"/pydantic_ai/*/* "$EXPORTS"/agno/*/* "$EXPORTS"/microsoft_agent_framework/*/* "$EXPORTS"/strands/*/* "$EXPORTS"/llamaindex/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
           for d in "$EXPORTS"/mastra/*/*; do (cd "$d" && npm install -s --no-audit --no-fund && npm test) || exit 1; done  # S36: TypeScript
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
