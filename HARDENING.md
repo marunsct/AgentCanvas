@@ -32,7 +32,6 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 | N-5 | Hand-entered OAuth client id/secret for connectors, OAuth connectors in exported code, a validator warning for "sign-in as the person who started" on scheduled runs | Per-person connections use metadata documents or dynamic registration, so GitHub- and Slack-style providers still need keys; exports fail with a clear message; the schedule case is a runtime error only |
 | N-6 | A memory embedding model per project | The LangGraph store's vector column has one size per store, so the model is a server setting (`AGENTCANVAS_MEMORY_EMBEDDING`). Per project would need a store per vector size |
 | N-7 | Decrypting secrets per project with a short lifetime instead of one cache per API process | Code that could read the cache could also read the KMS key; no tenant code runs in the API process (the sandbox is required in staging and production). See `decisions.md` |
-| N-8 | `infra/schema.sql` (reference DDL) | Behind the models since before this work; the Alembic migrations are the source of truth. Regenerate it from a migrated database or delete it |
 | N-9 | A spending report per deployment | Deployment, schedule and event runs appear under "no person" in the spending report; adding a deployment dimension is a small follow-up |
 
 ## 3. Carried over from before the review
