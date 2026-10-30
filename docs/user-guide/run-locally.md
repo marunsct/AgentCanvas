@@ -240,6 +240,14 @@ DATABASE_URL=postgresql://agentcanvas:agentcanvas@localhost:5432/agentcanvas mak
 
 Migrations run automatically at startup. `make infra` also starts Redis, which the API does not need today.
 
+### Optional: read scanned documents (OCR)
+
+Scanned PDFs and pictures added to a knowledge base are read with [Tesseract](https://github.com/tesseract-ocr/tesseract).
+The Docker image has it. From source, install it and AgentCanvas finds it on the path: `sudo apt install tesseract-ocr`
+(Debian and Ubuntu), `brew install tesseract` (macOS), or the installer from the Tesseract project (Windows). Check with
+`tesseract --version`. More languages: `sudo apt install tesseract-ocr-deu`, then `AGENTCANVAS_OCR_LANGUAGES=eng+deu`.
+Without it a scan is refused with a message that says so; everything else works.
+
 ### 9. Optional: the production-style container setup
 
 To run what production runs (two API replicas behind nginx, sign-in through an identity provider), follow
