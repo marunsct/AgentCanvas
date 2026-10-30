@@ -76,8 +76,12 @@ RUN mkdir -p /opt/mastra
 FROM mastra-${WITH_MASTRA} AS mastra
 
 FROM python AS runtime
-# git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6)
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends git \
+# git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6);
+# tesseract: OCR for scanned PDFs and pictures in knowledge bases. English is included; add languages at build time
+# with --build-arg OCR_LANGS="deu fra" and name them in AGENTCANVAS_OCR_LANGUAGES (eng+deu)
+ARG OCR_LANGS=""
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends git tesseract-ocr tesseract-ocr-eng \
+    $(for l in $OCR_LANGS; do printf 'tesseract-ocr-%s ' "$l"; done) \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 app \
     && mkdir -p /data/workspaces && chown app:app /data/workspaces \

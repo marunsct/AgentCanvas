@@ -24,8 +24,11 @@ citations.
 Create a knowledge base (its name is lower-case letters, digits, `-` and `_`, e.g. `product-docs`), then open
 **Add documents**:
 
-- **Upload files**: PDF, Word (`.docx`), HTML, Markdown, text, CSV and JSON; up to 20 files at a time, 20 MB
-  each. PDF pages are kept, so citations name the page. Scanned PDFs have no text: run them through OCR first.
+- **Upload files**: PDF, Word (`.docx`), HTML, Markdown, text, CSV and JSON, and pictures (PNG, JPEG, TIFF, BMP,
+  WebP); up to 20 files at a time, 20 MB each. PDF pages are kept, so citations name the page. Pages of a scanned
+  PDF and picture files are read with OCR ([Tesseract](https://github.com/tesseract-ocr/tesseract), included in the
+  Docker image; elsewhere install it and it is found on the path). A page that already has text is not OCR'd. See
+  *Reading scans* below.
 - **Add a public web page or document** by its address. Only public addresses are fetched: private, internal
   and cloud-metadata addresses are refused, also after a redirect. Pages up to 5 MB.
 - **Add every page of a sitemap**: give the address of a `sitemap.xml` (or a sitemap index) and its pages are added,
@@ -128,3 +131,13 @@ search finds the right page in the top 3 for 95% of questions against 93% for ke
 - On SQLite (and PostgreSQL without pgvector) search runs in memory on each server: up to 50,000 chunks per
   knowledge base.
 - Roles: everyone can search; builders add, change and delete.
+
+## Reading scans
+
+OCR is on when Tesseract is installed (`AGENTCANVAS_OCR=auto`, the default; `off` never runs it). Only PDF pages
+with almost no text and picture files are read. Set the language with `AGENTCANVAS_OCR_LANGUAGES` (Tesseract codes
+joined by `+`, e.g. `eng+deu`); the Docker image has English, and
+`docker build --build-arg OCR_LANGS="deu fra" -f infra/Dockerfile.api .` adds others. At most
+`AGENTCANVAS_OCR_MAX_PAGES` (100) pages of a file are read, and the text says when pages were left out. OCR makes
+mistakes on poor scans: check what it read under the document's chunks. Without Tesseract a scan is refused with a
+message that says so.

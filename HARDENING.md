@@ -27,7 +27,6 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 
 | Id | Item | Reason |
 |---|---|---|
-| N-1 | OCR for scanned PDFs (G-6 c) | No pure-Python engine is installed; a real one is a heavy system or model dependency. The "needs OCR first" message stays. Add a Tesseract or cloud-OCR option behind a setting when a customer needs it |
 | N-2 | AG-UI wire for the Copilot, a Copilot checkpointer with time travel, a per-thread `/run` route (PLAN.md) | Would run beside the SSE format the web already reads, with no gain except CopilotKit interop, which the plan itself rejects. Revisit if interop becomes a goal |
 | N-3 | Live co-editing (merging simultaneous edits, cursors) | Presence is built (who is here, which block, "saved a newer version"); merging edits needs a CRDT over the IR with the command log kept as the source of truth |
 | N-4 | Multi-turn red teaming, audio and video ports, files for Planning Agents, file upload by deployment-key callers (they send inline `data`), file downloads for share visitors | Scope; documented in the guide pages for each |

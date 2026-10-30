@@ -417,6 +417,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Scanned PDFs and pictures can be added to a knowledge base: pages without text and PNG, JPEG, TIFF, BMP and WebP
+  files are read with Tesseract OCR, which the Docker image now includes (`AGENTCANVAS_OCR`, `_OCR_LANGUAGES`,
+  `_OCR_MAX_PAGES`; build-time languages with `OCR_LANGS`).
 - The editor's top bar shows avatars of the other people who have the workflow open, with a badge on the block each
   one is selecting, and a notice when someone saves a newer version than yours. It works across several API servers
   and does not change how saving or conflicts work. (HARDENING G-4).

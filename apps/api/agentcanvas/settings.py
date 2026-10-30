@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     memory_embedding: str = ""
     memory_embedding_dims: int = 0
     memory_embedding_base_url: str = ""  # a local server's address (LM Studio, Ollama) for `memory_embedding`
+    # OCR for scanned PDFs and pictures added to a knowledge base: "auto" (default) uses Tesseract when it is installed
+    # (the Docker image has it), "off" never runs it. Languages are Tesseract codes joined by "+", e.g. "eng+deu".
+    ocr: str = "auto"
+    ocr_languages: str = "eng"
+    ocr_max_pages: int = 100  # pages OCR reads in one file; the rest are left out and the title says so
+    ocr_page_timeout_s: int = 60
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20

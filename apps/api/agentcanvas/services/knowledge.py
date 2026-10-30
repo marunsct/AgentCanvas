@@ -46,6 +46,7 @@ from agentcanvas.db.models import KnowledgeBase, KnowledgeChunk, KnowledgeDocume
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
+from agentcanvas.services import ocr
 
 log = get_logger(__name__)
 
@@ -72,7 +73,7 @@ EMBED_BATCH = 64
 INDEX_CACHE = 16  # knowledge bases held in memory per instance
 SAMPLES = Path(__file__).resolve().parent.parent / "registry" / "knowledge"
 TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".rst", ".log", ".yaml", ".yml"}
-SUFFIXES = TEXT_SUFFIXES | {".pdf", ".docx", ".html", ".htm"}
+SUFFIXES = TEXT_SUFFIXES | {".pdf", ".docx", ".html", ".htm"} | ocr.IMAGE_SUFFIXES
 
 Embed = Callable[[Sequence[str]], Awaitable[list[list[float]]]]
 EmbedderFactory = Callable[[dict[str, Any], dict[str, str]], Embed]
@@ -161,6 +162,23 @@ def html_text(data: str) -> tuple[str, str]:
     return " ".join(p.title.split()), p.text()
 
 
+def _ocr_blank_pages(name: str, data: bytes, pages: list[str]) -> list[str]:
+    """The pages of a PDF with a picture-only page (a scan) read by OCR, when Tesseract is there (N-1)."""
+    blank = [i for i, t in enumerate(pages) if len(t) < ocr.MIN_PAGE_CHARS]
+    if not blank:
+        return pages
+    eng = ocr.engine()
+    if eng is None:
+        return pages
+    read = ocr.read_pdf_pages(eng, data, blank)
+    out = [read.get(i, t) if len(t) < ocr.MIN_PAGE_CHARS and read.get(i) else t for i, t in enumerate(pages)]
+    if len(blank) > eng.max_pages:
+        out[-1] += (
+            f"\n\n[OCR read {eng.max_pages} of the {len(blank)} pages without text in '{name}'; the rest are left out]"
+        )
+    return out
+
+
 def extract(name: str, data: bytes) -> tuple[str, str]:
     """(title, text) of an uploaded file; PDF pages are separated by form feeds (\\f)."""
     suffix = Path(name).suffix.lower()
@@ -170,11 +188,19 @@ def extract(name: str, data: bytes) -> tuple[str, str]:
     if len(data) > MAX_FILE_BYTES:
         raise InvalidInput(f"'{name}' is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
     try:
+        if suffix in ocr.IMAGE_SUFFIXES:
+            eng = ocr.engine()
+            if eng is None:
+                raise InvalidInput(
+                    f"'{name}' is a picture; reading it needs OCR (Tesseract), which is not available here"
+                )
+            return stem, ocr.read_file(eng, data)
         if suffix == ".pdf":
             from pypdf import PdfReader
 
             reader = PdfReader(io.BytesIO(data))
-            text = "\f".join((page.extract_text() or "").strip() for page in reader.pages)
+            pages = [(page.extract_text() or "").strip() for page in reader.pages]
+            text = "\f".join(_ocr_blank_pages(name, data, pages))
             meta_title = (reader.metadata.title if reader.metadata else None) or ""
             return (meta_title.strip() or stem), text
         if suffix == ".docx":
@@ -733,7 +759,9 @@ class KnowledgeService:
         settings = (dict(seen.chunking or {}), dict(seen.embedding or {}))
         text = text.replace("\x00", "").strip()
         if not text:
-            raise InvalidInput(f"'{name or title}' has no text to search (a scanned PDF needs OCR first)")
+            raise InvalidInput(
+                f"'{name or title}' has no text to search (a scan needs OCR: install Tesseract or use the Docker image)"
+            )
         if len(text) > MAX_TEXT_CHARS:
             raise InvalidInput(f"'{name or title}' has more than {MAX_TEXT_CHARS:,} characters of text; split it")
         digest = hashlib.sha256(text.encode()).hexdigest()
