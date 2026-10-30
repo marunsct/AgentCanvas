@@ -3,12 +3,12 @@
 What is still open after the deep review of 2026-10-29 and the work that followed it. That review (seven read-only
 passes over run-time, control plane, security, web, Copilot and evaluation, adapters and exports, and docs, plus a
 check of the standards and the market) produced about 90 findings and a plan of 15 improvements; **all of the
-findings and almost all of the plan are done** (165 commits on the hardening branch, each with a test that fails
+findings and the plan are done** except what needs a paid model or a service account, which is listed below (about 190 commits on the hardening branch, each with a test that fails
 without it, a changelog line, and the suites green on SQLite and Postgres). Their history is in `CHANGELOG.md`
 (*Unreleased*) and `decisions.md`, and the review's own list is in git: `git show ad11a56:HARDENING.md`.
 
 **How to use this file.** One PR per item; every fix lands with a test that fails without it. In the same PR, delete
-the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`, …) so a PR title can name them.
+the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`, …) so a PR title can name them. On 2026-10-30 a closing pass built what could be built here (OCR, spending by deployment, entered OAuth credentials, deployment file upload, multi-turn red teaming, screenshots, accessibility fixes, the reference schema) and ran every CI stage locally (frameworks, conformance, images, export, a Kubernetes cluster in kind); what is left needs a model, a service or a person.
 
 ---
 
@@ -16,10 +16,8 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 
 | Id | Item | Why it is open | To close it |
 |---|---|---|---|
-| O-1 | **Run the Copilot evaluation on a real model** (G-11) and decide the default engine | The nightly job has never run (no CI runners since 2026-10-08) and no hosted key or local model server was available here. `make copilot-evals` exists and was run offline only. The Deep Agents engine passes every Copilot suite, but making it the default was left out until the scores are known (commit `6423f66` on the agent's branch `feat-copilot`, in the worktree under `.claude/worktrees/agent-a78fb83cd9ffa492c`) | `make copilot-evals MODEL=anthropic:claude-sonnet-5-5` and again with a local model (Ollama): record both scores in `docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md`, then cherry-pick `6423f66` if Deep Agents scores at least as well |
+| O-1 | **Run the Copilot evaluation on a real model** (G-11) and decide the default engine | The nightly job has never run (no CI runners since 2026-10-08). A local model was tried on 2026-10-30 (Ollama, `qwen3:8b`, CPU only): one build case took ten minutes and produced no proposal, so the 147 cases of both suites would take days and the score of a small model would not decide anything. It was stopped, and no hosted model was used. The Deep Agents engine passes every Copilot suite offline, but making it the default was left out until real scores exist (commit `6423f66` on the agent's branch `feat-copilot`, in the worktree under `.claude/worktrees/agent-a78fb83cd9ffa492c`) | `make copilot-evals MODEL=anthropic:claude-sonnet-5-5` for each engine (a GPU or a hosted model is needed for speed): record both scores in `docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md`, then cherry-pick `6423f66` if Deep Agents scores at least as well |
 | O-2 | **Try the two integrations built from reference docs against the real services** | The Claude Managed Agents export (`ant apply` bundle) and the Git round trip (GitHub pull requests) were built from the reference documentation and tested with golden files and a mock transport; nothing here could call Anthropic or GitHub | Apply a bundle with the real `ant` CLI; connect a scratch repository; fix what differs and add it to the golden files |
-| O-3 | **The `images`, `export` and Kubernetes (kind) stages of local CI** | They build both images, scan them with Trivy, deploy two exports and a kind cluster: heavy, so they run before releases, not on every push. The last full run was before this work | `scripts/ci-local.sh images` and `export` (and `make ci-full`); Trivy may flag the new dependencies (pgvector client, sqlite-vec, pypdf, python-docx) |
-| O-4 | **Conformance kit and framework smoke tests on a clean machine** | `tests/test_conformance.py` needs every framework environment, so the full suite here ran without it (`--deselect`). The `frameworks` stage of local CI, which builds those environments and covers it, passed on 2026-10-29 after the pin bumps and before the later merges (files, governance, presence) | Run `make ci-full` on a machine with the Docker images |
 | O-6 | **A person reading the product with a screen reader** | An automated scan (`e2e/axe.spec.ts`, axe-core, WCAG 2.1 A and AA, light and dark themes, every page and every editor tab) passes, and the inspector, menus and canvas are named and keyboard-reachable (`a11y-inspector.spec.ts`, `keyboard.spec.ts`). A machine cannot say whether the product is usable with NVDA, VoiceOver or JAWS | A screen-reader pass by a person; file what they find |
 
 ## 2. Decided not to build (yet), with the reason
