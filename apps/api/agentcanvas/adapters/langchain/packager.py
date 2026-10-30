@@ -456,11 +456,15 @@ from agentcanvas.adapters.langchain.nodes import Resources
 from {pkg} import graph as generated
 
 MODELS = {models}
+# an app connector or MCP server is not reachable from a test machine (or has a placeholder address): the graph is built
+# with a recorded tool in its place, as a replayed run does
+MCP_SERVERS = {mcp}
 CASES = json.loads((Path(__file__).parent / "test_cases.json").read_text())
 
 
 async def build(mocks: dict):
-    resources = Resources().with_mocks(mocks)
+    stubs = {{n: [{{"tool": "ping", "args": {{}}, "output": "ok"}}] for n in MCP_SERVERS}}
+    resources = Resources().with_mocks({{**stubs, **mocks}})
     build = getattr(generated, "abuild_graph", None)
     if build:
         return await build(resources, checkpointer=InMemorySaver())
@@ -643,7 +647,11 @@ def package(
         f"src/{pkg}/server.py": SERVER.format(pkg=pkg, secrets=json.dumps(secrets)),
         f"src/{pkg}/__main__.py": MAIN.format(pkg=pkg),
         "src/agentcanvas/NOTICE.md": "The AgentCanvas node library (Apache-2.0), vendored so the project runs alone.\n",
-        "tests/test_smoke.py": SMOKE.format(pkg=pkg, models=json.dumps(sorted({n for n, _ in _models(wf)}))),
+        "tests/test_smoke.py": SMOKE.format(
+            pkg=pkg,
+            models=json.dumps(sorted({n for n, _ in _models(wf)})),
+            mcp=json.dumps(sorted(r.name for r in wf.resources if r.type == "mcp.server")),
+        ),
         "tests/test_cases.json": json.dumps(cases, indent=2) + "\n",
     }
     for rel in RUNTIME_FILES:

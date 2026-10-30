@@ -288,3 +288,20 @@ def test_exported_safety_blocks_run(tmp_path):
         capture_output=True, text=True, timeout=120, check=False,
     )  # fmt: skip
     assert proc.returncode == 0 and "guarded ok" in proc.stdout, proc.stdout[-2000:] + proc.stderr[-3000:]
+
+
+def test_the_generated_smoke_test_stands_in_for_mcp_servers_that_cannot_be_reached():
+    """A template's app connector has a placeholder address: the exported project's own test must still build."""
+    from pathlib import Path
+
+    from agentcanvas.adapters import get_adapter
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+
+    path = Path(__file__).resolve().parents[1] / "agentcanvas" / "registry" / "templates" / "agent_network.ir.json"
+    wf = Workflow.model_validate(json.loads(path.read_text()))
+    _, data = get_adapter(wf.framework).package(wf, default_registry(), target="local", version="1.0.0")
+    zf = zipfile.ZipFile(io.BytesIO(data))
+    smoke = next(zf.read(n).decode() for n in zf.namelist() if n.endswith("tests/test_smoke.py"))
+    assert 'MCP_SERVERS = ["issue_tracker", "log_analyst"]' in smoke
+    assert '"tool": "ping"' in smoke
