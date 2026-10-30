@@ -206,7 +206,7 @@ PUBLIC = {
 }  # fmt: skip
 OWN_CREDENTIALS = (
     "/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/",
-    "/v1/deployments/{dep_id}/mcp", "/v1/deployments/{dep_id}/a2a",
+    "/v1/deployments/{dep_id}/mcp", "/v1/deployments/{dep_id}/a2a", "/v1/deployments/{dep_id}/files",
 )  # fmt: skip
 
 
