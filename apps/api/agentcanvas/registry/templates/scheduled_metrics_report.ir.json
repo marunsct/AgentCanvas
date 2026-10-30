@@ -16,7 +16,10 @@
       {
         "name": "day",
         "type": {
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "2026-10-01"
+          ]
         },
         "io": "in",
         "description": "Optional: the day to report on (YYYY-MM-DD). Empty = yesterday"

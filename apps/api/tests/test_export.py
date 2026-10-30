@@ -305,3 +305,27 @@ def test_the_generated_smoke_test_stands_in_for_mcp_servers_that_cannot_be_reach
     smoke = next(zf.read(n).decode() for n in zf.namelist() if n.endswith("tests/test_smoke.py"))
     assert 'MCP_SERVERS = ["issue_tracker", "log_analyst"]' in smoke
     assert '"tool": "ping"' in smoke
+
+
+def test_the_smoke_input_uses_what_a_channel_says_about_its_values():
+    """An exported service is tried with an example input: a made-up string would not parse as a date."""
+    from agentcanvas.adapters.langchain import deploykit
+    from agentcanvas.ir.models import Workflow
+
+    wf = Workflow.model_validate({
+        "id": "wf_x", "name": "X",
+        "state": {"channels": [
+            {"name": "day", "io": "in", "type": {"type": "string", "examples": ["2026-10-01"]}},
+            {"name": "mode", "io": "in", "type": {"type": "string", "enum": ["fast", "slow"]}},
+            {"name": "limit", "io": "in", "type": {"type": "integer", "default": 5}},
+            {"name": "note", "io": "in", "description": "a free note"},
+            {"name": "out", "io": "out"},
+        ]},
+        "nodes": [], "edges": [],
+    })  # fmt: skip
+    assert deploykit._example(wf, []) == {
+        "day": "2026-10-01",
+        "mode": "fast",
+        "limit": 5,
+        "note": "An example a free note",
+    }

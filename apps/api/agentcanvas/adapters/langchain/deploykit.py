@@ -243,6 +243,17 @@ def _example_context(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any
     return out
 
 
+def _hinted(schema: dict[str, Any]) -> Any:
+    """A value the channel's JSON Schema suggests: `examples`, `default`, or the first of `enum`; None if it has none."""
+    if isinstance(schema.get("examples"), list) and schema["examples"]:
+        return schema["examples"][0]
+    if schema.get("default") not in (None, ""):
+        return schema["default"]
+    if isinstance(schema.get("enum"), list) and schema["enum"]:
+        return schema["enum"][0]
+    return None
+
+
 def _example(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
     """An input for `make smoke`: the first saved test case's, or one value per input channel."""
     for c in cases:
@@ -254,7 +265,12 @@ def _example(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
         if (wanted and ch.name not in wanted) or (not wanted and ch.io not in ("in", "inout")):
             continue
         kind = (ch.type or {}).get("type", "string")
-        if ch.reducer == "add_messages":
+        hinted = _hinted(ch.type or {})
+        if (
+            hinted is not None
+        ):  # the channel's own example, default or first allowed value: a made-up string may not parse
+            out[ch.name] = hinted
+        elif ch.reducer == "add_messages":
             out[ch.name] = [{"role": "user", "content": "Hello! What can you do?"}]
         elif kind == "boolean":
             out[ch.name] = True
