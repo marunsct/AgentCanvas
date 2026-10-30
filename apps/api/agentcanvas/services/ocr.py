@@ -60,7 +60,9 @@ def _png(image) -> bytes:  # type: ignore[no-untyped-def]
 
     if image.width * image.height > MAX_PIXELS:
         scale = (MAX_PIXELS / (image.width * image.height)) ** 0.5
-        image = image.resize((max(1, int(image.width * scale)), max(1, int(image.height * scale))), Image.Resampling.LANCZOS)
+        image = image.resize(
+            (max(1, int(image.width * scale)), max(1, int(image.height * scale))), Image.Resampling.LANCZOS
+        )
     if image.mode not in ("L", "RGB"):
         image = image.convert("RGB")
     out = io.BytesIO()
