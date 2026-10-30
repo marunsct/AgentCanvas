@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api/client", () => ({
   API_BASE: "/api/v1",
   apiFetch: vi.fn(async (path: string) =>
-    path.endsWith("/triggers") ? [{ id: "tr1", kind: "cron", enabled: true, config: { schedule: "0 9 * * 1-5" } }] : []),
+    path.endsWith("/triggers") ? [{ id: "tr1", kind: "cron", enabled: true, config: { schedule: "0 9 * * 1-5" },
+      warnings: ["'github' signs in as the person who started the run, but a trigger's runs have no person"] }] : []),
 }));
 
 const { TriggersSection } = await import("./TriggersSection");
@@ -18,5 +19,10 @@ describe("TriggersSection (C-10)", () => {
     render(<QueryClientProvider client={new QueryClient()}><TriggersSection wfId="wf_1" /></QueryClientProvider>);
     expect(screen.getByLabelText("cron schedule (UTC)")).toBeTruthy(); // nothing said which time zone 0 9 * * * meant
     expect((await screen.findByTestId("trigger-cron")).textContent).toContain("0 9 * * 1-5 UTC");
+  });
+
+  it("shows what would stop a trigger's runs from working (N-5)", async () => {
+    render(<QueryClientProvider client={new QueryClient()}><TriggersSection wfId="wf_1" /></QueryClientProvider>);
+    expect((await screen.findByRole("note")).textContent).toContain("'github' signs in as the person who started the run");
   });
 });

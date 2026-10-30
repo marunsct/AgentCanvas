@@ -2988,6 +2988,10 @@ export type Id61 = string;
 export type Kind11 = string;
 export type Secret = string | null;
 export type Url4 = string | null;
+/**
+ * what would stop this trigger's runs from working
+ */
+export type Warnings = string[];
 export type DeploymentId5 = string | null;
 export type Kind12 = "webhook" | "cron";
 export type CreatedAt35 = string;
@@ -2996,6 +3000,10 @@ export type Enabled12 = boolean;
 export type Id62 = string;
 export type Kind13 = string;
 export type Url5 = string | null;
+/**
+ * what would stop this trigger's runs from working
+ */
+export type Warnings1 = string[];
 export type Url6 = string;
 /**
  * the Copilot proposals accepted since the version before, and by whom
@@ -7179,6 +7187,7 @@ export interface TriggerCreated {
   kind: Kind11;
   secret?: Secret;
   url?: Url4;
+  warnings?: Warnings;
 }
 export interface Config7 {
   [k: string]: unknown;
@@ -7207,6 +7216,7 @@ export interface TriggerOut {
   id: Id62;
   kind: Kind13;
   url?: Url5;
+  warnings?: Warnings1;
 }
 export interface Config9 {
   [k: string]: unknown;

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session
@@ -28,6 +28,7 @@ class TriggerOut(BaseModel):
     config: dict[str, Any]  # without the webhook secret
     url: str | None = None  # webhooks: where to POST
     created_at: datetime
+    warnings: list[str] = Field(default_factory=list, description="what would stop this trigger's runs from working")
 
 
 class TriggerCreated(TriggerOut):
@@ -53,17 +54,19 @@ def svc(request: Request, session: AsyncSession = Depends(get_session)):
 @router.post("/workflows/{wf_id}/triggers", response_model=TriggerCreated, status_code=201)
 async def create_trigger(wf_id: str, body: TriggerIn, s: TriggerService = Depends(svc)) -> TriggerCreated:
     trig, secret = await s.create(wf_id, body)
-    return TriggerCreated(**_out(trig), secret=secret)
+    return TriggerCreated(**_out(trig), warnings=await s.warnings(wf_id), secret=secret)
 
 
 @router.get("/workflows/{wf_id}/triggers", response_model=list[TriggerOut])
 async def list_triggers(wf_id: str, s: TriggerService = Depends(svc)) -> list[TriggerOut]:
-    return [TriggerOut(**_out(t)) for t in await s.list(wf_id)]
+    warnings = await s.warnings(wf_id)
+    return [TriggerOut(**_out(t), warnings=warnings) for t in await s.list(wf_id)]
 
 
 @router.patch("/triggers/{trigger_id}", response_model=TriggerOut)
 async def enable_trigger(trigger_id: str, body: EnabledIn, s: TriggerService = Depends(svc)) -> TriggerOut:
-    return TriggerOut(**_out(await s.set_enabled(trigger_id, body.enabled)))
+    trig = await s.set_enabled(trigger_id, body.enabled)
+    return TriggerOut(**_out(trig), warnings=await s.warnings(trig.workflow_id))
 
 
 @router.delete("/triggers/{trigger_id}", status_code=204)

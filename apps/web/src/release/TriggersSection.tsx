@@ -77,6 +77,7 @@ export function TriggersSection({ wfId }: { wfId: string }) {
               <button type="button" className="small" onClick={() => void toggle(t)}>{t.enabled ? "Disable" : "Enable"}</button>
               <button type="button" className="link small" aria-label={`delete trigger ${t.id}`} onClick={() => void remove(t)}>✕</button>
             </div>
+            {(t.warnings ?? []).map((w) => <p key={w} className="small warn-text" role="note">⚠ {w}</p>)}
           </li>
         ))}
       </ul>

@@ -13318,6 +13318,14 @@
               }
             ],
             "title": "Url"
+          },
+          "warnings": {
+            "description": "what would stop this trigger's runs from working",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -13409,6 +13417,14 @@
               }
             ],
             "title": "Url"
+          },
+          "warnings": {
+            "description": "what would stop this trigger's runs from working",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [

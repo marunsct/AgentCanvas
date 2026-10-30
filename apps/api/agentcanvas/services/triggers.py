@@ -124,6 +124,16 @@ def map_input(mapping: dict[str, str] | None, body: Any) -> dict[str, Any]:
     return {name: render_template(tpl, {}, body=body) for name, tpl in mapping.items()}
 
 
+def person_connectors(draft_ir: dict[str, Any] | None) -> list[str]:
+    """Names of the app connectors that sign in as the person who started the run (`oauth.identity: starter`)."""
+    names = []
+    for res in (draft_ir or {}).get("resources") or []:
+        oauth = (res.get("config") or {}).get("oauth") if res.get("type") == "mcp.server" else None
+        if isinstance(oauth, dict) and oauth.get("identity", "starter") == "starter":
+            names.append(str(res.get("name") or res.get("id")))
+    return names
+
+
 class TriggerService:
     def __init__(self, session: AsyncSession, keyring: Keyring):
         self.s = session
@@ -165,6 +175,16 @@ class TriggerService:
         await self.s.commit()
         await self.s.refresh(trig)
         return trig, secret
+
+    async def warnings(self, wf_id: str) -> list[str]:
+        """What a schedule or webhook of this workflow would hit: a trigger starts runs no person started, so a
+        connector that signs in as the starter has no connection to use and its calls fail (N-5)."""
+        row = await self.s.get(WorkflowRow, wf_id)
+        return [
+            f"'{name}' signs in as the person who started the run, but a trigger's runs have no person: "
+            "set it to the service connection (an admin connects it) or its calls will fail"
+            for name in person_connectors(row.draft_ir if row else None)
+        ]
 
     async def list(self, wf_id: str) -> list[Trigger]:
         q = select(Trigger).where(Trigger.workflow_id == wf_id).order_by(Trigger.id)
