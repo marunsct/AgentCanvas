@@ -259,6 +259,18 @@ async def test_connections_are_personal(app, client, world):
     assert (await client.delete(f"/v1/connections/{bobs['connection']['id']}", headers=BOB)).status_code == 204
 
 
+async def test_a_reviewer_or_viewer_connects_and_disconnects_their_own_connector(app, client, world):
+    for sub, role in (("rita-sub", "reviewer"), ("vic-sub", "viewer")):
+        email = f"{sub}@example.com"
+        r = await client.put("/v1/org/members", json={"email": email, "role": role}, headers=ALICE)
+        assert r.status_code == 200
+        who = bearer(token(sub=sub, email=email, name=sub, exp=LONG))
+        assert (await authorize(client, who, service=True)).status_code == 403  # the service identity stays admin's
+        done = await connect(client, world, who, who=sub)
+        assert done["connection"]["owner"] == "you"
+        assert (await client.delete(f"/v1/connections/{done['connection']['id']}", headers=who)).status_code == 204
+
+
 async def test_a_connection_of_another_organisation_does_not_exist_here(app, client, world):
     from agentcanvas.db.models import Membership, Organization
     from agentcanvas.db.repositories import UserRepo

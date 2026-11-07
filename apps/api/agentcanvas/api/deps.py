@@ -182,6 +182,11 @@ ROLE_EXCEPTIONS = {
     ("PUT", "/me/preferences"): "viewer",  # anyone keeps their own preferences
     ("POST", "/me/tokens"): "viewer",  # anyone makes API tokens for themselves, with at most their own role
     ("DELETE", "/me/tokens/{token_id}"): "viewer",  # and revokes them
+    # anyone connects their own app connector (a reviewer resumes a run with their own connection); the endpoints
+    # check ownership, keep the service identity for admins and refuse API tokens for the sign-in (G-7)
+    ("POST", "/connections/authorize"): "viewer",
+    ("POST", "/connections/callback"): "viewer",
+    ("DELETE", "/connections/{connection_id}"): "viewer",
     ("POST", "/workflows/{wf_id}/copilot/messages"): "viewer",  # Ask mode for everyone; Build checks for builder
     ("POST", "/workflows/{wf_id}/copilot/stop"): "viewer",  # stop your own answer, in either mode
     ("DELETE", "/workflows/{wf_id}/copilot"): "viewer",  # anyone starts their own chat over
