@@ -12,7 +12,7 @@ vi.mock("./sse", () => ({
 vi.stubGlobal("requestAnimationFrame", (fn: () => void) => setTimeout(fn, 0) as unknown as number);
 vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
 
-const { continueRun, startRun } = await import("./session");
+const { continueRun, forkRun, resumeRun, startRun } = await import("./session");
 const { useRun } = await import("./runStore");
 const { useEditor } = await import("../editor/store");
 const { postStream } = await import("./sse");
@@ -47,5 +47,18 @@ describe("startRun (W-4)", () => {
     expect(useRun.getState().starting).toBe(false);
     await startRun({}); // and Run works again once it has ended
     expect(postStream).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("approve, continue and fork", () => {
+  it("send one request on a double-click", async () => {
+    useRun.setState({ threadId: "t1", running: false, starting: false });
+    events = [{ type: "RUN_STARTED", threadId: "t1", workflowId: "wf_1" }, { type: "RUN_FINISHED", threadId: "t1", outcome: "success" }];
+    for (const act of [() => resumeRun({ approved: true }, "i1"), () => continueRun(), () => forkRun("cp1", {})]) {
+      vi.mocked(postStream).mockClear();
+      await Promise.all([act(), act()]); // the second click lands before the first stream's first event
+      expect(postStream).toHaveBeenCalledTimes(1);
+      expect(useRun.getState().starting).toBe(false);
+    }
   });
 });

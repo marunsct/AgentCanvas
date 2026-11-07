@@ -69,12 +69,23 @@ export function debugAids(): { pins?: Record<string, unknown>; mocks?: Record<st
   return { ...(Object.keys(p).length ? { pins: p } : {}), ...(Object.keys(m).length ? { mocks: m } : {}) , ...(useUi.getState().dryRun ? { dry_run: true } : {}) };
 }
 
-export async function startRun(input: Record<string, unknown>, opts: { continueThread?: boolean } = {}) {
-  const { wf, breakpoints, flush } = useEditor.getState();
-  // a double-click on Run or Send started two server runs: `running` only arrives with the first event
-  if (!wf || useRun.getState().starting) return;
+/** Run `body` unless a run is already being started: a double-click on Run, Send, Approve, Continue or Fork sent two
+ * requests (`running` only arrives with the first event), and the second one stopped reading the first's stream and
+ * showed a false 409. */
+async function once(body: () => Promise<void>): Promise<void> {
+  if (useRun.getState().starting) return;
   useRun.setState({ starting: true });
   try {
+    await body();
+  } finally {
+    useRun.setState({ starting: false });
+  }
+}
+
+export async function startRun(input: Record<string, unknown>, opts: { continueThread?: boolean } = {}) {
+  const { wf, breakpoints, flush } = useEditor.getState();
+  if (!wf) return;
+  await once(async () => {
     await flush();
     const run = useRun.getState();
     const threadId = opts.continueThread ? run.threadId ?? undefined : undefined;
@@ -86,22 +97,25 @@ export async function startRun(input: Record<string, unknown>, opts: { continueT
       input, thread_id: threadId, ...aids,
       ...(debug ? { mode: "debug", breakpoints: { before: breakpoints } } : {}),
     });
-  } finally {
-    useRun.setState({ starting: false });
-  }
+  });
 }
 
 export async function resumeRun(value: unknown, interruptId?: string) {
   const { threadId } = useRun.getState();
   if (!threadId) return;
-  useRun.getState().setInput(null);
-  await stream(`/threads/${threadId}/resume`, { value, interrupt_id: interruptId, ...debugAids() });
+  await once(async () => {
+    useRun.getState().setInput(null);
+    await stream(`/threads/${threadId}/resume`, { value, interrupt_id: interruptId, ...debugAids() });
+  });
 }
 
 export async function continueRun() {
   const { threadId } = useRun.getState();
-  useRun.getState().setInput(null);
-  if (threadId) await stream(`/threads/${threadId}/continue`, debugAids());
+  if (!threadId) return;
+  await once(async () => {
+    useRun.getState().setInput(null);
+    await stream(`/threads/${threadId}/continue`, debugAids());
+  });
 }
 
 export async function cancelRun() {
@@ -112,9 +126,9 @@ export async function cancelRun() {
 export async function forkRun(checkpointId: string, opts: { values?: Record<string, unknown>; asNode?: string; copy?: boolean }) {
   const { threadId } = useRun.getState();
   if (!threadId) return;
-  await stream(`/threads/${threadId}/fork`, {
+  await once(() => stream(`/threads/${threadId}/fork`, {
     checkpoint_id: checkpointId, values: opts.values, as_node: opts.asNode, mode: opts.copy ? "copy" : "branch",
-  });
+  }));
 }
 
 export async function editState(checkpointId: string | undefined, values: Record<string, unknown>, asNode?: string) {

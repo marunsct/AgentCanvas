@@ -26,7 +26,7 @@ export function Timeline() {
   const wf = useEditor((s) => s.wf);
   const threadId = useRun((s) => s.threadId);
   const runSeq = useRun((s) => s.runSeq);
-  const running = useRun((s) => s.running);
+  const running = useRun((s) => s.running || s.starting); // starting: a fork was pressed and has not begun
   const setHighlight = useRun((s) => s.setHighlight);
   const history = useQuery({
     queryKey: ["history", threadId, runSeq],

@@ -96,7 +96,7 @@ export function RunPanel() {
       <div className="row gap">
         {run.running && builder && <button type="button" onClick={() => void cancelRun()}>■ Stop</button>}
         {run.breakpoint && !run.running && builder && (
-          <button type="button" className="primary" onClick={() => void continueRun()}>⏵ Continue</button>
+          <button type="button" className="primary" disabled={run.starting} onClick={() => void continueRun()}>⏵ Continue</button>
         )}
       </div>
       {run.breakpoint && !run.running && (
@@ -135,7 +135,7 @@ export function RunPanel() {
         </button>
       )}
       {!run.running && run.interrupts.map((intr) => (
-        <DecisionCard key={intr.id} intr={intr} busy={!can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
+        <DecisionCard key={intr.id} intr={intr} busy={run.starting || !can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
       ))}
       {Object.keys(run.output).length > 0 && !chat && (
         <>
