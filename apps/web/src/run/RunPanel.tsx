@@ -2,8 +2,10 @@
 import { runErrorHelp } from "../help/diagnostics";
 import { useCopilot } from "../copilot/copilot";
 import { HelpText } from "../help/HelpText";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import type { TestCaseIn } from "../api/generated";
 import { apiFetch } from "../api/client";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
@@ -163,13 +165,14 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
   const [cont, setCont] = useState(false);
   const [attached, setAttached] = useState<Record<string, FileRef[]>>({});
   const files = useMemo(() => fileFields(wf), [wf]);
-  const run = useRun();
+  const threadId = useRun((s) => s.threadId);
+  const busy = useRun((s) => s.running || s.starting);
   const start = () => {
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(input || "{}");
     } catch {
-      run.apply({ type: "RUN_ERROR", message: "input is not valid JSON" });
+      useRun.getState().apply({ type: "RUN_ERROR", message: "input is not valid JSON" });
       return;
     }
     void startRun(withFiles(parsed, files, attached), { continueThread: cont });
@@ -186,10 +189,10 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
           onChange={(v) => setAttached((a) => ({ ...a, [f.name]: v }))} />
       ))}
       <label className="row">
-        <input type="checkbox" checked={cont} disabled={!run.threadId} onChange={(e) => setCont(e.target.checked)} />
-        continue thread <code>{run.threadId ?? "—"}</code>
+        <input type="checkbox" checked={cont} disabled={!threadId} onChange={(e) => setCont(e.target.checked)} />
+        continue thread <code>{threadId ?? "—"}</code>
       </label>
-      <button type="button" className="primary" onClick={start} disabled={disabled}>{run.running || run.starting ? "Running…" : "▶ Run"}</button>
+      <button type="button" className="primary" onClick={start} disabled={disabled}>{busy ? "Running…" : "▶ Run"}</button>
     </>
   );
 }
@@ -238,25 +241,38 @@ function ChatBubble({ m }: { m: ChatMessage }) {
 }
 
 /** "Save as test case" (M6-T9): this input must keep producing this status, route and output. */
-function SaveAsTest() {
+export function SaveAsTest() {
   const wf = useEditor((s) => s.wf);
-  const run = useRun();
+  // only what a test case is made of: the whole store changes on every streamed token
+  const run = useRun(useShallow((s) => ({
+    input: s.input, finalOutput: s.finalOutput, route: s.route, interrupts: s.interrupts, error: s.error, running: s.running,
+  })));
   const qc = useQueryClient();
-  const [saved, setSaved] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const save = useMutation({
+    mutationFn: (body: TestCaseIn) => apiFetch(`/workflows/${wf?.id}/test-cases`, { method: "POST", json: body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["test-cases", wf?.id] }),
+  });
   if (!wf) return null;
   const draft = testCaseFromRun(wf, run, debugAids(), "");
   if (!draft) return null;
-  const save = async () => {
-    const name = (await promptDialog({ title: "Save as test case", body: "This input must keep producing this status, route and output.", confirm: "Save", input: { label: "Name", value: `case ${new Date().toLocaleTimeString()}`, required: true } }))?.trim();
-    if (!name) return;
-    await apiFetch(`/workflows/${wf.id}/test-cases`, { method: "POST", json: { ...draft, name } });
-    void qc.invalidateQueries({ queryKey: ["test-cases", wf.id] });
-    setSaved(name);
+  const ask = async () => {
+    if (asking || save.isPending) return;
+    setAsking(true);
+    try {
+      const name = (await promptDialog({ title: "Save as test case", body: "This input must keep producing this status, route and output.", confirm: "Save", input: { label: "Name", value: `case ${new Date().toLocaleTimeString()}`, required: true } }))?.trim();
+      if (name) save.mutate({ ...draft, name });
+    } finally {
+      setAsking(false);
+    }
   };
   return (
     <p className="row gap">
-      <button type="button" onClick={() => void save()}>Save as test case</button>
-      {saved && <span className="muted small" role="status">saved “{saved}”</span>}
+      <button type="button" disabled={asking || save.isPending} onClick={() => void ask()}>
+        {save.isPending ? "Saving…" : "Save as test case"}
+      </button>
+      {save.isSuccess && <span className="muted small" role="status">saved “{save.variables.name}”</span>}
+      {save.isError && <span className="error-text small" role="alert">Could not save the test case: {(save.error as Error).message}</span>}
     </p>
   );
 }
