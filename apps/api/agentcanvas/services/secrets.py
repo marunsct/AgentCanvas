@@ -46,6 +46,9 @@ class SecretService:
     def __init__(self, session: AsyncSession, keyring: Keyring):
         self.s = session
         self.keys = keyring
+        # after `values`: organisations whose data key could not be unwrapped (org id -> why), and their projects
+        self.key_errors: dict[str, str] = {}
+        self.unreadable: set[str] = set()
 
     async def names(self, project_id: str) -> list[Secret]:
         q = select(Secret).where(Secret.project_id == project_id).order_by(Secret.name)
@@ -91,7 +94,15 @@ class SecretService:
             q = q.where(Secret.project_id == project_id)
         out: dict[str, dict[str, str]] = {}
         for row, org_id in (await self.s.execute(q)).all():
-            f = await self.keys.fernet(self.s, org_id) if row.org_key else self.keys.legacy
+            if org_id in self.key_errors:
+                self.unreadable.add(row.project_id)
+                continue
+            try:  # one organisation's unreadable data key (a rotated secret key, a KMS outage) is its alone
+                f = await self.keys.fernet(self.s, org_id) if row.org_key else self.keys.legacy
+            except Exception as exc:  # noqa: BLE001 - RuntimeError, InvalidToken or the KMS client's own errors
+                self.key_errors[org_id] = f"{type(exc).__name__}: {exc}"
+                self.unreadable.add(row.project_id)
+                continue
             try:
                 out.setdefault(row.project_id, {})[row.name] = f.decrypt(row.ciphertext).decode()
             except InvalidToken:  # encrypted with another key: unusable, never crash startup
@@ -112,18 +123,34 @@ class SecretCache:
         self.db, self.keyring, self.cache, self.interval_s = db, keyring, cache, interval_s
         self.versions: dict[str, int] = {}
         self._task: asyncio.Task | None = None
+        self._reported: set[str] = set()  # organisations whose unreadable data key was logged
 
     async def sync(self) -> None:
-        """Reload the projects whose secrets changed since they were read (every project at startup)."""
+        """Reload the projects whose secrets changed since they were read (every project at startup). A project
+        whose organisation's data key cannot be unwrapped is left as it was and tried again on the next sync."""
         async with self.db.sessionmaker() as s:
             rows = (await s.execute(select(Project.id, Project.secrets_version))).all()
             versions: dict[str, int] = {project_id: version for project_id, version in rows}
             stale = [p for p, v in versions.items() if self.versions.get(p) != v]
             if not stale:
                 return
-            values = await SecretService(s, self.keyring()).values(stale[0] if len(stale) == 1 else None)
+            svc = SecretService(s, self.keyring())
+            values = await svc.values(stale[0] if len(stale) == 1 else None)
+        self._report(svc)
         for project_id in stale:
-            self._set(project_id, versions[project_id], values.get(project_id, {}))
+            if project_id not in svc.unreadable:
+                self._set(project_id, versions[project_id], values.get(project_id, {}))
+
+    def _report(self, svc: SecretService) -> None:
+        for org_id, why in svc.key_errors.items():
+            if org_id not in self._reported:
+                self._reported.add(org_id)
+                log.error(
+                    "secret.org_key_unreadable", org_id=org_id, error=why,
+                    hint="the master key that wrapped this organisation's data key is not AGENTCANVAS_KMS_KEY or in "
+                    "AGENTCANVAS_KMS_PREVIOUS_KEYS (with AGENTCANVAS_KMS_KEY empty it is derived from "
+                    "AGENTCANVAS_SECRET_KEY): its secrets stay unavailable until that key is back",
+                )  # fmt: skip
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._loop(), name="secrets")
@@ -148,8 +175,11 @@ class SecretCache:
             version = await s.scalar(select(Project.secrets_version).where(Project.id == project_id))
             if version is None or self.versions.get(project_id) == version:
                 return
-            values = (await SecretService(s, self.keyring()).values(project_id)).get(project_id, {})
-        self._set(project_id, version, values)
+            svc = SecretService(s, self.keyring())
+            values = (await svc.values(project_id)).get(project_id, {})
+        self._report(svc)
+        if project_id not in svc.unreadable:
+            self._set(project_id, version, values)
 
     def _set(self, project_id: str, version: int, values: dict[str, str]) -> None:
         current = self.cache.setdefault(project_id, {})
