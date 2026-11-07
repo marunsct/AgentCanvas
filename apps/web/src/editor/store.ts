@@ -57,7 +57,8 @@ export interface EditorState {
   drill: string[]; // subgraph node ids the canvas is showing (read-only drill-in, M2-T13)
   group: (() => Promise<void>) | null; // "convert selection to subgraph", registered by the canvas
 
-  load: (id: string) => Promise<void>;
+  /** `keepEdits`: the reload after a refused save, which keeps the edits queued meanwhile and stays "saving". */
+  load: (id: string, opts?: { keepEdits?: boolean }) => Promise<void>;
   dispatch: (cmds: Command[], opts?: { debounceMs?: number; history?: "push" | "undo" | "redo" }) => void;
   flush: () => Promise<void>;
   undo: () => void;
@@ -204,11 +205,14 @@ async function save(workflowId: string): Promise<void> {
     const conflict = e instanceof ApiError && e.status === 409;
     // the edits not on the server: on a conflict the whole batch; on a refusal the edits typed after it (a refusal
     // used to drop those too)
-    const mine = conflict ? [...batch, ...get().pending] : get().pending;
+    const before = conflict ? [...batch, ...get().pending] : get().pending;
     const refused = conflict ? null : `Edit rejected: ${describeRefused(batch, (e as Error).message)}`;
     set({ pending: [] });
-    const reloaded = await get().load(workflowId).then(() => true, () => false);
+    // still "saving" while the latest version loads: undo and redo wait, and edits typed meanwhile stay queued
+    const reloaded = await get().load(workflowId, { keepEdits: true }).then(() => true, () => false);
     if (get().workflowId !== workflowId) return;
+    const mine = [...before, ...get().pending]; // a reload used to drop what was typed while it loaded
+    historyMode.next = "push"; // the edits put back are new edits, whatever step was queued before
     if (!mine.length) {
       set({ notice: refused ? { kind: "error", text: refused } : { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
     } else {
@@ -254,7 +258,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ ...initial });
   },
 
-  load: async (id) => {
+  load: async (id, opts = {}) => {
     const seq = ++loadSeq;
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
     if (seq !== loadSeq) return;
@@ -264,7 +268,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const same = workflowId === id && version === out.version; // a reload after a refused edit keeps the history
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
-      diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
+      diagnostics: out.diagnostics, ...(opts.keepEdits ? {} : { pending: [], inflight: false }), breakpoints: loadBreakpoints(id),
       pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}), drill: [],
       // inverses from another version no longer apply
       undoStack: same ? undoStack : [], redoStack: same ? redoStack : [],

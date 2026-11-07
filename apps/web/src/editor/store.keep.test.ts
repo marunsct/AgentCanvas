@@ -5,6 +5,7 @@ import { normalize } from "../ir/model";
 /** Requests the store made, and how the fake server answers the next commands request. */
 const requests: { path: string; method: string; commands?: Command[]; version?: number }[] = [];
 let conflictNext = false;
+let getGate: Promise<void> | null = null; // while set, a reload (GET) waits for it
 
 const wfOut = (version: number, name: string) => ({
   id: "wf_1", project_id: "prj_default", version, ir_hash: "h", diagnostics: [], inverse: [], layout: {},
@@ -24,6 +25,7 @@ vi.mock("../api/client", () => {
         throw new ApiError(409, "version mismatch");
       }
       if (opts.method === "POST") return wfOut((opts.version ?? 0) + 1, "saved");
+      if (getGate) await getGate;
       return wfOut(7, "changed elsewhere"); // GET: someone else saved version 7
     }),
   };
@@ -62,5 +64,26 @@ describe("edits are kept", () => {
     expect(posts[1]).toMatchObject({ commands: [rename("mine")], version: 7 });
     expect(useEditor.getState().notice?.text).toMatch(/your edits were applied/);
     expect(useEditor.getState().pending).toEqual([]);
+  });
+
+  it("keeps edits typed while the latest version reloads after a conflict, and blocks undo meanwhile", async () => {
+    conflictNext = true;
+    let open!: () => void;
+    getGate = new Promise((r) => { open = r; });
+    try {
+      useEditor.getState().dispatch([rename("mine")]);
+      for (let i = 0; i < 4; i++) await tick();
+      expect(requests.at(-1)?.method).toBe("GET"); // reloading
+      useEditor.getState().dispatch([rename("during")]); // typed meanwhile
+      expect(useEditor.getState().inflight).toBe(true); // so undo and redo wait
+      open();
+      for (let i = 0; i < 8; i++) await tick();
+    } finally {
+      getGate = null;
+    }
+    const posts = requests.filter((r) => r.method === "POST");
+    expect(posts[1]).toMatchObject({ commands: [rename("mine"), rename("during")], version: 7 });
+    expect(useEditor.getState()).toMatchObject({ pending: [], inflight: false });
+    expect(useEditor.getState().wf?.name).toBe("saved");
   });
 });
