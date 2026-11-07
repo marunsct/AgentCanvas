@@ -101,12 +101,14 @@ def docker_command(
     name: str | None = None,
     proxy: str | None = None,
 ) -> list[str]:
+    """`docker create` for one call: `_exchange` starts it attached and removes it however the call ends (a
+    `docker run --rm` killed while it was still creating the container could leave it running, RT-19)."""
     # no network at all; with an egress allow-list, the internal network whose only way out is the egress proxy
     from agentcanvas.sandbox.docker_egress import NETWORK
 
     env = [arg for k, v in proxy_env(proxy).items() for arg in ("-e", f"{k}={v}")]
     return [
-        "docker", "run", "--rm", "-i", *(["--name", name] if name else []),
+        "docker", "create", "-i", *(["--name", name] if name else []),
         "--user", "65534:65534",  # nobody: never root inside the sandbox (S2)
         "--network", NETWORK if proxy else "none", *env,
         "--memory", f"{memory_mb}m", "--cpus", "1", "--pids-limit", "64",
@@ -157,10 +159,45 @@ async def _exchange(
     proxy: str | None = None,
 ) -> dict:
     name = f"ac-sbx-{uuid.uuid4().hex[:12]}"
-    if mode == "docker":
-        argv, env, cwd = docker_command(image, workspace, import_path, memory_mb, name, proxy), None, None
-    else:
-        argv, env, cwd = subprocess_command(workspace, import_path)
+    if mode != "docker":
+        return await _attached(mode, subprocess_command(workspace, import_path), payload, timeout, memory_mb,
+                               import_path, name, proxy)  # fmt: skip
+    try:
+        created = await _docker("create", docker_command(image, workspace, import_path, memory_mb, name, proxy))
+        if created:
+            raise ScriptError(f"{import_path} failed: the sandbox container was not created: {created[-500:]}")
+        start = (["docker", "start", "-ai", name], None, None)
+        return await _attached(mode, start, payload, timeout, memory_mb, import_path, name, proxy)
+    finally:  # however the call ended (even cancelled while creating), the container goes
+        await asyncio.shield(_docker("rm", ["docker", "rm", "-f", name]))
+
+
+async def _docker(what: str, argv: list[str]) -> str:
+    """Run a docker command to its end; returns its error output when it failed, else ''."""
+    proc = await asyncio.create_subprocess_exec(
+        *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        _, err = await proc.communicate()
+    except BaseException:  # cancelled: a `create` cut short may still make the container, so let it end first
+        await asyncio.shield(proc.wait())
+        raise
+    if proc.returncode and what != "rm":
+        return err.decode(errors="replace") or f"exit {proc.returncode}"
+    return ""
+
+
+async def _attached(
+    mode: str,
+    command: tuple[list[str], dict[str, str] | None, Path | None],
+    payload: dict[str, Any],
+    timeout: float,
+    memory_mb: int,
+    import_path: str,
+    name: str,
+    proxy: str | None,
+) -> dict:
+    argv, env, cwd = command
     if proxy and mode != "docker":  # the child reads it from stdin; another process cannot read it from /proc
         payload = {**payload, "egress_proxy": proxy}
     limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout))
@@ -176,7 +213,7 @@ async def _exchange(
     try:
         out, err = await asyncio.wait_for(_communicate(proc, json.dumps(payload).encode(), import_path), timeout)
     except TimeoutError:
-        await _stop(proc, mode, name)
+        await asyncio.shield(_stop(proc, mode, name))
         raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
     except BaseException:  # the run was cancelled (or its time budget ran out): its code must not live on
         await asyncio.shield(_stop(proc, mode, name))
@@ -237,10 +274,7 @@ async def _stop(proc: asyncio.subprocess.Process, mode: str, name: str) -> None:
         proc.kill()
         await proc.wait()
     if mode == "docker":  # killing the client leaves the container running: stop the container itself
-        killer = await asyncio.create_subprocess_exec(
-            "docker", "kill", name, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-        )
-        await killer.wait()
+        await _docker("rm", ["docker", "rm", "-f", name])
 
 
 async def run_in_sandbox(

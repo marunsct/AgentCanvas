@@ -387,6 +387,64 @@ async def test_a_child_that_writes_without_end_is_stopped(tmp_path, monkeypatch)
     assert asyncio.get_running_loop().time() - started < 4  # stopped at the cap, not at the time limit
 
 
+class FakeDocker:
+    """`asyncio.create_subprocess_exec` for docker commands: records them; `start` answers or hangs."""
+
+    def __init__(self, hang: bool):
+        self.calls: list[list[str]] = []
+        self.hang = hang
+
+    async def __call__(self, *argv: str, **kw):
+        self.calls.append(list(argv))
+        hang = self.hang and argv[1] == "start"
+
+        class Proc:
+            returncode: int | None = None if hang else 0
+            stdin = type("W", (), {"write": lambda s, d: None, "close": lambda s: None,
+                                   "drain": staticmethod(lambda: asyncio.sleep(0))})()  # fmt: skip
+
+            def __init__(self):
+                self.stdout, self.stderr = asyncio.StreamReader(), asyncio.StreamReader()
+                if not hang:
+                    self.stdout.feed_data(b'{"ok": true, "update": {"n": 1}}\n')
+                    self.stdout.feed_eof()
+                self.stderr.feed_eof()
+
+            async def communicate(self):
+                return b"", b""
+
+            async def wait(self):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+                self.stdout.feed_eof()
+
+        return Proc()
+
+
+@pytest.mark.parametrize("hang", [False, True])
+async def test_a_docker_call_always_removes_its_container(tmp_path, monkeypatch, hang):
+    """RT-19: `docker run --rm` killed while it was creating the container could leave it running (`docker kill`
+    came too early); now the container is created first, started attached, and removed however the call ends."""
+    from agentcanvas.sandbox import runners
+
+    docker = FakeDocker(hang)
+    monkeypatch.setattr(runners.asyncio, "create_subprocess_exec", docker)
+    call = asyncio.create_task(runners._exchange("docker", tmp_path, "s:f", {"state": {}}, "img", 20))
+    if hang:
+        await asyncio.sleep(0.05)
+        call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await call
+    else:
+        assert (await call)["update"] == {"n": 1}
+    verbs = [c[1] for c in docker.calls]
+    assert verbs[:2] == ["create", "start"] and verbs[-1] == "rm"
+    name = docker.calls[0][docker.calls[0].index("--name") + 1]
+    assert docker.calls[-1] == ["docker", "rm", "-f", name] and "--rm" not in docker.calls[0]
+
+
 async def test_only_the_end_of_what_a_child_printed_is_kept():
     from agentcanvas.sandbox import runners
 
