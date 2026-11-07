@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 from agentcanvas.ir.models import Node, Resource
 from agentcanvas.registry import SAMPLING, provider_installed
+from agentcanvas.sampling import refuses
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
 
 
@@ -242,17 +243,18 @@ def cost_budget_prices(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 @rule
 def sampling_refused(ctx: ValidationContext) -> Iterator[Diagnostic]:
-    """W020: temperature, top_p or top_k on a model that refuses them (current Claude models, reasoning models such as
+    """W020: temperature, top_p or top_k on a model that refuses them (every Claude model, reasoning models such as
     GPT-5): a run leaves them out, since the provider would answer 400."""
     for r in ctx.wf.resources:
         if r.type != "model.chat":
             continue
-        info = ctx.registry.model(str(r.config.get("model", "")))
+        model = str(r.config.get("model", ""))
+        info = ctx.registry.model(model)
         set_here = [k for k in SAMPLING if r.config.get(k) is not None]
-        if info is not None and not info.sampling and set_here:
+        if set_here and ((info is not None and not info.sampling) or refuses(model)):
             yield warning(
                 "W020",
-                f"'{r.name}': {info.label} does not take {', '.join(set_here)}, so it is not sent",
+                f"'{r.name}': {info.label if info else model} does not take {', '.join(set_here)}, so it is not sent",
                 node_id=r.id,
                 path=f"config.{set_here[0]}",
                 hint="clear it; to steer the answers, say in the prompt how varied or exact they should be",

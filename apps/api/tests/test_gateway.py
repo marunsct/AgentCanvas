@@ -182,7 +182,7 @@ def test_backups_share_the_block_settings_but_not_its_key_or_address():
     assert model.cache_ttl == 30 and model.answers is res.answers
     assert model.metadata["ac_resource"] == "m" and "ac_resource" not in (model.models[0].metadata or {})
     backup = model.models[1]
-    assert backup.temperature == 0.2 and backup.max_tokens == 50
+    assert backup.temperature is None and backup.max_tokens == 50  # shared, less what Claude refuses (W020)
     assert backup.anthropic_api_key.get_secret_value() == "anthropic-key"
     assert "127.0.0.1" not in str(getattr(backup, "anthropic_api_url", ""))
     assert res.model("m", config) is model  # built once per config

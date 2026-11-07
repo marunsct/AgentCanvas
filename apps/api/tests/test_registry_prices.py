@@ -101,7 +101,7 @@ def test_models_that_refuse_sampling_settings_are_not_sent_them():
 
     _, args = chat_model_args("anthropic:claude-sonnet-5-5", {"temperature": 0, "max_tokens": 900}, {})
     assert "temperature" not in args and args["max_tokens"] == 900
-    _, args = chat_model_args("anthropic:claude-haiku-4-5", {"temperature": 0}, {})
+    _, args = chat_model_args("openai:gpt-4.1", {"temperature": 0}, {})
     assert args["temperature"] == 0  # a model that takes it keeps it
     _, args = chat_model_args("ollama:llama3.3", {"temperature": 0.3}, {})
     assert args["temperature"] == 0.3
@@ -109,6 +109,37 @@ def test_models_that_refuse_sampling_settings_are_not_sent_them():
     doc = {"type": "model.chat", "config": {"model": "lmstudio:m", "temperature": 0, "max_tokens": 5}}
     swapped = with_default_model(doc, {"model": "anthropic:claude-sonnet-5-5"})
     assert swapped["config"] == {"max_tokens": 5, "model": "anthropic:claude-sonnet-5-5"}
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "anthropic:claude-haiku-4-5",
+        "anthropic:claude-sonnet-4-5",
+        "anthropic:claude-opus-4-1",
+        "anthropic:claude-some-future-model",
+    ],
+)
+def test_every_claude_model_refuses_sampling_settings(model):
+    """The locked Anthropic SDK (2.x) sends API version 2026-10-21, which answers a temperature with a 400 on every
+    Claude model, older or not in the catalog: runs, exports and W020 leave it out for the whole provider."""
+    from test_frameworks import GREETER
+
+    from agentcanvas.adapters.langchain.nodes import chat_model_args
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import without_sampling
+    from agentcanvas.sampling import refuses
+    from agentcanvas.validation import validate
+
+    assert refuses(model)
+    assert without_sampling(model, {"temperature": 0, "top_k": 3}) == ({}, ["temperature", "top_k"])
+    _, args = chat_model_args(model, {"temperature": 0.2, "max_tokens": 9}, {})
+    assert "temperature" not in args and args["max_tokens"] == 9
+    res = {"id": "r", "type": "model.chat", "name": "m", "config": {"model": model, "temperature": 0}}
+    wf = Workflow.model_validate({"id": "wf_s", "name": "s", **GREETER, "resources": [res]})
+    assert [d.code for d in validate(wf) if d.code == "W020"] == ["W020"]
+    info = default_registry().model(model)
+    assert info is None or info.sampling is False  # the catalog says so too (the playground reads it)
 
 
 def test_w020_names_a_sampling_setting_a_model_ignores():

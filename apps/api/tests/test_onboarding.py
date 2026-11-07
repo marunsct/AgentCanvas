@@ -84,14 +84,19 @@ async def test_playground_model_errors_are_readable(app, api_client):
 
 async def test_playground_becomes_a_workflow_that_runs(app, api_client):
     await _set_default_model(api_client)
-    body = {"name": "French helper", "system_prompt": "Answer in French.", "temperature": 0.3}
+    body = {
+        "name": "French helper",
+        "system_prompt": "Answer in French.",
+        "temperature": 0.3,
+        "model": "ollama:llama3.3",
+    }  # a model that takes a temperature (no Claude model does)
     r = await api_client.post(f"{P}/playground/workflow", json=body)
     assert r.status_code == 201, r.text
     wf = r.json()
     assert not [d for d in wf["diagnostics"] if d["severity"] == "error"], wf["diagnostics"]
     (agent,) = wf["ir"]["nodes"]
     assert agent["type"] == "core.agent" and agent["config"] == {"system_prompt": "Answer in French."}
-    assert wf["ir"]["resources"][0]["config"] == {"model": "anthropic:claude-haiku-4-5", "temperature": 0.3}
+    assert wf["ir"]["resources"][0]["config"] == {"model": "ollama:llama3.3", "temperature": 0.3}
     demo = DemoResources()
     app.state.resources_factory = lambda thread_id, w: demo
     run = await api_client.post(

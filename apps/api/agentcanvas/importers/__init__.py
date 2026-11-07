@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from agentcanvas.agentspec import ident
-from agentcanvas.sampling import refusing
+from agentcanvas.sampling import refuses
 
 CHAT_INPUT = "{{ state.messages[-1].content }}"  # the person's latest chat message
 AGENT_REPLY = "{{ state.messages[-1].content }}"  # an agent's answer: the last message of the chat
@@ -88,7 +88,7 @@ class Builder:
               label: str | None = None) -> str:  # fmt: skip
         """A model block (`provider:model`), shared by the steps that use the same settings; returns its id."""
         conf: dict[str, Any] = {"model": model}
-        if model in refusing():
+        if refuses(model):
             temperature = None  # W020: the model refuses it
         if isinstance(temperature, int | float) and not isinstance(temperature, bool) and 0 <= temperature <= 2:
             conf["temperature"] = float(temperature)
