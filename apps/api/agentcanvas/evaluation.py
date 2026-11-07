@@ -442,7 +442,9 @@ def _passage_key(passage: Any, match_by: str) -> str:
     if not isinstance(passage, dict):
         return str(passage).strip().lower()
     if match_by == "id":
-        return str(passage.get("id") or passage.get("chunk_id") or "")
+        return (
+            str(passage.get("id") or passage.get("chunk_id") or "").strip().lower()
+        )  # the reference is lower-cased too
     if match_by == "title":
         return str(passage.get("title") or "").strip().lower()
     source = str(passage.get("source") or "").strip()

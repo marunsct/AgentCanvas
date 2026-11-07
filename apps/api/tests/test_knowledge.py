@@ -487,6 +487,10 @@ def test_retrieval_evaluator():
     assert asyncio.run(run({"match_by": "source"}, {"relevant": ["https://x.example/sick"]})).score == 1.0
     assert asyncio.run(run({"match_by": "text", "metric": "mrr"}, {"relevant": ["call in"]})).score == 0.5
     assert asyncio.run(run({"match_by": "id"}, {"relevant": "c2"})).score == 1.0
+    # I-7: the reference was lower-cased and the passage id was not, so a mixed-case id never matched
+    mixed = Observation(output={"passages": [{"id": "Doc-7#C2", "text": "x"}]}, reference={"relevant": ["Doc-7#C2"]})
+    got = asyncio.run(score(Spec(name="r", kind="retrieval", config={"match_by": "id"}), mixed))
+    assert got.score == 1.0
     none = asyncio.run(run({}, {}))
     assert none.score is None and "reference.relevant" in none.comment
     assert asyncio.run(run({"channel": "other"})).score == 0.0
