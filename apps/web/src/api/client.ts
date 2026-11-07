@@ -1,5 +1,5 @@
 /** Thin fetch wrapper for the AgentCanvas API: JSON in/out, If-Match versions, problem+json errors. */
-import { accessToken, renew, signInAgain } from "./auth";
+import { accessToken, renew, signInAgain, tokenExpired } from "./auth";
 
 export interface Problem {
   type?: string;
@@ -32,8 +32,10 @@ export async function failed(res: Response): Promise<ApiError> {
   return new ApiError(res.status, (await res.json().catch(() => ({}))) as Problem);
 }
 
-/** `fetch` with the bearer token; on 401 renew the token once without leaving the page and retry. */
+/** `fetch` with the bearer token; on 401 renew the token once without leaving the page and retry. A token known to
+ * have expired is renewed before sending, rather than spending a request on a certain 401. */
 export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  if (tokenExpired()) await renew();
   const res = await fetch(url, { ...init, headers: withAuth(init.headers) });
   if (res.status !== 401 || !(await renew())) return res;
   return fetch(url, { ...init, headers: withAuth(init.headers) });
