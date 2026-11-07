@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from test_publish import make_greeter
+from test_publish import greeter, make_greeter
 
 from agentcanvas.api.deps import CurrentUser, current_user
 from agentcanvas.db.models import AppUser, Membership, Organization, Project
@@ -134,3 +134,30 @@ def test_every_path_parameter_is_scoped(app):
 
     params = {p for path in app.openapi()["paths"] for p in re.findall(r"\{([^}]+)\}", path)}
     assert params - set(SCOPED_PARAMS) - set(CHILD_PARAMS) == set()
+
+
+async def test_thread_ids_of_another_organisation_tell_nothing(app, api_client, org_b):
+    """A cursor naming another organisation's thread is unknown, like a missing one; a caller-named thread id in use
+    elsewhere gets the same answer whether it is another workflow of the caller's or another organisation's."""
+    wf_id = await make_greeter(api_client)
+    wf = Workflow.model_validate((await api_client.get(f"/v1/workflows/{wf_id}")).json()["ir"])
+    h = await app.state.runner.start(wf, thread_id="support-42", input={"who": "Ada"})
+    await asyncio.wait_for(h.done.wait(), 10)
+    other_wf = await make_greeter(api_client)
+    mine = await api_client.post(f"/v1/workflows/{other_wf}/runs/stream", json={"input": {}, "thread_id": "support-42"})
+
+    act_as_b(app)
+    try:
+        assert (await api_client.get("/v1/threads", params={"cursor": "support-42"})).json() == (
+            await api_client.get("/v1/threads", params={"cursor": "th_missing"})
+        ).json() | {"detail": "unknown cursor 'support-42'"}
+        wf_b = (await api_client.post(f"/v1/projects/{PROJECT_B}/workflows", json={"name": "b"})).json()["id"]
+        r = await api_client.put(f"/v1/workflows/{wf_b}", json={"ir": greeter(wf_b, "Hi")}, headers={"If-Match": "1"})
+        assert r.status_code == 200, r.text
+        theirs = await api_client.post(
+            f"/v1/workflows/{wf_b}/runs/stream", json={"input": {}, "thread_id": "support-42"}
+        )
+        assert theirs.status_code == mine.status_code == 422
+        assert theirs.json() == mine.json()
+    finally:
+        app.dependency_overrides.pop(current_user, None)

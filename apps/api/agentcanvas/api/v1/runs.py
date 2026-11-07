@@ -303,9 +303,14 @@ async def start_run(
     if body.breakpoints and body.mode != "debug":
         raise InvalidInput("breakpoints require mode 'debug'")
     if body.thread_id:
+        # thread ids are one namespace across organisations: an id in use anywhere else gets the same answer, so it
+        # tells nothing about which workflow or organisation holds it
         t = await session.get(Thread, body.thread_id)
         if t is not None and t.workflow_id != wf_id:
-            raise InvalidInput(f"thread '{body.thread_id}' belongs to another workflow")
+            raise InvalidInput(
+                f"thread id '{body.thread_id}' cannot be used here: continue a conversation of this workflow, or "
+                "leave thread_id out (or choose another id) to start a new one"
+            )
     bp = body.breakpoints or Breakpoints()
     h = await r.start(
         wf,
@@ -429,7 +434,14 @@ async def list_threads(
         q = q.where(Thread.created_at < _utc(until))
     if cursor:
         # ordered by when each began, not by id: a caller may name its own threads ("support-42"), which sort anywhere
-        if await session.get(Thread, cursor) is None:
+        # a thread of another organisation is as unknown as a missing one, so cursors cannot probe ids
+        known = await session.scalar(
+            select(Thread.id)
+            .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+            .join(Project, Project.id == WorkflowRow.project_id)
+            .where(Thread.id == cursor, Project.org_id == user.org_id)
+        )
+        if known is None:
             raise InvalidInput(f"unknown cursor '{cursor}'")
         # compared in SQL, not through a bound value: SQLite keeps CURRENT_TIMESTAMP as text a datetime never equals
         after = select(Thread.created_at).where(Thread.id == cursor).scalar_subquery()
