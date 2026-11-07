@@ -99,6 +99,10 @@ services:
 
   postgres:
     image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    # each API replica opens up to AGENTCANVAS_DB_POOL_SIZE + AGENTCANVAS_DB_MAX_OVERFLOW + AGENTCANVAS_PERSISTENCE_POOL_SIZE
+    # (10 + 20 + 20 = 50) connections: API_REPLICAS x 50 + 10 (migrations, psql, backups) must stay below this.
+    # 200 fits three replicas; raise it (or lower the pools) for more (docs/user-guide/deploy.md)
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-200}"]
     environment:
       POSTGRES_USER: agentcanvas
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}

@@ -188,3 +188,20 @@ def test_the_api_reads_every_setting_of_the_env_file_and_the_sandbox_none(name, 
     if name == "compose.prod.yml":
         assert [f["path"] for f in services["migrate"]["env_file"]] == [env_file]
         assert services["api"]["environment"]["POSTGRES_PASSWORD"] == ""  # the owner's password is not the API's
+
+
+def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
+    import re
+
+    from agentcanvas.adapters.langchain.persistence import POOL_SIZE
+    from agentcanvas.settings import Settings
+
+    prod = compose("compose.prod.yml")["services"]
+    command = " ".join(prod["postgres"]["command"])
+    allowed = int(re.search(r"max_connections=\$\{POSTGRES_MAX_CONNECTIONS:-(\d+)\}", command).group(1))  # type: ignore[union-attr]
+    replicas = int(re.search(r":-(\d+)", str(prod["api"]["deploy"]["replicas"])).group(1))  # type: ignore[union-attr]
+    pool, overflow = (Settings.model_fields[f].default for f in ("db_pool_size", "db_max_overflow"))
+    per_replica = pool + overflow + POOL_SIZE
+    assert replicas * per_replica + 10 <= allowed, (replicas, per_replica, allowed)
+    guide = (ROOT / "docs" / "user-guide" / "deploy.md").read_text()
+    assert f"{pool} + {overflow} + {POOL_SIZE} = {per_replica}" in guide  # the guide's sum is the code's defaults

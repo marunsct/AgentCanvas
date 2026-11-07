@@ -26,6 +26,12 @@ docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 This starts Postgres, a one-shot migration, two API replicas and the web server on port 8080 (`WEB_PORT`). Put a
 TLS-terminating proxy in front and keep response buffering **off** for `/api/` (runs stream Server-Sent Events).
 
+**Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
+`AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
+at least `API_REPLICAS × 50 + 10` (the 10 for migrations, `psql` and backups). The compose file starts Postgres with
+`max_connections=200` (`POSTGRES_MAX_CONNECTIONS`), enough for three replicas; for more, raise it or lower the pools
+in `infra/.env.prod`. A managed Postgres or PgBouncer needs the same sum.
+
 **Which file is read.** The API containers (and the migration) read every setting in `infra/.env.prod`, so any
 setting on this page (retention, model prices, provider keys, `AGENTCANVAS_PUBLIC_URL`, `OTEL_*`, `LANGSMITH_*`,
 `AGENTCANVAS_MATURA_*`...) goes in that file; the compose file's own values win where both set one. The name is
