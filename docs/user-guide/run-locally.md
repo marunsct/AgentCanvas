@@ -63,7 +63,8 @@ Models on your own computer are reached from inside Docker through `host.docker.
 | `docker compose -f infra/compose.local.yml down -v` | stop and delete all data |
 
 Optional settings (another port with `WEB_PORT`, server-wide provider keys) go in `infra/.env.local`: copy
-`infra/.env.local.example` and fill it in; `make docker-up` picks it up. The Docker setup has no sign-in (you are
+`infra/.env.local.example` and fill it in; `make docker-up` picks it up. The API reads every setting in that file, so
+any `AGENTCANVAS_*` setting from [Deploy and operate](deploy.md#essential-settings) can go there too. The Docker setup has no sign-in (you are
 the local admin): don't expose it to other people. For a shared server follow [Deploy and operate](deploy.md).
 
 ## From source

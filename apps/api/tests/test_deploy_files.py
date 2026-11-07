@@ -158,3 +158,33 @@ def test_the_sandbox_reaches_the_egress_proxy_only_and_no_dns():
     assert api and env_of(api)["AGENTCANVAS_EGRESS_PROXY_RESOLVE"] == "true"  # the API hands over the ClusterIP
     offline = find(render("sandbox.egress.enabled=false"), "NetworkPolicy", "-sandbox")
     assert offline and offline["spec"]["egress"] == []
+
+
+# the variables compose.prod.yml requires, with throwaway values, for `docker compose config`
+PROD_ENV = {
+    "POSTGRES_PASSWORD": "x", "POSTGRES_APP_PASSWORD": "y", "AGENTCANVAS_SECRET_KEY": "k" * 64,
+    "LANGGRAPH_AES_KEY": "a" * 32, "AGENTCANVAS_SANDBOX_TOKEN": "t" * 32, "AGENTCANVAS_EGRESS_SECRET": "e" * 32,
+}  # fmt: skip
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is not installed")
+@pytest.mark.parametrize("name", ["compose.prod.yml", "compose.local.yml", "docker-compose.yml"])
+def test_the_compose_files_are_valid(name):
+    """`docker compose config` only reads the file: nothing is started."""
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "/tmp")} | PROD_ENV
+    done = subprocess.run(["docker", "compose", "-f", str(ROOT / "infra" / name), "config", "-q"], env=env,
+                          capture_output=True, text=True, timeout=60, check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize(("name", "env_file"), [("compose.prod.yml", ".env.prod"), ("compose.local.yml", ".env.local")])
+def test_the_api_reads_every_setting_of_the_env_file_and_the_sandbox_none(name, env_file):
+    services = compose(name)["services"]
+    api_files = [f["path"] for f in services["api"]["env_file"]]
+    assert api_files == [env_file] and services["api"]["env_file"][0]["required"] is False
+    for other in ["sandbox", "egress", "postgres", "web"]:
+        assert "env_file" not in services[other], other  # the sandbox and the proxy get only their own secret
+    assert services["egress"]["environment"]["AGENTCANVAS_EGRESS_ALLOW_PRIVATE"].startswith("${")
+    if name == "compose.prod.yml":
+        assert [f["path"] for f in services["migrate"]["env_file"]] == [env_file]
+        assert services["api"]["environment"]["POSTGRES_PASSWORD"] == ""  # the owner's password is not the API's

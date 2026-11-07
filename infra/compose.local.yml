@@ -2,7 +2,8 @@
 #   make docker-up          (or: docker compose -f infra/compose.local.yml up -d --build --wait)
 # then open http://localhost:7777 and choose your model on the first-run screen (hosted or local).
 # No sign-in: every request is the built-in local admin. Not for servers others can reach: use compose.prod.yml.
-# Optional settings come from your shell or a file passed with --env-file (see infra/.env.local.example).
+# Optional settings come from infra/.env.local (see infra/.env.local.example): the API reads every setting in it, and
+# the ${...} below come from it with --env-file (make docker-up passes it) or from your shell.
 name: agentcanvas-local
 
 services:
@@ -27,6 +28,11 @@ services:
         FRAMEWORKS: ${FRAMEWORKS:-all}
         WITH_MASTRA: ${WITH_MASTRA:-true}
     image: ${API_IMAGE:-agentcanvas-api:latest}
+    # every setting in infra/.env.local reaches the API (any AGENTCANVAS_* setting, OTEL_*, LANGSMITH_*...); the
+    # `environment` below wins where both name one
+    env_file:
+      - path: .env.local
+        required: false
     environment:
       DATABASE_URL: postgresql://agentcanvas:${POSTGRES_PASSWORD:-agentcanvas-local}@postgres:5432/agentcanvas
       AGENTCANVAS_ENV: dev                       # allows local mode (no sign-in)
@@ -95,6 +101,7 @@ services:
     command: ["python", "-m", "agentcanvas.sandbox.egress", "--port", "3128"]
     environment:
       AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:-local-egress-secret-0123456789abcdef}
+      AGENTCANVAS_EGRESS_ALLOW_PRIVATE: ${AGENTCANVAS_EGRESS_ALLOW_PRIVATE:-0}   # 1: also private addresses
     networks: [default, sandbox]
     read_only: true
     cap_drop: [ALL]

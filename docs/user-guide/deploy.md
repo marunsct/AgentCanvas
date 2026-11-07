@@ -26,6 +26,13 @@ docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 This starts Postgres, a one-shot migration, two API replicas and the web server on port 8080 (`WEB_PORT`). Put a
 TLS-terminating proxy in front and keep response buffering **off** for `/api/` (runs stream Server-Sent Events).
 
+**Which file is read.** The API containers (and the migration) read every setting in `infra/.env.prod`, so any
+setting on this page (retention, model prices, provider keys, `AGENTCANVAS_PUBLIC_URL`, `OTEL_*`, `LANGSMITH_*`,
+`AGENTCANVAS_MATURA_*`...) goes in that file; the compose file's own values win where both set one. The name is
+fixed: `--env-file` only fills in the compose file's `${...}` values, so a file of another name is not read by the
+API. The sandbox and egress containers do not read it (they get only their own token or secret, and the egress proxy
+`AGENTCANVAS_EGRESS_ALLOW_PRIVATE`).
+
 ## Option 2: Kubernetes with Helm
 
 The chart is in `infra/helm/agentcanvas`. No AgentCanvas image is published: build both images and push them to a

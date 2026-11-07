@@ -8,7 +8,14 @@ name: agentcanvas
 
 x-api: &api
   image: ${API_IMAGE:-agentcanvas-api:latest}
+  # every setting in infra/.env.prod reaches the API (retention, model prices, provider keys, AGENTCANVAS_PUBLIC_URL,
+  # OTEL_*, LANGSMITH_*, AGENTCANVAS_MATURA_*...); the `environment` below wins where both name one. The file's name
+  # is fixed here: --env-file only fills in the ${...} of this file.
+  env_file:
+    - path: .env.prod
+      required: false                          # CI and others pass everything as environment variables instead
   environment: &api-env
+    POSTGRES_PASSWORD: ""                      # the owner's password stays with the migrate service's URL
     # the API connects as an ordinary role, so row-level security applies (the owner only runs migrations)
     DATABASE_URL: postgresql://agentcanvas_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}@postgres:5432/agentcanvas
     AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
@@ -74,8 +81,10 @@ services:
   egress:
     image: ${API_IMAGE:-agentcanvas-api:latest}
     command: ["python", "-m", "agentcanvas.sandbox.egress", "--port", "3128"]
+    # only its own settings, not infra/.env.prod: the proxy faces the internet and needs none of the API's keys
     environment:
       AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:?set AGENTCANVAS_EGRESS_SECRET (32+ random characters)}
+      AGENTCANVAS_EGRESS_ALLOW_PRIVATE: ${AGENTCANVAS_EGRESS_ALLOW_PRIVATE:-0}
     networks: [default, sandbox]
     read_only: true
     cap_drop: [ALL]
