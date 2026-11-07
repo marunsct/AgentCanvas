@@ -10,12 +10,16 @@ The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS
 Files people attached to runs (G-5) follow conversations: one no run has used for the organisation's conversation
 retention is deleted.
 
-Every API replica runs the job; deleting is idempotent, so replicas that overlap only repeat work.
+Every API replica runs the job. Each conversation is claimed before it is deleted (its row locked, skipping one
+another replica holds, on Postgres) and the age and status are checked again under that lock, so replicas share the
+work and a conversation that came back to life since the scan is kept. A tick goes through every expired
+conversation, a batch at a time, within a time budget; what is left waits for the next tick.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -34,6 +38,12 @@ log = get_logger(__name__)
 
 DELETED = Counter("agentcanvas_threads_expired_total", "Conversations deleted by the retention job")
 BATCH = 500
+BUDGET_S = 300.0  # the most a tick spends deleting conversations; the rest is the next tick's
+
+
+def _expired(cutoff: datetime) -> tuple[Any, ...]:
+    """A conversation that may be deleted: inactive since before `cutoff`, and not running or waiting for a person."""
+    return (Thread.updated_at < cutoff, Thread.status.not_in(("running", "interrupted")))
 
 
 class RetentionJob:
@@ -68,39 +78,60 @@ class RetentionJob:
                 log.exception("retention.tick_failed")
             await asyncio.sleep(self.interval_s)
 
+    async def _expired(self, org_id: str, cutoff: datetime, after: str) -> list[str]:
+        """The next batch of an organisation's expired conversations, by id after `after`."""
+        async with self.db.sessionmaker() as s:
+            return list(
+                (
+                    await s.scalars(
+                        select(Thread.id)
+                        .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+                        .join(Project, Project.id == WorkflowRow.project_id)
+                        .where(Project.org_id == org_id, Thread.id > after, *_expired(cutoff))
+                        .order_by(Thread.id)
+                        .limit(BATCH)
+                    )
+                ).all()
+            )
+
+    async def _delete(self, thread_id: str, cutoff: datetime) -> bool:
+        """Delete one conversation if it is still expired, holding its row so no run starts on it meanwhile and no
+        other replica deletes it too (one that holds it is skipped). False when it was kept."""
+        if thread_id in self.runner.active_by_thread:  # started since the scan
+            return False
+        async with self.db.sessionmaker() as s:
+            claimed = await s.scalar(
+                select(Thread.id).where(Thread.id == thread_id, *_expired(cutoff)).with_for_update(skip_locked=True)
+            )
+            if claimed is None:  # touched since the scan, gone, or another replica's
+                return False
+            await self.runner.forget_thread(thread_id)  # checkpoints first: rows are the index
+            await delete_thread_rows(s, thread_id)
+            await s.commit()
+        return True
+
     async def tick(self, now: datetime) -> list[str]:
-        """Delete the conversations that expired by `now` (at most BATCH per organisation); returns their ids."""
+        """Delete the conversations that expired by `now`; returns their ids."""
         deleted: list[str] = []
+        until = time.monotonic() + BUDGET_S
         async with self.db.sessionmaker() as s:
             orgs = (await s.execute(select(Organization.id, Organization.retention_days))).all()
         for org_id, own in orgs:
             days = self.default_days if own is None else own
             if days <= 0:
                 continue
-            async with self.db.sessionmaker() as s:
-                expired = (
-                    await s.scalars(
-                        select(Thread.id)
-                        .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
-                        .join(Project, Project.id == WorkflowRow.project_id)
-                        .where(
-                            Project.org_id == org_id,
-                            Thread.updated_at < now - timedelta(days=days),
-                            Thread.status.not_in(("running", "interrupted")),
-                        )
-                        .limit(BATCH)
-                    )
-                ).all()
-            gone = 0
-            for thread_id in expired:
-                if thread_id in self.runner.active_by_thread:  # started since the scan
-                    continue
-                await self.runner.forget_thread(thread_id)  # checkpoints first: rows are the index
-                async with self.db.sessionmaker() as s:
-                    await delete_thread_rows(s, thread_id)
-                    await s.commit()
-                deleted.append(thread_id)
-                gone += 1
+            cutoff, after, gone = now - timedelta(days=days), "", 0
+            while time.monotonic() < until:
+                batch = await self._expired(org_id, cutoff, after)
+                for thread_id in batch:
+                    if time.monotonic() >= until:
+                        break
+                    if await self._delete(thread_id, cutoff):
+                        deleted.append(thread_id)
+                        gone += 1
+                if len(batch) < BATCH:
+                    break
+                after = batch[-1]
             if gone:
                 log.info("retention.deleted", org_id=org_id, threads=gone, days=days)
             async with self.db.sessionmaker() as s:  # G-5: files no run has used for as long go too

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select, update
 from test_publish import make_greeter
 
@@ -103,3 +105,50 @@ async def test_an_organisation_is_renamed_and_a_partial_save_keeps_the_rest(api_
     assert out["audit_retention_days"] == 400 and out["memory_retention_days"] == 0
     assert (await api_client.put("/v1/org/settings", json={"name": "   "})).status_code == 422
     assert (await api_client.put("/v1/org/settings", json={"retention_days": None})).json()["retention_days"] is None
+
+
+async def test_a_tick_deletes_every_expired_conversation_a_batch_at_a_time(app, api_client, monkeypatch):
+    """OP-7: not only the first batch of an organisation's expired conversations per tick."""
+    from agentcanvas.services import retention
+
+    monkeypatch.setattr(retention, "BATCH", 2)
+    wf = await make_greeter(api_client)
+    old = [f"th_old{i}" for i in range(5)]
+    for t in [*old, "th_new"]:
+        await converse(api_client, wf, t)
+    for t in old:
+        await age(app, t, 91)
+    assert sorted(await app.state.retention.tick(datetime.now(UTC))) == old
+    assert (await api_client.get("/v1/threads/th_new")).status_code == 200
+
+
+async def test_a_conversation_touched_after_the_scan_is_kept(app, api_client, monkeypatch):
+    """OP-7: the age and status are checked again when the conversation is deleted, not only when it was found."""
+    wf = await make_greeter(api_client)
+    await converse(api_client, wf, "th_back")
+    await age(app, "th_back", 91)
+    job = app.state.retention
+    scan = job._expired
+
+    async def scan_then_touch(*args):
+        found = await scan(*args)
+        await age(app, "th_back", 0)  # someone continued the conversation in between
+        return found
+
+    monkeypatch.setattr(job, "_expired", scan_then_touch)
+    assert await job.tick(datetime.now(UTC)) == []
+    assert (await api_client.get("/v1/threads/th_back")).status_code == 200
+
+
+async def test_a_conversation_another_replica_holds_is_skipped(app, api_client):
+    """OP-7: replicas share the work: one held by another (locked row, Postgres) is left to it, without waiting."""
+    if not app.state.db.is_postgres:
+        pytest.skip("row locks need Postgres")
+    wf = await make_greeter(api_client)
+    for t in ("th_held", "th_free"):
+        await converse(api_client, wf, t)
+        await age(app, t, 91)
+    async with app.state.db.sessionmaker() as other:
+        await other.execute(select(Thread.id).where(Thread.id == "th_held").with_for_update())
+        got = await asyncio.wait_for(app.state.retention.tick(datetime.now(UTC)), 10)
+        assert got == ["th_free"]
