@@ -96,7 +96,9 @@ async def _reuse(
         .limit(20)
     )  # fmt: skip
     for exp in (await s.scalars(q)).all():
-        if any(spec not in exp.evaluators for spec in specs):
+        # a simulated user's conversations are not the examples as the gate runs them (the JSON column may hold
+        # a JSON null, which `IS NULL` misses, so this is checked here)
+        if exp.simulation or any(spec not in exp.evaluators for spec in specs):
             continue
         for i, t in enumerate(exp.targets):
             if ir_hash(t["ir"]) == wanted:

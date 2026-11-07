@@ -68,6 +68,21 @@ async def test_a_gate_blocks_a_regression_and_reuses_evaluations(api_client):
     assert (await api_client.delete(f"/v1/workflows/{wf}/gates/prod")).status_code == 404
 
 
+async def test_a_gate_never_reuses_a_simulated_user_experiment(app, api_client):
+    """I-14: a simulated-user experiment of the same workflow, dataset and workspace measures conversations, not the
+    examples as the gate runs them; it was reused as the gate's evaluation."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Experiment
+
+    wf, _ = await gated(api_client)
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    async with app.state.db.sessionmaker() as s, s.begin():
+        await s.execute(update(Experiment).values(simulation={"model": "x:y", "persona": "p", "goal": "g"}))
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    assert len((await api_client.get(f"/v1/workflows/{wf}/experiments")).json()) == 2  # it ran a fresh evaluation
+
+
 async def test_default_thresholds_come_from_the_evaluators(api_client):
     wf, _ = await gated(api_client)
     await set_greeting(api_client, wf, "Hey")
