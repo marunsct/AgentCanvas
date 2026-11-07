@@ -2,7 +2,7 @@
 import { runErrorHelp } from "../help/diagnostics";
 import { useCopilot } from "../copilot/copilot";
 import { HelpText } from "../help/HelpText";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { TestCaseIn } from "../api/generated";
@@ -197,33 +197,41 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
   );
 }
 
-function ChatInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
+export function ChatInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
   const run = useRun();
   const [text, setText] = useState("");
   const thread = useQuery({
     queryKey: ["thread", run.threadId, run.runSeq],
     queryFn: () => apiFetch<{ values: { messages?: ChatMessage[] } }>(`/threads/${run.threadId}`),
     enabled: Boolean(run.threadId),
+    // the same conversation refetched after a run: keep it on screen meanwhile
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === run.threadId ? keepPreviousData(prev) : undefined),
   });
   const messages = thread.data?.values.messages ?? [];
+  const humans = messages.filter((m) => m.type === "human").length;
+  // the message just sent, shown at once: the conversation only has it once the run has stored it
+  const [sent, setSent] = useState<{ text: string; humans: number } | null>(null);
+  const pending = sent && humans <= sent.humans ? sent.text : null;
   const send = () => {
     if (!text.trim()) return;
     const content = text.trim();
     setText("");
+    setSent({ text: content, humans: run.threadId ? humans : 0 });
     void startRun({ messages: [{ role: "user", content }] }, { continueThread: true });
   };
   return (
     <div className="chat" data-testid="chat">
       <div className="chat-log">
-        {messages.length === 0 && <p className="muted">Send a message to start a conversation with “{wf.name}”.</p>}
+        {messages.length === 0 && !pending && <p className="muted">Send a message to start a conversation with “{wf.name}”.</p>}
         {messages.map((m, i) => <ChatBubble key={i} m={m} />)}
+        {pending && <div className="bubble human" data-testid="chat-sent">{pending}</div>}
         {run.running && Object.values(run.output).map((t, i) => <div key={`s${i}`} className="bubble ai streaming">{t}</div>)}
       </div>
       <form className="row gap" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message…" aria-label="chat message" disabled={disabled} />
         <button type="submit" className="primary" disabled={disabled}>Send</button>
       </form>
-      <button type="button" className="link small" onClick={() => useRun.getState().setThread(null)}>New conversation</button>
+      <button type="button" className="link small" onClick={() => { setSent(null); useRun.getState().setThread(null); }}>New conversation</button>
     </div>
   );
 }
