@@ -317,13 +317,17 @@ class LangChainAdapter:
                     elif ev["type"] == "STEP_FINISHED" and ev["task_id"] in started:
                         ev["duration_ms"] = round((time.perf_counter() - started.pop(ev["task_id"])) * 1000)
                     yield _redacted(ev, hidden)
-                for record in usage.drain():
+                for record in usage.records():
                     yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
                 for reply in usage.drain_replies():
                     yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
                 for io in usage.drain_tool_io():
                     yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
+            for record in usage.records():  # reported after the last update
+                yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         except GraphRecursionError as exc:
+            for record in usage.records():  # what the run spent before it stopped still counts
+                yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
             yield {
                 "type": "RUN_ERROR",
                 "code": "recursion_limit",
@@ -332,15 +336,18 @@ class LangChainAdapter:
             }
             return
         except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
+            for record in usage.records():
+                yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
             yield _redacted({"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}, hidden)
             return
         finally:
             with contextlib.suppress(ValueError):  # closed from another context (e.g. cancelled run)
                 _SECRETS.reset(token)
             redaction.__exit__(None, None, None)
+            if spec.on_usage is not None:  # cancelled or timed out: the stream is closed, the usage still counts
+                for record in usage.drain():
+                    spec.on_usage(record)
 
-        for record in usage.drain():
-            yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         for reply in usage.drain_replies():
             yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
         for io in usage.drain_tool_io():

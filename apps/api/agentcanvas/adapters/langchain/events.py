@@ -214,6 +214,12 @@ class UsageTracker(BaseCallbackHandler):
         out, self._records = self._records, []
         return out
 
+    def records(self) -> Iterator[dict[str, Any]]:
+        """The usage records one at a time, each removed as it is handed out: if the reader stops early (a budget
+        reached at the first one), the rest stay here for `drain`."""
+        while self._records:
+            yield self._records.pop(0)
+
     def drain_replies(self) -> list[dict[str, Any]]:
         out, self._replies = self._replies, []
         return out

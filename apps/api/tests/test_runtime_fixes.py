@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -99,3 +100,66 @@ def test_the_hosted_edition_checks_knowledge_embedders(monkeypatch):
     assert "http_async_client" not in seen
     nodes.knowledge_embedder({"model": "lmstudio:e5", "base_url": "http://10.0.0.1/v1"}, {}, public_only=True)
     assert _pinned(seen["http_async_client"])
+
+
+# ------------------------------------------------------------------ RT-4 ----
+class SpendsThen:
+    """A graph whose model call reports usage, then fails or hangs before the next update."""
+
+    def __init__(self, then: str):
+        self.then = then
+
+    async def astream(self, graph_input: Any, cfg: Any, **kw: Any):
+        from uuid import uuid4
+
+        from langchain_core.messages import AIMessage
+        from langchain_core.outputs import ChatGeneration, LLMResult
+
+        usage, run_id = cfg["callbacks"][0], uuid4()
+        usage.on_chat_model_start({}, [], run_id=run_id, metadata={"ac_model": "openai:gpt-5.5"})
+        reply = AIMessage("x", usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150})
+        usage.on_llm_end(LLMResult(generations=[[ChatGeneration(message=reply)]]), run_id=run_id)
+        if self.then == "raise":
+            raise RuntimeError("the provider went away")
+        await asyncio.sleep(30)
+        yield {}
+
+
+def _spec(**kw: Any) -> Any:
+    from agentcanvas.runtime.types import RunSpec
+
+    return RunSpec(workflow=llm_wf(), thread_id="th_u", run_id="run_u", input={"who": "Ada"}, **kw)
+
+
+async def test_usage_before_a_failure_is_reported(monkeypatch):
+    """RT-4: the usage tracker was drained only after a clean update, so a failed run lost its tokens and cost."""
+    adapter = LangChainAdapter()
+
+    async def graph(wf, resources):
+        return SpendsThen("raise")
+
+    monkeypatch.setattr(adapter, "graph", graph)
+    evs = [ev async for ev in adapter.execute(_spec(), adapter.default_resources())]
+    assert [e.get("name") or e["type"] for e in evs] == ["ac.usage", "RUN_ERROR"]
+    assert evs[0]["value"]["input_tokens"] == 120
+
+
+async def test_usage_of_a_cancelled_run_is_recorded(app, api_client, monkeypatch):
+    """RT-4: a cancelled (or timed out) run's last model call never reached the run's tokens and cost."""
+    from test_publish import make_greeter
+
+    real = app.state.runner.adapters["langchain"]
+
+    async def graph(wf, resources):
+        return SpendsThen("hang")
+
+    monkeypatch.setattr(real, "graph", graph)
+    wf = await make_greeter(api_client)
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "stream": False})
+    run_id = r.json()["run_id"]
+    await asyncio.sleep(0.1)
+    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True}
+    await app.state.runner.wait(run_id)
+    run = (await api_client.get(f"/v1/runs/{run_id}")).json()
+    assert run["status"] == "cancelled" and run["tokens_in"] == 120 and run["tokens_out"] == 30
+    assert run["cost_usd"] > 0

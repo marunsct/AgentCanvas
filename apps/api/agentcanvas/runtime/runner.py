@@ -523,6 +523,12 @@ class Runner:
             else:
                 await self._emit(h, event)
 
+        def late_usage(record: dict[str, Any]) -> None:  # reported after the run stopped: before its last event
+            event = self._priced(h, {"type": "CUSTOM", "name": "ac.usage", "value": record})
+            at = next((i for i, e in enumerate(held) if e["type"] in ("RUN_FINISHED", "RUN_ERROR")), len(held))
+            held.insert(at, event)
+
+        spec.on_usage = late_usage
         budget = spec.workflow.settings.budget
         events: Any = None  # the adapter's async generator (closed in `finally`)
         by_period = budget is not None and (
