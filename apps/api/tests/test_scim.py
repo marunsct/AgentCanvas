@@ -521,3 +521,34 @@ async def test_scim_changes_are_audited_without_a_person(scim):
     }
     assert all(e["actor_id"] is None and e["detail"]["caller"] == "scim" for e in scim_rows)
     assert scim.scim["Authorization"].split()[1] not in str(log)
+
+
+async def test_another_organisations_directory_cannot_re_address_a_shared_invitation(app, scim):
+    """CP-1: a person invited but not signed in yet is one row for every organisation that invited them. Organisation
+    B's SCIM token used to rename that row's address, so whoever owned the new address joined A with A's role."""
+    r = await scim.put("/v1/org/members", json={"email": "victim@corp.com", "role": "admin"}, headers=ALICE)
+    assert r.status_code == 200, r.text
+    async with app.state.db.sessionmaker() as s:
+        s.add(Organization(id="org_b", name="B", scim_token_hash=hash_token("scim_b-token")))
+        await s.commit()
+    b = {"Authorization": "Bearer scim_b-token"}
+    taken = await scim.post(f"{S}/Users", json=user("victim@corp.com", displayName="Evil name"), headers=b)
+    assert taken.status_code == 201, taken.text
+    vid = taken.json()["id"]
+    moved = await scim.patch(
+        f"{S}/Users/{vid}", json=ops({"op": "replace", "path": "userName", "value": "attacker@evil.com"}), headers=b
+    )
+    assert_error(moved, 409, "mutability")
+    replaced = await scim.put(f"{S}/Users/{vid}", json=user("attacker@evil.com"), headers=b)
+    assert_error(replaced, 409, "mutability")
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(AppUser, vid)
+    assert row is not None and row.email == "victim@corp.com" and row.oidc_subject == "pending:victim@corp.com"
+    assert row.display_name != "Evil name"  # B's directory does not name A's invitation either
+    # a user only this organisation invited can still be re-addressed by its directory
+    mine = await post_user(scim, "old@example.com")
+    ok = await scim.patch(
+        f"{S}/Users/{mine['id']}", json=ops({"op": "replace", "path": "userName", "value": "new@example.com"}),
+        headers=scim.scim,
+    )  # fmt: skip
+    assert ok.status_code == 200 and ok.json()["userName"] == "new@example.com"

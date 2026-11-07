@@ -161,6 +161,17 @@ class ScimService:
             raise ScimError(404, f"User {user_id} not found")
         return row[0], row[1]
 
+    async def _shared(self, u: AppUser) -> bool:
+        """Whether this person also belongs to (or is invited by) another organisation. A person who has not signed in
+        yet is one row whichever organisation invited them, so this organisation's directory must not rename or
+        re-address that row: the other organisation's invitation would follow the new address."""
+        other = await self.s.scalar(
+            select(func.count())
+            .select_from(Membership)
+            .where(Membership.user_id == u.id, Membership.org_id != self.org_id)
+        )
+        return bool(other)
+
     async def _groups_of(self, user_ids: list[str]) -> dict[str, list[ScimGroup]]:
         if not user_ids:
             return {}
@@ -298,7 +309,7 @@ class ScimService:
             raise from_domain(exc) from None
         m = await self.s.get(Membership, (self.org_id, user.id))
         assert m is not None
-        if user.oidc_subject.startswith("pending:") and (name := self._name(body)):
+        if user.oidc_subject.startswith("pending:") and (name := self._name(body)) and not await self._shared(user):
             user.display_name = name  # until their first sign-in brings their own
         m.scim_external_id = str(body["externalId"])[:200] if body.get("externalId") else None
         m.suspended = "active" in body and not _truthy(body["active"])
@@ -319,10 +330,21 @@ class ScimService:
             ext = attrs.get("externalid")
             m.scim_external_id = str(ext)[:200] if ext else None
         if u.oidc_subject.startswith("pending:"):  # not signed in yet: the directory's name and address stand
-            if (name := self._name({"displayName": attrs.get("displayname"), "name": attrs.get("name")})) or replace:
-                u.display_name = name
+            shared = await self._shared(u)
             email = attrs.get("username")
-            if isinstance(email, str) and EMAIL.match(email.strip()) and email.strip().lower() != u.email:
+            moved = isinstance(email, str) and EMAIL.match(email.strip()) and email.strip().lower() != u.email
+            if moved and shared:  # the row is another organisation's invitation too: never re-address it
+                raise ScimError(
+                    409,
+                    f"{u.email} is also invited by another organisation, so its address cannot change here; "
+                    "delete this user and create one with the new address",
+                    "mutability",
+                )
+            if not shared and (
+                (name := self._name({"displayName": attrs.get("displayname"), "name": attrs.get("name")})) or replace
+            ):
+                u.display_name = name
+            if moved and isinstance(email, str):
                 u.email, u.oidc_subject = email.strip().lower(), pending_subject(email)
         await self.s.commit()
 
