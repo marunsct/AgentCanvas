@@ -36,6 +36,9 @@ from agentcanvas.workspace.store import Workspace, WorkspaceError
 
 MAX_COMMANDS = 80  # per proposal: a whole workflow fits, a runaway loop does not
 MAX_RESULT = 12_000  # characters of one tool result sent back to the model
+MAX_CALLS_PER_REPLY = 8  # tool calls run from one model reply; the rest are refused (a runaway reply runs no more)
+MAX_TEST_RUNS = 6  # run_test and reproduce_run calls per turn: each runs the workflow, which may call models
+TOO_MANY_CALLS = f"not run: one reply runs at most {MAX_CALLS_PER_REPLY} tool calls; send the rest in your next reply"
 
 
 @dataclass
@@ -71,6 +74,7 @@ class ToolContext:
     workspace: Workspace | None = None  # the project's code: read here, changed only through an accepted proposal
     carried: dict[str, Any] | None = None  # the open proposal this turn started from: its id and what it added
     knowledge: KnowledgeLister | None = None  # the project's knowledge bases: names, counts, model; never contents
+    test_runs: int = 0  # run_test and reproduce_run calls this turn (each runs the workflow): see MAX_TEST_RUNS
 
 
 @dataclass(frozen=True)
@@ -756,6 +760,14 @@ async def run_tool(ctx: ToolContext, name: str, args: dict[str, Any], allowed: l
     tool = TOOLS.get(name)
     if tool is None or name not in allowed:
         return {"ok": False, "error": f"tool '{name}' is not available here"}
+    if name in ("run_test", "reproduce_run"):
+        if ctx.test_runs >= MAX_TEST_RUNS:
+            return {
+                "ok": False,
+                "error": f"this turn already ran the workflow {MAX_TEST_RUNS} times; report what you found, and "
+                "the person can ask you to test more",
+            }
+        ctx.test_runs += 1
     try:
         return await tool.run(ctx, args if isinstance(args, dict) else {})
     except Exception as exc:  # noqa: BLE001 - a tool bug must not end the conversation; the model sees it

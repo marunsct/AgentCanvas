@@ -311,6 +311,24 @@ async def test_a_reproduction_replays_risky_tools_instead_of_stubbing_them():
     assert await tools[0].ainvoke({"to": "a@b.c"}) == "sent #42"
 
 
+async def test_a_reply_runs_a_bounded_number_of_tools_and_a_turn_a_bounded_number_of_test_runs(app, api_client):
+    """I-18: one model reply could ask for any number of tool calls (test runs among them) and all of them ran."""
+    from agentcanvas.copilot.tools import MAX_CALLS_PER_REPLY, MAX_TEST_RUNS
+
+    await separate_model(api_client)
+    wf = await make_greeter(api_client)
+    many = {"content": "", "tool_calls": [{"name": "get_problems", "args": {}}] * (MAX_CALLS_PER_REPLY + 4)}
+    script(app, many, "Checked.")
+    events = await ask(api_client, wf, "check it", mode="ask")
+    assert len(of(events, "tool")) == MAX_CALLS_PER_REPLY
+
+    test = call("run_test", input={"who": "Bo"})
+    script(app, *[test] * (MAX_TEST_RUNS + 2), "Tested.")
+    tools = of(await ask(api_client, wf, "test it a lot"), "tool")
+    assert [t["ok"] for t in tools] == [True] * MAX_TEST_RUNS + [False, False]
+    assert "already ran the workflow" in tools[-1]["error"]
+
+
 def record_tool_results(monkeypatch) -> list[dict]:
     """Every tool result of the turn, in order, whichever engine runs it (both call the tools in `TOOLS`)."""
     import dataclasses

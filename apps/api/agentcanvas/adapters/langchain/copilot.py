@@ -29,7 +29,7 @@ from langgraph.errors import GraphRecursionError
 
 from agentcanvas.copilot.service import MAX_ERROR, MAX_STEPS, ROLE, CopilotTurn, Mode, _now
 from agentcanvas.copilot.skillbook import skills
-from agentcanvas.copilot.tools import READ_ONLY, TOOLS, compact_workflow, result_text, run_tool
+from agentcanvas.copilot.tools import MAX_CALLS_PER_REPLY, READ_ONLY, TOOLS, compact_workflow, result_text, run_tool
 from agentcanvas.registry import token_counts
 
 SHELL = "execute"  # the harness's shell tool: the Copilot has no shell
@@ -90,6 +90,24 @@ class _HideTools(AgentMiddleware):
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
         return await handler(self._without(request))
+
+
+class _CapToolCalls(AgentMiddleware):
+    """Keeps the first MAX_CALLS_PER_REPLY tool calls of a model reply (the loop refuses the rest the same way): a
+    runaway reply cannot run dozens of tools, test runs among them, at once."""
+
+    @staticmethod
+    def _capped(result: Any) -> Any:
+        for msg in getattr(result, "result", None) or ([result] if isinstance(result, AIMessage) else []):
+            if isinstance(msg, AIMessage) and len(msg.tool_calls) > MAX_CALLS_PER_REPLY:
+                msg.tool_calls = msg.tool_calls[:MAX_CALLS_PER_REPLY]
+        return result
+
+    def wrap_model_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        return self._capped(handler(request))
+
+    async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
+        return self._capped(await handler(request))
 
 
 class DeepAgentTurn(CopilotTurn):
@@ -156,6 +174,7 @@ class DeepAgentTurn(CopilotTurn):
             TodoListMiddleware(),
             ModelCallLimitMiddleware(run_limit=MAX_STEPS, exit_behavior="end"),
             _HideTools({SHELL, *(set(TOOLS) - set(allowed))}),
+            _CapToolCalls(),
         ]
         agent = create_deep_agent(
             model=self.resources.model("copilot", {**self.model.config, "model": self.model.model}),

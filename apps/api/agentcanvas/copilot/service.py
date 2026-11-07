@@ -19,7 +19,16 @@ from typing import Any, Literal
 from agentcanvas import designs
 from agentcanvas.copilot.pack import Pack
 from agentcanvas.copilot.settings import ResolvedModel
-from agentcanvas.copilot.tools import READ_ONLY, TOOLS, ToolContext, compact_workflow, result_text, run_tool
+from agentcanvas.copilot.tools import (
+    MAX_CALLS_PER_REPLY,
+    READ_ONLY,
+    TOO_MANY_CALLS,
+    TOOLS,
+    ToolContext,
+    compact_workflow,
+    result_text,
+    run_tool,
+)
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import adapters as adapter_manifests
@@ -260,7 +269,11 @@ class CopilotTurn:
                 if not calls:
                     break
                 messages.append({"role": "assistant", "content": reply["content"], "tool_calls": calls})
-                for call in calls:
+                for i, call in enumerate(calls):
+                    if i >= MAX_CALLS_PER_REPLY:  # every call still gets an answer, or the next model call fails
+                        refused = {"ok": False, "error": TOO_MANY_CALLS}
+                        messages.append({"role": "tool", "tool_call_id": call["id"], "content": result_text(refused)})
+                        continue
                     result = await run_tool(self.ctx, call["name"], call["args"], allowed)
                     yield {
                         "type": "tool",
