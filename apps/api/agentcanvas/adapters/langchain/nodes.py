@@ -471,8 +471,13 @@ class Resources:
         """A cache key for a client built from `config`: its settings and the project's secret values, so a rotated
         key (a `$secret` reference, or the provider key a model uses implicitly) builds a new client instead of
         reusing one that holds the old value until the server restarts."""
+        return f"{_config_key(config)}:{self.secrets_fingerprint()}"
+
+    def secrets_fingerprint(self) -> str:
+        """Changes whenever a secret value does (the secrets cache updates the dict in place): clients and graphs
+        built with the old values are rebuilt."""
         values = json.dumps(sorted(self._secrets.items()))
-        return f"{_config_key(config)}:{hashlib.sha256(values.encode()).hexdigest()[:16]}"
+        return hashlib.sha256(values.encode()).hexdigest()[:16]
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:

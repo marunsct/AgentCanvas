@@ -52,7 +52,7 @@ class LangChainAdapter:
         self.memory_embedding: MemoryEmbedding | None = (
             None  # set before `persistence`: long-term memory's semantic index
         )
-        self._graphs: OrderedDict[tuple[str, int, str], tuple[Any, Any]] = OrderedDict()
+        self._graphs: OrderedDict[tuple[str, int, str, str], tuple[Any, Any]] = OrderedDict()
         self._cache_size = graph_cache_size
         self._shared = self.new_resources()
 
@@ -99,8 +99,9 @@ class LangChainAdapter:
 
     async def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
         """Compiled graph for (IR, resources), cached: rebuilding per run is wasteful for real models."""
-        # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does
-        key = (ir_hash(wf), id(resources), resources.revision())
+        # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does,
+        # the fingerprint when a secret value does (a rotated key must reach the graph's model clients and MCP tools)
+        key = (ir_hash(wf), id(resources), resources.revision(), resources.secrets_fingerprint())
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key][1]
