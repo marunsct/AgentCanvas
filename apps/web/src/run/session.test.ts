@@ -50,6 +50,29 @@ describe("startRun (W-4)", () => {
   });
 });
 
+describe("debug aids", () => {
+  it("are not sent by a reviewer, who may approve but not debug", async () => {
+    const { useMe } = await import("../api/session");
+    const { useUi } = await import("../editor/ui");
+    const me = useMe.getState().me;
+    useEditor.setState({ wf: normalize({ id: "wf_1", name: "w", nodes: [{ id: "n1", type: "core.set", name: "a" }], state: { channels: [] } }),
+      pins: { n1: { x: 1 } } });
+    useUi.setState({ dryRun: true });
+    useMe.setState({ me: { ...me, role: "reviewer" } });
+    try {
+      useRun.setState({ threadId: "t1", starting: false });
+      vi.mocked(postStream).mockClear();
+      events = [];
+      await resumeRun({ approved: true }, "i1");
+      expect(vi.mocked(postStream).mock.calls[0]![1]).toEqual({ value: { approved: true }, interrupt_id: "i1" });
+    } finally {
+      useMe.setState({ me });
+      useUi.setState({ dryRun: false });
+      useEditor.setState({ pins: {} });
+    }
+  });
+});
+
 describe("approve, continue and fork", () => {
   it("send one request on a double-click", async () => {
     useRun.setState({ threadId: "t1", running: false, starting: false });

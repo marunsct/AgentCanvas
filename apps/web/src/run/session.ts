@@ -1,5 +1,6 @@
 /** Run actions used by the run panel, timeline, explain view and inbox. Events stream into the run store. */
 import { apiFetch, ApiError } from "../api/client";
+import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { useUi } from "../editor/ui";
 import type { RunEvent } from "./events";
@@ -59,8 +60,10 @@ async function stream(path: string, body: unknown): Promise<void> {
   }
 }
 
-/** Pinned outputs and mock models of this viewer (sent with every debug run, M4-T9). */
+/** Pinned outputs and mock models of this viewer (sent with every debug run, M4-T9). Only builders may debug: a
+ * reviewer approving a step with Dry run ticked, or with pins left in this browser, was refused with 403. */
 export function debugAids(): { pins?: Record<string, unknown>; mocks?: Record<string, unknown[]>; dry_run?: boolean } {
+  if (!can("builder")) return {};
   const { wf, pins, mocks } = useEditor.getState();
   const known = new Set(wf?.nodes.map((n) => n.id));
   const models = new Set(wf?.resources.filter((r) => r.type === "model.chat").map((r) => r.name));
