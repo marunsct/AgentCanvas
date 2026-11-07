@@ -218,3 +218,32 @@ async def test_settings_reads_and_writes_the_sandbox_policy(app, api_client):
         assert (await api_client.put(url, json={"egress": ["api.github.com"]})).json()["refuses_egress"] is True
     finally:
         app.state.projects.settings.env = "test"
+
+
+async def test_the_api_can_hand_the_sandbox_the_proxys_address_so_the_sandbox_needs_no_dns(tmp_path):
+    """Helm (AGENTCANVAS_EGRESS_PROXY_RESOLVE): the sandbox pods' network policy has no DNS, so the API resolves the
+    egress Service's name and the signed proxy URL carries its address."""
+    import base64
+    from urllib.parse import unquote
+
+    from agentcanvas.sandbox.egress import verify
+    from agentcanvas.sandbox.policy import load_policy
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "sandbox.json").write_text(json.dumps({"egress": ["api.github.com"]}))
+    base = {"script_execution": "remote", "sandbox_url": "http://sandbox", "sandbox_token": TOKEN,
+            "egress_proxy": "localhost:3128", "egress_secret": SECRET}  # fmt: skip
+    named = await SandboxRunner(Settings(**base), ws, {})._egress(load_policy(ws), "remote")
+    resolved = await SandboxRunner(Settings(**base, egress_proxy_resolve=True), ws, {})._egress(
+        load_policy(ws), "remote"
+    )
+    assert named and named.endswith("@localhost:3128")
+    assert resolved and resolved.endswith("@127.0.0.1:3128")
+    user, _, password = resolved.split("://", 1)[1].rsplit("@", 1)[0].partition(":")
+    header = "Basic " + base64.b64encode(f"{unquote(user)}:{password}".encode()).decode()
+    assert verify(header, SECRET) == ["api.github.com"]  # the same signed list, only the address differs
+
+    assert await runners.resolve_proxy("10.1.2.3:3128") == "10.1.2.3:3128"
+    with pytest.raises(ScriptError, match="cannot be resolved"):
+        await runners.resolve_proxy("no-such-host.invalid:3128")

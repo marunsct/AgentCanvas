@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     # (`agentcanvas.sandbox.egress`), which admits the hosts of the call's signed list. "remote": its address as the
     # sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container
     egress_proxy: str | None = None
+    # "remote": hand the sandbox the proxy's IPv4 address instead of its name, so the sandbox needs no DNS (Kubernetes:
+    # a Service's ClusterIP is the same from every pod; not in compose, where the API sees the proxy on another network)
+    egress_proxy_resolve: bool = False
     egress_secret: str | None = None  # signs each call's list; shared with the proxy (docker: derived when unset)
     # the proxy reaches private addresses (10.x, 172.16.x, the database, 127.x) only when the operator says so: a
     # project's sandbox.json cannot open them. Link-local and cloud metadata addresses are never reached.

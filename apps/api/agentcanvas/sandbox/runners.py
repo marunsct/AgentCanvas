@@ -53,6 +53,26 @@ def _limits(memory_bytes: int, cpu_s: int) -> Callable[[], None]:
     return apply
 
 
+async def resolve_proxy(address: str) -> str:
+    """`host:port` with the host as an IPv4 address, so a sandbox with no DNS (its network policy allows only the
+    proxy) can still reach the proxy. The API resolves it, per call: a Service's ClusterIP stays put while it exists,
+    and a replaced Service is picked up by the next call."""
+    import socket
+
+    host, _, port = address.rpartition(":")
+    try:
+        socket.inet_aton(host)
+        return address  # already an address
+    except OSError:
+        pass
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, int(port), family=socket.AF_INET,
+                                                             type=socket.SOCK_STREAM)  # fmt: skip
+    except (OSError, ValueError) as exc:
+        raise ScriptError(f"the egress proxy {address} cannot be resolved: {exc}") from None
+    return f"{infos[0][4][0]}:{port}"
+
+
 def proxy_env(proxy: str | None) -> dict[str, str]:
     """The variables HTTP clients (requests, httpx, urllib) read to send everything through the egress proxy."""
     if not proxy:
@@ -331,6 +351,8 @@ class SandboxRunner:
                         "egress proxy: set AGENTCANVAS_EGRESS_PROXY and AGENTCANVAS_EGRESS_SECRET"
                     )
                 address = self.settings.egress_proxy
+                if self.settings.egress_proxy_resolve:
+                    address = await resolve_proxy(address)
             else:
                 try:
                     address = self.settings.egress_proxy or await docker_egress.ensure(self.settings)

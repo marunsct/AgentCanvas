@@ -144,3 +144,17 @@ def test_the_web_image_trusts_every_listed_proxy_range_and_nothing_else():
 def test_the_chart_trusts_every_private_range_by_default():
     web = find(render(), "Deployment", "-web")
     assert web and env_of(web)["TRUSTED_PROXIES"] == "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+
+
+@needs_helm
+def test_the_sandbox_reaches_the_egress_proxy_only_and_no_dns():
+    docs = render()
+    policy = find(docs, "NetworkPolicy", "-sandbox")
+    assert policy
+    (rule,) = policy["spec"]["egress"]
+    assert rule["ports"] == [{"port": 3128}]
+    assert rule["to"][0]["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "egress"
+    api = find(docs, "Deployment", "-api")
+    assert api and env_of(api)["AGENTCANVAS_EGRESS_PROXY_RESOLVE"] == "true"  # the API hands over the ClusterIP
+    offline = find(render("sandbox.egress.enabled=false"), "NetworkPolicy", "-sandbox")
+    assert offline and offline["spec"]["egress"] == []

@@ -50,6 +50,12 @@ boundaries below needs a decision in `decisions.md` and a test that shows the ne
 - The proxy never reaches link-local or cloud metadata addresses, and reaches private addresses only when its operator
   sets `AGENTCANVAS_EGRESS_ALLOW_PRIVATE=1`; naming an address in `sandbox.json` opens nothing (S-1). Plain-HTTP
   requests go out with the checked `Host` and no hop-by-hop headers; a request framed two ways is refused (S-7).
+- DNS is a way out too: a name the code looks up reaches whatever resolves it. In the Helm chart the sandbox pods'
+  NetworkPolicy admits the egress proxy's port only, with no DNS; the API hands the sandbox the proxy's ClusterIP
+  (`AGENTCANVAS_EGRESS_PROXY_RESOLVE`), and target names are resolved by the proxy. With compose the sandbox reaches
+  Docker's embedded resolver on its internal network (it gives the proxy's address on that network, which the API
+  cannot know); whether that resolver forwards other names out depends on the Docker version, so treat it as a
+  narrow channel there.
 
 ### 3. Workflows ↔ the network (tools, MCP, models, knowledge pages)
 - HTTP tools reach only their `allowed_domains`, connect to the address they checked (no DNS rebinding), and refuse

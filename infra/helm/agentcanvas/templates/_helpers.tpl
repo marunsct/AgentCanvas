@@ -118,6 +118,9 @@ but lacks a required key fails the release instead of pods that crash-loop or ne
 {{- if .Values.sandbox.egress.enabled }}
 - name: AGENTCANVAS_EGRESS_PROXY
   value: {{ printf "%s-egress:3128" (include "agentcanvas.fullname" .) | quote }}
+# the API hands the sandbox the proxy's ClusterIP, not its name: the sandbox pods get no DNS (no names to leak through)
+- name: AGENTCANVAS_EGRESS_PROXY_RESOLVE
+  value: "true"
 {{- end }}
 {{- end }}
 - name: FORWARDED_ALLOW_IPS
