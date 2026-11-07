@@ -212,6 +212,20 @@ def test_the_development_services_listen_on_this_computer_only():
     assert "redis" not in (ROOT / "Makefile").read_text().split("\ninfra:", 1)[1].split("\n\n", 1)[0]
 
 
+def test_backups_hold_the_workspaces_and_a_restore_creates_the_api_role_before_the_data():
+    scripts = ROOT / "infra" / "scripts"
+    for script in ["backup.sh", "restore.sh"]:
+        done = subprocess.run(["sh", "-n", str(scripts / script)], capture_output=True, text=True, check=False)
+        assert done.returncode == 0, done.stderr
+    backup, restore = (scripts / "backup.sh").read_text(), (scripts / "restore.sh").read_text()
+    assert "pg_dump" in backup and "tar -C /data/workspaces -czf -" in backup
+    assert "--no-owner" not in backup  # the owners of the API's own tables come back with the data
+    role, data = restore.index("agentcanvas.db.app_role"), restore.index("pg_restore")
+    assert role < data < restore.index("tar -xzf - -C /data/workspaces") < restore.index("up -d --wait migrate api")
+    for key in ["AGENTCANVAS_SECRET_KEY", "AGENTCANVAS_KMS_KEY", "LANGGRAPH_AES_KEY"]:
+        assert key in backup and f"`{key}`" in (ROOT / "docs" / "user-guide" / "deploy.md").read_text(), key
+
+
 def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
     import re
 

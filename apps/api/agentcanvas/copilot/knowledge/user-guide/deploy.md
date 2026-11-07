@@ -217,9 +217,24 @@ best effort.
 
 ## Backups
 
-`infra/scripts/backup.sh` writes a `pg_dump` of the compose prod database; `infra/scripts/restore.sh <file>`
-restores one (and migrates it to the running version). With managed Postgres, rely on its point-in-time recovery
-and run the backup nightly as a portable second copy.
+`infra/scripts/backup.sh` writes a `pg_dump` of the compose prod database (`agentcanvas-<time>.dump`) and an archive
+of the workspaces volume beside it (`agentcanvas-<time>.workspaces.tar.gz`, the projects' git repositories).
+`infra/scripts/restore.sh <file.dump>` stops the API and web, recreates the database, creates the API's database role
+(`agentcanvas_app`, with `POSTGRES_APP_PASSWORD`) before loading the dump, restores the workspaces when their archive
+lies beside the dump (or is given as the second argument), runs the migrations (an older backup is brought up to the
+running version) and starts everything again. With managed Postgres, rely on its point-in-time recovery and run the
+backup nightly as a portable second copy; back the workspaces volume up with your platform's snapshots.
+
+**Keep the keys with the backup, stored apart from it.** A dump without them restores, but what they encrypted
+cannot be read:
+
+| Key | Without it |
+|---|---|
+| `AGENTCANVAS_SECRET_KEY`, or the master key in `AGENTCANVAS_KMS_KEY` (and any in `AGENTCANVAS_KMS_PREVIOUS_KEYS`) | project secrets, webhook signing secrets and app-connector sign-ins are lost |
+| `LANGGRAPH_AES_KEY` | encrypted conversation checkpoints cannot be resumed |
+| `POSTGRES_APP_PASSWORD` | none lost: `restore.sh` sets the API role's password from whatever the settings say |
+
+The sandbox token and the egress secret encrypt nothing kept: new ones work with an old backup.
 
 ## Upgrades
 
@@ -233,7 +248,7 @@ The compose files pin `pgvector/pgvector:pg16` by digest; a new digest of the sa
 a plain image update. A new **major** version (pg17) cannot start on pg16's data directory. With compose: take a
 backup (`infra/scripts/backup.sh`), stop the stack, move the `pgdata` volume aside (do not delete it until the new
 version runs), set `POSTGRES_IMAGE` to the new major version's image, start Postgres alone, and restore the dump with
-`infra/scripts/restore.sh` (it runs the migrations afterwards). The pgvector extension must exist
+`infra/scripts/restore.sh` (it creates the API's role on the new server first and runs the migrations afterwards). The pgvector extension must exist
 in the new image (the `pgvector/pgvector` images have it). With managed Postgres, use the provider's major-version
 upgrade, after a snapshot.
 
