@@ -87,6 +87,20 @@ describe("a refused edit (W-1)", () => {
     expect(useEditor.getState().notice).toMatchObject({ kind: "error", text: "unknown node 'gone'" });
   });
 
+  it("leaves the save state at Not saved, with the reason, until a save lands", async () => {
+    useEditor.setState({ unsaved: null });
+    useEditor.getState().dispatch([rename("taken")]);
+    await tick();
+    release!();
+    for (let i = 0; i < 4; i++) await tick();
+    expect(useEditor.getState()).toMatchObject({ pending: [], inflight: false, unsaved: "Edit rejected: UpdateMeta: the name is taken." });
+    useEditor.getState().dispatch([rename("free")]);
+    await tick();
+    release!();
+    for (let i = 0; i < 4; i++) await tick();
+    expect(useEditor.getState().unsaved).toBeNull();
+  });
+
   it("names the refused command by its target", () => {
     const batch = [rename("x"), { op: "RemoveNode", id: "n_7" } as Command];
     expect(describeRefused(batch, "command #1 (RemoveNode): unknown node 'n_7'")).toBe("RemoveNode 'n_7': unknown node 'n_7'.");

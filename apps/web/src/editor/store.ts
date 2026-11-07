@@ -48,6 +48,7 @@ export interface EditorState {
   undoStack: Command[][];
   redoStack: Command[][];
   notice: Notice | null;
+  unsaved: string | null; // why the last edit is not on the server (refused, or no longer fits); null once a save lands
   connectHint: string | null;
   focusNode: ((id: string) => void) | null;
   tidy: (() => Promise<void>) | null;
@@ -122,7 +123,7 @@ if (typeof window !== "undefined") {
 
 const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
-  inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null, tidy: null,
+  inflight: false, undoStack: [], redoStack: [], notice: null, unsaved: null as string | null, connectHint: null, focusNode: null, tidy: null,
   breakpoints: [] as string[], pins: {} as Record<string, Record<string, unknown>>, mocks: {} as Record<string, unknown[]>,
   drill: [] as string[], group: null, frame: null as (() => void) | null,
 };
@@ -192,7 +193,7 @@ async function save(workflowId: string): Promise<void> {
     const rest = get().pending; // edits made while the request was in flight are re-applied on top
     const { undoStack, redoStack } = get();
     set({
-      version: res.version,
+      version: res.version, unsaved: null,
       irHash: res.ir_hash,
       diagnostics: res.diagnostics,
       wf: rest.length ? applyAll(normalize(res.ir), rest) : normalize(res.ir),
@@ -213,6 +214,7 @@ async function save(workflowId: string): Promise<void> {
     if (get().workflowId !== workflowId) return;
     const mine = [...before, ...get().pending]; // a reload used to drop what was typed while it loaded
     historyMode.next = "push"; // the edits put back are new edits, whatever step was queued before
+    if (refused) set({ unsaved: refused }); // the badge said "Saved" next to an edit the server had refused
     if (!mine.length) {
       set({ notice: refused ? { kind: "error", text: refused } : { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
     } else {
@@ -228,13 +230,9 @@ async function save(workflowId: string): Promise<void> {
         if (flushTimer) clearTimeout(flushTimer);
         flushTimer = setTimeout(() => void get().flush(), 0);
       } catch {
-        set({
-          notice: {
-            kind: "error",
-            text: refused ? `${refused} The edits made after it no longer fit and were not saved.`
-              : "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again.",
-          },
-        });
+        const text = refused ? `${refused} The edits made after it no longer fit and were not saved.`
+          : "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again.";
+        set({ notice: { kind: "error", text }, unsaved: text });
       }
     }
   } finally {
@@ -305,7 +303,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const same = workflowId === id && version === out.version; // a reload after a refused edit keeps the history
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
-      diagnostics: out.diagnostics, ...(opts.keepEdits ? {} : { pending: [], inflight: false }), breakpoints: loadBreakpoints(id),
+      diagnostics: out.diagnostics, ...(opts.keepEdits ? {} : { pending: [], inflight: false, unsaved: null }), breakpoints: loadBreakpoints(id),
       pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}), drill: [],
       // inverses from another version no longer apply
       undoStack: same ? undoStack : [], redoStack: same ? redoStack : [],

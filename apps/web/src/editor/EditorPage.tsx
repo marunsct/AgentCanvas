@@ -37,6 +37,13 @@ import { PersonMenu } from "../app/AppShell";
 
 type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
 
+/** The topbar's save state: "Saving…", "Saved", or "Not saved" with the reason after the server refused an edit. */
+export function SaveState({ saving, unsaved }: { saving: boolean; unsaved: string | null }) {
+  if (saving) return <span className="save-state saving">Saving…</span>;
+  if (unsaved) return <span className="save-state unsaved" title={unsaved} data-testid="save-state">Not saved</span>;
+  return <span className="save-state" data-testid="save-state">Saved</span>;
+}
+
 export function EditorPage() {
   const canBuild = useCan("builder");
   const role = useMe((s) => s.me.role);
@@ -45,6 +52,7 @@ export function EditorPage() {
   const wf = useEditor((s) => s.wf);
   const notice = useEditor((s) => s.notice);
   const saving = useEditor((s) => s.pending.length > 0 || s.inflight);
+  const unsaved = useEditor((s) => s.unsaved);
   const [tab, setTab] = useState<Tab>("inspect");
   const [error, setError] = useState<string | null>(null);
   const nodeTypes = useNodeTypes();
@@ -130,7 +138,7 @@ export function EditorPage() {
         <Link to="/" className="brand">AgentCanvas</Link>
         <span className="crumb" title={wf.name}>/ {wf.name}</span>
         {canBuild
-          ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
+          ? <SaveState saving={saving} unsaved={unsaved} />
           : <span className="save-state" data-testid="view-only" title={`your role is ${role}`}>View only</span>}
         <FrameworkBadges />
         <PresenceBar />
