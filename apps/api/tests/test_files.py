@@ -237,3 +237,36 @@ async def test_a_deployment_key_uploads_a_file_and_the_run_takes_its_reference(a
     assert none.status_code == 422 and "no file input" in none.text
     # the file is kept in the deployment's project, where the project's own people can open it
     assert (await api_client.get(f"{P}/uploads/{ref['id']}")).status_code == 200
+
+
+async def test_a_deployment_key_run_uses_only_the_files_given_to_that_deployment(api_client):
+    """CP-9: a key holder cannot read the project's other files (the builders' uploads, another deployment's) by
+    naming their ids in the run's input; the deployment's own uploads and inline bytes work."""
+    from test_publish import bearer
+
+    wf = await make_photo_flow(api_client)
+    pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    dep, key = pub["deployment"]["id"], pub["api_key"]
+    other = (await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "staging"})).json()
+    builders = (await upload(api_client, "secret.png", PNG)).json()
+    theirs = await api_client.post(
+        f"/v1/deployments/{other['deployment']['id']}/files", files={"file": ("x.png", PNG)},
+        headers=bearer(other["api_key"]),
+    )  # fmt: skip
+    assert theirs.status_code == 201, theirs.text
+    own = await api_client.post(f"/v1/deployments/{dep}/files", files={"file": ("me.png", PNG)}, headers=bearer(key))
+
+    async def run(photo):
+        return await api_client.post(
+            f"/v1/deployments/{dep}/runs/wait", json={"input": {"who": "Ada", "photo": photo}}, headers=bearer(key)
+        )
+
+    for ref in (builders, theirs.json()):
+        r = await run({"kind": "file", "id": ref["id"]})
+        assert r.status_code == 422 and "is not in this project" in r.text, r.text
+    assert (await run(own.json())).json()["status"] == "success"
+    inline = {"kind": "file", "name": "a.png", "data": base64.b64encode(PNG).decode()}
+    assert (await run(inline)).json()["status"] == "success"
+    # the signed-in editor still uses any of the project's files
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada", "photo": builders}})
+    assert finished(r.text)["type"] == "RUN_FINISHED", r.text

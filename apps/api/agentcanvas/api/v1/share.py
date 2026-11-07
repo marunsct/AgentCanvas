@@ -459,7 +459,7 @@ async def share_run_stream(
     thread_id = thread_id or new_id("th")
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, input=payload, context=context, deployment_id=dep.id, version_id=version_id,
-        labels={"channel": "share"},
+        labels={"channel": "share"}, visitor_hash=visitor_hash(body.visitor),
     )  # fmt: skip
     if new:
         await shares.claim_thread(dep.id, thread_id, body.visitor)

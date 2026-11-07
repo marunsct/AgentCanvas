@@ -169,11 +169,20 @@ class FileService:
         return [mine[f] for f in file_ids]
 
     async def claim(
-        self, project_id: str, values: dict[str, Any], schemas: dict[str, dict[str, Any]] | None = None
+        self,
+        project_id: str,
+        values: dict[str, Any],
+        schemas: dict[str, dict[str, Any]] | None = None,
+        *,
+        deployment_id: str | None = None,
+        visitor_hash: str | None = None,
     ) -> dict[str, Any]:
         """A run's input with every file reference checked against the project's files and written as the server
         knows the file (its real type and size, whatever the caller said). Bytes sent inline (`data`) are stored
-        first, so checkpoints keep only the reference. A file field that takes only some types refuses others."""
+        first, so checkpoints keep only the reference. A file field that takes only some types refuses others.
+
+        A run of a deployment (its key, a share link, a trigger) uses only files given to that deployment: uploaded
+        with its key, or by the same share-link visitor (`visitor_hash`), never the project's other files."""
         schemas = schemas or {}
         out = dict(values)
         seen = 0
@@ -188,7 +197,7 @@ class FileService:
             seen += len(refs)
             if seen > MAX_FILES_PER_RUN:
                 raise InvalidInput(f"a run takes at most {MAX_FILES_PER_RUN} files")
-            fixed = [await self._one(project_id, key, ref) for ref in refs]
+            fixed = [await self._one(project_id, key, ref, deployment_id, visitor_hash) for ref in refs]
             accept = accepts(schemas.get(key))
             for ref in fixed:
                 if not type_matches(ref["media_type"], accept):
@@ -199,10 +208,17 @@ class FileService:
             await self.s.execute(update(StoredFile).where(StoredFile.id.in_(used)).values(last_used_at=now))
         return out
 
-    async def _one(self, project_id: str, key: str, ref: dict[str, Any]) -> dict[str, Any]:
+    async def _one(
+        self, project_id: str, key: str, ref: dict[str, Any], deployment_id: str | None, visitor: str | None
+    ) -> dict[str, Any]:
         if isinstance(ref.get("id"), str) and ref["id"]:
             try:
-                return ref_of(await self.get(project_id, ref["id"]))
+                row = await self.get(project_id, ref["id"])
+                if deployment_id is not None and (
+                    row.deployment_id != deployment_id or (row.visitor_hash is not None and row.visitor_hash != visitor)
+                ):
+                    raise NotFound(ref["id"])  # another caller's file: the same answer as no such file
+                return ref_of(row)
             except NotFound:
                 raise InvalidInput(f"'{key}': file '{ref['id']}' is not in this project (or no longer kept)") from None
         if isinstance(ref.get("data"), str):
@@ -212,7 +228,10 @@ class FileService:
                 data = base64.b64decode(ref["data"], validate=True)
             except (binascii.Error, ValueError):
                 raise InvalidInput(f"'{key}': `data` must be the file's bytes in base64") from None
-            row = await self.add(project_id, ref.get("name"), data, source="api", commit=False)
+            row = await self.add(
+                project_id, ref.get("name"), data, source="api", deployment_id=deployment_id, visitor_hash=visitor,
+                commit=False,
+            )  # fmt: skip
             return ref_of(row)
         if ref.get("url"):
             raise InvalidInput(

@@ -358,8 +358,13 @@ class Runner:
         version_id: str | None = None,
         labels: dict[str, str] | None = None,
         event_depth: int = 0,
+        visitor_hash: str | None = None,
+        project_files: bool = False,
     ) -> RunHandle:
-        """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
+        """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
+        A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
+        own uploads on the link it may use); `project_files`: the input was written by a builder (a schedule's), so
+        any of the project's files."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -421,8 +426,9 @@ class Runner:
                 if input and project_id is not None:  # G-5: files as the project keeps them, bytes stored first
                     schemas = {c.name: c.type for c in wf.state.channels}
                     input = await FileService(s, self.max_file_bytes, self.max_project_file_bytes).claim(
-                        project_id, input, schemas
-                    )
+                        project_id, input, schemas, deployment_id=None if project_files else deployment_id,
+                        visitor_hash=visitor_hash,
+                    )  # fmt: skip
                 await s.flush()
                 s.add(
                     Run(

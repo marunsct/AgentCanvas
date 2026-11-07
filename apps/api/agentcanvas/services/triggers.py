@@ -323,7 +323,9 @@ class CronScheduler:
                     continue
                 try:
                     wf, kw = await svc.target(trig)
-                    h = await self.runner.start(wf, input=dict(trig.config.get("input") or {}), origin="trigger", **kw)
+                    h = await self.runner.start(  # the schedule's input is a builder's: any of the project's files
+                        wf, input=dict(trig.config.get("input") or {}), origin="trigger", project_files=True, **kw
+                    )
                     started.append(h.run_id)
                     log.info("cron.fired", trigger=trig.id, run=h.run_id)
                 except Exception as exc:  # noqa: BLE001
