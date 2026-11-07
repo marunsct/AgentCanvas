@@ -129,9 +129,14 @@ export async function cancelRun() {
 export async function forkRun(checkpointId: string, opts: { values?: Record<string, unknown>; asNode?: string; copy?: boolean }) {
   const { threadId } = useRun.getState();
   if (!threadId) return;
-  await once(() => stream(`/threads/${threadId}/fork`, {
-    checkpoint_id: checkpointId, values: opts.values, as_node: opts.asNode, mode: opts.copy ? "copy" : "branch",
-  }));
+  await once(() => {
+    // a fork replays from an earlier checkpoint: the node colours, streamed text and costs of the run it replaces
+    // would otherwise stay on the canvas next to the new branch's
+    useRun.getState().reset();
+    return stream(`/threads/${threadId}/fork`, {
+      checkpoint_id: checkpointId, values: opts.values, as_node: opts.asNode, mode: opts.copy ? "copy" : "branch",
+    });
+  });
 }
 
 export async function editState(checkpointId: string | undefined, values: Record<string, unknown>, asNode?: string) {

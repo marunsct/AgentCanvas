@@ -73,6 +73,19 @@ describe("debug aids", () => {
   });
 });
 
+describe("fork", () => {
+  it("starts from a clean canvas, not the replaced run's colours, text and costs", async () => {
+    useRun.setState({
+      threadId: "t1", starting: false, status: { n1: "ok", n2: "error" }, output: { n1: "old answer" },
+      metrics: { n1: { tokens: 10, cost: 0.1, priced: true, ms: 5 } },
+    });
+    events = [{ type: "RUN_STARTED", threadId: "t1", workflowId: "wf_1" }, { type: "STEP_STARTED", stepName: "b", canvas_node_id: "n2" }];
+    await forkRun("cp1", {});
+    expect(useRun.getState()).toMatchObject({ threadId: "t1", status: { n2: "running" }, output: {}, metrics: {} });
+    expect([useRun.getState().status, useRun.getState().output, useRun.getState().metrics]).toEqual([{ n2: "running" }, {}, {}]);
+  });
+});
+
 describe("approve, continue and fork", () => {
   it("send one request on a double-click", async () => {
     useRun.setState({ threadId: "t1", running: false, starting: false });
