@@ -242,6 +242,43 @@ async function save(workflowId: string): Promise<void> {
   }
 }
 
+/** Undo or redo presses waiting for the edits being saved; each runs once the save before it has settled. */
+const historyQueue: ("undo" | "redo")[] = [];
+let historyDraining = false;
+
+/** Dispatch the last undo (or redo) step; the step leaves its stack when it is saved. */
+function step(kind: "undo" | "redo") {
+  const { undoStack, redoStack, dispatch } = useEditor.getState();
+  const stack = kind === "undo" ? undoStack : redoStack;
+  const batch = stack[stack.length - 1];
+  if (batch) dispatch(batch, { history: kind });
+}
+
+function queueHistory(kind: "undo" | "redo") {
+  const { pending, inflight } = useEditor.getState();
+  if (!historyQueue.length && !pending.length && !inflight) {
+    step(kind);
+    return;
+  }
+  historyQueue.push(kind);
+  if (historyDraining) return;
+  historyDraining = true;
+  const workflowId = useEditor.getState().workflowId;
+  void (async () => {
+    try {
+      while (historyQueue.length) {
+        await useEditor.getState().flush();
+        const s = useEditor.getState();
+        if (s.workflowId !== workflowId || s.pending.length || s.inflight) break; // another workflow, or a save that failed
+        step(historyQueue.shift()!);
+      }
+    } finally {
+      historyQueue.length = 0;
+      historyDraining = false;
+    }
+  })();
+}
+
 export const useEditor = create<EditorState>((set, get) => ({
   ...initial,
 
@@ -310,21 +347,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (get().pending.length) await get().flush(); // edits made meanwhile
   },
 
-  undo: () => {
-    const { undoStack, pending, inflight } = get();
-    if (pending.length || inflight) return; // let queued edits land first; history stays linear
-    const batch = undoStack[undoStack.length - 1];
-    if (!batch) return;
-    get().dispatch(batch, { history: "undo" }); // the step leaves the stack when it is saved
-  },
-
-  redo: () => {
-    const { redoStack, pending, inflight } = get();
-    if (pending.length || inflight) return;
-    const batch = redoStack[redoStack.length - 1];
-    if (!batch) return;
-    get().dispatch(batch, { history: "redo" });
-  },
+  // queued edits land first, then the step (history stays linear); a press while saving used to be ignored
+  undo: () => queueHistory("undo"),
+  redo: () => queueHistory("redo"),
 
   select: (id) => set({ selected: id }),
 

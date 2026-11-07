@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Command } from "../ir/commands";
 import { normalize } from "../ir/model";
 
-const calls: { commands: Command[]; release: () => void }[] = [];
+const calls: { commands: Command[]; release: (inverse?: Command[]) => void }[] = [];
 vi.mock("../api/client", () => ({
   ApiError: class extends Error {},
   apiFetch: vi.fn((_path: string, opts: { json: { commands: Command[] }; version: number }) => {
@@ -10,8 +10,8 @@ vi.mock("../api/client", () => ({
     return new Promise((resolve) => {
       calls.push({
         commands: opts.json.commands,
-        release: () => resolve({
-          version: opts.version + 1, ir_hash: "h", diagnostics: [], inverse: [],
+        release: (inverse: Command[] = []) => resolve({
+          version: opts.version + 1, ir_hash: "h", diagnostics: [], inverse,
           ir: { id: "wf_1", name: String(opts.version + 1), state: { channels: [] }, nodes: [], edges: [] },
         }),
       });
@@ -51,5 +51,23 @@ describe("flush", () => {
     await Promise.all([first, second]);
     expect(done).toBe(true);
     expect(useEditor.getState()).toMatchObject({ version: 3, pending: [], inflight: false });
+  });
+
+  it("undoes once the save in flight has landed, instead of ignoring the press", async () => {
+    useEditor.setState({ undoStack: [], redoStack: [] });
+    useEditor.getState().dispatch([rename("b")]);
+    await tick();
+    expect(calls).toHaveLength(1); // saving "b"
+    useEditor.getState().undo(); // Ctrl+Z while it is saved
+    await tick();
+    expect(calls).toHaveLength(1);
+    calls[0].release([rename("a")]); // the inverse of "b"
+    for (let i = 0; i < 4; i++) await tick();
+    expect(calls).toHaveLength(2);
+    expect(calls[1].commands).toEqual([rename("a")]);
+    expect(useEditor.getState().wf?.name).toBe("a");
+    calls[1].release([rename("b")]);
+    for (let i = 0; i < 4; i++) await tick();
+    expect(useEditor.getState()).toMatchObject({ undoStack: [], redoStack: [[rename("b")]], pending: [], inflight: false });
   });
 });
