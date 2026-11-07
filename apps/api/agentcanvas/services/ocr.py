@@ -89,13 +89,21 @@ def read_file(eng: Engine, data: bytes) -> str:
     """The text in a picture file (PNG, JPEG, TIFF, BMP, WebP); a multi-page TIFF gives one page per frame."""
     from PIL import Image, ImageSequence
 
-    Image.MAX_IMAGE_PIXELS = MAX_PIXELS * 4
+    # Pillow's own limit stays as it is (it is the whole process's); each frame is checked by its header before it
+    # is decoded, and read one at a time, so a many-frame file never holds every decoded frame at once (RT-9)
+    texts: list[str] = []
     try:
         with Image.open(io.BytesIO(data)) as img:
-            frames = [f.copy() for f, _ in zip(ImageSequence.Iterator(img), range(eng.max_pages), strict=False)]
+            for frame, _ in zip(ImageSequence.Iterator(img), range(eng.max_pages), strict=False):
+                if frame.width * frame.height > MAX_PIXELS * 4:
+                    raise InvalidInput(
+                        f"the picture is too large to read ({frame.width} x {frame.height} pixels; at most "
+                        f"{MAX_PIXELS * 4:,} per page)"
+                    )
+                texts.append(read_image(eng, frame))
     except (OSError, Image.DecompressionBombError, ValueError) as exc:
         raise InvalidInput(f"the picture could not be read: {exc}") from None
-    return "\f".join(read_image(eng, f) for f in frames)
+    return "\f".join(texts)
 
 
 def read_pdf_pages(eng: Engine, data: bytes, pages: list[int]) -> dict[int, str]:

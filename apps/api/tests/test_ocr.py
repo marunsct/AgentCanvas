@@ -65,6 +65,28 @@ def _png(img) -> bytes:
     return out.getvalue()
 
 
+def test_reading_a_picture_leaves_pillows_limit_and_checks_each_frame(monkeypatch):
+    """RT-9: reading a picture raised Pillow's decompression-bomb limit for the whole process, and decoded every
+    frame of a multi-page file before reading any. Each frame is now checked by its size and read in turn."""
+    from PIL import Image
+
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", Image.MAX_IMAGE_PIXELS)  # put back whatever a run changes
+    before = Image.MAX_IMAGE_PIXELS
+    read: list[tuple[int, int]] = []
+    monkeypatch.setattr(ocr, "read_image", lambda eng, frame: read.append(frame.size) or "text")
+    eng = ocr.Engine("tesseract", "eng", 10, 5)
+    small, big = Image.new("L", (40, 40), "white"), Image.new("L", (60, 60), "white")
+    tiff = io.BytesIO()
+    small.save(tiff, format="TIFF", save_all=True, append_images=[small, big])
+    assert ocr.read_file(eng, _png(small)) == "text"
+    assert Image.MAX_IMAGE_PIXELS == before
+    monkeypatch.setattr(ocr, "MAX_PIXELS", 500)  # 4 x 500 = 2000 pixels a page: 40 x 40 fits, 60 x 60 does not
+    read.clear()
+    with pytest.raises(kn.InvalidInput, match="too large to read"):
+        ocr.read_file(eng, tiff.getvalue())
+    assert read == [(40, 40), (40, 40)]  # the frames before it were read one by one
+
+
 def test_ocr_off_or_missing_says_what_to_do(monkeypatch):
     monkeypatch.setenv("AGENTCANVAS_OCR", "off")
     get_settings.cache_clear()
