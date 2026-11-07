@@ -139,6 +139,25 @@ def test_n8n_branches_do_not_wait_for_each_other():
     assert any("Webhook" in r for r in report)
 
 
+@pytest.mark.parametrize("value", ["two\nlines", 'a "quote" and \\ back', "tab\tand \x00 nul", "é ünï 😀"])
+def test_compared_text_becomes_a_cel_string_that_matches_itself(value):
+    from agentcanvas.expr import check_condition, eval_condition
+    from agentcanvas.importers import compare
+
+    for op, expected in (("equals", True), ("not equals", False), ("contains", True)):
+        rule = compare("state.x", op, value)
+        assert rule is not None
+        check_condition(rule)
+        assert eval_condition(rule, {"x": value}) is expected, rule
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", float("nan"), "1e400"])
+def test_a_number_that_is_not_finite_is_not_compared(value):
+    from agentcanvas.importers import compare
+
+    assert compare("state.x", "gt", value) is None  # nan/inf are no CEL numbers: the importer reports the rule
+
+
 def test_parallel_langflow_inputs_wait_for_all():
     doc = _load("langflow_router")
     nodes = doc["data"]["nodes"]

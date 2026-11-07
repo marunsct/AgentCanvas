@@ -11,6 +11,8 @@ what AgentCanvas cannot run. Pure functions over dicts: nothing from those build
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -315,7 +317,8 @@ def brace_template(text: str, value_of: Any) -> str:
 
 
 def cel_string(value: Any) -> str:
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A CEL string literal: JSON's escapes (quotes, backslashes, newlines and other control characters) are CEL's."""
+    return json.dumps(str(value), ensure_ascii=False)
 
 
 def compare(field_expr: str, operation: str, value: Any) -> str | None:
@@ -341,6 +344,8 @@ def compare(field_expr: str, operation: str, value: Any) -> str | None:
         try:
             number = float(value)
         except (TypeError, ValueError):
+            return None
+        if not math.isfinite(number):  # nan and inf are not CEL numbers
             return None
         return f"double({field_expr}) {numeric[op]} {number}"
     return None
