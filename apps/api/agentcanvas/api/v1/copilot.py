@@ -235,14 +235,14 @@ def merge_proposals(stored: list[dict[str, Any]], turn: list[dict[str, Any]]) ->
     """The turn's proposals over the stored ones, except that a decision recorded meanwhile wins. A new proposal that
     carried an open one which was accepted meanwhile keeps only what this turn added (the rest is in the draft)."""
     by_id = {p.get("id"): p for p in stored}
-    accepted = {p.get("id") for p in stored if p.get("status") == "accepted"}
+    accepted = {p.get("id"): p for p in stored if p.get("status") == "accepted"}
     out = []
     for p in turn:
         old = by_id.pop(p.get("id"), None)
         if old is not None and old.get("status") in DECIDED:
             out.append(old)
         elif (carried := p.get("carried")) and carried.get("id") in accepted and p.get("status") == "pending":
-            out.append(_without_carried(p, carried))
+            out.append(_without_carried(p, carried, list(accepted[carried["id"]].get("files") or [])))
         else:
             out.append(p)
     merged = [*by_id.values(), *out]
@@ -251,9 +251,18 @@ def merge_proposals(stored: list[dict[str, Any]], turn: list[dict[str, Any]]) ->
     return [{**p, "status": "superseded"} if p in pending[:-1] else p for p in merged]
 
 
-def _without_carried(p: dict[str, Any], carried: dict[str, Any]) -> dict[str, Any]:
-    """A proposal without the accepted one it started from: its commands are applied and its files written already."""
-    rest = {k: list(p.get(k) or [])[int(carried.get(k) or 0) :] for k in ("commands", "tests", "notes", "files")}
+def _without_carried(p: dict[str, Any], carried: dict[str, Any], written: list[dict[str, Any]]) -> dict[str, Any]:
+    """A proposal without the accepted one it started from: its commands are applied and its files (`written`)
+    written already. Commands, tests and notes only grow after the carried ones; files do not keep their places (a
+    file proposed again moves to the end), so a carried file is recognised by its path and content. A file of this
+    turn that rewrites a written one now starts from what was written."""
+    rest = {k: list(p.get(k) or [])[int(carried.get(k) or 0) :] for k in ("commands", "tests", "notes")}
+    on_disk = {f.get("path"): f.get("content") for f in written}
+    rest["files"] = [
+        {**f, "before": on_disk[f.get("path")]} if f.get("path") in on_disk else f
+        for f in p.get("files") or []
+        if (f.get("path"), f.get("content")) not in on_disk.items()
+    ]
     summary, prefix = str(p.get("summary") or ""), str(carried.get("summary") or "")
     if prefix and summary.startswith(f"{prefix}; "):
         summary = summary[len(prefix) + 2 :]

@@ -239,6 +239,44 @@ def test_a_turn_drops_the_carried_proposal_when_it_was_accepted_meanwhile():
     assert next(p for p in untouched if p["id"] == "p2")["commands"] == [*add, *more]
 
 
+async def test_a_carried_file_rewritten_this_turn_is_kept_when_the_carried_proposal_is_accepted(tmp_path):
+    """I-12: carried files were dropped by position, but proposing a file again moves it to the end: with the open
+    proposal accepted meanwhile, the turn's own new version of a carried file was dropped and a carried one kept."""
+    from agentcanvas.api.v1.copilot import merge_proposals
+    from agentcanvas.copilot.tools import ToolContext, carry_pending, propose_file
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+    from agentcanvas.workspace.store import Workspace
+
+    async def validate(_wf):
+        return []
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "a.py").write_text("A = 0\n")
+    ws = Workspace(tmp_path)
+    files = [
+        {"path": "scripts/a.py", "content": "A = 1\n", "before": "A = 0\n"},
+        {"path": "scripts/b.py", "content": "B = 1\n", "before": None},
+    ]
+    open_one = {"id": "p1", "status": "pending", "summary": "Two files", "commands": [], "files": files}
+    ctx = ToolContext(
+        workflow=Workflow(id="wf_x", name="x"), registry=default_registry(), templates={}, validate=validate,
+        workspace=ws,
+    )  # fmt: skip
+    carry_pending(ctx, [open_one])
+    assert (await propose_file(ctx, {"path": "scripts/a.py", "content": "A = 2\n"}))["ok"]
+    assert [f["path"] for f in ctx.proposal.files] == ["scripts/b.py", "scripts/a.py"]  # a.py moved to the end
+    new = {
+        "id": "p2", "status": "pending", "summary": "Two files", "commands": [], "tests": [], "notes": [],
+        "files": ctx.proposal.files, "carried": ctx.carried,
+    }  # fmt: skip
+    merged = merge_proposals([{**open_one, "status": "accepted"}], [{**open_one, "status": "superseded"}, new])
+    p2 = next(p for p in merged if p["id"] == "p2")
+    # what is left is this turn's a.py, starting from the version the accepted proposal wrote
+    assert p2["files"] == [{"path": "scripts/a.py", "content": "A = 2\n", "before": "A = 1\n"}]
+    assert p2["status"] == "pending"
+
+
 def test_the_open_proposal_carries_into_the_next_turn():
     """Review fix: a follow-up turn tests the open proposal's fix and keeps its changes in the new proposal."""
     from agentcanvas.copilot.tools import ToolContext, carry_pending
