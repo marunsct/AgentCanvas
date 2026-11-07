@@ -73,6 +73,23 @@ describe("debug aids", () => {
   });
 });
 
+describe("opening another thread during a run", () => {
+  it("stops the old stream instead of mixing its events into the new thread", async () => {
+    useRun.setState({ threadId: null, running: false, starting: false, error: null });
+    vi.mocked(postStream).mockImplementationOnce(async (_p, _b, onEvent) => {
+      onEvent({ type: "RUN_STARTED", threadId: "t1", workflowId: "wf_1" });
+      await new Promise((r) => setTimeout(r, 5));
+      useRun.getState().setThread("t2"); // a History row was clicked
+      onEvent({ type: "STEP_STARTED", stepName: "a", canvas_node_id: "n1" });
+      onEvent({ type: "RUN_FINISHED", threadId: "t1", outcome: "success", output: { answer: "for t1" } });
+    });
+    useEditor.setState({ wf: normalize({ id: "wf_1", name: "w", state: { channels: [] } }), breakpoints: [] });
+    await startRun({});
+    expect(useRun.getState()).toMatchObject({ threadId: "t2", running: false, error: null, finalOutput: null });
+    expect(useRun.getState().status).toEqual({});
+  });
+});
+
 describe("fork", () => {
   it("starts from a clean canvas, not the replaced run's colours, text and costs", async () => {
     useRun.setState({

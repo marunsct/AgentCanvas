@@ -42,7 +42,19 @@ async function stream(path: string, body: unknown): Promise<void> {
   const mine = new AbortController();
   active = mine;
   // events of a stream that was stopped (another run, another workflow, A -> Home -> A) are dropped
-  const b = batcher((e) => { if (active === mine) run.apply(e); });
+  let thread: string | null = null;
+  const b = batcher((e) => {
+    if (active !== mine) return;
+    if (e.type === "RUN_STARTED") thread = e.threadId;
+    else if (thread && useRun.getState().threadId !== thread) {
+      // another thread was opened meanwhile (Runs tab, New conversation): this stream's events belong to the old one
+      // and would mix into it, so stop reading (the run goes on on the server)
+      stopStreaming();
+      useRun.setState({ running: false });
+      return;
+    }
+    run.apply(e);
+  });
   try {
     await postStream(path, body, b.push, mine.signal);
   } catch (e) {

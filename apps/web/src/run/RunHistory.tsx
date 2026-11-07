@@ -16,6 +16,7 @@ const LABEL: Record<string, [string, string]> = {
 export function RunHistory() {
   const wfId = useEditor((s) => s.workflowId);
   const current = useRun((s) => s.threadId);
+  const busy = useRun((s) => s.running || s.starting); // opening another thread now would mix the live run's events in
   const threads = useQuery({
     queryKey: ["threads", "editor", wfId], enabled: Boolean(wfId), refetchInterval: 10_000,
     queryFn: () => apiFetch<ThreadPage>(`/threads?workflow_id=${wfId}&limit=50`),
@@ -30,8 +31,9 @@ export function RunHistory() {
             {items.map((t) => {
               const [label, cls] = LABEL[t.status] ?? [t.status, ""];
               return (
-                <tr key={t.id} className={`clickable${t.id === current ? " selected" : ""}`}
-                  onClick={() => { useRun.getState().setThread(t.id); useUi.getState().setDock("timeline"); }}>
+                <tr key={t.id} className={`${busy ? "" : "clickable"}${t.id === current ? " selected" : ""}`}
+                  aria-disabled={busy || undefined} title={busy ? "Wait for the current run to end (or stop it) to open another" : undefined}
+                  onClick={() => { if (busy) return; useRun.getState().setThread(t.id); useUi.getState().setDock("timeline"); }}>
                   <td><span className={`badge ${cls}`}>{label}</span></td>
                   <td>{t.title ?? (t.deployment_id ? "API call" : "Test run")}
                     {t.last_error && <div className="error-text small">{t.last_error.slice(0, 100)}</div>}</td>
