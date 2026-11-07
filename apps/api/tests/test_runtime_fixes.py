@@ -102,6 +102,22 @@ def test_the_hosted_edition_checks_knowledge_embedders(monkeypatch):
     assert _pinned(seen["http_async_client"])
 
 
+# ------------------------------------------------------------------ RT-7 ----
+def test_a_mocked_run_keeps_the_servers_knowledge_files_and_answers():
+    """RT-7: `with_mocks` built a fresh Resources, so a mock-mode run lost the server's knowledge bases, files and
+    answer cache (a knowledge search fell back to files on disk)."""
+
+    async def knowledge(*a: Any, **k: Any) -> list[dict[str, Any]]:
+        return []
+
+    res = nodes.Resources(overrides={"tool": object()}, secrets={"K": "v" * 8})
+    res.knowledge, res.files, res.public_only = knowledge, object(), True  # type: ignore[assignment]
+    clone = res.with_mocks({"model": ["hi"]})
+    assert clone.knowledge is res.knowledge and clone.files is res.files and clone.answers is res.answers
+    assert clone.public_only and clone._kb_files is res._kb_files and clone._secrets is res._secrets
+    assert "model" in clone._overrides and "model" not in res._overrides  # the original is untouched
+
+
 # ------------------------------------------------------------------ RT-4 ----
 class SpendsThen:
     """A graph whose model call reports usage, then fails or hangs before the next update."""

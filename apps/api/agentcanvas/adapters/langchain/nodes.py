@@ -647,11 +647,8 @@ class Resources:
                 return AIMessage(content=str(reply.get("content", "")), tool_calls=calls)
             return AIMessage(content=str(reply))
 
-        clone = Resources(
-            {**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner, self.registry
-        )
-        clone._mcp = self._mcp
-        clone.public_only = self.public_only
+        clone = copy.copy(self)  # the server's knowledge bases, files and answer cache too, like `with_dry_run`
+        clone._overrides = {**self._overrides}
         clone._replays = {**self._replays}
         for name, replies in mocks.items():
             if replies and all(is_tool_recording(r) for r in replies):
