@@ -23,6 +23,7 @@ RUN apk upgrade --no-cache
 USER 101
 # the image renders /etc/nginx/templates/*.template with the environment at start-up (only defined variables)
 COPY infra/nginx.conf /etc/nginx/templates/default.conf.template
+COPY --chmod=755 infra/web/19-trusted-proxies.envsh /docker-entrypoint.d/19-trusted-proxies.envsh
 COPY --chmod=755 infra/web/20-csp.envsh /docker-entrypoint.d/20-csp.envsh
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 ENV API_UPSTREAM=http://api:8000 \

@@ -8,4 +8,6 @@ and open http://localhost:8080.
 {{- end }}
 
 Register the redirect URI <app URL>/auth/callback with your identity provider (client "{{ .Values.config.oidc.clientId }}").
+The web pods believe X-Forwarded-For (client addresses for rate limits and the audit log) from {{ .Values.web.trustedProxies | default "127.0.0.1/32" }}
+(web.trustedProxies); narrow it to your ingress controller's pod range when you know it.
 The first admins are {{ .Values.config.bootstrapAdminEmails | join ", " | default "not set: set config.bootstrapAdminEmails" }}.

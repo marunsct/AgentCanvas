@@ -1,0 +1,13 @@
+#!/bin/sh
+# TRUSTED_PROXIES may list several address ranges (space- or comma-separated), e.g. every private range an ingress
+# controller's pods may have. The nginx template has one `set_real_ip_from ${TRUSTED_PROXIES};`, so the list becomes
+# one directive per range there. Anything but an address range stops the start, rather than nginx trusting it.
+ranges=$(printf '%s' "${TRUSTED_PROXIES:-127.0.0.1/32}" | tr ',' ' ')
+joined=""
+for range in $ranges; do
+  case $range in
+    *[!0-9A-Fa-f:./]*|"") echo "TRUSTED_PROXIES: '$range' is not an address range" >&2; exit 1 ;;
+  esac
+  joined="${joined:+$joined; set_real_ip_from }$range"
+done
+export TRUSTED_PROXIES="${joined:-127.0.0.1/32}"

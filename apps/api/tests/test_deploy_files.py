@@ -40,6 +40,12 @@ def find(docs: list[dict[str, Any]], kind: str, suffix: str) -> dict[str, Any] |
     return next((d for d in docs if d["kind"] == kind and d["metadata"]["name"].endswith(suffix)), None)
 
 
+def pod_spec(docs: list[dict[str, Any]], suffix: str, kind: str = "Deployment") -> dict[str, Any]:
+    doc = find(docs, kind, suffix)
+    assert doc, f"no {kind} *{suffix}"
+    return doc["spec"]["template"]["spec"]
+
+
 def env_of(deployment: dict[str, Any], container: int = 0) -> dict[str, Any]:
     spec = deployment["spec"]["template"]["spec"]["containers"][container]
     return {e["name"]: e.get("value", e.get("valueFrom")) for e in spec.get("env", [])}
@@ -108,9 +114,33 @@ def test_components_with_two_or_more_replicas_get_a_disruption_budget_and_spread
         pdb = find(docs, "PodDisruptionBudget", f"-{component}")
         assert pdb and pdb["spec"]["minAvailable"] == 1, component
         assert pdb["spec"]["selector"]["matchLabels"]["app.kubernetes.io/component"] == component
-        spread = find(docs, "Deployment", f"-{component}")["spec"]["template"]["spec"]["topologySpreadConstraints"]  # type: ignore[index]
+        spread = pod_spec(docs, f"-{component}")["topologySpreadConstraints"]
         assert spread[0]["topologyKey"] == "kubernetes.io/hostname", component
         assert spread[0]["labelSelector"]["matchLabels"]["app.kubernetes.io/component"] == component
     docs = render("api.replicas=1", "topologySpread.enabled=false")  # one replica: a budget would block every drain
     assert not find(docs, "PodDisruptionBudget", "-api") and find(docs, "PodDisruptionBudget", "-web")
-    assert "topologySpreadConstraints" not in find(docs, "Deployment", "-api")["spec"]["template"]["spec"]  # type: ignore[index]
+    assert "topologySpreadConstraints" not in pod_spec(docs, "-api")
+
+
+def trusted(value: str | None) -> subprocess.CompletedProcess[str]:
+    """The web image's start-up step that turns TRUSTED_PROXIES into nginx's set_real_ip_from directives."""
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")} | ({"TRUSTED_PROXIES": value} if value is not None else {})
+    script = ROOT / "infra" / "web" / "19-trusted-proxies.envsh"
+    return subprocess.run(["sh", "-c", f'. "{script}" && printf %s "$TRUSTED_PROXIES"'], capture_output=True,
+                          text=True, env=env, timeout=10, check=False)  # fmt: skip
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell")
+def test_the_web_image_trusts_every_listed_proxy_range_and_nothing_else():
+    assert trusted(None).stdout == "127.0.0.1/32"
+    assert trusted("10.0.0.0/8").stdout == "10.0.0.0/8"
+    many = trusted("10.0.0.0/8 172.16.0.0/12,192.168.0.0/16").stdout
+    assert many == "10.0.0.0/8; set_real_ip_from 172.16.0.0/12; set_real_ip_from 192.168.0.0/16"
+    bad = trusted("10.0.0.0/8; return 200")
+    assert bad.returncode != 0 and "not an address range" in bad.stderr
+
+
+@needs_helm
+def test_the_chart_trusts_every_private_range_by_default():
+    web = find(render(), "Deployment", "-web")
+    assert web and env_of(web)["TRUSTED_PROXIES"] == "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
