@@ -667,3 +667,65 @@ async def test_an_answer_that_fails_at_once_goes_back_to_the_inbox(triage_api, a
     again = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
     assert [i["id"] for i in again] == [item["id"]]  # still waiting for an answer
     assert (await api.get("/v1/threads/th_back")).json()["status"] == "interrupted"
+
+
+def _resume_with(app, monkeypatch, execute):
+    adapters = app.state.runner.adapters
+    real = adapters["langchain"]
+
+    class OnResume:
+        id, manifest = real.id, real.manifest
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    OnResume.execute = execute  # type: ignore[attr-defined]
+    monkeypatch.setitem(adapters, "langchain", OnResume())
+
+
+@pytest.mark.parametrize("stop", ["cancel", "drain"])
+async def test_an_answer_stopped_before_it_took_goes_back_to_the_inbox(triage_api, app, monkeypatch, stop):
+    """RT-3: only a failed answer went back to the Inbox; a cancelled one, or one a restart stopped, stayed
+    decided though the run still waits for it."""
+    api, wf, runner = triage_api, triage_api.wf_id, app.state.runner
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_stop"})
+    [item] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+
+    async def execute(self, spec, resources):
+        await asyncio.sleep(30)
+        yield {}
+
+    _resume_with(app, monkeypatch, execute)
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert r.status_code == 202, r.text
+    await asyncio.sleep(0.05)
+    if stop == "cancel":
+        assert (await api.post(f"/v1/runs/{r.json()['run_id']}/cancel")).json() == {"cancelled": True}
+        await runner.wait(r.json()["run_id"])
+    else:
+        await runner.drain(0)
+        runner.draining = False
+    again = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    assert [i["id"] for i in again] == [item["id"]]
+    assert (await api.get("/v1/threads/th_stop")).json()["status"] == "interrupted"
+
+
+async def test_a_question_asked_again_reopens_its_inbox_item(triage_api, app, monkeypatch):
+    """RT-3: when the run paused again on the same interrupt (its answer did not take), the decided row stayed
+    decided, so the question it waits for was nowhere in the Inbox."""
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_again"})
+    [item] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+
+    async def execute(self, spec, resources):
+        yield {"type": "STEP_FINISHED", "task_id": "t1", "node_id": item["canvas_node_id"]}
+        same = {"id": item["id"], "kind": item["kind"], "canvas_node_id": item["canvas_node_id"],
+                "payload": {"question": "again?"}}  # fmt: skip
+        yield {"type": "RUN_FINISHED", "outcome": "interrupt", "interrupts": [same], "next": [], "output": {}}
+
+    _resume_with(app, monkeypatch, execute)
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", params={"stream": "true"},
+                       json={"value": {"decisions": [{"type": "approve"}]}})  # fmt: skip
+    assert events(r.text)[-1]["type"] == "RUN_FINISHED"
+    [again] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    assert again["id"] == item["id"] and again["status"] == "pending" and again["payload"] == {"question": "again?"}

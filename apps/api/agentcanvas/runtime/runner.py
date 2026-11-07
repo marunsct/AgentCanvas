@@ -669,25 +669,29 @@ class Runner:
                     return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
                 untouched = not any(e.get("type") == "STEP_FINISHED" for e in h.events)
-                if status == "error" and h.decided and untouched:  # failed before the answer took: still open
+                # failed, cancelled or stopped by a restart before the answer took: the run still waits for it
+                stopped = status in ("error", "cancelled") or (status == "interrupted" and h.drained)
+                if stopped and h.decided and untouched:
                     await s.execute(
                         update(InterruptTask)
                         .where(InterruptTask.id.in_(h.decided), InterruptTask.status == "decided")
                         .values(status="pending", decision=None, decided_by=None, decided_at=None)
                     )
-                    if thread_status == "error":
+                    if thread_status in ("error", "idle"):
                         await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status="interrupted"))
                 for intr in interrupts:
-                    if await s.get(InterruptTask, intr["id"]) is None:
-                        s.add(
-                            InterruptTask(
-                                id=intr["id"],
-                                thread_id=h.thread_id,
-                                run_id=h.run_id,
-                                canvas_node_id=intr.get("canvas_node_id") or "",
-                                kind=intr["kind"],
-                                payload=_as_object(intr["payload"]),
-                            )
+                    asked = {
+                        "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
+                        "payload": _as_object(intr["payload"]),
+                    }  # fmt: skip
+                    row = await s.get(InterruptTask, intr["id"])
+                    if row is None:
+                        s.add(InterruptTask(id=intr["id"], thread_id=h.thread_id, **asked))
+                    elif row.status != "pending":  # asked again (its answer did not take): open it again
+                        await s.execute(
+                            update(InterruptTask)
+                            .where(InterruptTask.id == intr["id"])
+                            .values(status="pending", decision=None, decided_by=None, decided_at=None, **asked)
                         )
                 s.add_all(rubric_scores(h))
                 await s.commit()
