@@ -203,6 +203,15 @@ def test_the_production_api_runs_locked_down_and_the_web_port_stays_on_this_host
         assert "pgvector/pgvector:pg16@sha256:" in image, name  # a digest, not a tag that moves
 
 
+def test_the_development_services_listen_on_this_computer_only():
+    services = compose("docker-compose.yml")["services"]
+    assert "redis" not in services  # nothing in the API uses it
+    for name, svc in services.items():
+        for port in svc.get("ports", []):
+            assert port.startswith("127.0.0.1:"), (name, port)  # development passwords: never on the network
+    assert "redis" not in (ROOT / "Makefile").read_text().split("\ninfra:", 1)[1].split("\n\n", 1)[0]
+
+
 def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
     import re
 

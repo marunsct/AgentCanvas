@@ -60,7 +60,7 @@ agentcanvas/
 
 ```makefile
 .PHONY: infra dev-api dev-fake dev-web test lint fmt
-infra:      ; docker compose -f infra/docker-compose.yml up -d postgres redis
+infra:      ; docker compose -f infra/docker-compose.yml up -d postgres
 dev-api:    ; cd apps/api && uv run uvicorn agentcanvas.api.app:app --reload --port 8000
 dev-fake:   ; cd apps/api && uv run uvicorn agentcanvas.dev.fake_server:app --reload --port 8000
 dev-web:    ; cd apps/web && pnpm dev

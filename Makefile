@@ -20,8 +20,8 @@ mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm, as 
 	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json .frameworks/mastra/ \
 	  && npm ci --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
 
-infra:      ## start local Postgres + Redis (Docker)
-	docker compose -f infra/docker-compose.yml up -d postgres redis
+infra:      ## start local Postgres (Docker; ports on 127.0.0.1 only)
+	docker compose -f infra/docker-compose.yml up -d postgres
 
 dev-api:    ## API with real models (needs provider keys)
 	cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000
