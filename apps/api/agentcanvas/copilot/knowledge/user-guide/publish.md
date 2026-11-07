@@ -158,7 +158,8 @@ field such as `answer`, `reply` or `response`, else the only text output.
 - The link is the key. Anyone who has it can chat, and their runs count against the deployment's usage limits.
   Share it only with the people it is meant for. The page never shows your workflow, its keys or its secrets.
 - **New link** makes a new address. The old link stops working at once, and so do conversations started on it.
-  Switching sharing off, or unpublishing the deployment, closes the page too.
+  Switching sharing off, or unpublishing the deployment, closes the page too. Unpublishing also revokes the link
+  and ends its conversations, like the key: after publishing again, switch sharing on and hand out the new link.
 - Visitors only ever see their own conversations. Each browser gets its own random visitor id; you see their runs
   in **Runs**, with the end user `share:<deployment>:<visitor>` (useful for per-user memory).
 - **Sites that may show the chat widget.** Until you list any, every website can put the chat page in a frame (the

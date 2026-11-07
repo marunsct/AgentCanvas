@@ -130,6 +130,21 @@ async def test_disabled_regenerated_or_unpublished_links_are_404(api_client):
     assert (await api_client.get("/v1/share/sh_nope")).status_code == 404
 
 
+async def test_publishing_again_does_not_revive_the_old_link_or_its_conversations(api_client):
+    wf, dep, _ = await publish(api_client)
+    token = (await share_on(api_client, dep))["token"]
+    thread = events((await say(api_client, token, "Ada")).text)[0]["threadId"]
+    assert (await api_client.delete(f"/v1/deployments/{dep}")).status_code == 204
+    again = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    assert again["deployment"]["id"] == dep
+    assert (await api_client.get(f"/v1/share/{token}")).status_code == 404
+    share = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    assert share["enabled"] is False and share["token"] != token
+    fresh = (await share_on(api_client, dep))["token"]
+    assert (await say(api_client, fresh, "Ada", thread_id=thread)).status_code == 404  # the old conversation ended
+    assert (await api_client.get(f"/v1/threads/{thread}")).status_code == 200  # its run stays for the builders
+
+
 async def test_settings_validation_and_roles(api_client, app):
     from agentcanvas.api.deps import CurrentUser, current_user
 
@@ -195,6 +210,7 @@ async def test_a_visitor_answers_a_question(app, api_client):
     ir["state"]["channels"].append({"name": "nick", "type": {"type": "string"}, "io": "out"})
     ir["nodes"].append({"id": "n_ask", "type": "core.human_input", "name": "ask",
                         "config": {"prompt": "What should I call you?", "output": "nick"}})  # fmt: skip
+    first = ""
     for e in ir["edges"]:
         if e["kind"] == "flow" and e["source"]["node"] == "START":
             first, e["target"]["node"] = e["target"]["node"], "n_ask"
