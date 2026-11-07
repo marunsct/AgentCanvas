@@ -13,6 +13,7 @@ import base64
 import io
 import re
 import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
@@ -96,13 +97,14 @@ class Client:
 async def push(
     files: dict[str, bytes], *, repo: str, branch: str, folder: str, message: str, token: str,
     transport: httpx.AsyncBaseTransport | None = None, api: str = API,
-    root_files: dict[str, bytes] | None = None, prune: bool = False, skip_unchanged: bool = False,
+    root_files: dict[str, bytes] | None = None, delete: Iterable[str] = (), skip_unchanged: bool = False,
 ) -> Pushed:  # fmt: skip
     """One commit putting `files` under `folder` of `repo` on `branch` (created from the default branch if new).
 
-    `root_files` go at the repository's root (such as a CI file, which GitHub reads only from `.github/workflows`);
-    `prune` deletes what the folder holds that `files` no longer has; `skip_unchanged` makes no commit when the
-    result would be the tree the branch already has (`Pushed.changed` says whether there was one)."""
+    `root_files` go at the repository's root (such as a CI file, which GitHub reads only from `.github/workflows`).
+    `delete` names paths under `folder` to remove: files an earlier push wrote that this one no longer has, never
+    "whatever else the folder holds", which at the repository's root is the whole repository. `skip_unchanged`
+    makes no commit when the result would be the tree the branch already has (`Pushed.changed` says whether)."""
     check(repo, branch, folder)
     if len(files) + len(root_files or {}) > MAX_FILES:
         raise InvalidInput(f"the export has {len(files)} files; at most {MAX_FILES} can be pushed at once")
@@ -125,13 +127,13 @@ async def push(
             content = base64.b64encode(data).decode()
             blob = await gh.call("POST", "/git/blobs", {"content": content, "encoding": "base64"})
             tree.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
-        if prune:  # what the folder holds that this export no longer has
+        gone = sorted({f"{folder}/{p}" if folder else p for p in delete} - set(wanted))
+        if gone:  # only blobs that exist: deleting a path the tree lacks is an error at GitHub
             listing = await gh.call("GET", f"/git/trees/{base_tree}", params={"recursive": "1"})
             if listing.get("truncated"):
-                raise GitHubError(f"{repo} is too large to compare its files; push without pruning")
-            prefix = f"{folder}/" if folder else ""
-            tree += [{"path": e["path"], "mode": "100644", "type": "blob", "sha": None} for e in listing["tree"]
-                     if e["type"] == "blob" and e["path"].startswith(prefix) and e["path"] not in wanted]  # fmt: skip
+                raise GitHubError(f"{repo} is too large to compare its files; push again after removing them by hand")
+            there = {e["path"] for e in listing["tree"] if e["type"] == "blob"}
+            tree += [{"path": p, "mode": "100644", "type": "blob", "sha": None} for p in gone if p in there]
         new_tree = await gh.call("POST", "/git/trees", {"base_tree": base_tree, "tree": tree})
         if skip_unchanged and new_tree["sha"] == base_tree and not created:
             return Pushed(commit=parent, url=_url(repo, branch, folder), branch=branch, created_branch=False,

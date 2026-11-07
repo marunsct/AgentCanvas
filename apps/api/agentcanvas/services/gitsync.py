@@ -33,12 +33,19 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.services import github
 
 IR_FILE = "workflow.ir.json"
+MANIFEST = ".agentcanvas-files"  # the files a push wrote, one per line: the next push removes only those it drops
 AUTO = ("off", "publish", "version")
 MAX_BODY = 60_000  # GitHub takes 65536 characters in a pull request description
 
 
 def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:50].strip("-") or "workflow"
+
+
+def safe_relative(path: str) -> bool:
+    """A manifest line that names a file inside the folder (nothing absolute, no `..`, no `.git`)."""
+    parts = path.strip().split("/")
+    return bool(path.strip()) and not path.startswith("/") and all(p not in ("", ".", "..", ".git") for p in parts)
 
 
 def ir_path(folder: str) -> str:
@@ -176,10 +183,16 @@ async def push(
         )
     base_ir, _ = parse_ir(await github.read_file(link.repo, path, base, token, transport), wf_id)
     all_files = {**files, IR_FILE: ir_bytes(wf, wf_id)}
+    all_files[MANIFEST] = ("\n".join(sorted([*all_files, MANIFEST])) + "\n").encode()
+    manifest = f"{link.folder}/{MANIFEST}" if link.folder else MANIFEST
+    before = await github.read_file(link.repo, manifest, link.branch, token, transport)
+    if before is None:  # a new branch starts from the default branch: what a merged earlier push left there
+        before = await github.read_file(link.repo, manifest, base, token, transport)
+    written = [p for p in (before or b"").decode("utf-8", "replace").splitlines() if safe_relative(p)]
     pushed = await github.push(
         all_files, repo=link.repo, branch=link.branch, folder=link.folder, message=message, token=token,
-        transport=transport, root_files={ci_path(wf_id): ci_file(link, base, name).encode()}, prune=True,
-        skip_unchanged=True,
+        transport=transport, root_files={ci_path(wf_id): ci_file(link, base, name).encode()},
+        delete=[p for p in written if p not in all_files], skip_unchanged=True,
     )  # fmt: skip
     pr = await github.open_pull_request(
         repo=link.repo, branch=link.branch, base=base, title=f"{name}: {label} from AgentCanvas"[:200],

@@ -64,6 +64,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Git sync: a workflow connected to a repository's root (no folder) opened a pull request that deleted every other file of the repository, and a folder link removed other workflows' sub-folders. A push now records the files it writes in `.agentcanvas-files` and removes only files an earlier push wrote.
 - An exported project whose workflow has an app connector or MCP server no longer fails its own smoke test on a machine that cannot reach that server: the test builds the graph with a recorded tool in its place.
 - The API no longer stops at start-up when neither `AGENTCANVAS_PUBLIC_URL` nor a CORS origin is set (the production compose files set neither): signing in to an app connector then says to set the public address.
 - Accessibility, found by an automated scan of every page in the light and dark themes: text and status colours that were too faint now meet WCAG AA contrast, links inside text are underlined, the audit log's rows open with a keyboard button, the Problems panel can be scrolled with the keyboard, and code line numbers are readable.

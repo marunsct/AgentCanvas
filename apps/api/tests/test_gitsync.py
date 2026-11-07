@@ -262,16 +262,43 @@ async def test_pushing_again_updates_the_open_pull_request_and_unchanged_makes_n
     assert b"Hey {{ state.who }}" in gh.files("agentcanvas/greeter")["agents/greeter/workflow.ir.json"]
 
 
-async def test_files_the_export_no_longer_has_are_removed_from_the_folder(api_client, gh):
+async def test_files_an_earlier_push_wrote_and_this_one_drops_are_removed_and_nothing_else(api_client, gh):
     wf = await ready(api_client)
     await api_client.post(f"/v1/workflows/{wf}/git/push", json={})  # the draft
-    # a stale file in the folder, and one elsewhere that is not ours; the branch's workflow file is as it was
+    manifest = gh.files("agentcanvas/greeter")["agents/greeter/.agentcanvas-files"].decode().splitlines()
+    assert "workflow.ir.json" in manifest and ".agentcanvas-files" in manifest
+    # an earlier export wrote old_module.py (it is in the manifest); a person added notes.md and docs/notes.md
     gh.edit("agentcanvas/greeter", "agents/greeter/old_module.py", b"print('stale')\n")
+    gh.edit(
+        "agentcanvas/greeter", "agents/greeter/.agentcanvas-files", ("\n".join([*manifest, "old_module.py"])).encode()
+    )
+    gh.edit("agentcanvas/greeter", "agents/greeter/notes.md", b"mine\n")
     gh.edit("agentcanvas/greeter", "docs/notes.md", b"mine\n")
-    assert (await api_client.get(f"/v1/workflows/{wf}/git")).json()["last_version"] == "the draft"
     await api_client.post(f"/v1/workflows/{wf}/git/push", json={})
     after = gh.files("agentcanvas/greeter")
-    assert "agents/greeter/old_module.py" not in after and after["docs/notes.md"] == b"mine\n"
+    assert "agents/greeter/old_module.py" not in after
+    assert after["agents/greeter/notes.md"] == b"mine\n" and after["docs/notes.md"] == b"mine\n"
+
+
+async def test_a_push_to_the_repository_root_keeps_the_rest_of_the_repository(api_client, gh):
+    """P-1: with no folder, pruning "what the folder holds" deleted every file of the repository in the pull request."""
+    wf = await make_greeter(api_client)
+    assert (
+        await api_client.put("/v1/projects/prj_default/secrets/GITHUB_TOKEN", json={"value": TOKEN})
+    ).status_code == 204
+    gh.edit("main", "src/app.py", b"print('the app')\n")
+    gh.edit("main", "LICENSE", b"MIT\n")
+    await connect(api_client, wf, folder="")
+    r = await api_client.post(f"/v1/workflows/{wf}/git/push", json={})
+    assert r.status_code == 200, r.text
+    after = gh.files("agentcanvas/greeter")
+    assert after["src/app.py"] == b"print('the app')\n" and after["LICENSE"] == b"MIT\n" and "README.md" in after
+    assert "workflow.ir.json" in after
+    # a manifest cannot name paths outside the folder or into .git
+    from agentcanvas.services import gitsync as gs
+
+    assert not gs.safe_relative("../x") and not gs.safe_relative("/etc/x") and not gs.safe_relative(".git/config")
+    assert gs.safe_relative("src/app.py")
 
 
 async def test_nothing_to_review_when_the_branch_holds_what_main_has(api_client, gh):
