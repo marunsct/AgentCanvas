@@ -397,8 +397,33 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
     return model, params
 
 
+# Providers built on the OpenAI SDK, which takes the hosted edition's public-address client (`pinned.py`).
+PINNABLE = ("openai", "azure_openai")
+ADDRESS_HINTS = ("url", "endpoint", "api_base", "host", "client", "proxy")  # config keys that choose where to connect
+
+
+def public_only_args(model_id: str, args: dict[str, Any], what: str) -> dict[str, Any]:
+    """The hosted edition (S-5): a model or embedder connects to public addresses only. An OpenAI SDK client gets
+    the connection-pinned HTTP client; any other provider is refused an address of its own (or a local default,
+    like Ollama's), because its client cannot be pinned."""
+    provider = model_id.partition(":")[0]
+    if provider in PINNABLE:
+        from agentcanvas.adapters.langchain.pinned import public_async_client
+
+        args["http_async_client"] = public_async_client()
+        return args
+    chosen = [k for k in args if any(h in k.lower() for h in ADDRESS_HINTS)]
+    if provider == "ollama" or chosen:
+        raise ValueError(
+            f"{what} '{model_id}': in the hosted edition a model at an address of its own must use an "
+            "OpenAI-compatible provider (openai_compatible:<model> with its base URL), which connects to public "
+            f"addresses only{f' (it sets {chosen[0]})' if chosen else ''}"
+        )
+    return args
+
+
 def knowledge_embedder(
-    spec: dict[str, Any], secrets: dict[str, str]
+    spec: dict[str, Any], secrets: dict[str, str], *, public_only: bool = False
 ) -> Callable[[Sequence[str]], Awaitable[list[list[float]]]]:
     """The embedding function of a knowledge base (S24): the built-in offline embedder, or a provider model
     ("openai:text-embedding-3-small", "ollama:nomic-embed-text", …) through LangChain's `init_embeddings`."""
@@ -424,6 +449,8 @@ def knowledge_embedder(
     model_id, params = chat_model_args(model, params, secrets)
     if model.partition(":")[0] in OPENAI_COMPATIBLE:  # LM Studio and the like take text, not OpenAI's token ids
         params.setdefault("check_embedding_ctx_length", False)
+    if public_only:
+        params = public_only_args(model_id, params, "embedding model")
     embeddings = init_embeddings(model_id, **params)
 
     async def provider(texts: Sequence[str]) -> list[list[float]]:
@@ -488,14 +515,14 @@ class Resources:
             return self._cache[key]
         params = {k: self._resolve(v) for k, v in config.items() if k not in ("model", *GATEWAY_KEYS)}
         model_id, args = chat_model_args(config["model"], params, self._secrets)
-        if self.public_only and args.get("base_url") and model_id.startswith("openai:"):
-            from agentcanvas.adapters.langchain.pinned import public_async_client
-
-            args["http_async_client"] = public_async_client()  # hosted: a model's own address must be public (S-5)
+        if self.public_only:  # hosted: a model's own address must be public (S-5)
+            args = public_only_args(model_id, args, "model")
         shared = {k: v for k, v in params.items() if k in BACKUP_KEYS}  # backups use their provider's own key
 
         def backup(model: str) -> BaseChatModel:
             backup_id, backup_args = chat_model_args(model, shared, self._secrets)
+            if self.public_only:  # e.g. a local server's default address
+                backup_args = public_only_args(backup_id, backup_args, "backup model")
             return init_chat_model(backup_id, **backup_args)
 
         model = tag_model(init_chat_model(model_id, **args), config["model"])
@@ -589,7 +616,7 @@ class Resources:
         cached = self._kb_files.get(name)
         if cached is None or cached[0] != mtime:
             header, chunks = ks.load_jsonl(path.read_text(encoding="utf-8"))
-            embed = knowledge_embedder(header.get("embedding") or {}, self._secrets)
+            embed = knowledge_embedder(header.get("embedding") or {}, self._secrets, public_only=self.public_only)
             cached = self._kb_files[name] = (mtime, ks.Index(chunks), embed)
         return cached[1], cached[2]
 
