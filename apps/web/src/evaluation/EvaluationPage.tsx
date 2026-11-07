@@ -1,6 +1,6 @@
 /** Evaluation Studio (S12): datasets, evaluators and experiments for one workflow, with a results grid and a
  * comparison of two experiments. Everyone can read; builders change things. */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { apiDownload, apiFetch } from "../api/client";
@@ -421,10 +421,18 @@ async function allResults(expId: string): Promise<ExperimentResultOut[]> {
   }
 }
 
-function useResults(exp: ExperimentOut) {
+/** How often a running experiment's results are fetched again (its list polls every second; the results can be
+ * thousands of rows, fetched page by page). */
+export const RESULTS_POLL_MS = 5000;
+
+/** An experiment's results. Keyed on its status, not its progress: keyed on the completed counts, every poll of the
+ * list fetched all results again and showed "Loading results…" in between. */
+export function useResults(exp: ExperimentOut) {
   return useQuery({
-    queryKey: ["experiment-results", exp.id, exp.status, exp.summary.map((s) => s.completed).join()],
+    queryKey: ["experiment-results", exp.id, exp.status],
     queryFn: () => allResults(exp.id),
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === exp.id ? keepPreviousData(prev) : undefined),
+    refetchInterval: exp.status === "running" ? RESULTS_POLL_MS : false,
   });
 }
 
