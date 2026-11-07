@@ -85,3 +85,19 @@ describe("PlaygroundPage temperature", () => {
     expect(screen.getByTestId("pg-calls").textContent).toContain("sunny in Paris");
   });
 });
+
+describe("PlaygroundPage stream", () => {
+  it("stops the answer being written when the page is left", async () => {
+    const { postStream } = await import("../run/sse");
+    let signal: AbortSignal | undefined;
+    vi.mocked(postStream).mockImplementationOnce((_p, _b, _on, s) => {
+      signal = s;
+      return new Promise((_ok, fail) => s?.addEventListener("abort", () => fail(new DOMException("aborted", "AbortError"))));
+    });
+    renderPage();
+    await say("write a long story");
+    expect(signal?.aborted).toBe(false);
+    cleanup(); // moved to another page
+    expect(signal?.aborted).toBe(true);
+  });
+});

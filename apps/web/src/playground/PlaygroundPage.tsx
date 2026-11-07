@@ -32,6 +32,7 @@ export function PlaygroundPage() {
   const [tools, setTools] = useState<string[]>([]); // import paths of the workspace tools the model may call
   const catalog = useWorkspaceCatalog();
   const stream = useRef<AbortController | null>(null);
+  useEffect(() => () => stream.current?.abort(), []); // leaving the page: the model stopped being asked for nothing
   useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify(turns)); } catch { /* not kept */ } }, [turns]);
   const [draft, setDraft] = useState("");
   const [name, setName] = useState("My assistant");
