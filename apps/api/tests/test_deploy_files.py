@@ -99,3 +99,18 @@ def test_the_operator_guide_lists_every_key_the_chart_requires():
     for key in ["DATABASE_URL", "AGENTCANVAS_SECRET_KEY", "LANGGRAPH_AES_KEY", "AGENTCANVAS_SANDBOX_TOKEN",
                 "AGENTCANVAS_EGRESS_SECRET"]:  # fmt: skip
         assert f'"{key}"' in helpers and f"| `{key}` |" in guide, key
+
+
+@needs_helm
+def test_components_with_two_or_more_replicas_get_a_disruption_budget_and_spread_across_nodes():
+    docs = render()
+    for component in ["api", "web", "sandbox", "egress"]:
+        pdb = find(docs, "PodDisruptionBudget", f"-{component}")
+        assert pdb and pdb["spec"]["minAvailable"] == 1, component
+        assert pdb["spec"]["selector"]["matchLabels"]["app.kubernetes.io/component"] == component
+        spread = find(docs, "Deployment", f"-{component}")["spec"]["template"]["spec"]["topologySpreadConstraints"]  # type: ignore[index]
+        assert spread[0]["topologyKey"] == "kubernetes.io/hostname", component
+        assert spread[0]["labelSelector"]["matchLabels"]["app.kubernetes.io/component"] == component
+    docs = render("api.replicas=1", "topologySpread.enabled=false")  # one replica: a budget would block every drain
+    assert not find(docs, "PodDisruptionBudget", "-api") and find(docs, "PodDisruptionBudget", "-web")
+    assert "topologySpreadConstraints" not in find(docs, "Deployment", "-api")["spec"]["template"]["spec"]  # type: ignore[index]

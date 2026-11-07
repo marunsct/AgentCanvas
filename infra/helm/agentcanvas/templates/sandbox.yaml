@@ -26,6 +26,7 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      {{- include "agentcanvas.spread" (dict "root" . "component" "sandbox") | nindent 6 }}
       containers:
         - name: sandbox
           image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
@@ -147,6 +148,7 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      {{- include "agentcanvas.spread" (dict "root" . "component" "egress") | nindent 6 }}
       containers:
         - name: egress
           image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}

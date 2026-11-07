@@ -136,6 +136,24 @@ but lacks a required key fails the release instead of pods that crash-loop or ne
 {{- end }}
 {{- end -}}
 
+{{/* Spread a component's pods across nodes (a node lost takes one, not all); ScheduleAnyway keeps a one-node
+cluster working. Call with (dict "root" . "component" "api"). */}}
+{{- define "agentcanvas.spread" -}}
+{{- $component := .component -}}
+{{- $root := .root -}}
+{{- with .root.Values.topologySpread }}
+{{- if .enabled }}
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: {{ .topologyKey }}
+    whenUnsatisfiable: {{ .whenUnsatisfiable }}
+    labelSelector:
+      matchLabels:
+        {{- include "agentcanvas.selector" (dict "root" $root "component" $component) | nindent 8 }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
 {{- define "agentcanvas.podSecurity" -}}
 runAsNonRoot: true
 seccompProfile: { type: RuntimeDefault }

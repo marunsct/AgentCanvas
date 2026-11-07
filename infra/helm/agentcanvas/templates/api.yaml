@@ -36,6 +36,7 @@ spec:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
         fsGroup: 10001
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      {{- include "agentcanvas.spread" (dict "root" . "component" "api") | nindent 6 }}
       containers:
         - name: api
           image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}

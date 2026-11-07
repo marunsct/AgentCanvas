@@ -66,6 +66,7 @@ helm install agentcanvas infra/helm/agentcanvas \
 | `PersistentVolumeClaim …-workspaces` | project workspaces (git) shared by every API replica: needs a **ReadWriteMany** storage class (EFS, Filestore, Azure Files, NFS); kept on uninstall |
 | `Ingress` | routes everything to the web service; annotations turn proxy buffering off and allow hour-long streams |
 | `NetworkPolicy …-api` | only the web pods reach the API port |
+| `PodDisruptionBudget …-api`, `-web`, `-sandbox`, `-egress` | `minAvailable: 1` for each component running 2+ replicas, so a node drain or cluster upgrade never takes all of them (`podDisruptionBudget.*`); every Deployment also spreads its pods across nodes (`topologySpread.*`, `ScheduleAnyway`) |
 | Secrets | never in values: name an existing Secret (`secrets.existingSecret`), for example one synced by External Secrets |
 
 **Several replicas are safe:** runs persist in Postgres, a reconnecting client reads state via `GET /v1/threads/{id}`, so sticky sessions are not required. Each cron minute starts one run however many replicas tick: a scheduler claims the minute by moving the trigger's `last_fired` forward in a conditional update, and only the replica whose update matched starts the run.

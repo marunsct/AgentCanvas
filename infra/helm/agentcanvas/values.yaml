@@ -137,6 +137,19 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-body-size: 20m
 
+# a node drain or cluster upgrade keeps at least minAvailable pods of the API, web, sandbox and egress (each that runs
+# 2+ replicas; one replica gets no budget, which would block every drain)
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# the pods of each component on different nodes where the cluster has them (ScheduleAnyway: a one-node cluster
+# still schedules them); topology.kubernetes.io/zone spreads them across zones instead
+topologySpread:
+  enabled: true
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+
 networkPolicy:
   # only the web pods (and the ingress controller through them) reach the API; this is what makes
   # config.forwardedAllowIps "*" safe
