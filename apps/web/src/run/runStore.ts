@@ -60,6 +60,22 @@ export const useRun = create<RunState>((set) => ({
   setInput: (input) => set({ input }),
 }));
 
+const WAITING = "(waiting) ";
+
+/** The tab's title while a run in this tab waits for a decision (approval, input), or without the mark again. */
+export function waitingTitle(title: string, waiting: boolean): string {
+  const base = title.startsWith(WAITING) ? title.slice(WAITING.length) : title;
+  return waiting ? WAITING + base : base;
+}
+
+// someone working in another tab sees that the run they started is waiting for them
+if (typeof document !== "undefined") {
+  useRun.subscribe((s) => {
+    const title = waitingTitle(document.title, s.interrupts.length > 0 && !s.running);
+    if (title !== document.title) document.title = title;
+  });
+}
+
 /** Pure reducer (unit-tested): how each canonical event changes the canvas. */
 export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
   switch (ev.type) {
