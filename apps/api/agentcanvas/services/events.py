@@ -27,7 +27,7 @@ from agentcanvas.log import get_logger
 from agentcanvas.runtime.types import ResumeSpec
 
 log = get_logger(__name__)
-MAX_DEPTH = 5  # emit -> handler -> emit … stops here
+MAX_DEPTH = 5  # emit -> handler -> emit (or a run it starts, which emits) … stops here
 HANDLER_TIMEOUT_S = 30.0
 
 
@@ -171,6 +171,8 @@ class EventService:
     # ------------------------------------------------------------------ actions ----
     async def _perform(self, project_id: str, action: dict[str, Any], user_id: str | None, depth: int) -> list[str]:
         kind = action.get("action")
+        if kind in ("start_workflow", "resume") and depth >= MAX_DEPTH:  # its run's events would be one level deeper
+            raise InvalidInput(f"events led to runs more than {MAX_DEPTH} levels deep")
         if kind == "start_workflow":
             wf = await self._workflow(project_id, str(action["workflow"]))
             context = {f.name: user_id for f in wf.context.fields if f.source == "user" and user_id}
@@ -181,6 +183,7 @@ class EventService:
                 user_id=user_id,
                 context=context,
                 origin="event",
+                event_depth=depth + 1,
             )
             return [h.run_id]
         if kind == "resume":
@@ -207,7 +210,7 @@ class EventService:
             PROJECT_OF[row.id] = project_id  # the run's lifecycle events reach this project's handlers
             h = await self.runner.start(
                 Workflow.model_validate(ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),
-                user_id=user_id, origin="event", **target,
+                user_id=user_id, origin="event", event_depth=depth + 1, **target,
             )  # fmt: skip
             return [h.run_id]
         if kind == "emit":
@@ -253,8 +256,11 @@ class EventService:
             "thread_id": h.thread_id,
             "run_id": h.run_id,
         }
+        depth = getattr(h, "event_depth", 0)  # a run a handler started: its events count as deeper (RT-6)
         for e in h.emitted:  # domain events are delivered whoever started the run
-            await self.dispatch(project_id, str(e["ac_event"]), dict(e.get("data") or {}), source="run", quiet=True)
+            await self.dispatch(
+                project_id, str(e["ac_event"]), dict(e.get("data") or {}), source="run", quiet=True, depth=depth
+            )
         if h.origin == "event":
             return  # a handler reacting to "its own" run would loop forever
         lifecycle = {"success": "run.completed", "error": "run.failed", "cancelled": "run.cancelled"}.get(status)

@@ -305,6 +305,31 @@ async def test_an_event_emitted_by_code_in_a_sandbox_reaches_the_run_and_the_han
     assert flagged["source"] == "run" and flagged["data"] == {"invoice": "INV-9"}
 
 
+async def test_a_run_that_starts_itself_through_its_events_stops(app, api_client):
+    """RT-6: events a run emitted were delivered at depth 0 whoever started it, so a handler starting the run that
+    emits the event looped for ever. Each run now carries how many events led to it."""
+    src = (
+        "from agentcanvas.sdk import on\n\n\n"
+        '@on("echo.tick")\ndef again(event, act):\n    act.start_workflow("Echoer")\n'
+    )
+    await api_client.put(f"{P}/files/events/echo.py", json={"content": src})
+    tick = "from agentcanvas.sdk import emit\n\n\ndef run(state):\n    emit('echo.tick', {})\n    return {'out': 'x'}\n"
+    await api_client.put(f"{P}/files/scripts/tick.py", json={"content": tick})
+    node = {"id": "n_t", "type": "core.script", "name": "tick", "config": {"import_path": "scripts.tick:run"}}
+    wf = await make_wf(api_client, linear("Echoer", [node], ["out"]))
+    await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={})
+    for _ in range(100):  # without a limit this goes on for ever: look at the first 20 runs at most
+        await asyncio.sleep(0.05)
+        handles = [h for h in app.state.runner.handles.values() if h.workflow_id == wf]
+        if len(handles) > 20 or (all(h.done.is_set() for h in handles) and len(handles) > 1):
+            break
+    await asyncio.sleep(0.3)
+    handles = [h for h in app.state.runner.handles.values() if h.workflow_id == wf]
+    assert len(handles) == 6  # the first run + 5 levels of runs started by its events
+    ticks = [e for e in (await api_client.get(f"{P}/events")).json() if e["type"] == "echo.tick"]
+    assert any(e["status"] == "error" and "levels deep" in (e["results"][0]["error"] or "") for e in ticks)
+
+
 PAYMENTS = """from agentcanvas.sdk import on
 
 

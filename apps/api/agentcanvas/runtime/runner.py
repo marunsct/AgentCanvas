@@ -62,6 +62,7 @@ class RunHandle:
     # "event": started by an event handler (its lifecycle events are not re-delivered); "test": a saved test case
     origin: str = "user"
     emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
+    event_depth: int = 0  # how many events led to this run (a handler's run emits events one level deeper)
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
@@ -331,6 +332,7 @@ class Runner:
         deployment_id: str | None = None,
         version_id: str | None = None,
         labels: dict[str, str] | None = None,
+        event_depth: int = 0,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
         if self.draining:
@@ -448,6 +450,7 @@ class Runner:
             trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
+        handle.event_depth = event_depth
         handle.routing = routing
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
