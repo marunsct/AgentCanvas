@@ -226,6 +226,26 @@ def test_backups_hold_the_workspaces_and_a_restore_creates_the_api_role_before_t
         assert key in backup and f"`{key}`" in (ROOT / "docs" / "user-guide" / "deploy.md").read_text(), key
 
 
+def test_the_alerts_watch_series_the_api_exports_and_link_to_runbooks_that_exist():
+    import re
+
+    from agentcanvas import observability
+
+    rules = yaml.safe_load((ROOT / "infra" / "observability" / "alerts.yaml").read_text())["groups"][0]["rules"]
+    down = next(r for r in rules if r["alert"] == "AgentCanvasApiDown")
+    assert "job=" not in down["expr"]  # the scrape job's name is the operator's (kubernetes-pods), not ours
+    (metric,) = re.findall(r"absent\((\w+)\)", down["expr"])
+    assert f"\n{metric} " in observability.generate_latest().decode()  # exported unlabelled, from start-up
+    guide = (ROOT / "docs" / "agent-canvas-spec" / "build-guide" / "09-deployment-and-operations.md").read_text()
+    slugs = {
+        re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-") for h in re.findall(r"^#+ (.+)$", guide, re.M)
+    }
+    for rule in rules:
+        if link := rule["annotations"].get("runbook"):
+            assert link.split("#", 1)[1] in slugs, (rule["alert"], link)
+    assert "| API pods crash-loop at startup" in guide and "JWKS outage" in guide
+
+
 def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
     import re
 

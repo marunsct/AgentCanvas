@@ -19,6 +19,7 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: More than 20 % of runs end in an error (check model providers and recent publishes)
+          runbook: docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md#9-runbooks
       - alert: AgentCanvasSlowRequests
         expr: |
           histogram_quantile(0.95, sum by (le) (rate(agentcanvas_http_request_duration_seconds_bucket{route!~".*/stream|.*/events"}[10m]))) > 2
@@ -27,11 +28,17 @@ groups:
         annotations:
           summary: API p95 latency (streams excluded) is above 2 s
       - alert: AgentCanvasApiDown
-        expr: absent(up{job=~".*agentcanvas.*"} == 1)
+        # by a series only the API exports (an unlabelled gauge, there from start-up), not by the scrape job's name:
+        # the usual kubernetes-pods job (prometheus.io/* annotations) is called "kubernetes-pods", which a job-name
+        # match never found, so the alert fired forever. With several installs in one Prometheus, narrow it by the
+        # labels your relabelling keeps, e.g. absent(agentcanvas_runs_active{namespace="agentcanvas"}) (with
+        # `labelmap: __meta_kubernetes_pod_label_(.+)`, pod labels such as app_kubernetes_io_instance as well).
+        expr: absent(agentcanvas_runs_active)
         for: 5m
         labels: { severity: page }
         annotations:
-          summary: Prometheus cannot scrape any AgentCanvas API pod
+          summary: Prometheus has no metrics from any AgentCanvas API pod (all down, crash-looping, or not scraped)
+          runbook: docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md#9-runbooks
       - alert: AgentCanvasEvaluationDrift
         # every API pod reports the open drift alerts from the database once a minute (S13 FR-EVAL-06)
         expr: max by (deployment, evaluator, kind) (agentcanvas_eval_alert_open) > 0
@@ -53,3 +60,4 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: Backup models are answering model calls; a model provider may be down
+          runbook: docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md#9-runbooks
