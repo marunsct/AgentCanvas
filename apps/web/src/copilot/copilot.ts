@@ -237,7 +237,14 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   send: async (text, mode) => {
     const { workflowId, busy } = get();
     if (!workflowId || busy || !text.trim()) return;
-    await useEditor.getState().flush(); // the Copilot reads the saved draft
+    set({ busy: true }); // before the flush: a second Send while the edits were saved started a second turn
+    try {
+      await useEditor.getState().flush(); // the Copilot reads the saved draft
+    } catch (e) {
+      set({ busy: false, error: (e as Error).message });
+      return;
+    }
+    if (get().workflowId !== workflowId) return; // another workflow was opened meanwhile
     const conv = get().conversation;
     set({
       busy: true, error: null, ghost: null, live: NO_LIVE, last: { text, mode },

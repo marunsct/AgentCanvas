@@ -49,6 +49,28 @@ describe("Copilot store", () => {
     expect(useCopilot.getState().busy).toBe(false);
   });
 
+  it("starts one turn on a double-click of Send, even while the edits are being saved", async () => {
+    const { useEditor } = await import("../editor/store");
+    let saved!: () => void;
+    const flush = vi.fn(() => new Promise<void>((r) => { saved = r; }));
+    const realFlush = useEditor.getState().flush;
+    useEditor.setState({ flush });
+    vi.mocked(postStream).mockReset();
+    vi.mocked(postStream).mockResolvedValue(undefined);
+    vi.mocked(apiFetch).mockResolvedValue(conversation(null));
+    try {
+      await useCopilot.getState().load("wf_1");
+      const first = useCopilot.getState().send("one", "ask");
+      const second = useCopilot.getState().send("one", "ask"); // the second click lands while the first flushes
+      saved();
+      await Promise.all([first, second]);
+      expect(postStream).toHaveBeenCalledTimes(1);
+      expect(useCopilot.getState().busy).toBe(false);
+    } finally {
+      useEditor.setState({ flush: realFlush });
+    }
+  });
+
   it("names tools in plain words", () => {
     expect(toolLabel("propose_changes")).toBe("Proposed changes");
     expect(toolLabel("export_plan")).toBe("Checked what an export needs");
