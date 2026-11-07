@@ -383,7 +383,7 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
               return (
                 <tr key={e.id} className={open === e.id ? "selected" : ""}>
                   <td><button type="button" className="link" onClick={() => setOpen(e.id)}>{e.name}</button></td>
-                  <td><span className={`badge status-${e.status === "done" ? "ok" : e.status === "running" ? "running" : "error"}`}>{e.status}</span></td>
+                  <td><span className={`badge${statusClass(e.status)}`}>{e.status}</span></td>
                   <td className="small">{e.summary.map((s) => `${s.label}: ${pct(s.pass_rate)}`).join(" · ")}</td>
                   <td>{done}/{all}</td>
                   <td>{builder && e.status === "running" && <button type="button" className="link small" onClick={() => cancel.mutate(e.id)}>Cancel</button>}</td>
@@ -408,6 +408,14 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
       )}
     </section>
   );
+}
+
+/** The badge colour of an experiment's status: only a failure is red (queued and cancelled used to be). */
+export function statusClass(status: string): string {
+  if (status === "done") return " status-ok";
+  if (status === "running") return " status-running";
+  if (status === "failed" || status === "error") return " status-error";
+  return ""; // queued, cancelled: neutral
 }
 
 const RESULTS_PAGE = 1000; // the API's largest page; an experiment has up to 5000 results

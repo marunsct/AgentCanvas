@@ -8,7 +8,14 @@ import type { ExperimentOut } from "../api/generated";
 const apiFetch = vi.fn(async (_path: string) => [{ id: "r1" }]);
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch: (p: string) => apiFetch(p), apiDownload: vi.fn() }));
 
-const { useResults } = await import("./EvaluationPage");
+const { statusClass, useResults } = await import("./EvaluationPage");
+
+describe("experiment status", () => {
+  it("is red only when it failed", () => {
+    expect(["done", "running", "failed", "queued", "cancelled"].map(statusClass))
+      .toEqual([" status-ok", " status-running", " status-error", "", ""]);
+  });
+});
 
 const exp = (status: string, completed: number) =>
   ({ id: "exp_1", status, summary: [{ target: "t", label: "t", completed, examples: 10 }] }) as unknown as ExperimentOut;
