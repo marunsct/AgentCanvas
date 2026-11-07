@@ -130,8 +130,7 @@ class _Reader:
             return None
         module = f"tools/{self.key}_tools.py"
         rid = f"r_{len(self.b.resources) + 1}"
-        taken = {r["name"] for r in self.b.resources}
-        self.b.resources.append({"id": rid, "type": "tool.python", "name": ident(name, taken, "tool"),
+        self.b.resources.append({"id": rid, "type": "tool.python", "name": ident(name, self.b.names, "tool"),
                                  "config": {"import_path": f"tools.{self.key}_tools:{name}"}})  # fmt: skip
         body = ast.get_source_segment(self.source, fn) or ""
         lines = [ln for ln in body.splitlines() if not ln.lstrip().startswith("@function_tool")]
@@ -194,7 +193,6 @@ class _Reader:
                 sub = self.agents[s]
                 sub_label = str(_const(_kw(sub, "name")) or s)
                 rid = f"r_{len(self.b.resources) + 1}"
-                taken = {r["name"] for r in self.b.resources}
                 description = str(_const(_kw(sub, "handoff_description")) or f"Hand {sub_label} its part.")[:500]
                 prompt = str(_const(_kw(sub, "instructions")) or "")
                 config_sub = {"description": description, "system_prompt": prompt}
@@ -202,7 +200,7 @@ class _Reader:
                     {
                         "id": rid,
                         "type": "agent.subagent",
-                        "name": ident(sub_label, taken, "agent"),
+                        "name": ident(sub_label, self.b.names, "agent"),
                         "config": config_sub,
                     }
                 )

@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import itertools
 import json
+import keyword
 import re
 import uuid
 from typing import Any
 
 from agentcanvas.ir.models import IDENT, RESERVED_NAMES, Workflow
 from agentcanvas.validation.analysis import PLAIN_VALUE_MAPS
+from agentcanvas.validation.rules.structure import GENERATED
 
 VERSION = "25.4.2"  # 25.4.2 adds A2AAgent; nothing here needs a later one
 _NS = uuid.UUID("6b1f3c0e-6a0e-4f5e-9a51-6167656e7473")
@@ -465,14 +467,17 @@ def _wrap_agent(agent: dict[str, Any]) -> dict[str, Any]:
 
 
 def ident(text: str, taken: set[str], fallback: str = "step") -> str:
-    """A snake_case name (IR identifiers) not in `taken`; adds it."""
+    """A snake_case name (IR identifiers) not in `taken`; adds it. Never a reserved step name, a Python keyword or a
+    name the generated code uses itself (E007): steps and blocks share one `taken` set, since their names are one
+    namespace (E000)."""
     s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(text or ""))
     s = re.sub(r"[^a-z0-9_]+", "_", s.lower()).strip("_")
     if not s or not s[0].isalpha():
         s = f"{fallback}_{s}".strip("_")
     s = s[:58]
     out, i = s, 2
-    while out in taken or out in RESERVED_NAMES or not IDENT.match(out):
+    while (out in taken or out in RESERVED_NAMES or out in GENERATED or keyword.iskeyword(out)
+           or not IDENT.match(out)):  # fmt: skip
         out, i = f"{s}_{i}", i + 1
     taken.add(out)
     return out
@@ -531,8 +536,7 @@ class _Importer:
         params = cfg.get("default_generation_parameters") or {}
         conf.update({k: params[k] for k in ("temperature", "max_tokens") if k in params})
         rid = f"r_{len(self.resources) + 1}"
-        taken = {r["name"] for r in self.resources}
-        res_name = ident(cfg.get("name") or "model", taken, "model")
+        res_name = ident(cfg.get("name") or "model", self.node_names, "model")  # one namespace with the steps
         self.resources.append({"id": rid, "type": "model.chat", "name": res_name, "config": conf})
         self.models[str(cfg.get("id"))] = rid
         return rid

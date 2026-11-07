@@ -55,7 +55,7 @@ class Builder:
         self.steps: dict[str, _Step] = {}
         self.resources: list[dict[str, Any]] = []
         self._models: dict[str, str] = {}
-        self._node_names: set[str] = set()
+        self.names: set[str] = set()  # step and block names: one namespace (E000)
         self.outputs: list[str] = []
         self.chat = False
         self._unders: dict[str, dict[str, str]] = {}  # step key -> _under(key), reset by build()
@@ -97,8 +97,7 @@ class Builder:
         key = repr(sorted(conf.items()))
         if key not in self._models:
             rid = f"r_{len(self.resources) + 1}"
-            taken = {r["name"] for r in self.resources}
-            name = ident(label or model.partition(":")[2] or "model", taken, "model")
+            name = ident(label or model.partition(":")[2] or "model", self.names, "model")
             self.resources.append({"id": rid, "type": "model.chat", "name": name, "config": conf})
             self._models[key] = rid
         return self._models[key]
@@ -110,9 +109,8 @@ class Builder:
         if not host or "{{" in url.split("?")[0].split("//", 1)[-1].split("/")[0]:
             return None
         rid = f"r_{len(self.resources) + 1}"
-        taken = {r["name"] for r in self.resources}
         method = method.upper() if method.upper() in ("GET", "POST", "PUT", "PATCH", "DELETE") else "GET"
-        self.resources.append({"id": rid, "type": "tool.http", "name": ident(name, taken, "tool"), "config": {
+        self.resources.append({"id": rid, "type": "tool.http", "name": ident(name, self.names, "tool"), "config": {
             "description": (description or f"Calls {host}")[:500], "method": method, "url": url,
             "allowed_domains": [host]}})  # fmt: skip
         return rid
@@ -125,7 +123,7 @@ class Builder:
             raise ImportError_(f"two steps share the id '{key}'")
         if len(self.steps) >= MAX_STEPS:
             raise ImportError_(f"the {self.source} file has more than {MAX_STEPS} steps; split it before importing")
-        st = _Step(key=key, id=f"n_{len(self.steps) + 1}", type=type_, name=ident(name, self._node_names, "step"),
+        st = _Step(key=key, id=f"n_{len(self.steps) + 1}", type=type_, name=ident(name, self.names, "step"),
                    config=config, label=(label or None) and str(label)[:120], model=model, tools=list(tools or []),
                    position=position)  # fmt: skip
         self.steps[key] = st
@@ -214,7 +212,7 @@ class Builder:
             if len(sources) > 1 and not self._exclusive(sources):  # needs every earlier step: wait for all of them
                 waits += 1
                 wait_id = f"n_{len(steps) + waits}"
-                wait_name = ident(f"wait_for_{st.name}", self._node_names, "wait")
+                wait_name = ident(f"wait_for_{st.name}", self.names, "wait")
                 nodes.append({"id": wait_id, "type": "core.join", "name": wait_name, "config": {}})
                 if st.position:
                     layout[wait_id] = {"x": st.position["x"] - 160, "y": st.position["y"]}

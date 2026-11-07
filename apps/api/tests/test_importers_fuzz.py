@@ -29,6 +29,7 @@ from agentcanvas.validation import validate
 ROUNDS = int(os.getenv("ROBUSTNESS_ROUNDS", "12")) * 4
 SEED = int(os.getenv("ROBUSTNESS_SEED", "20261020"))
 FILES = Path(__file__).parent / "importers"
+NAME_ERRORS = {"E000", "E007"}  # duplicate ids/names, a name the generated code reserves
 NAMES = sorted(p.stem for p in FILES.glob("*.json"))
 JUNK: list[Any] = [
     None, "", 0, -1, 10**30, 0.5, True, [], {}, "A" * 5000, "\x00", [None], [[]], {"": None}, ["a", 1, None],
@@ -95,7 +96,8 @@ def test_damaged_files_import_or_are_refused_plainly(name):
             continue
         try:
             wf = Workflow.model_validate(ir)
-            validate(wf)
+            clash = [f"{d.code} {d.message}" for d in validate(wf) if d.code in NAME_ERRORS]
+            assert not clash, clash  # the importer names every step and block itself: never a clash
             assert set(layout) <= {n.id for n in wf.nodes}
             imported += 1
         except Exception as exc:  # noqa: BLE001
@@ -180,9 +182,43 @@ def test_damaged_agents_sdk_code_imports_or_is_refused_plainly():
                 damaged[i], damaged[j] = damaged[j], damaged[i]
         try:
             _, ir, _, _ = import_document("\n".join(damaged), wf_id="wf_new")
-            validate(Workflow.model_validate({**ir, "metadata": {}}))
+            diags = validate(Workflow.model_validate({**ir, "metadata": {}}))
+            clash = [f"{d.code} {d.message}" for d in diags if d.code in NAME_ERRORS]
+            assert not clash, clash
         except ImportError_:
             continue
         except Exception as exc:  # noqa: BLE001
             failures.setdefault(_where(exc), f"round {round_}")
     assert not failures, "\n".join(f"{k} ({v})" for k, v in failures.items())
+
+
+def _name_errors(ir: dict[str, Any]) -> list[str]:
+    return [f"{d.code} {d.message}" for d in validate(Workflow.model_validate(ir)) if d.code in NAME_ERRORS]
+
+
+@pytest.mark.parametrize("taken", ["gpt-5.5", "class", "builder", "resources", "lambda", "start"])
+def test_names_from_a_file_never_clash_with_code_or_each_other(taken):
+    """Steps and blocks share one namespace and become Python identifiers: a step called like a model, a tool or
+    step called `class` or `builder` (what the generated code uses itself) gets another name, not E000/E007."""
+    from agentcanvas.agentspec import import_flow
+    from agentcanvas.importers import Builder
+
+    b = Builder("n8n", "wf_new", "Clash")
+    model = b.model("openai:gpt-5.5", label=taken)
+    tool = b.http_tool(taken, "https://api.example.com/x")
+    b.step("a", "core.agent", taken, {"system_prompt": ""}, model=model, tools=[tool] if tool else [])
+    b.step("b", "core.agent", "gpt-5.5", {"system_prompt": ""}, model=b.model("openai:gpt-5.5"))
+    b.after("a", "START")
+    b.after("b", "a")
+    ir, _, _ = b.build()
+    assert not _name_errors(ir)
+    llm = {"component_type": "OpenAiCompatibleConfig", "id": "m1", "name": taken, "model_id": "gpt-5.5",
+           "url": "https://api.example.com/v1"}  # fmt: skip
+    first = {"component_type": "StartNode", "id": "s", "name": "start", "inputs": []}
+    step = {"component_type": "LlmNode", "id": "n1", "name": taken, "prompt_template": "Hi", "llm_config": llm}
+    last = {"component_type": "EndNode", "id": "e", "name": "end", "outputs": []}
+    flow = {"component_type": "Flow", "name": "Clash", "start_node": first, "nodes": [first, step, last],
+            "control_flow_connections": [{"from_node": first, "to_node": step}, {"from_node": step, "to_node": last}],
+            "data_flow_connections": []}  # fmt: skip
+    ir, _, _ = import_flow(flow, wf_id="wf_new")
+    assert not _name_errors(ir)
