@@ -23,8 +23,12 @@ cp infra/.env.prod.example infra/.env.prod      # fill it in (never commit it)
 docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 ```
 
-This starts Postgres, a one-shot migration, two API replicas and the web server on port 8080 (`WEB_PORT`). Put a
-TLS-terminating proxy in front and keep response buffering **off** for `/api/` (runs stream Server-Sent Events).
+This starts Postgres, a one-shot migration, two API replicas and the web server on port 8080 (`WEB_PORT`) of
+`127.0.0.1`: it speaks plain HTTP, so put a TLS-terminating proxy in front on the same host (or set `WEB_BIND=0.0.0.0`
+when the proxy runs elsewhere and the port is firewalled) and keep response buffering **off** for `/api/` (runs stream
+Server-Sent Events). The API containers run with a read-only root (writable: the workspaces volume, `/tmp` and the
+app user's home, both in memory), no capabilities and a 2 GB memory limit (`API_MEM_LIMIT`); `API_READ_ONLY=false`
+turns the read-only root off should a framework need to write elsewhere.
 
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
@@ -222,6 +226,16 @@ and run the backup nightly as a portable second copy.
 Pull the new images and roll the API. On shutdown each replica stops taking runs, lets running ones reach a step
 boundary and hands them to another replica, which resumes them. Conversations move to a newly published workflow
 version only when it is resume-compatible.
+
+### Postgres major versions
+
+The compose files pin `pgvector/pgvector:pg16` by digest; a new digest of the same major version (security fixes) is
+a plain image update. A new **major** version (pg17) cannot start on pg16's data directory. With compose: take a
+backup (`infra/scripts/backup.sh`), stop the stack, move the `pgdata` volume aside (do not delete it until the new
+version runs), set `POSTGRES_IMAGE` to the new major version's image, start Postgres alone, and restore the dump with
+`infra/scripts/restore.sh` (it runs the migrations afterwards). The pgvector extension must exist
+in the new image (the `pgvector/pgvector` images have it). With managed Postgres, use the provider's major-version
+upgrade, after a snapshot.
 
 ## Rotating the secrets master key
 

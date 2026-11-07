@@ -13,6 +13,9 @@ updates:
   - package-ecosystem: docker
     directories: [/infra]
     schedule: { interval: weekly }
+  - package-ecosystem: docker-compose   # the Postgres image digest in the compose files
+    directories: [/infra]
+    schedule: { interval: weekly }
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }

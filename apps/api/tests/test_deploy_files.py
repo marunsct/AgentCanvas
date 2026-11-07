@@ -190,6 +190,19 @@ def test_the_api_reads_every_setting_of_the_env_file_and_the_sandbox_none(name, 
         assert services["api"]["environment"]["POSTGRES_PASSWORD"] == ""  # the owner's password is not the API's
 
 
+def test_the_production_api_runs_locked_down_and_the_web_port_stays_on_this_host():
+    prod = compose("compose.prod.yml")["services"]
+    for name in ["api", "migrate"]:
+        svc = prod[name]
+        assert svc["read_only"] == "${API_READ_ONLY:-true}" and svc["cap_drop"] == ["ALL"], name
+        assert "no-new-privileges:true" in svc["security_opt"] and svc["mem_limit"] and svc["pids_limit"], name
+        assert {t.split(":")[0] for t in svc["tmpfs"]} == {"/tmp", "/home/app"}, name
+    assert prod["web"]["ports"] == ["${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"]  # plain HTTP: not 0.0.0.0
+    for name in ["compose.prod.yml", "compose.local.yml"]:
+        image = compose(name)["services"]["postgres"]["image"]
+        assert "pgvector/pgvector:pg16@sha256:" in image, name  # a digest, not a tag that moves
+
+
 def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
     import re
 

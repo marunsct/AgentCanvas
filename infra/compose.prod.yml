@@ -46,6 +46,16 @@ x-api: &api
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   volumes:
     - workspaces:/data/workspaces              # project workspaces (git), shared by the replicas on this host
+  # nothing but the workspaces volume, /tmp (exports, uploads, framework workers) and the app user's home (caches some
+  # frameworks keep) is writable; API_READ_ONLY=false turns the read-only root off if a framework needs more
+  read_only: ${API_READ_ONLY:-true}
+  tmpfs:
+    - /tmp:size=1g,mode=1777
+    - /home/app:size=256m,uid=10001,gid=10001,mode=0700
+  cap_drop: [ALL]                              # it runs as uid 10001 and needs no capability
+  security_opt: ["no-new-privileges:true"]
+  mem_limit: ${API_MEM_LIMIT:-2g}
+  pids_limit: 1024
 
 services:
   # Runs workspace code for the API (script_execution=remote). Same image, none of the API's secrets, read-only root,
@@ -98,7 +108,8 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    # pinned by digest (Dependabot proposes new ones); a new major version needs a dump and restore (deploy.md)
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a}
     # each API replica opens up to AGENTCANVAS_DB_POOL_SIZE + AGENTCANVAS_DB_MAX_OVERFLOW + AGENTCANVAS_PERSISTENCE_POOL_SIZE
     # (10 + 20 + 20 = 50) connections: API_REPLICAS x 50 + 10 (migrations, psql, backups) must stay below this.
     # 200 fits three replicas; raise it (or lower the pools) for more (docs/user-guide/deploy.md)
@@ -144,7 +155,9 @@ services:
       API_UPSTREAM: http://api:8000            # compose balances across the api replicas
       OIDC_ISSUER: ${AGENTCANVAS_OIDC_ISSUER:-} # its origin is allowed in the Content-Security-Policy
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-}     # other identity provider origins (e.g. a separate token host)
-    ports: ["${WEB_PORT:-8080}:8080"]
+    # plain HTTP: only this host reaches it, for the TLS-terminating proxy in front; WEB_BIND=0.0.0.0 opens it to the
+    # network (when that proxy runs on another machine)
+    ports: ["${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"]
     networks: [front]                          # it reaches the API and nothing else
     depends_on:
       api: { condition: service_healthy }
