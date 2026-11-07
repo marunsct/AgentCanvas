@@ -338,6 +338,13 @@ export function Canvas() {
         <div className="blast-status" data-testid="blast-status"><QueryStatus q={blastQuery} what="the blast radius" /></div>
       )}
       {drill.length > 0 && <SubgraphCrumbs />}
+      {diff && !ghost && !readOnly && !drill.length && (
+        // the colours stay after the Versions tab is closed: say what they mean and how to drop them
+        <div className="diff-chip" role="status" data-testid="diff-chip">
+          Comparing with v{diff.against} ·{" "}
+          <button type="button" className="link small" onClick={() => useUi.getState().setDiff(null)}>Clear</button>
+        </div>
+      )}
       {ghost && !drill.length && (
         <div className="ghost-banner" role="status" data-testid="ghost-banner">
           Previewing the Copilot's proposal: green is new, amber is changed.{" "}

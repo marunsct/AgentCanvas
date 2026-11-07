@@ -48,6 +48,13 @@ describe("EditorPage loading (W-5)", () => {
     expect(useEditor.getState()).toMatchObject({ workflowId: "b", wf: { name: "b" } });
   });
 
+  it("drops the last workflow's version comparison", async () => {
+    const { useUi } = await import("./ui");
+    useUi.getState().setDiff({ against: "1.0.0", added: ["n1"], changed: [] });
+    openEditor("b");
+    expect(useUi.getState().diff).toBeNull(); // its colours used to land on the next workflow's nodes
+  });
+
   it("does not show the first workflow's load error on the second one", async () => {
     const router = openEditor("a");
     await act(async () => { await router.navigate("/workflows/b"); });

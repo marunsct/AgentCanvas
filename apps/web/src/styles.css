@@ -832,6 +832,10 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .segmented button { border: 0; border-radius: 99px; padding: 2px 12px; box-shadow: none; background: transparent; font-size: 12px; color: var(--muted); }
 .segmented button:hover { background: transparent; color: var(--text); }
 .segmented button.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow-sm); }
+.diff-chip {
+  position: absolute; top: 10px; left: 12px; z-index: 5; padding: 4px 12px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 99px; background: var(--raised); box-shadow: var(--shadow-sm);
+}
 .ghost-banner {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 5; padding: 8px 14px;
   border: 1px solid color-mix(in srgb, var(--ok) 55%, var(--border)); border-radius: 99px; background: var(--raised); box-shadow: var(--shadow-lg);

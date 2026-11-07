@@ -84,6 +84,7 @@ export function EditorPage() {
     stopStreaming(); // the last workflow's run and Copilot streams
     stopCopilotStream();
     useEditor.getState().reset();
+    useUi.getState().setDiff(null); // the last workflow's version comparison coloured this one's nodes
     useRun.getState().setThread(null);
     useRun.setState({ runId: null, running: false });
     useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null, busy: false, live: null });

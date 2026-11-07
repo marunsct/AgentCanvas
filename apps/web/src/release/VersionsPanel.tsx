@@ -63,7 +63,7 @@ export function VersionsPanel() {
       <ExportSection wfId={wf.id} versions={versions.data ?? []} />
       <AgentSpecExport wfId={wf.id} name={wf.name} />
       {downloadError && <p className="error-text small" role="alert">{downloadError}</p>}
-      {diff && (
+      {diff && uiDiff && ( // cleared on the canvas: the summary goes too
         <div className="diff-box" data-testid="diff-summary">
           <div className="row gap"><b>Draft vs v{uiDiff?.against}</b>: {diff.summary}
             <span className="spacer" /><button type="button" className="link small" onClick={clear}>clear</button></div>
