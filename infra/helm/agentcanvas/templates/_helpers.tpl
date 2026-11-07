@@ -26,6 +26,24 @@ app.kubernetes.io/component: {{ .component }}
 {{- required "secrets.existingSecret is required: a Secret with DATABASE_URL and AGENTCANVAS_SECRET_KEY" .Values.secrets.existingSecret -}}
 {{- end -}}
 
+{{/* config.authMode, checked: oidc (any OpenID Connect provider) or matura (sign-in, members and roles from Matura). */}}
+{{- define "agentcanvas.authMode" -}}
+{{- $mode := .Values.config.authMode | default "oidc" -}}
+{{- if not (has $mode (list "oidc" "matura")) -}}
+{{- fail (printf "config.authMode must be oidc or matura, not %q (dev mode, no sign-in, is refused in staging and prod)" $mode) -}}
+{{- end -}}
+{{ $mode }}
+{{- end -}}
+
+{{/* config.scriptExecution, checked: remote needs the sandbox service this chart runs. */}}
+{{- define "agentcanvas.scriptExecution" -}}
+{{- $mode := .Values.config.scriptExecution -}}
+{{- if and (eq $mode "remote") (not .Values.sandbox.enabled) -}}
+{{- fail "config.scriptExecution=remote runs workspace code in the sandbox service: set sandbox.enabled=true, or choose docker or langsmith (subprocess and inprocess are refused in staging and prod unless AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS=true)" -}}
+{{- end -}}
+{{ $mode }}
+{{- end -}}
+
 {{/* Environment shared by the API pods and the migration job. */}}
 {{- define "agentcanvas.apiEnv" -}}
 - name: AGENTCANVAS_ENV
@@ -33,7 +51,7 @@ app.kubernetes.io/component: {{ .component }}
 - name: AGENTCANVAS_AUTO_MIGRATE
   value: "false"
 - name: AGENTCANVAS_AUTH_MODE
-  value: "oidc"
+  value: {{ include "agentcanvas.authMode" . | quote }}
 - name: AGENTCANVAS_OIDC_ISSUER
   value: {{ required "config.oidc.issuer is required" .Values.config.oidc.issuer | quote }}
 - name: AGENTCANVAS_OIDC_AUDIENCE
@@ -46,8 +64,32 @@ app.kubernetes.io/component: {{ .component }}
   value: {{ .Values.config.bootstrapAdminEmails | toJson | quote }}
 - name: AGENTCANVAS_CORS_ORIGINS
   value: {{ .Values.config.corsOrigins | toJson | quote }}
+{{- if eq (include "agentcanvas.authMode" .) "matura" }}
+{{- with .Values.config.matura }}
+{{- if .url }}
+- name: AGENTCANVAS_MATURA_URL
+  value: {{ .url | quote }}
+{{- end }}
+{{- if .publicUrl }}
+- name: AGENTCANVAS_MATURA_PUBLIC_URL
+  value: {{ .publicUrl | quote }}
+{{- end }}
+{{- if .portalUrl }}
+- name: AGENTCANVAS_MATURA_PORTAL_URL
+  value: {{ .portalUrl | quote }}
+{{- end }}
+{{- if .auditUrl }}
+- name: AGENTCANVAS_MATURA_AUDIT_URL
+  value: {{ .auditUrl | quote }}
+{{- end }}
+{{- if .syncIntervalS }}
+- name: AGENTCANVAS_MATURA_SYNC_INTERVAL_S
+  value: {{ .syncIntervalS | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 - name: AGENTCANVAS_SCRIPT_EXECUTION
-  value: {{ .Values.config.scriptExecution | quote }}
+  value: {{ include "agentcanvas.scriptExecution" . | quote }}
 {{- if eq .Values.config.scriptExecution "remote" }}
 - name: AGENTCANVAS_SANDBOX_URL
   value: {{ printf "http://%s-sandbox:8090" (include "agentcanvas.fullname" .) | quote }}

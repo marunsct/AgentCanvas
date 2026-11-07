@@ -103,6 +103,10 @@ With it, an organisation in AgentCanvas is a Matura tenant, and people's roles c
 | `AGENTCANVAS_MATURA_PORTAL_URL` | optional: the portal's address when it is not `<public URL>/portal/` |
 | `AGENTCANVAS_MATURA_AUDIT_URL` | optional, for later: where security-relevant audit entries are sent (see below) |
 
+With the Helm chart, set `config.authMode: matura` and the `config.matura.*` values (`url`, `publicUrl`, `portalUrl`,
+`auditUrl`, `syncIntervalS`); the two secrets go in the Secret as `AGENTCANVAS_MATURA_CLIENT_SECRET` and
+`AGENTCANVAS_MATURA_WEBHOOK_SECRET`.
+
 What changes for people:
 
 - Each sign-in is for one organisation. People in several switch with the organisation picker on the home page,

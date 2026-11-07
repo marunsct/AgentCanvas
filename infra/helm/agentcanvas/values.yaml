@@ -15,6 +15,16 @@ secrets:
 
 config:
   env: prod                       # AGENTCANVAS_ENV; staging and prod refuse AUTH_MODE=dev
+  # oidc = any OpenID Connect provider; matura = sign-in, organisations, members and roles from Matura (set
+  # config.oidc.issuer to Matura's realm and audience/clientId to "agentcanvas"; put AGENTCANVAS_MATURA_CLIENT_SECRET
+  # and AGENTCANVAS_MATURA_WEBHOOK_SECRET in the Secret, and connect the API as an ordinary database role)
+  authMode: oidc
+  matura:
+    url: ""                       # Matura's API: its change feed is read at start-up and every syncIntervalS
+    publicUrl: ""                 # where people reach Matura (its MATURA_PUBLIC_URL), for the portal links
+    portalUrl: ""                 # optional: the portal when it is not <publicUrl>/portal/
+    auditUrl: ""                  # optional: where security-relevant audit entries are POSTed
+    syncIntervalS: ""             # optional: default 3600
   oidc:
     issuer: ""                    # e.g. https://login.example.com/realms/acme
     audience: ""
@@ -22,7 +32,8 @@ config:
     scopes: "openid profile email offline_access"   # offline_access: silent token refresh
   bootstrapAdminEmails: []        # become admins of the default organisation on first sign-in
   corsOrigins: []
-  # remote = the sandbox service below (its own pods, no secrets, no network); subprocess is limits only, not isolation
+  # remote = the sandbox service below (its own pods, no secrets, no network; needs sandbox.enabled); subprocess is
+  # limits only, not isolation
   scriptExecution: remote         # remote | subprocess | inprocess | docker | langsmith
   # proxies whose X-Forwarded-For / -Proto the API trusts (uvicorn); the web pods' network, or "*" when only
   # the web service can reach the API
