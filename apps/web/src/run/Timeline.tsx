@@ -1,5 +1,5 @@
 /** Timeline (M4-T5…T7): one tick per checkpoint; inspect state, edit it, or fork a new branch from it. */
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
 import { useEditor } from "../editor/store";
@@ -32,6 +32,8 @@ export function Timeline() {
     queryKey: ["history", threadId, runSeq],
     queryFn: () => apiFetch<Checkpoint[]>(`/threads/${threadId}/history?include_values=true&limit=200`),
     enabled: Boolean(threadId),
+    // a run ending (runSeq) refetches: keep the ticks, and the checkpoint being edited, on screen meanwhile
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === threadId ? keepPreviousData(prev) : undefined),
   });
   const ticks = useMemo(() => [...(history.data ?? [])].reverse(), [history.data]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -39,7 +41,10 @@ export function Timeline() {
   const cp = index >= 0 ? ticks[index] : undefined;
   const [draft, setDraft] = useState("");
   const [view, setView] = useState<"checkpoints" | "trajectory">("checkpoints");
-  useEffect(() => setDraft(cp ? JSON.stringify(cp.values ?? {}, null, 2) : ""), [cp]);
+  // keyed on the checkpoint, not the object: a refetch hands back a new one and used to wipe what was being typed
+  const cpId = cp?.checkpoint_id;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- cpId stands for cp
+  useEffect(() => setDraft(cp ? JSON.stringify(cp.values ?? {}, null, 2) : ""), [cpId]);
   useEffect(() => () => setHighlight([]), [setHighlight]);
 
   if (!threadId) return <p className="muted pad">Run the workflow to see its timeline.</p>;
