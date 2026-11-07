@@ -28,15 +28,46 @@ TLS-terminating proxy in front and keep response buffering **off** for `/api/` (
 
 ## Option 2: Kubernetes with Helm
 
-The chart is in `infra/helm/agentcanvas`. Create a Kubernetes Secret with `DATABASE_URL`,
-`AGENTCANVAS_SECRET_KEY` and provider keys, name it in `secrets.existingSecret`, set the `config.oidc.*` values,
-and install:
+The chart is in `infra/helm/agentcanvas`. No AgentCanvas image is published: build both images and push them to a
+registry your cluster can pull from.
 
 ```bash
-helm install agentcanvas infra/helm/agentcanvas -f my-values.yaml
+REGISTRY=registry.example.com/acme   # yours
+TAG=$(git rev-parse --short HEAD)
+docker build -f infra/Dockerfile.api -t $REGISTRY/agentcanvas-api:$TAG apps/api
+docker build -f infra/Dockerfile.web -t $REGISTRY/agentcanvas-web:$TAG .
+docker push $REGISTRY/agentcanvas-api:$TAG && docker push $REGISTRY/agentcanvas-web:$TAG
 ```
 
-Migrations run as a Helm hook Job before the API starts.
+Create the Secret the API reads its keys from. Every key becomes an environment variable of the API and the
+migration Job; the sandbox and egress pods get only their own key.
+
+| Key | Required | Value |
+|---|---|---|
+| `DATABASE_URL` | yes | `postgresql://<role>:<password>@<host>:5432/agentcanvas` |
+| `AGENTCANVAS_SECRET_KEY` | yes | 64+ random characters (`openssl rand -hex 32`) |
+| `LANGGRAPH_AES_KEY` | yes | 16, 24 or 32 characters: encrypts conversation checkpoints (`openssl rand -hex 16`) |
+| `AGENTCANVAS_SANDBOX_TOKEN` | with `sandbox.enabled` (default) | 32+ random characters |
+| `AGENTCANVAS_EGRESS_SECRET` | with `sandbox.egress.enabled` (default) | 32+ random characters |
+| `MIGRATE_DATABASE_URL`, `APP_DB_USER`, `APP_DB_PASSWORD` | for Matura's row-level security | the owner's URL for migrations, and the ordinary role the migration Job creates for the API |
+| `AGENTCANVAS_KMS_KEY`, provider keys (`ANTHROPIC_API_KEY`...), `LANGSMITH_API_KEY`, `AGENTCANVAS_MATURA_CLIENT_SECRET`, `AGENTCANVAS_MATURA_WEBHOOK_SECRET` | no | see the settings below |
+
+```bash
+kubectl create secret generic agentcanvas-secrets \
+  --from-literal=DATABASE_URL=postgresql://… \
+  --from-literal=AGENTCANVAS_SECRET_KEY=$(openssl rand -hex 32) \
+  --from-literal=LANGGRAPH_AES_KEY=$(openssl rand -hex 16) \
+  --from-literal=AGENTCANVAS_SANDBOX_TOKEN=$(openssl rand -hex 32) \
+  --from-literal=AGENTCANVAS_EGRESS_SECRET=$(openssl rand -hex 32)
+helm install agentcanvas infra/helm/agentcanvas -f my-values.yaml \
+  --set image.api.repository=$REGISTRY/agentcanvas-api --set image.api.tag=$TAG \
+  --set image.web.repository=$REGISTRY/agentcanvas-web --set image.web.tag=$TAG
+```
+
+`my-values.yaml` names the Secret (`secrets.existingSecret`) and sets `config.oidc.*`; `values.yaml` in the chart
+lists everything else. The chart refuses to render without the image repositories, the Secret's name or the OIDC
+issuer and audience, and `helm install` / `helm upgrade` fail when the Secret lacks a required key. Migrations run as
+a Helm hook Job before the API starts.
 
 ## Essential settings
 

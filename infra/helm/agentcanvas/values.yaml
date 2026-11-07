@@ -1,12 +1,22 @@
 # AgentCanvas Helm values (M8-T2). Secrets never go here: create a Secret and name it in `secrets.existingSecret`.
 
+# No image is published: build both (infra/Dockerfile.api, infra/Dockerfile.web), push them to your registry and set
+# the repositories here, e.g. registry.example.com/agentcanvas-api. Required.
 image:
-  api: { repository: agentcanvas-api, tag: "", pullPolicy: IfNotPresent }   # tag "" = the chart's appVersion
-  web: { repository: agentcanvas-web, tag: "", pullPolicy: IfNotPresent }
+  api: { repository: "", tag: "", pullPolicy: IfNotPresent }   # tag "" = the chart's appVersion
+  web: { repository: "", tag: "", pullPolicy: IfNotPresent }
 imagePullSecrets: []
 
 secrets:
-  # Required. Keys: DATABASE_URL, AGENTCANVAS_SECRET_KEY, AGENTCANVAS_SANDBOX_TOKEN (32+ random characters; with the sandbox service), AGENTCANVAS_EGRESS_SECRET (32+ random characters; with sandbox.egress); optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY.
+  # Required. Every key becomes an environment variable of the API and the migrate Job. Required keys:
+  #   DATABASE_URL                 postgresql://<api role>:<password>@<host>:5432/agentcanvas
+  #   AGENTCANVAS_SECRET_KEY       64+ random characters (openssl rand -hex 32)
+  #   LANGGRAPH_AES_KEY            16, 24 or 32 characters: encrypts conversation checkpoints (openssl rand -hex 16)
+  #   AGENTCANVAS_SANDBOX_TOKEN    32+ random characters, with sandbox.enabled (the sandbox pods get only this key)
+  #   AGENTCANVAS_EGRESS_SECRET    32+ random characters, with sandbox.egress.enabled (the egress pods get only this key)
+  # Optional: AGENTCANVAS_KMS_KEY, provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...), LANGSMITH_API_KEY,
+  # AGENTCANVAS_MATURA_CLIENT_SECRET / _WEBHOOK_SECRET (config.authMode: matura). helm install and upgrade fail when
+  # the Secret is there but lacks a required key.
   # Row-level security (Matura mode) needs the API to connect as an ordinary role: point DATABASE_URL at that role
   # and add MIGRATE_DATABASE_URL (the owner) plus APP_DB_USER / APP_DB_PASSWORD; the migrate Job creates the role.
   # A superuser or BYPASSRLS role is refused at startup in staging and prod when AUTH_MODE=matura.

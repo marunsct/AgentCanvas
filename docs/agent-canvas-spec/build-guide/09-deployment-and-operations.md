@@ -36,11 +36,23 @@ It runs Postgres (with pgvector), a one-shot `migrate` service (`alembic upgrade
 
 ## 4. Kubernetes: the Helm chart
 
+No image is published: build both (section 2), push them to your registry and name them in `image.*.repository` and
+`image.*.tag` (the chart refuses to render without the repositories). The Secret needs `DATABASE_URL`,
+`AGENTCANVAS_SECRET_KEY`, `LANGGRAPH_AES_KEY`, `AGENTCANVAS_SANDBOX_TOKEN` (with `sandbox.enabled`) and
+`AGENTCANVAS_EGRESS_SECRET` (with `sandbox.egress.enabled`); `helm install` and `helm upgrade` fail when one is missing
+(a `lookup` of the Secret, so `helm template` does not check it). The full list is in
+[Deploy and operate](../../user-guide/deploy.md#option-2-kubernetes-with-helm).
+
 ```bash
+REGISTRY=registry.example.com/acme TAG=$(git rev-parse --short HEAD)
+for i in api web; do docker tag agentcanvas-$i:$TAG $REGISTRY/agentcanvas-$i:$TAG && docker push $REGISTRY/agentcanvas-$i:$TAG; done
 kubectl create secret generic agentcanvas-secrets \
-  --from-literal=DATABASE_URL=postgresql://… --from-literal=AGENTCANVAS_SECRET_KEY=… \
-  --from-literal=ANTHROPIC_API_KEY=…
+  --from-literal=DATABASE_URL=postgresql://… --from-literal=AGENTCANVAS_SECRET_KEY=$(openssl rand -hex 32) \
+  --from-literal=LANGGRAPH_AES_KEY=$(openssl rand -hex 16) --from-literal=AGENTCANVAS_SANDBOX_TOKEN=$(openssl rand -hex 32) \
+  --from-literal=AGENTCANVAS_EGRESS_SECRET=$(openssl rand -hex 32) --from-literal=ANTHROPIC_API_KEY=…
 helm install agentcanvas infra/helm/agentcanvas \
+  --set image.api.repository=$REGISTRY/agentcanvas-api --set image.api.tag=$TAG \
+  --set image.web.repository=$REGISTRY/agentcanvas-web --set image.web.tag=$TAG \
   --set secrets.existingSecret=agentcanvas-secrets \
   --set config.oidc.issuer=https://login.example.com/realms/acme --set config.oidc.audience=agentcanvas-api \
   --set config.oidc.clientId=agentcanvas-web --set ingress.enabled=true --set ingress.host=agentcanvas.example.com

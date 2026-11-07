@@ -17,13 +17,35 @@ app.kubernetes.io/instance: {{ .root.Release.Name }}
 app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
+{{/* No image is published: build both, push them to your registry and name them in image.*.repository (and tag). */}}
 {{- define "agentcanvas.image" -}}
 {{- $img := index .root.Values.image .component -}}
-{{ $img.repository }}:{{ $img.tag | default .root.Chart.AppVersion }}
+{{- $repo := required (printf "image.%s.repository is required: build the %s image, push it to your registry and set its repository (and image.%s.tag, default the chart's appVersion %s); see docs/user-guide/deploy.md" .component .component .component .root.Chart.AppVersion) $img.repository -}}
+{{ $repo }}:{{ $img.tag | default .root.Chart.AppVersion }}
 {{- end -}}
 
+{{/* The keys the Secret must hold for the values given. */}}
+{{- define "agentcanvas.secretKeys" -}}
+{{- $keys := list "DATABASE_URL" "AGENTCANVAS_SECRET_KEY" "LANGGRAPH_AES_KEY" -}}
+{{- if .Values.sandbox.enabled }}{{ $keys = append $keys "AGENTCANVAS_SANDBOX_TOKEN" }}{{ end -}}
+{{- if and .Values.sandbox.enabled .Values.sandbox.egress.enabled }}{{ $keys = append $keys "AGENTCANVAS_EGRESS_SECRET" }}{{ end -}}
+{{ join " " $keys }}
+{{- end -}}
+
+{{/* The Secret's name. When the cluster can be read (helm install/upgrade; not helm template), a Secret that is there
+but lacks a required key fails the release instead of pods that crash-loop or never start. */}}
 {{- define "agentcanvas.secret" -}}
-{{- required "secrets.existingSecret is required: a Secret with DATABASE_URL and AGENTCANVAS_SECRET_KEY" .Values.secrets.existingSecret -}}
+{{- $keys := include "agentcanvas.secretKeys" . -}}
+{{- $name := required (printf "secrets.existingSecret is required: a Secret with %s (see values.yaml)" $keys) .Values.secrets.existingSecret -}}
+{{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- if $found -}}
+{{- range $key := splitList " " $keys -}}
+{{- if not (hasKey (default dict $found.data) $key) -}}
+{{- fail (printf "Secret %s has no %s (it needs %s)" $name $key $keys) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{ $name }}
 {{- end -}}
 
 {{/* config.authMode, checked: oidc (any OpenID Connect provider) or matura (sign-in, members and roles from Matura). */}}

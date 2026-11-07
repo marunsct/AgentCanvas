@@ -74,3 +74,28 @@ def test_remote_script_execution_without_the_sandbox_service_is_refused():
     assert not find(docs, "Deployment", "-sandbox") and not find(docs, "Deployment", "-egress")
     api = find(docs, "Deployment", "-api")
     assert api and "AGENTCANVAS_SANDBOX_URL" not in env_of(api)
+
+
+@needs_helm
+def test_no_published_image_is_assumed_and_the_secret_message_names_every_required_key():
+    bad = helm("image.api.repository=")
+    assert bad.returncode != 0 and "image.api.repository is required" in bad.stderr
+    bad = helm("secrets.existingSecret=")
+    assert bad.returncode != 0
+    for key in ["DATABASE_URL", "AGENTCANVAS_SECRET_KEY", "LANGGRAPH_AES_KEY", "AGENTCANVAS_SANDBOX_TOKEN",
+                "AGENTCANVAS_EGRESS_SECRET"]:  # fmt: skip
+        assert key in bad.stderr, key
+    bad = helm("secrets.existingSecret=", "sandbox.egress.enabled=false")
+    assert "AGENTCANVAS_SANDBOX_TOKEN" in bad.stderr and "AGENTCANVAS_EGRESS_SECRET" not in bad.stderr
+    api = find(render(), "Deployment", "-api")
+    assert api and api["spec"]["template"]["spec"]["containers"][0]["image"].startswith(
+        "registry.example.com/agentcanvas-api:"
+    )
+
+
+def test_the_operator_guide_lists_every_key_the_chart_requires():
+    guide = (ROOT / "docs" / "user-guide" / "deploy.md").read_text()
+    helpers = (CHART / "templates" / "_helpers.tpl").read_text()
+    for key in ["DATABASE_URL", "AGENTCANVAS_SECRET_KEY", "LANGGRAPH_AES_KEY", "AGENTCANVAS_SANDBOX_TOKEN",
+                "AGENTCANVAS_EGRESS_SECRET"]:  # fmt: skip
+        assert f'"{key}"' in helpers and f"| `{key}` |" in guide, key

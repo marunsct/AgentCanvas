@@ -1,4 +1,7 @@
 # Values CI renders the chart with (helm lint / helm template); not for real installs.
+image:
+  api: { repository: registry.example.com/agentcanvas-api }
+  web: { repository: registry.example.com/agentcanvas-web }
 secrets: { existingSecret: agentcanvas-secrets }
 config:
   oidc: { issuer: "https://login.example.com/realms/acme", audience: agentcanvas-api, clientId: agentcanvas-web }
