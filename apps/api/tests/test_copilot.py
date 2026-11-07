@@ -678,6 +678,28 @@ async def test_a_proposal_can_carry_workspace_code_written_only_when_accepted(ap
     assert listed["files"] == [path] and listed["accepted_files"] == [path]  # paths only, no contents
 
 
+async def test_accepting_files_edited_since_the_proposal_writes_none_of_them(app, api_client):
+    """I-8: accepting wrote the proposed files over whatever the person had changed since the Copilot read them."""
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    ws = app.state.projects.workspace("prj_default")
+    edited, fresh = f"scripts/e_{wf.lower()}.py", f"scripts/f_{wf.lower()}.py"
+    ws.write(edited, "X = 0\n", "start")
+    script(
+        app, call("propose_file", path=edited, content="X = 1\n"), call("propose_file", path=fresh, content="Y = 1\n"),
+        "Done.",
+    )  # fmt: skip
+    proposal = of(await ask(api_client, wf, "change x"), "proposal")[0]["proposal"]
+    ws.write(edited, "X = 0  # my edit\n", "a person's own edit")
+    url = f"/v1/workflows/{wf}/copilot/proposals/{proposal['id']}"
+    r = await api_client.post(url, json={"status": "accepted"})
+    assert r.status_code == 409 and "changed since the proposal" in r.json()["detail"] and edited in r.json()["detail"]
+    assert (ws.root / edited).read_text() == "X = 0  # my edit\n" and not (ws.root / fresh).exists()
+    listed = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["proposals"][-1]
+    assert listed["status"] == "pending"  # still open: ask again, or untick the file
+    assert (await api_client.post(url, json={"status": "accepted", "files": [1]})).status_code == 204
+    assert (ws.root / fresh).read_text() == "Y = 1\n" and (ws.root / edited).read_text() == "X = 0  # my edit\n"
+
+
 async def test_unticked_or_rejected_files_are_not_written_and_ask_mode_cannot_propose_them(app, api_client):
     wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
     ws = app.state.projects.workspace("prj_default")

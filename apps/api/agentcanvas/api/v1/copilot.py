@@ -489,6 +489,18 @@ async def stop_turn(
     return StopOut(stopped=True)
 
 
+async def _current(ws: Any, path: str) -> str | None:
+    """A workspace file's text now (None: there is no such file)."""
+
+    def read() -> str | None:
+        try:
+            return ws.read(path)
+        except FileNotFoundError:
+            return None
+
+    return await _off_loop(ws, read)
+
+
 @router.post("/workflows/{wf_id}/copilot/proposals/{proposal_id}", status_code=204)
 async def decide_proposal(
     wf_id: str,
@@ -530,6 +542,12 @@ async def decide_proposal(
         who = user.email or user.id
         for f in kept_files:  # every file is checked before any is written
             await _off_loop(ws, lambda f=f: ws.check(f["path"], f["content"]))
+        # a file edited (or created, or deleted) since the Copilot read it would lose those edits: none is written
+        if changed := [f["path"] for f in kept_files if "before" in f and await _current(ws, f["path"]) != f["before"]]:
+            raise Conflict(
+                f"{', '.join(changed)} changed since the proposal; ask the Copilot again so it starts from the "
+                "current version"
+            )
         for f in kept_files:
             message = f"Copilot: {match.get('summary') or 'change'} ({f['path']}, accepted by {who})"[:300]
             await _off_loop(ws, lambda f=f, message=message: ws.write(f["path"], f["content"], message))
