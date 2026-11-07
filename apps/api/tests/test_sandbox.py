@@ -371,6 +371,32 @@ async def test_another_process_cannot_read_a_calls_proxy_credential(tmp_path):
     assert not any("secretcred" in v or "PROXY" in k for k, v in env.items())  # the credential is not in the env
 
 
+async def test_a_child_that_writes_without_end_is_stopped(tmp_path, monkeypatch):
+    """RT-5: `communicate()` kept everything the child wrote in the API's memory until it exited or timed out."""
+    from agentcanvas.sandbox import runners
+
+    monkeypatch.setattr(runners, "MAX_STDOUT", 1024 * 1024, raising=False)
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "flood.py").write_text(
+        "import os, time\n\n\ndef run(state):\n    for _ in range(64):\n        os.write(1, b'x' * 65536)\n"
+        "    time.sleep(60)\n"
+    )
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(runners.ScriptError, match="more than 1 MB"):
+        await runners._exchange("subprocess", tmp_path, "scripts.flood:run", {"state": {}}, "", 5)
+    assert asyncio.get_running_loop().time() - started < 4  # stopped at the cap, not at the time limit
+
+
+async def test_only_the_end_of_what_a_child_printed_is_kept():
+    from agentcanvas.sandbox import runners
+
+    stream = asyncio.StreamReader()
+    stream.feed_data(b"a" * 300_000 + b"the end")
+    stream.feed_eof()
+    tail = await runners._read_tail(stream, 1000)
+    assert len(tail) == 1000 and tail.endswith(b"the end")
+
+
 async def test_udp_is_blocked_like_tcp(tmp_path):
     """R-11: the child's network guard covered connections but not datagrams, so a script could send data out over
     UDP (as DNS queries, say). A guard against mistakes only: the container's network is the real wall."""

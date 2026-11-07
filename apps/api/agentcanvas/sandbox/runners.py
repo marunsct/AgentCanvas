@@ -30,6 +30,11 @@ class ScriptError(RuntimeError):
 
 
 QUEUE_WAIT_S = 60  # how long a call may wait for a free sandbox (each runs one call at a time, S-2)
+# what the parent keeps of a child's output: the result line (stdout) up to MAX_STDOUT, else the child is stopped;
+# of what its code printed (stderr), the last STDERR_TAIL bytes, for the error message
+MAX_STDOUT = 32 * 1024 * 1024
+STDERR_TAIL = 64 * 1024
+CHUNK = 64 * 1024
 
 
 def _jsonable(v: Any) -> Any:
@@ -169,7 +174,7 @@ async def _exchange(
         preexec_fn=limits if mode == "subprocess" and os.name == "posix" else None,
     )
     try:
-        out, err = await asyncio.wait_for(proc.communicate(json.dumps(payload).encode()), timeout)
+        out, err = await asyncio.wait_for(_communicate(proc, json.dumps(payload).encode(), import_path), timeout)
     except TimeoutError:
         await _stop(proc, mode, name)
         raise TimeoutError(f"{import_path} ran longer than {timeout:g} s") from None
@@ -177,6 +182,54 @@ async def _exchange(
         await asyncio.shield(_stop(proc, mode, name))
         raise
     return _parse(import_path, out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode)
+
+
+async def _read_capped(stream: asyncio.StreamReader, limit: int, import_path: str) -> bytes:
+    buf = bytearray()
+    while chunk := await stream.read(CHUNK):
+        buf += chunk
+        if len(buf) > limit:
+            raise ScriptError(f"{import_path} returned more than {limit // (1024 * 1024)} MB; stopped")
+    return bytes(buf)
+
+
+async def _read_tail(stream: asyncio.StreamReader, keep: int) -> bytes:
+    buf = bytearray()
+    while chunk := await stream.read(CHUNK):
+        buf += chunk
+        if len(buf) > keep:
+            del buf[:-keep]
+    return bytes(buf)
+
+
+async def _communicate(proc: asyncio.subprocess.Process, data: bytes, import_path: str) -> tuple[bytes, bytes]:
+    """`proc.communicate(data)` with bounded memory: a child printing without end cannot fill the API's (RT-5)."""
+    stdin, stdout, stderr = proc.stdin, proc.stdout, proc.stderr
+    assert stdin is not None and stdout is not None and stderr is not None
+
+    async def feed() -> None:
+        try:
+            stdin.write(data)
+            await stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):  # it exited without reading its input
+            pass
+        finally:
+            stdin.close()
+
+    tasks = [
+        asyncio.ensure_future(feed()),
+        asyncio.ensure_future(_read_capped(stdout, MAX_STDOUT, import_path)),
+        asyncio.ensure_future(_read_tail(stderr, STDERR_TAIL)),
+    ]
+    try:
+        _, out, err = await asyncio.gather(*tasks)
+    except BaseException:  # too much output, a timeout or a cancel: the caller stops the child
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    await proc.wait()
+    return out, err
 
 
 async def _stop(proc: asyncio.subprocess.Process, mode: str, name: str) -> None:
