@@ -4,8 +4,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router";
 import { DialogHost } from "../ui/dialog";
 import { GlobalErrors } from "../ui/GlobalErrors";
 import { shouldRetry } from "../api/retry";
-import { ErrorBoundary } from "../ui/QueryStatus";
-import { AppShell } from "./AppShell";
+import { AppShell, RouteBoundary } from "./AppShell";
 import { AuthGate } from "./AuthGate";
 import { HomePage } from "./HomePage";
 
@@ -47,7 +46,7 @@ export function App() {
     <DialogHost />
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <ErrorBoundary label="This page">
+        <RouteBoundary label="This page">
         <Suspense fallback={<div className="page muted" role="status">Loading…</div>}>
         <Routes>
           <Route path="/workflows/:id" element={<EditorPage />} />
@@ -74,7 +73,7 @@ export function App() {
           </Route>
         </Routes>
         </Suspense>
-        </ErrorBoundary>
+        </RouteBoundary>
       </BrowserRouter>
     </QueryClientProvider>
     </AuthGate>

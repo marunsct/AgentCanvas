@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Activity, BookOpen, Brain, ChevronDown, FolderCode, Inbox, LayoutGrid, LifeBuoy, LogOut, Plus, Radio, Settings, Sparkles, User } from "lucide-react";
 import { Suspense } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, PROJECT_NAME, switchProject, useInbox, WORKSPACE_ID, WORKSPACES, chooseWorkspace } from "../api/queries";
@@ -11,6 +11,7 @@ import { useCan, useMe } from "../api/session";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { promptDialog } from "../ui/dialog";
 import { Menu } from "../ui/Menu";
+import { ErrorBoundary } from "../ui/QueryStatus";
 
 const ICON = { size: 15, strokeWidth: 1.8, "aria-hidden": true } as const;
 
@@ -18,9 +19,18 @@ export function AppShell() {
   return (
     <>
       <TopBar />
-      <Suspense fallback={<div className="page muted" role="status">Loading…</div>}><Outlet /></Suspense>
+      {/* a page that crashes keeps the bar above it, so another page is one click away */}
+      <RouteBoundary label="This page">
+        <Suspense fallback={<div className="page muted" role="status">Loading…</div>}><Outlet /></Suspense>
+      </RouteBoundary>
     </>
   );
+}
+
+/** An error boundary that starts afresh on every page: one crash used to stay on screen after moving to another. */
+export function RouteBoundary({ label, children }: { label: string; children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary resetKey={pathname} label={label}>{children}</ErrorBoundary>;
 }
 
 function TopBar() {

@@ -31,12 +31,26 @@ export function QueryStatus({ q, what, empty }: { q: QueryLike; what: string; em
   return null;
 }
 
+/** A page's code that could not be downloaded (a deploy replaced its chunk, or the network dropped), as each
+ * browser words it. */
+export function isChunkLoadError(error: unknown): boolean {
+  return error instanceof Error && /dynamically imported module|Importing a module script failed|Unable to preload CSS|ChunkLoadError/i
+    .test(`${error.name} ${error.message}`);
+}
+
 /** Catches render errors so one broken panel never blanks the whole app. */
-export class ErrorBoundary extends Component<{ children: ReactNode; label?: string }, { error: Error | null }> {
-  state = { error: null as Error | null };
+export class ErrorBoundary extends Component<
+  { children: ReactNode; label?: string; resetKey?: unknown }, { error: Error | null; resetKey?: unknown }
+> {
+  state = { error: null as Error | null, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(error: Error) {
     return { error };
+  }
+
+  /** A new `resetKey` (another page) shows the children again, without remounting them as a `key` would. */
+  static getDerivedStateFromProps(props: { resetKey?: unknown }, state: { resetKey?: unknown }) {
+    return props.resetKey !== state.resetKey ? { error: null, resetKey: props.resetKey } : null;
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -45,6 +59,16 @@ export class ErrorBoundary extends Component<{ children: ReactNode; label?: stri
 
   render() {
     if (!this.state.error) return this.props.children;
+    if (isChunkLoadError(this.state.error)) {
+      // not a crash, and "Try again" cannot help: the browser keeps the failed import
+      return (
+        <div className="error-box" role="alert">
+          <b>{this.props.label ?? "This view"} could not be downloaded.</b>{" "}
+          <span className="muted">AgentCanvas was probably updated since this tab was opened, or the connection dropped. Reload to get the current version.</span>{" "}
+          <button type="button" className="small primary" onClick={() => location.reload()}>Reload</button>
+        </div>
+      );
+    }
     return (
       <div className="error-box" role="alert">
         <b>{this.props.label ?? "This view"} crashed:</b> {this.state.error.message}{" "}
