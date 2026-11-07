@@ -28,6 +28,7 @@ _WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 # A markdown ATX heading line (matched on the right-stripped line). Deliberately simple so matching stays linear:
 # the optional closing `#`s are trimmed in Python, not by a lazy group followed by `\s*#*\s*$` (cubic backtracking).
 _HEADING = re.compile(r" {0,3}#{1,6}[ \t]+(.*)")
+_FENCE = re.compile(r" {0,3}(`{3,}|~{3,})[ \t]*(\S?)")  # a code fence line; group 2: an info string follows
 _STOP = frozenset(
     "a an and are as at be by can do does for from has have how i if in is it its me my of on or our so that the "
     "their them there these this to was we what when where which who why will with you your".split()
@@ -59,8 +60,14 @@ def chunk_text(
             if body:
                 out.extend({"text": t, "page": page, "heading": heading} for t in _pack(_paragraphs(body), size))
 
+        fence = ""  # the open code fence (``` or ~~~, at least that long): a `#` inside it is code, not a heading
         for line in text.split("\n"):
-            m = _HEADING.match(line.rstrip())
+            f = _FENCE.match(line)
+            if f and (not fence or (f.group(1)[0] == fence[0] and len(f.group(1)) >= len(fence) and not f.group(2))):
+                fence = "" if fence else f.group(1)
+                section.append(line)
+                continue
+            m = None if fence else _HEADING.match(line.rstrip())
             if m:
                 flush()
                 heading, section = _heading_text(m.group(1)), []

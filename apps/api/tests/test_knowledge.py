@@ -48,6 +48,18 @@ def test_markdown_headings_are_parsed_in_linear_time():
     ]
 
 
+def test_markdown_headings_inside_code_fences_are_code():
+    """I-11: a `# comment` in a fenced shell or Python block started a new section and cut the code in two."""
+    text = (
+        "# Install\n\nRun:\n\n```bash\n# update first\napt update\n```\n\nThen:\n\n"
+        "~~~~\n# not a heading\n~~~ still code\n~~~~\n\n## Use\n\nCall it.\n\n```\n```python\n# code\n```"
+    )
+    md = ks.chunk_text(text, strategy="markdown", size=2000)
+    assert [c["heading"] for c in md] == ["Install", "Use"]
+    assert "# update first\napt update" in md[0]["text"] and "# not a heading\n~~~ still code" in md[0]["text"]
+    assert "# code" in md[1]["text"]
+
+
 def test_word_zip_bombs_are_refused_before_parsing(monkeypatch):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
