@@ -560,7 +560,7 @@ async def decide_proposal(
             )  # fmt: skip
         if body.notes and (notes := match.get("notes")):
             row = await WorkflowRepo(session).require(wf_id)
-            project = await ProjectRepo(session).require(row.project_id)
+            project = await ProjectRepo(session).require(row.project_id, lock=True)
             cs = copilot_settings.load(project.settings)
             merged = "\n".join([cs.notes, *(f"- {n}" for n in notes)]).strip()[-4000:]
             project.settings = {
@@ -789,7 +789,7 @@ async def put_copilot_settings(
 ) -> SettingsOut:
     """Turn the Copilot on or off, pick its model (the project's or a separate one) and its token limit. Fields left
     out keep their saved value (an explicit null clears one), so a client that does not know a field cannot erase it."""
-    project = await ProjectRepo(session).require(project_id)
+    project = await ProjectRepo(session).require(project_id, lock=True)
     saved = copilot_settings.load(project.settings).model_dump()
     body = CopilotSettings.model_validate({**saved, **body.model_dump(include=body.model_fields_set)})
     if body.source == "separate" and not body.model:

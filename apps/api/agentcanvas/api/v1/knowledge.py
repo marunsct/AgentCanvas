@@ -241,7 +241,7 @@ async def put_knowledge_defaults(
     project_id: str, body: KnowledgeDefaults, request: Request, s: KnowledgeService = Depends(svc)
 ) -> KnowledgeDefaults:
     """Set the chunking new knowledge bases start with. Existing ones keep theirs."""
-    project = await ProjectRepo(s.s).require(project_id)
+    project = await ProjectRepo(s.s).require(project_id, lock=True)
     project.settings = {**(project.settings or {}), KEY: {"chunking": body.chunking.model_dump()}}
     await s.s.commit()
     note(request, target=f"project_id={project_id}", **body.chunking.model_dump())

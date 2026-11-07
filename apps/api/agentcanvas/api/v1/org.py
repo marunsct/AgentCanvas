@@ -242,7 +242,8 @@ async def put_org_settings(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> OrgSettingsOut:
-    org = await session.get(Organization, user.org_id)
+    # read afresh and held until the commit: `settings` is merged, so a concurrent change must not be lost
+    org = await session.get(Organization, user.org_id, with_for_update=True, populate_existing=True)
     if org is None:
         raise NotFound(f"organisation '{user.org_id}' not found")
     if "name" in body.model_fields_set:

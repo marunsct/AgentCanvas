@@ -144,6 +144,7 @@ async def put_setup(
     if key and name:
         await SecretService(session, request.app.state.keyring).put(project_id, name, key, user.id)
         await request.app.state.secrets.refresh(project_id)  # runs here see it right away, other instances soon
+    project = await ProjectRepo(session).require(project_id, lock=True)  # the secret's commit ended the last read
     project.settings = {
         **(project.settings or {}),
         "default_model": dm.model_dump(exclude_none=True),
@@ -156,7 +157,7 @@ async def put_setup(
 @router.post("/skip", response_model=SetupOut)
 async def skip_setup(project_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> SetupOut:
     """Hide the setup prompt without choosing a model (templates keep their own models)."""
-    project = await ProjectRepo(session).require(project_id)
+    project = await ProjectRepo(session).require(project_id, lock=True)
     project.settings = {**(project.settings or {}), "setup_done": True}
     await session.commit()
     return await get_setup(project_id, request, session)

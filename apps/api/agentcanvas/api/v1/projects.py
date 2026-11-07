@@ -193,7 +193,7 @@ async def get_model_defaults(project_id: str, session: AsyncSession = Depends(ge
 async def put_model_defaults(
     project_id: str, body: ModelDefaultsIn, session: AsyncSession = Depends(get_session)
 ) -> ModelDefaultsOut:
-    p = await ProjectRepo(session).require(project_id)
+    p = await ProjectRepo(session).require(project_id, lock=True)
     merged = {**model_defaults.stored(p.settings), **body.model_dump(include=body.model_fields_set)}
     for purpose, model in merged.items():
         if model and model != model_defaults.BUILTIN_EMBEDDING and not default_registry().usable_model(model):

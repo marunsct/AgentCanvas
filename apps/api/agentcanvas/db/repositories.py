@@ -411,8 +411,10 @@ class ProjectRepo:
         await self.s.refresh(p)
         return p
 
-    async def require(self, project_id: str) -> Project:
-        p = await self.s.get(Project, project_id)
+    async def require(self, project_id: str, *, lock: bool = False) -> Project:
+        """The project (404 if missing). `lock`: read it afresh and hold its row until the commit (SELECT ... FOR
+        UPDATE on Postgres), for a read-modify-write of `settings` that must not lose a concurrent one's change."""
+        p = await self.s.get(Project, project_id, with_for_update=lock or None, populate_existing=lock)
         if p is None:
             raise NotFound(f"project '{project_id}' not found")
         return p
