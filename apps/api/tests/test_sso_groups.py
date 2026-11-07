@@ -7,7 +7,7 @@ import httpx
 import pytest
 from test_auth import OTHER_KEY, SIGNING_JWK, bearer, settings, token  # noqa: F401 - `settings` turns OIDC sign-in on
 
-from agentcanvas.db.models import Membership, Organization
+from agentcanvas.db.models import AppUser, Membership, Organization
 from agentcanvas.security.auth import Authenticator
 from agentcanvas.services.sso_groups import GroupMapping, groups_in, role_for
 
@@ -121,6 +121,8 @@ async def test_a_table_applies_to_its_own_organisation_only(app, client):
     async with app.state.db.sessionmaker() as s:
         s.add(Organization(id="org_b", name="Org B"))
         await s.commit()
+    # with more than one organisation, a table adds people only when the operator allows it (CP-2)
+    app.state.settings = app.state.settings.model_copy(update={"sso_groups_add_members": True})
     await _map(client)  # org_default's table
     me = (await client.get("/v1/me", headers=tok(["ops"]))).json()
     assert me["memberships"] == {"org_default": "admin"}
@@ -144,3 +146,26 @@ async def test_only_admins_set_the_table_and_it_is_validated(client):
     assert (await client.get("/v1/me", headers=tok(["readers"], sub="late"))).status_code == 403
     audit = (await client.get("/v1/org/audit", params={"action": "put_org_settings"}, headers=ALICE)).json()
     assert audit[0]["detail"]["sso_groups"] is None and audit[1]["detail"]["sso_groups"]["roles"]["ops"] == "admin"
+
+
+async def test_another_organisations_table_cannot_enrol_everyone(app, client):
+    """CP-2: org_b's admin maps a claim every token carries (the issuer). That used to add every person who signed in
+    to org_b, and its member list then showed everyone's name and address."""
+    from test_auth import ISSUER
+
+    async with app.state.db.sessionmaker() as s:
+        s.add(Organization(id="org_b", name="Org B", sso_groups={"claim": "iss", "roles": {ISSUER: "viewer"}}))
+        s.add(AppUser(id="usr_evil", oidc_subject="evil-sub", email="evil@evil.example"))
+        await s.flush()
+        s.add(Membership(org_id="org_b", user_id="usr_evil", role="admin", accepted=True))  # org_b's own admin
+        await s.commit()
+    me = (await client.get("/v1/me", headers=ALICE)).json()
+    assert me["memberships"] == {"org_default": "admin"}
+    newcomer = await client.get("/v1/me", headers=tok(["eng"], sub="newcomer", email="new@example.com"))
+    assert newcomer.status_code == 403  # not enrolled anywhere by a table that is not their organisation's
+    async with app.state.db.sessionmaker() as s:
+        assert await s.get(Membership, ("org_b", me["id"])) is None
+    # with the operator's permission, the same table does enrol
+    app.state.settings = app.state.settings.model_copy(update={"sso_groups_add_members": True})
+    later = (await client.get("/v1/me", headers=tok(["eng"], sub="later", email="later@example.com"))).json()
+    assert later["memberships"] == {"org_b": "viewer"}

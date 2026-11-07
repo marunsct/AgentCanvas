@@ -103,7 +103,9 @@ async def current_user(
     email = identity.email if identity.email_verified else ""
     user, created = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
     uid, user_email = user.id, user.email  # read before anything below commits or rolls back
-    await sso_groups.apply(session, uid, identity.claims)  # the provider's groups decide roles (G-13)
+    await sso_groups.apply(  # the provider's groups decide roles (G-13)
+        session, uid, identity.claims, add_members=settings.sso_groups_add_members
+    )
     memberships = await repo.memberships(uid)
     if (  # bootstrap happens once, at the first sign-in: removing a bootstrap admin later sticks
         created

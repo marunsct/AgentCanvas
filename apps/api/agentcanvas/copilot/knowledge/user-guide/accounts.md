@@ -69,7 +69,10 @@ Organisation › General › Single sign-on groups** name the claim that carries
 name such as `realm_access.roles` reaches a nested claim), and list which role each group gives. At every sign-in:
 
 - the strongest role among the person's mapped groups is their role, replacing one set by hand under Members;
-- someone in a mapped group who is not yet a member joins at once, with no invitation to accept;
+- someone in a mapped group who was invited joins at once, with no invitation to accept;
+- someone in a mapped group who is not a member or an invitee joins only on a server with a single organisation, or
+  when the operator sets `AGENTCANVAS_SSO_GROUPS_ADD_MEMBERS=true`. With several organisations one organisation's table
+  must not enrol people another organisation brought (an admin could map a claim every token carries);
 - a token with none of the mapped groups **keeps** the person's role (the default), or **removes** them from the
   organisation if you choose that;
 - a change that would leave the organisation without an admin who has signed in is skipped, so the provider can

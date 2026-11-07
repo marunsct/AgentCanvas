@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     memory_embedding: str = ""
     memory_embedding_dims: int = 0
     memory_embedding_base_url: str = ""  # a local server's address (LM Studio, Ollama) for `memory_embedding`
+    # whether an organisation's groups-to-roles table may add people who are not its members (CP-2); unset: only
+    # when the server has one organisation, so one tenant's admin cannot enrol every person of another
+    sso_groups_add_members: bool | None = None
     # OCR for scanned PDFs and pictures added to a knowledge base: "auto" (default) uses Tesseract when it is installed
     # (the Docker image has it), "off" never runs it. Languages are Tesseract codes joined by "+", e.g. "eng+deu".
     ocr: str = "auto"

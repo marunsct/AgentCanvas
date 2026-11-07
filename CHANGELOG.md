@@ -8,6 +8,7 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- Single sign-on groups: on a server with several organisations, any organisation's groups table could enrol every person who signed in (an admin maps a claim every token carries, such as the issuer) and then list their names and addresses. A table now changes only its own members' and invitees' roles; adding others needs a single-organisation server or `AGENTCANVAS_SSO_GROUPS_ADD_MEMBERS=true`. The sync also no longer locks the organisation on requests where nothing changes.
 - SCIM: another organisation's directory could change the address of a person invited here who had not signed in yet, because an invitation is one user row for every organisation; whoever owned the new address then joined with this organisation's role. A pending user who belongs to another organisation can no longer be renamed or re-addressed through SCIM (409).
 - An error raised before a framework adapter could handle it (building the graph, reaching an MCP server, setting up
   a model client) went into the run's error event and the server log with any key in its text; it is masked now, as
