@@ -913,7 +913,7 @@ def http_tool(
             extensions["sni_hostname"] = parts.hostname  # TLS still checks the certificate of the name
             url = parts._replace(netloc=f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}").geturl()
         async with httpx.AsyncClient(timeout=config.get("timeout", 20), transport=transport) as client:
-            r = await client.request(
+            request = client.build_request(
                 method,
                 url,
                 headers=headers,
@@ -921,7 +921,16 @@ def http_tool(
                 json=args if send == "json" else None,
                 extensions=extensions or None,
             )  # redirects are not followed: a redirect cannot leave the allowed domains
-        text = r.text[:limit]
+            r = await client.send(request, stream=True)
+            try:  # only what the model may see is read: a huge answer never sits in memory whole (RT-8)
+                body = bytearray()
+                async for chunk in r.aiter_bytes():
+                    body += chunk
+                    if len(body) >= limit * 4:  # a character is at most 4 bytes
+                        break
+            finally:
+                await r.aclose()
+        text = bytes(body).decode(r.encoding or "utf-8", errors="replace")[:limit]
         if r.status_code >= 400:
             raise ToolException(f"HTTP {r.status_code} from {parts.hostname}: {text[:500]}")
         return text

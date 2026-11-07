@@ -118,7 +118,26 @@ def test_a_mocked_run_keeps_the_servers_knowledge_files_and_answers():
     assert "model" in clone._overrides and "model" not in res._overrides  # the original is untouched
 
 
-# ------------------------------------------------------------------ RT-4 ----
+# ------------------------------------------------------------------ RT-8 ----
+async def test_the_http_tool_reads_only_what_the_model_may_see():
+    """RT-8: the HTTP tool read the whole answer into memory and then kept `max_response_chars` of it."""
+    import httpx
+
+    sent = 0
+
+    async def endless():
+        nonlocal sent
+        for _ in range(10_000):  # 640 MB if read whole
+            sent += 1
+            yield "é".encode() * 32_768
+
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=endless()))
+    config = {"url": "https://api.example.com/x", "allowed_domains": ["example.com"], "max_response_chars": 1000}
+    tool = nodes.http_tool(name="big", config=config, transport=transport)
+    out = await tool.ainvoke({})
+    assert out == "é" * 1000 and sent < 5
+
+
 class SpendsThen:
     """A graph whose model call reports usage, then fails or hangs before the next update."""
 
