@@ -299,15 +299,22 @@ _DECIMAL = re.compile(r"(?<![\d.])(0\.\d+|1\.0+)(?!\.?\d)")  # 0.4 or 1.0, not p
 
 
 def _grade(reply: str) -> tuple[float, str]:
-    """The judge's score and reasoning from its reply: its JSON, else a labelled score ("score: 0.8", "score: 8/10",
-    "score: 80%"), a rating such as "8/10", or the reply's only decimal from 0 to 1. A stray "1" or a version number
-    in the text is not a score."""
+    """The judge's score and reasoning from its reply: its JSON (a number from 0 to 1, as the judge is told), else a
+    labelled score ("score: 0.8", "score: 8/10", "score: 80%"), a rating such as "8/10", or the reply's only decimal
+    from 0 to 1. A stray "1" or a version number in the text is not a score."""
     data = _json_object(reply, "score")
     if data is not None:
+        raw = data["score"]
+        if isinstance(raw, bool):  # float(True) is 1.0: a yes/no is not a score
+            raise ValueError(f"the judge's score is not a number: {raw!r}")
         try:
-            return float(data["score"]), str(data.get("reasoning", ""))
+            value = float(raw)
         except (ValueError, TypeError):
             pass
+        else:
+            if not 0 <= value <= 1:  # clamping a 1-10 rating to 1.0 would pass anything (NaN fails this too)
+                raise ValueError(f"the judge's score is not a finite number from 0 to 1: {raw!r}")
+            return value, str(data.get("reasoning", ""))
     value: float | None = None
     if labelled := _LABELLED.search(reply):
         number, percent, out_of = labelled.groups()

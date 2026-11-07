@@ -138,6 +138,29 @@ def test_the_judge_score_is_read_only_where_the_judge_gave_one():
     assert _grade('```json\n{"score": 0.5, "reasoning": "ok", "notes": {"tone": "flat"}}\n```') == (0.5, "ok")
 
 
+def test_a_judge_json_score_outside_0_to_1_is_rejected_not_clamped():
+    """I-3: {"score": 8} (a 1-10 rating) was clamped to 1.0 and passed, and {"score": true} read as 1.0."""
+    from agentcanvas.evaluation import _grade
+
+    for raw in ("8", "1.5", "-0.2", "true", "false", '"NaN"'):
+        with pytest.raises(ValueError, match="score is not"):
+            _grade(f'{{"score": {raw}, "reasoning": "x"}}')
+    assert _grade('{"score": 1, "reasoning": "fine"}') == (1.0, "fine")
+    assert _grade('{"score": "0.6", "reasoning": "ok"}') == (0.6, "ok")
+
+
+async def test_an_out_of_range_judge_score_does_not_pass(app, api_client):
+    from agentcanvas.testing import DemoResources
+
+    wf = await make_greeter(api_client)
+    judge = await new(api_client, wf, "polite", "llm_judge", {"model": HAIKU, "rubric": "Is it polite?"})
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(
+        {"judge": ['{"score": 7, "reasoning": "decent"}']}
+    )
+    got = await attempt(api_client, judge, output={"out": "Hello"})
+    assert got["score"] is None and not got["passed"] and "0 to 1" in got["comment"]
+
+
 async def test_code_evaluator_runs_workspace_code(api_client):
     wf = await make_greeter(api_client)
     src = (
