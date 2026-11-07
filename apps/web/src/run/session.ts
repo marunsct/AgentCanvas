@@ -7,13 +7,21 @@ import type { RunEvent } from "./events";
 import { useRun } from "./runStore";
 import { postStream } from "./sse";
 
-/** Apply events once per animation frame: token streams can deliver hundreds of events per second (M4-T3). */
-function batcher(apply: (e: RunEvent) => void) {
+/** Most events held back for one frame; a longer queue is applied at once. */
+export const BATCH_LIMIT = 500;
+
+/** Apply events once per animation frame: token streams can deliver hundreds of events per second (M4-T3). A
+ * hidden tab gets no animation frames, so there a short timer flushes instead: otherwise a run started before
+ * switching tabs piled up every event in memory and showed nothing (approvals, the end) until the tab came back. */
+export function batcher(apply: (e: RunEvent) => void) {
   let queue: RunEvent[] = [];
   let frame = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   const flush = () => {
     if (frame) cancelAnimationFrame(frame);
+    if (timer) clearTimeout(timer);
     frame = 0;
+    timer = null;
     const items = queue;
     queue = [];
     for (const e of items) apply(e);
@@ -21,7 +29,9 @@ function batcher(apply: (e: RunEvent) => void) {
   return {
     push(e: RunEvent) {
       queue.push(e);
-      if (!frame) frame = requestAnimationFrame(flush);
+      if (queue.length >= BATCH_LIMIT) flush();
+      else if (typeof document !== "undefined" && document.hidden) timer ??= setTimeout(flush, 100);
+      else if (!frame) frame = requestAnimationFrame(flush);
     },
     flush,
   };
