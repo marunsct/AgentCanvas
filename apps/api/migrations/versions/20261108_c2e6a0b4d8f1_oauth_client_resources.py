@@ -6,7 +6,7 @@ servers its organisation already connected to through that sign-in server: nothi
 borrows the credentials until an admin enters them with its address (or removes them, so AgentCanvas registers again).
 
 Revision ID: c2e6a0b4d8f1
-Revises: a9d3f7b1c5e2
+Revises: b2e6a0c4d8f1
 Create Date: 2026-11-08 09:00:00
 """
 
@@ -19,7 +19,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "c2e6a0b4d8f1"
-down_revision: str | None = "a9d3f7b1c5e2"
+down_revision: str | None = "b2e6a0c4d8f1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
