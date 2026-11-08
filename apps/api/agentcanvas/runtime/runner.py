@@ -364,6 +364,16 @@ class Runner:
         self.active_by_thread[thread_id] = run_id  # reserved before any await: a concurrent start is refused
         routed, routing = wf, []  # the workflow as this run executes it, and why each routed block got its model
         try:
+            # the run resolves secrets and workspace code from the workflow's own project: read it here, at every
+            # start, instead of trusting a map filled only when some service happened to load the workflow (after
+            # a restart, a hand-over or on another replica it was missing and the default project was used). The
+            # prepare hooks (the secrets refresh, the security gate) read it too, so it is known before they run.
+            async with self.db.sessionmaker() as s:
+                project_id = await s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == wf.id))
+            if project_id is not None:
+                from agentcanvas.services.projects import PROJECT_OF
+
+                PROJECT_OF[wf.id] = project_id
             for prepare in self.prepare_hooks:
                 await prepare(wf)
             async with self.db.sessionmaker() as s:
@@ -395,14 +405,6 @@ class Runner:
                 if context is None:
                     context = await self._last_context(s, context_from or thread_id)
                 org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
-                # the run resolves secrets and workspace code from the workflow's own project: read it here, at every
-                # start, instead of trusting a map filled only when some service happened to load the workflow (after
-                # a restart, a hand-over or on another replica it was missing and the default project was used)
-                project_id = await s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == wf.id))
-                if project_id is not None:
-                    from agentcanvas.services.projects import PROJECT_OF
-
-                    PROJECT_OF[wf.id] = project_id
                 if self.router is not None and project_id is not None:
                     try:
                         routed, routing = await self.router(s, wf, project_id)

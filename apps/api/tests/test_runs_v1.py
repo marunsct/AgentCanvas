@@ -242,6 +242,30 @@ async def test_a_run_cancelled_before_its_task_began_still_finishes(app, api_cli
     assert (await api_client.get("/v1/threads/th_early")).json()["status"] == "idle"
 
 
+async def test_prepare_hooks_know_the_runs_project(app, api_client, monkeypatch):
+    """RT-18: the prepare hooks (secrets refresh, security gate) ran before the run looked its project up, so after a
+    restart they used the default project's secrets, registry and organisation settings."""
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.projects import PROJECT_OF
+
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    wf = (await api_client.post(f"/v1/projects/{other}/workflows", json={"name": "g"})).json()["id"]
+    ir = linear({"id": "n_s", "type": "core.set", "name": "s", "config": {"values": {"out": "x"}}})
+    assert (await api_client.put(f"/v1/workflows/{wf}", json={"ir": {**ir, "id": wf}},
+                                 headers={"If-Match": "1"})).status_code == 200  # fmt: skip
+    runner = app.state.runner
+    seen: list[str | None] = []
+
+    async def hook(w):
+        seen.append(PROJECT_OF.get(w.id))
+
+    monkeypatch.setattr(runner, "prepare_hooks", [*runner.prepare_hooks, hook])
+    PROJECT_OF.pop(wf, None)  # as after a restart, or on another replica
+    h = await runner.start(Workflow.model_validate({**ir, "id": wf}))
+    await runner.wait(h.run_id)
+    assert seen == [other]
+
+
 async def test_concurrent_starts_on_one_thread_run_once(app, api_client):
     wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
     body = {"input": {"seconds": 30}, "thread_id": "th_race", "stream": False}
