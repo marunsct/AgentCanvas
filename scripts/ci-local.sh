@@ -146,7 +146,7 @@ JSON
   ( cd "$d" && npm ci --no-audit --no-fund --loglevel=error && npm i --no-save --no-audit --no-fund --loglevel=error @types/node@22 @types/nunjucks \
       && "$tsc" -p . )
 }
-s_docs() { uvx --with mkdocs-material mkdocs build --strict -d "$(mktemp -d)"; }
+s_docs() { uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs build --strict -d "$(mktemp -d)"; }  # pins as ci.yml
 s_audit() {
   ( cd apps/api && uv export --frozen --no-dev --no-emit-project --no-hashes -o "${TMPDIR:-/tmp}/ac-req.txt" \
       && uvx pip-audit==2.10.1 -r "${TMPDIR:-/tmp}/ac-req.txt" --disable-pip --no-deps )

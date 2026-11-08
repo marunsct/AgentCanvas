@@ -261,3 +261,16 @@ def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
     assert replicas * per_replica + 10 <= allowed, (replicas, per_replica, allowed)
     guide = (ROOT / "docs" / "user-guide" / "deploy.md").read_text()
     assert f"{pool} + {overflow} + {POOL_SIZE} = {per_replica}" in guide  # the guide's sum is the code's defaults
+
+
+def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
+    import re
+
+    for workflow in (ROOT / ".github" / "workflows").glob("*.yml"):
+        for line in workflow.read_text().splitlines():
+            if "uses:" in line:  # a tag can be moved to other code; a commit cannot
+                assert re.search(r"@[0-9a-f]{40}  # v\d+\.\d+\.\d+", line), (workflow.name, line)
+    for path in [".github/workflows/ci.yml", "scripts/ci-local.sh", "Makefile"]:
+        text = (ROOT / path).read_text()
+        assert "mkdocs-material" in text and "--with mkdocs-material " not in text, path
+        assert "mkdocs==1.6.1" in text and "mkdocs-material==9.8.1" in text, path

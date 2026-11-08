@@ -23,8 +23,8 @@ jobs:
         options: --health-cmd "pg_isready -U agentcanvas" --health-interval 5s --health-retries 10
     defaults: { run: { working-directory: apps/api } }
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
@@ -40,7 +40,7 @@ jobs:
       - run: make -C ../.. framework FW=pydantic_ai && make -C ../.. framework FW=agno  # S32: and Pydantic AI, Agno
       - run: make -C ../.. framework FW=microsoft_agent_framework  # S33–S34: and the Microsoft Agent Framework
       - run: make -C ../.. framework FW=strands && make -C ../.. framework FW=llamaindex  # S35: Strands, LlamaIndex
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22 }
       - run: make -C ../.. mastra  # S36: Mastra workflows run on Node.js
       - run: uv run pytest -q
@@ -52,28 +52,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
             apps/api/uv.lock
             Makefile
-      - run: uvx --with mkdocs-material mkdocs build --strict -d site
+      - run: uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs build --strict -d site  # same pins: Makefile, ci-local.sh
 
   connectors:  # S15: every gallery connector's package exists at its pinned version; keyless local ones start
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults: { run: { working-directory: apps/api } }
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
             apps/api/uv.lock
             Makefile
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22 }
       - run: uv sync --frozen
       - run: uv run python scripts/smoke_mcp_gallery.py
@@ -102,8 +102,8 @@ jobs:
           - { check: bridge_openai_agents, with: "pyagentspec==26.3.1 openai-agents==0.24.0" }
     defaults: { run: { working-directory: apps/api } }
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
@@ -117,10 +117,10 @@ jobs:
     timeout-minutes: 20
     defaults: { run: { working-directory: apps/web } }
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
         with: { version: 10 }
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: pnpm install --frozen-lockfile
       - run: pnpm gen && git diff --exit-code src/ir/generated.ts src/api/generated.ts src/help/diagnostics.generated.json
@@ -134,8 +134,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
@@ -146,9 +146,9 @@ jobs:
         run: |
           uv export --frozen --no-dev --no-emit-project --no-hashes -o "$RUNNER_TEMP/requirements.txt"
           uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" --disable-pip --no-deps
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
         with: { version: 10 }
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22 }
       - name: JavaScript (pnpm audit)
         working-directory: apps/web
@@ -171,10 +171,10 @@ jobs:
       AGENTCANVAS_OIDC_AUDIENCE: agentcanvas-api
       AGENTCANVAS_OIDC_CLIENT_ID: agentcanvas-web
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
       - name: Build the API image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: apps/api
           file: infra/Dockerfile.api
@@ -183,7 +183,7 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
       - name: Build the web image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: infra/Dockerfile.web
@@ -249,7 +249,7 @@ jobs:
       - name: Local stack logs
         if: failure()
         run: docker compose -f infra/compose.local.yml logs --no-color
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
       - name: Lint and render the Helm chart
         run: |
           set -o pipefail
@@ -266,16 +266,16 @@ jobs:
     needs: [api]
     env: { EXPORTS: "${{ github.workspace }}/exports" }
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
             apps/api/uv.lock
             Makefile
-      - uses: actions/setup-node@v7  # S36: Mastra exports are TypeScript projects
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0; S36: Mastra exports are TypeScript projects
         with: { node-version: 22 }
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
       - run: cd apps/api && uv sync --frozen && uv run python scripts/export_templates.py "$EXPORTS"
       - name: Lint the deploy files
         run: |
@@ -314,7 +314,7 @@ jobs:
           make deploy
           make smoke
           docker compose --env-file .env -f deploy/local/docker-compose.yml down -v
-      - uses: helm/kind-action@v1
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc  # v1.14.0
       - name: Kubernetes (kind), for real (classify and route)
         working-directory: exports/kubernetes/classify_and_route/classify-and-route
         run: |
@@ -335,16 +335,16 @@ jobs:
     timeout-minutes: 45
     needs: [api, web]
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
           enable-cache: true
           cache-dependency-glob: |
             apps/api/uv.lock
             Makefile
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
         with: { version: 10 }
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: cd apps/api && uv sync --frozen
       - run: make crewai  # S27: the CrewAI journey runs a CrewAI flow
@@ -360,7 +360,7 @@ jobs:
         run: for f in apps/web/test-results/*/error-context.md; do [ -f "$f" ] && { echo "::group::$f"; cat "$f"; echo "::endgroup::"; }; done; true
       - name: Upload Playwright traces and screenshots
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: playwright-results
           path: apps/web/test-results/

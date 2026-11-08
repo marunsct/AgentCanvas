@@ -97,4 +97,4 @@ hooks:      ## run lint, types and web tests before every git push (skip once wi
 	@echo "pre-push hook installed"
 
 docs:       ## documentation site on http://localhost:8001 (MkDocs Material)
-	uvx --with mkdocs-material mkdocs serve -a localhost:8001
+	uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs serve -a localhost:8001
