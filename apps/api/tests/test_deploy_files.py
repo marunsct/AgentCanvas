@@ -321,6 +321,29 @@ def test_every_aes_key_size_the_guides_allow_encrypts_checkpoints(monkeypatch, s
         assert "exactly 32" not in (ROOT / path).read_text(), path
 
 
+@needs_helm
+@pytest.mark.parametrize(
+    "sets",
+    [
+        ("sandbox.enabled=false", "config.scriptExecution=subprocess"),
+        ("sandbox.egress.enabled=false",),
+        ("networkPolicy.enabled=false",),
+        ("config.authMode=matura", "config.matura.url=https://matura.example.com"),
+        ("migrations.enabled=false", "workspaces.persistence.enabled=false", "podDisruptionBudget.enabled=false"),
+    ],
+)
+def test_the_chart_renders_in_each_variant(sets):
+    docs = render(*sets)
+    kinds = {d["kind"] for d in docs}
+    assert {"Deployment", "Service"} <= kinds
+    api = find(docs, "Deployment", "-api")
+    assert api and env_of(api)["AGENTCANVAS_AUTH_MODE"] in ("oidc", "matura")
+    if "networkPolicy.enabled=false" in sets:
+        assert "NetworkPolicy" not in kinds
+    if "sandbox.egress.enabled=false" in sets:
+        assert not find(docs, "Deployment", "-egress") and "AGENTCANVAS_EGRESS_PROXY" not in env_of(api)
+
+
 def test_the_guide_says_how_to_upgrade_and_scale_each_way_of_running():
     guide = (ROOT / "docs" / "user-guide" / "deploy.md").read_text()
     upgrades = guide.split("## Upgrades", 1)[1].split("\n## ", 1)[0]
