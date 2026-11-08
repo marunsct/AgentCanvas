@@ -227,3 +227,18 @@ async def test_a_retiring_model_is_not_offered_for_new_choices(app, api_client, 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     ids = [m["id"] for m in (await api_client.get("/v1/projects/prj_default/chat-models")).json()]
     assert "anthropic:claude-haiku-5-5" in ids and "anthropic:claude-sonnet-4-5" not in ids
+
+
+def test_the_catalog_knows_when_providers_stop_serving_a_model():
+    """OpenAI shuts GPT-5 mini down on 2026-12-11 and Google routes Gemini 2.5 away on 2026-12-01: W023 warns, new
+    choices do not offer them, and their replacements are listed (unpriced until their list prices are checked)."""
+    from datetime import date
+
+    reg = default_registry()
+    for model, day in (("openai:gpt-5-mini", "2026-12-11"), ("google_genai:gemini-2.5-pro", "2026-12-01"),
+                       ("google_genai:gemini-2.5-flash", "2026-12-01")):  # fmt: skip
+        info = reg.model(model)
+        assert info is not None and info.retires == date.fromisoformat(day), model
+    for model in ("openai:gpt-5.6-sol", "openai:gpt-5.6-terra", "openai:gpt-5.6-luna", "google_genai:gemini-3.8-flash"):
+        info = reg.model(model)
+        assert info is not None and info.retires is None, model

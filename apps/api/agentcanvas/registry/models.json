@@ -223,6 +223,21 @@
     "sampling": false
   },
   {
+    "id": "openai:gpt-5.6-sol",
+    "label": "GPT-5.6 Sol",
+    "provider": "openai"
+  },
+  {
+    "id": "openai:gpt-5.6-terra",
+    "label": "GPT-5.6 Terra",
+    "provider": "openai"
+  },
+  {
+    "id": "openai:gpt-5.6-luna",
+    "label": "GPT-5.6 Luna",
+    "provider": "openai"
+  },
+  {
     "id": "openai:gpt-5-mini",
     "label": "GPT-5 mini",
     "provider": "openai",
@@ -230,7 +245,8 @@
     "reasoning": true,
     "price_in_per_mtok": 0.25,
     "price_out_per_mtok": 2.0,
-    "sampling": false
+    "sampling": false,
+    "retires": "2026-12-11"
   },
   {
     "id": "google_genai:gemini-3.6-flash",
@@ -240,18 +256,25 @@
     "reasoning": true
   },
   {
+    "id": "google_genai:gemini-3.8-flash",
+    "label": "Gemini 3.8 Flash",
+    "provider": "google_genai"
+  },
+  {
     "id": "google_genai:gemini-2.5-pro",
     "label": "Gemini 2.5 Pro",
     "provider": "google_genai",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "retires": "2026-12-01"
   },
   {
     "id": "google_genai:gemini-2.5-flash",
     "label": "Gemini 2.5 Flash",
     "provider": "google_genai",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "retires": "2026-12-01"
   },
   {
     "id": "mistralai:mistral-large-latest",
