@@ -8,13 +8,15 @@ import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DataError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from structlog.contextvars import get_contextvars
 
 from agentcanvas.errors import DomainError
+from agentcanvas.log import get_logger
 
 MEDIA = "application/problem+json"
+log = get_logger(__name__)
 
 
 def problem(status: int, title: str, detail: str, type_: str = "about:blank", **extra: Any) -> JSONResponse:
@@ -55,6 +57,20 @@ def install_problem_handlers(app: FastAPI) -> None:
         # the database refused a value as such: a NUL character in a name or id (Postgres text cannot hold one), a
         # number out of range, text longer than a column. The client's input is at fault; the SQL stays in the log.
         return _out_of_range()
+
+    @app.exception_handler(IntegrityError)
+    async def _integrity(request: Request, exc: IntegrityError) -> JSONResponse:
+        # a uniqueness or reference the database enforces, met by a request that raced another (two saves of one
+        # name, a row deleted meanwhile) where the code did not expect it: a conflict to retry, not a 500. The
+        # constraint stays in the log, where a real bug shows up too.
+        log.warning("db.integrity_conflict", path=request.url.path, error=str(exc.orig)[:300])
+        return problem(
+            409,
+            "Conflict",
+            "this conflicts with a change saved at the same moment, or with something that already exists; "
+            "reload and try again",
+            "https://agentcanvas.dev/errors/conflict",
+        )
 
     @app.exception_handler(OverflowError)
     async def _overflow(_: Request, exc: OverflowError) -> JSONResponse:
