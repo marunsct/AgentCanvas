@@ -659,7 +659,8 @@ CREATE TABLE public.oauth_client (
     redirect_uri text NOT NULL,
     client_id text NOT NULL,
     client_secret_enc bytea,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    resources jsonb
 );
 
 ALTER TABLE ONLY public.oauth_client FORCE ROW LEVEL SECURITY;
