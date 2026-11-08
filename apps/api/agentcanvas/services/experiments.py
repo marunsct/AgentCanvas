@@ -140,6 +140,11 @@ class EvaluatorSummary(BaseModel):
     mean: float | None
     pass_rate: float | None
     scored: int
+    unscored: int = Field(
+        0,
+        description="completed examples this evaluator gave no score (it failed, or the example lacks a reference): "
+        "not in the mean, and a release gate fails on them",
+    )
     ci: list[float] | None = Field(
         default=None, description="pairwise: 95% confidence interval of the win rate (the mean; ties count half)"
     )
@@ -190,6 +195,8 @@ def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
                     mean=round(sum(values) / len(values), 4) if values else None,
                     pass_rate=round(sum(s["passed"] for s in scores) / len(scores), 4) if scores else None,
                     scored=len(values),
+                    # the first target is what a pairwise judge compares the others with: it gets no score of its own
+                    unscored=0 if spec["kind"] in ONLY_IN_EXPERIMENTS and i == 0 else len(done) - len(values),
                     ci=confidence(values) if spec["kind"] == "pairwise" else None,
                 )
             )

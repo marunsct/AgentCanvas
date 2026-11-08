@@ -290,15 +290,19 @@ class OnlineScorer:
             RunScore.deployment_id == online.deployment_id,
             RunScore.evaluator == evaluator,
             RunScore.source == "online",
-            RunScore.score.is_not(None),
         )
-        n, mean = (
+        total, n, mean = (
             await s.execute(
-                select(func.count(), func.avg(RunScore.score)).where(*base, RunScore.created_at >= window_start)
+                select(func.count(), func.count(RunScore.score), func.avg(RunScore.score)).where(
+                    *base, RunScore.created_at >= window_start
+                )
             )
         ).one()
-        if not n or n < online.min_samples:  # too few to tell: nothing is known to be broken (traffic stopped)
-            await resolve(s, online.deployment_id, evaluator)
+        if not n or n < online.min_samples:
+            # too few runs to tell (traffic stopped): nothing is known to be broken. Runs the evaluator could not
+            # score (a judge that keeps failing) are not good news: an open alert stays open
+            if (total or 0) < online.min_samples:
+                await resolve(s, online.deployment_id, evaluator)
             return
         mean = float(mean)
         observability.ONLINE_SCORE.labels(deployment=online.deployment_id, evaluator=evaluator).set(mean)
@@ -306,6 +310,7 @@ class OnlineScorer:
             await s.execute(
                 select(func.count(), func.avg(RunScore.score)).where(
                     *base,
+                    RunScore.score.is_not(None),
                     RunScore.created_at >= now - timedelta(days=BASELINE_DAYS),
                     RunScore.created_at < window_start,
                 )

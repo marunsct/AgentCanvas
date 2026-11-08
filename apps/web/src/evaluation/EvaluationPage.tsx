@@ -418,6 +418,11 @@ export function statusClass(status: string): string {
   return ""; // queued, cancelled: neutral
 }
 
+/** " · 3 of 10 unscored" when an evaluator left completed examples without a score (the mean leaves them out). */
+export function unscoredNote(e: { unscored?: number }, completed: number): string | null {
+  return (e.unscored ?? 0) > 0 ? ` · ${e.unscored} of ${completed} unscored` : null;
+}
+
 const RESULTS_PAGE = 1000; // the API's largest page; an experiment has up to 5000 results
 
 async function allResults(expId: string): Promise<ExperimentResultOut[]> {
@@ -469,7 +474,10 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
                   ? <span key={e.evaluator} className="badge" title={`win rate vs ${exp.summary[0]?.label} (ties count half), 95% interval`} data-testid="win-rate">
                       {e.evaluator} {s.target === 0 ? "baseline" : `wins ${pct(e.mean)}`}{e.ci && ` (${pct(e.ci[0])}–${pct(e.ci[1])})`}
                     </span>
-                  : <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>{e.evaluator} {fmt(e.mean)}</span>)}</div>
+                  : <span key={e.evaluator} className="badge" title={`pass rate ${pct(e.pass_rate)}`}>
+                      {e.evaluator} {fmt(e.mean)}
+                      {unscoredNote(e, s.completed) && <span className="warn-text" title="examples this evaluator gave no score: not in the mean, and a release gate fails on them" data-testid="unscored">{unscoredNote(e, s.completed)}</span>}
+                    </span>)}</div>
               </td>
             ))}
           </tr>

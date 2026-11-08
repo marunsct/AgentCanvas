@@ -68,6 +68,24 @@ async def test_a_gate_blocks_a_regression_and_reuses_evaluations(api_client):
     assert (await api_client.delete(f"/v1/workflows/{wf}/gates/prod")).status_code == 404
 
 
+async def test_a_gate_fails_when_examples_went_unscored(api_client):
+    """I-2: the mean left unscored examples out, so a gate passed with 1 of 3 examples scored; the summary did not
+    say how many went unscored."""
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf)
+    examples = [*EXAMPLES, {"input": {"who": "Cy"}}]  # no reference: the exact evaluator cannot score it
+    assert (await api_client.post(f"/v1/datasets/{ds['id']}/examples", json={"examples": examples})).status_code == 200
+    body = {"name": "exact", "kind": "exact", "config": {}}
+    assert (await api_client.post(f"/v1/workflows/{wf}/evaluators", json=body)).status_code == 201
+    assert (await api_client.put(f"/v1/workflows/{wf}/gates/prod", json={"dataset_id": ds["id"]})).status_code == 200
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert refused.status_code == 422, refused.text
+    assert check(refused.json())["items"] == ["exact: mean 1.0 (needs 1); 1 of 3 example(s) unscored"]
+    [exp] = (await api_client.get(f"/v1/workflows/{wf}/experiments")).json()
+    [ev] = exp["summary"][0]["evaluators"]
+    assert (ev["scored"], ev["unscored"], ev["mean"]) == (2, 1, 1.0)
+
+
 async def test_a_gate_never_reuses_a_simulated_user_experiment(app, api_client):
     """I-14: a simulated-user experiment of the same workflow, dataset and workspace measures conversations, not the
     examples as the gate runs them; it was reused as the gate's evaluation."""

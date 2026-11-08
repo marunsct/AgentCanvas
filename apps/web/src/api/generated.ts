@@ -870,6 +870,10 @@ export type Evaluator2 = string;
 export type Mean1 = number | null;
 export type PassRate1 = number | null;
 export type Scored1 = number;
+/**
+ * completed examples this evaluator gave no score (it failed, or the example lacks a reference): not in the mean, and a release gate fails on them
+ */
+export type Unscored = number;
 export type Type4 = string;
 export type CreatedAt15 = string;
 export type Id29 = string;
@@ -4957,6 +4961,7 @@ export interface EvaluatorSummary {
   mean: Mean1;
   pass_rate: PassRate1;
   scored: Scored1;
+  unscored?: Unscored;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

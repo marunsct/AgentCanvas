@@ -199,11 +199,15 @@ async def evaluate(
         if name in pairwise and not paired:
             notes.append(f"{name}: no live version to compare with")
             continue
-        mean = next((e.mean for e in found.evaluators if e.evaluator == name), None)
+        ev = next((e for e in found.evaluators if e.evaluator == name), None)
+        mean = ev.mean if ev else None
         minimum = minimums[name]
         what = "win rate vs live" if name in pairwise else "mean"
         line = f"{name}: {what} {mean if mean is not None else '—'} (needs {minimum:g})"
-        (failures if mean is None or mean < minimum else notes).append(line)
+        unscored = ev.unscored if ev else found.completed
+        if unscored and mean is not None:  # the mean leaves them out: most examples unscored could still "pass"
+            line += f"; {unscored} of {found.completed} example(s) unscored"
+        (failures if mean is None or mean < minimum or unscored else notes).append(line)
     if regression and before is not None and live is not None:
         now, was = found.pass_rate or 0.0, before.pass_rate or 0.0
         line = f"pass rate {now:.0%} vs {was:.0%} for v{live[2]} (may drop {max_regression:.0%})"

@@ -3808,6 +3808,12 @@
           "scored": {
             "title": "Scored",
             "type": "integer"
+          },
+          "unscored": {
+            "default": 0,
+            "description": "completed examples this evaluator gave no score (it failed, or the example lacks a reference): not in the mean, and a release gate fails on them",
+            "title": "Unscored",
+            "type": "integer"
           }
         },
         "required": [

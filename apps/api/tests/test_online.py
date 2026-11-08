@@ -126,6 +126,30 @@ async def test_an_alert_resolves_once_traffic_stops(app, api_client):
     assert (await api_client.get(f"/v1/workflows/{wf}/alerts")).json() == []
 
 
+async def test_an_alert_stays_open_while_runs_go_unscored(app, api_client):
+    """I-2: the drift check counted scored runs only, so when the evaluator stopped scoring (a judge failing on
+    every run) the window looked empty and the open alert was resolved."""
+    from sqlalchemy import select, update
+
+    from agentcanvas.db.models import OnlineEvaluator, RunScore
+
+    wf, dep, key, ev = await deployed(api_client)
+    body = {"evaluator_id": ev["id"], "alert_below": 0.5, "min_samples": 2}
+    assert (await api_client.post(f"/v1/deployments/{dep}/online-evaluators", json=body)).status_code == 201
+    await set_greeting(api_client, wf, "Hey")
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    for who in ("Ada", "Bob"):
+        await call(app, api_client, dep, key, who)
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(RunScore).values(score=None, passed=False))  # the evaluator now fails on every run
+        online = await s.scalar(select(OnlineEvaluator).where(OnlineEvaluator.deployment_id == dep))
+        assert online is not None
+        await app.state.online.check_drift(s, online, "greets", wf)
+        await s.commit()
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+
+
 async def test_one_open_alert_per_rule(app, api_client):
     """Several scoring tasks (or pods) seeing the same rule break at once open one alert between them."""
     import asyncio
