@@ -126,7 +126,7 @@ async def list_workflow_files(
 
 
 def _lint(ws: Workspace, path: str, request: Request, project_id: str) -> list[LintItem]:
-    """ruff for Python files; the sandbox policy checks (E082-E084, W082, W083, W074) for `sandbox.json`."""
+    """ruff for Python files; the sandbox policy checks (E082-E085, W082, W083, W074) for `sandbox.json`."""
     items = [LintItem(**d) for d in ws.lint(path)]
     if path.strip("/") == POLICY_FILE:
         projects = request.app.state.projects

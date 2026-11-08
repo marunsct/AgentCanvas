@@ -76,13 +76,29 @@ def test_policy_parse_and_proxy_config(tmp_path):
     assert check_policy(ws.root, "subprocess", set()) == []  # no sandbox.json: nothing to say
     ws.write("sandbox.json", json.dumps({**POLICY, "egress": ["*:443"]}))
     codes = {p["code"] for p in check_policy(ws.root, "docker", set())}
-    assert codes == {"E083", "W083", "W074"}  # unknown secret, inject is LangSmith's only, allow-all egress
+    assert codes == {"E083", "W083", "E085"}  # unknown secret, inject is LangSmith's only, "*" the proxy cannot match
+    assert "W074" in {p["code"] for p in check_policy(ws.root, "langsmith", {"CRM_TOKEN"})}  # allows every host
     assert "W082" in {p["code"] for p in check_policy(ws.root, "subprocess", set())}  # cannot restrict: a warning
     assert "E084" in {p["code"] for p in check_policy(ws.root, "inprocess", set(), env="prod")}  # ... refused there
     ws.write("sandbox.json", json.dumps(POLICY))
     assert check_policy(ws.root, "langsmith", {"CRM_TOKEN"}) == []
     ws.write("sandbox.json", "{nope")
     assert [p["code"] for p in check_policy(ws.root, "langsmith", set())] == ["E082"]
+
+
+@pytest.mark.parametrize("entry", ["*", "*:443", "~.*\\.example\\.com"])
+@pytest.mark.parametrize("mode", ["docker", "remote"])
+async def test_langsmith_only_egress_entries_are_refused_where_the_proxy_cannot_match_them(tmp_path, mode, entry):
+    """RT-17: "*" and "~regex" passed the policy check, but the egress proxy matches hosts and *.domains only, so in
+    docker and remote modes such a list silently allowed nothing (and W074 said it allowed everything)."""
+    ws = Workspace(tmp_path / "ws")
+    ws.write("sandbox.json", json.dumps({"egress": [entry]}))
+    ws.write("h.py", "def f(state):\n    return {'x': 1}\n")
+    codes = {p["code"] for p in check_policy(ws.root, mode, set())}
+    assert "E085" in codes and "W074" not in codes
+    runner = SandboxRunner(Settings(env="test", script_execution=mode, secret_key="k" * 64), ws.root, {})
+    with pytest.raises(ScriptError, match="LangSmith's syntax"):
+        await runner("h:f")({})
 
 
 # --------------------------------------------------------------------------------------- fake LangSmith ----

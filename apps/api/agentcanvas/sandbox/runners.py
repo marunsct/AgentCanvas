@@ -427,6 +427,11 @@ class SandboxRunner:
         if not allow or mode == "langsmith":  # LangSmith's own auth proxy applies the list
             return None
         if mode in ("docker", "remote"):
+            if only := policy.langsmith_only():  # the proxy would match nothing: say so instead of failing quietly
+                raise ScriptError(
+                    f"sandbox.json: egress entry '{only[0]}' is LangSmith's syntax; with '{mode}' list hosts, "
+                    "host:port or *.domain"
+                )
             from agentcanvas.sandbox import docker_egress
             from agentcanvas.sandbox.egress import proxy_url
 

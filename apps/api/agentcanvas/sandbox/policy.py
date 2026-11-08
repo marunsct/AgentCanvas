@@ -60,6 +60,11 @@ class SandboxPolicy(BaseModel):
     def secret_names(self) -> set[str]:
         return {name for rule in self.inject for value in rule.headers.values() for name in SECRET_REF.findall(value)}
 
+    def langsmith_only(self) -> list[str]:
+        """Entries only LangSmith's proxy understands ("*" and "~regex"): the egress proxy of the docker and remote
+        modes matches hosts and *.domains, so with it they would silently allow nothing (RT-17)."""
+        return [e for e in self.egress if e.strip().startswith(("*:", "~")) or e.strip() == "*"]
+
     def allow_list(self) -> list[str]:
         """Egress entries plus port 443 for every host an inject rule targets (they must be reachable)."""
         out = list(dict.fromkeys(self.egress))
@@ -138,7 +143,8 @@ ENFORCING = ("docker", "remote", "langsmith")  # the modes that give code exactl
 def check_policy(root: Path, mode: str, secrets: set[str], env: str = "dev") -> list[dict[str, str]]:
     """Workspace problems for the policy: E082 invalid file, E083 unknown secret, E084/W082 an egress list this
     server cannot enforce (error in staging and production, where such code is refused), W083 inject rules it
-    cannot apply, W074 egress open to every host."""
+    cannot apply, E085 "*" or "~regex" entries the egress proxy (docker, remote) cannot match, W074 egress open to
+    every host (LangSmith)."""
     if not (root / POLICY_FILE).is_file():
         return []
     try:
@@ -164,7 +170,13 @@ def check_policy(root: Path, mode: str, secrets: set[str], env: str = "dev") -> 
             "message": f"inject rules are applied by LangSmith's proxy only; with '{mode}' requests go out without "
             "those headers",
         })  # fmt: skip
-    if any(e.split(":")[0] in ("*", "~.*", "~.+") for e in policy.egress):
+    if mode in ("docker", "remote") and (only := policy.langsmith_only()):
+        out.append({
+            "path": POLICY_FILE, "code": "E085",
+            "message": f"egress entry '{only[0]}' is LangSmith's syntax; with '{mode}' the egress proxy matches "
+            "hosts, host:port and *.domain only, so this code is refused: list the hosts needed",
+        })  # fmt: skip
+    elif mode == "langsmith" and any(e.split(":")[0] in ("*", "~.*", "~.+") for e in policy.egress):
         out.append({"path": POLICY_FILE, "code": "W074", "message": "egress allows every host; list the hosts needed"})
     return out
 
