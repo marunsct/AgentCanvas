@@ -10853,6 +10853,8 @@
       "SecretIn": {
         "properties": {
           "value": {
+            "description": "at most 64 KB (a key, a token, a certificate or a JSON key file)",
+            "maxLength": 65536,
             "title": "Value",
             "type": "string"
           }

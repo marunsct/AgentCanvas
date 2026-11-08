@@ -203,3 +203,9 @@ def test_an_event_without_a_secret_is_not_copied(monkeypatch):
     assert secrets_module.hide_values(event, ["sk-secret-123456"]) is event and loads == []
     masked = secrets_module.hide_values({"delta": "key sk-secret-123456"}, ["sk-secret-123456"])
     assert "sk-secret" not in json_module.dumps(masked) and len(loads) == 1
+
+
+async def test_a_secret_value_has_a_size_limit(api_client):
+    """Every value is decrypted into every replica's memory and masked in every output: 64 KB at most."""
+    assert (await api_client.put(f"{P}/secrets/BIG", json={"value": "x" * 65536})).status_code == 204
+    assert (await api_client.put(f"{P}/secrets/BIG", json={"value": "x" * 65537})).status_code == 422

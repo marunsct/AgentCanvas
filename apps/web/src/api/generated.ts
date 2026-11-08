@@ -2597,6 +2597,9 @@ export type Source9 = string | null;
 export type Text6 = string;
 export type Title4 = string | null;
 export type Results1 = SearchResult[];
+/**
+ * at most 64 KB (a key, a token, a certificate or a JSON key file)
+ */
 export type Value5 = string;
 export type CreatedAt30 = string;
 export type Name53 = string;
