@@ -16,6 +16,9 @@ from dataclasses import dataclass
 class RunIdentity:
     org_id: str | None
     user_id: str | None  # None: no person started this run (a schedule, a webhook, a deployment, a share link)
+    # the organisation's service connection may be used although a person started it: a run of a deployment (resumed
+    # from the inbox, say) or an admin's own. A builder's draft run may not borrow the admin's connection.
+    service_ok: bool = False
 
 
 CURRENT: ContextVar[RunIdentity | None] = ContextVar("agentcanvas_run_identity", default=None)

@@ -373,8 +373,12 @@ async def test_a_call_carries_the_connection_of_whoever_the_run_acts_for(app, cl
     alice, bob = await user_id(app, "alice-sub"), await user_id(app, "bob-sub")
     assert (await get_as(app, RunIdentity(ORG, alice))).json()["who"] == "alice"
     assert (await get_as(app, RunIdentity(ORG, bob))).json()["who"] == "bob"
-    assert (await get_as(app, RunIdentity(ORG, bob), "service")).json()["who"] == "the-service"
     assert (await get_as(app, RunIdentity(ORG, None), "service")).json()["who"] == "the-service"  # a schedule
+    # a person's run uses it only when it is a deployment's (resumed from the inbox) or an admin's
+    service_ok = RunIdentity(ORG, bob, service_ok=True)
+    assert (await get_as(app, service_ok, "service")).json()["who"] == "the-service"
+    with pytest.raises(ConnectionRequired, match="not by a draft run a person starts"):
+        await get_as(app, RunIdentity(ORG, bob), "service")  # a builder's draft run cannot borrow the admin's
     # no person started it, and the connector is set to act as them: refused, with the way out
     with pytest.raises(ConnectionRequired, match="service connection"):
         await get_as(app, RunIdentity(ORG, None))

@@ -360,11 +360,13 @@ class Runner:
         event_depth: int = 0,
         visitor_hash: str | None = None,
         project_files: bool = False,
+        service_connection: bool = False,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
         own uploads on the link it may use); `project_files`: the input was written by a builder (a schedule's), so
-        any of the project's files."""
+        any of the project's files. `service_connection`: the person who starts it may use the organisation's service
+        connection (an admin); a deployment's runs always may."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -474,6 +476,7 @@ class Runner:
             mocks=mocks or {},
             org_id=org_id,
             user_id=user_id,
+            service_connection=service_connection or deployment_id is not None,
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
@@ -537,7 +540,9 @@ class Runner:
     async def _pump(self, h: RunHandle, spec: RunSpec) -> None:
         h.started = True  # from here on a cancel reaches the code below, which always finishes the run
         started = time.perf_counter()
-        CURRENT.set(RunIdentity(spec.org_id, spec.user_id))  # app connectors that sign in read it per call (G-7)
+        CURRENT.set(
+            RunIdentity(spec.org_id, spec.user_id, spec.service_connection)
+        )  # app connectors that sign in read it per call (G-7)
         status, error, interrupts = "error", None, []
         # The run's last events are published only after the run is finalised (saved, thread released): a client
         # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has

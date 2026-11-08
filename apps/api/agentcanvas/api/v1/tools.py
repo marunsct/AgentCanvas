@@ -41,7 +41,8 @@ async def inspect_mcp(
 ) -> list[McpToolInfo]:
     mcp = require(r.adapter, "mcp_inspect", McpAbility)
     me = request.state.user
-    CURRENT.set(RunIdentity(me.org_id, me.id))  # a connector that signs in is browsed with your own connection
+    # a connector that signs in is browsed with your own connection (the service one: admins only)
+    CURRENT.set(RunIdentity(me.org_id, me.id, service_ok=me.role == "admin"))
     cfg = body.config
     url = str(cfg.get("url") or "")
     local = cfg.get("transport") == "stdio" or not url.startswith(("http://", "https://"))

@@ -577,9 +577,18 @@ def whom() -> tuple[str, str | None]:
 
 
 def owner_for(identity: str, resource: str) -> tuple[str, str]:
-    """(organisation, connection owner) for a connector set to act as `starter` or `service`."""
+    """(organisation, connection owner) for a connector set to act as `starter` or `service`. The service
+    connection is for runs no person starts (schedules, webhooks, deployments, share links), a deployment's runs
+    resumed by a person, and admins: a builder's draft run cannot borrow the admin's connection."""
     org_id, user_id = whom()
     if identity == "service":
+        ident = CURRENT.get()
+        if user_id and not (ident and ident.service_ok):
+            raise ConnectionRequired(
+                f"The service connection to {host_of(resource)} is used by schedules, webhooks and published "
+                "deployments, not by a draft run a person starts. Publish the workflow (a test environment will do) "
+                "and run it there, or ask an admin to run it."
+            )
         return org_id, SERVICE
     if not user_id:
         raise ConnectionRequired(

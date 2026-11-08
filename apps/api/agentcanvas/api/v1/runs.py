@@ -322,6 +322,7 @@ async def start_run(
         context=_context(wf, body.context, user),
         durability=body.durability,
         user_id=user.id,
+        service_connection=user.role == "admin",  # the organisation's service connection is the admins'
         **_debug(wf, body, body.mode),
     )
     return _respond(r, h, body.stream)
@@ -614,6 +615,7 @@ async def resume_thread(
         thread_id=thread_id,
         resume=ResumeSpec(body.value, body.interrupt_id),
         user_id=user.id,
+        service_connection=user.role == "admin",
         mode="debug" if body.pins or body.mocks or body.dry_run else "normal",
         **_debug(wf, body, "debug"),
         **target_kw,

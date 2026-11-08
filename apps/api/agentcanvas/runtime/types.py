@@ -42,6 +42,7 @@ class RunSpec:
     # usage the adapter had not reported when its event stream stopped (cancelled, timed out): its stream is
     # closed by then, so it is handed over here and still counts for the run's tokens and cost
     on_usage: Callable[[dict[str, Any]], None] | None = None
+    service_connection: bool = False  # connectors set to the service identity may use it though a person started it
 
 
 @dataclass

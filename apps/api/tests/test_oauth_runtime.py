@@ -62,7 +62,7 @@ def serving(world, monkeypatch):  # noqa: F811
             )  # fmt: skip
 
         monkeypatch.setattr(nodes, "MCP_CLIENT_FACTORY", factory)
-        async with app.inner.router.lifespan_context(app.inner):
+        async with app.inner.router.lifespan_context(app.inner):  # type: ignore[attr-defined]
             yield
 
     return serve
@@ -92,9 +92,16 @@ async def test_one_list_of_tools_serves_everyone_each_call_carries_its_own_conne
         assert tokens["alice"] in await call_as(tools, RunIdentity(ORG, alice))
         assert tokens["bob"] in await call_as(tools, RunIdentity(ORG, bob))  # the same tools, Bob's token
         assert tokens["alice"] in await call_as(tools, RunIdentity(ORG, alice))
+        CURRENT.set(RunIdentity(ORG, alice, service_ok=True))  # an admin's
         svc_tools = await Resources().load_mcp("crm-svc", connector("service"))
-        assert tokens["the-service"] in await call_as(svc_tools, RunIdentity(ORG, bob))  # whoever starts it
+        deployment_run = RunIdentity(ORG, bob, service_ok=True)  # e.g. Bob resumed it from the inbox
+        assert tokens["the-service"] in await call_as(svc_tools, deployment_run)
         assert tokens["the-service"] in await call_as(svc_tools, RunIdentity(ORG, None))  # a schedule: nobody
+        CURRENT.set(RunIdentity(ORG, bob))  # Bob's draft run (CP-3)
+        with pytest.raises(BaseException) as seen:
+            await svc_tools[0].ainvoke({})
+        problem = _connection_problem(seen.value)
+        assert problem is not None and "not by a draft run" in problem.detail
 
 
 async def test_a_run_nobody_started_cannot_use_a_personal_connection(app, client, world, serving):  # noqa: F811
@@ -152,3 +159,32 @@ def test_connection_problems_are_found_inside_exception_groups():
     wrapped = RuntimeError("tool failed")
     wrapped.__cause__ = inner
     assert _connection_problem(wrapped) is inner
+
+
+async def test_the_runner_lets_only_deployments_and_admins_use_the_service_connection(app, client, monkeypatch):  # noqa: F811
+    """CP-3: what the runner tells connectors about the service connection, by who starts the run and how."""
+    from test_publish import greeter
+
+    from agentcanvas.runtime.runner import Runner
+
+    seen: list[bool | None] = []
+    pump = Runner._pump
+
+    async def spy(self, h, spec):
+        seen.append(getattr(spec, "service_connection", None))
+        return await pump(self, h, spec)
+
+    monkeypatch.setattr(Runner, "_pump", spy)
+    wf = (await client.post("/v1/projects/prj_default/workflows", json={"name": "g"}, headers=ALICE)).json()["id"]
+    r = await client.put(f"/v1/workflows/{wf}", json={"ir": greeter(wf, "Hi")}, headers={**ALICE, "If-Match": "1"})
+    assert r.status_code == 200, r.text
+    for who in (ALICE, BOB):
+        r = await client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "x"}}, headers=who)
+        assert r.status_code == 200, r.text
+    key = (await client.post(f"/v1/workflows/{wf}/publish", json={}, headers=ALICE)).json()
+    r = await client.post(
+        f"/v1/deployments/{key['deployment']['id']}/runs/wait", json={"input": {"who": "x"}},
+        headers={"Authorization": f"Bearer {key['api_key']}"},
+    )  # fmt: skip
+    assert r.status_code == 200, r.text
+    assert seen == [True, False, True]  # the admin's draft run, the builder's, the deployment's
