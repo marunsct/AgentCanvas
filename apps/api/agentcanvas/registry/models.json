@@ -269,15 +269,32 @@
     "provider": "groq"
   },
   {
+    "id": "deepseek:deepseek-v4-pro",
+    "label": "DeepSeek V4 Pro",
+    "provider": "deepseek"
+  },
+  {
+    "id": "deepseek:deepseek-flash",
+    "label": "DeepSeek Flash",
+    "provider": "deepseek"
+  },
+  {
     "id": "deepseek:deepseek-chat",
     "label": "DeepSeek Chat",
-    "provider": "deepseek"
+    "provider": "deepseek",
+    "retires": "2026-07-24"
   },
   {
     "id": "deepseek:deepseek-reasoner",
     "label": "DeepSeek Reasoner",
     "provider": "deepseek",
-    "reasoning": true
+    "reasoning": true,
+    "retires": "2026-07-24"
+  },
+  {
+    "id": "xai:grok-4.7",
+    "label": "Grok 4.7",
+    "provider": "xai"
   },
   {
     "id": "xai:grok-4",

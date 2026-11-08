@@ -284,7 +284,7 @@ PROVIDERS = {  # what the builders call a provider -> AgentCanvas's provider id
 }  # fmt: skip
 DEFAULT_MODELS = {"openai": "gpt-5.5", "anthropic": "claude-haiku-5-5", "google_genai": "gemini-3.6-flash",
                   "mistralai": "mistral-large-latest", "groq": "llama-3.3-70b-versatile", "ollama": "llama3.3",
-                  "deepseek": "deepseek-chat", "xai": "grok-4", "azure_openai": "gpt-5.5"}  # fmt: skip
+                  "deepseek": "deepseek-v4-pro", "xai": "grok-4.7", "azure_openai": "gpt-5.5"}  # fmt: skip
 
 
 def model_id(provider: str, name: Any, report: Builder | None = None) -> str:

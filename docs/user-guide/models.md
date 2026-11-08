@@ -18,8 +18,8 @@ in **Settings › Models**.
 | Google Gemini | `google_genai:gemini-3.6-flash` | `GOOGLE_API_KEY` |
 | Mistral AI | `mistralai:mistral-large-latest` | `MISTRAL_API_KEY` |
 | Groq | `groq:llama-3.3-70b-versatile` | `GROQ_API_KEY` |
-| DeepSeek | `deepseek:deepseek-chat` | `DEEPSEEK_API_KEY` |
-| xAI | `xai:grok-4` | `XAI_API_KEY` |
+| DeepSeek | `deepseek:deepseek-v4-pro` | `DEEPSEEK_API_KEY` |
+| xAI | `xai:grok-4.7` | `XAI_API_KEY` |
 | Any OpenAI-compatible API (OpenRouter, Together, Fireworks, a gateway…) | `openai_compatible:<model>` | `OPENAI_COMPATIBLE_API_KEY`, or a secret you pick; a **Base URL** is required |
 
 ### Models on your computer

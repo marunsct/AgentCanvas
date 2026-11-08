@@ -29,6 +29,26 @@ def test_runtime_tables_match_the_provider_registry():
     assert all(m.provider in providers or m.provider == "fake" for m in default_registry().models())
 
 
+def test_default_and_example_models_are_listed_and_still_served():
+    """A provider's example and the importers' default model are what people start from: neither may be a model
+    the provider has stopped serving (DeepSeek discontinued deepseek-chat on 2026-07-24)."""
+    from datetime import date
+
+    from agentcanvas.importers import DEFAULT_MODELS
+
+    reg = default_registry()
+    ids = [p.example for p in reg.providers() if "<" not in p.example]
+    ids += [f"{p}:{m}" for p, m in DEFAULT_MODELS.items() if p in ("deepseek", "xai", "openai", "anthropic")]
+    for model in ids:
+        info = reg.model(model)
+        assert info is not None, model
+        assert info.retires is None or info.retires > date.today(), model
+    for gone in ("deepseek:deepseek-chat", "deepseek:deepseek-reasoner"):  # DeepSeek's legacy names
+        info = reg.model(gone)
+        assert info is None or (info.retires is not None and info.retires <= date.today()), gone
+        assert gone not in ids
+
+
 def test_every_listed_provider_is_installed():
     assert [p.id for p in installed_providers() if not p.installed] == []
 
@@ -58,8 +78,8 @@ def test_openai_compatible_local_servers():
         ("google_genai:gemini-2.5-flash", {"api_key": {"$secret": "MY_KEY"}}, "ChatGoogleGenerativeAI"),
         ("mistralai:mistral-large-latest", {}, "ChatMistralAI"),
         ("groq:llama-3.3-70b-versatile", {"api_key": {"$secret": "MY_KEY"}}, "ChatGroq"),
-        ("deepseek:deepseek-chat", {"api_key": {"$secret": "MY_KEY"}}, "ChatDeepSeek"),
-        ("xai:grok-4", {"api_key": {"$secret": "MY_KEY"}}, "ChatXAI"),
+        ("deepseek:deepseek-v4-pro", {"api_key": {"$secret": "MY_KEY"}}, "ChatDeepSeek"),
+        ("xai:grok-4.7", {"api_key": {"$secret": "MY_KEY"}}, "ChatXAI"),
         ("ollama:llama3.3", {}, "ChatOllama"),
         ("lmstudio:local-model", {}, "ChatOpenAI"),
         (
