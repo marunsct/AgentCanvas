@@ -10,6 +10,49 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-08
+
+### The second review: how it was fixed
+Seven read-only reviews found about 110 defects; six agents fixed them by area in worktrees and I merged their
+commits, each with a test that fails without it. No AI inference ran (the Copilot evaluation stays pending). The
+calls below are theirs or mine; each says how to reverse it.
+
+### Security calls
+- **SCIM and shared invitations:** a person invited by several organisations is one row until they sign in, so a
+  SCIM rename or re-address of such a person is refused (409) rather than split into two users. *Reverse:* split the
+  row in `ScimService._apply_user_attrs`.
+- **Groups tables add new members only on a one-organisation server** (or with `AGENTCANVAS_SSO_GROUPS_ADD_MEMBERS`).
+  Existing members and invitees are still changed by the table.
+- **Service connection:** used only by runs no person starts, deployments' runs resumed from the Inbox, and admins'
+  own runs. A builder can still publish to use it; that is inherent in publishing.
+- **Entered OAuth credentials are bound to the MCP servers they were entered with.** Existing rows from before stay
+  usable for the servers the organisation already connects to. No same-domain rule between connector and sign-in
+  server: many real servers sign in through a provider on another domain.
+- **Hosted edition:** other providers than OpenAI-compatible ones may not set their own address (refused, not
+  pinned), and 6to4 and Teredo addresses are refused outright.
+- **Deployment files:** runs started by a key, a share link or a webhook use only files given to that deployment; a
+  schedule's own input (written by a builder) may still use the project's files.
+- **Removing a member** deletes their tokens and connections in that organisation without asking the provider to
+  revoke them (that would need a network call); suspension keeps them, since they are refused while suspended.
+
+### Behaviour calls
+- **Unscored examples fail a gate**, including examples an evaluator cannot score by design (an exact match with no
+  reference): a gate must see every example scored.
+- **A judge score outside 0..1 is refused**, not rescaled: the prompt asks for 0..1.
+- **Copilot test runs stub remote agent steps** instead of asking about every new step with side effects (that would
+  block testing any new AI step).
+- **The fine-tuning export skips runs** with unanswered tool calls or clipped text rather than inventing tool messages.
+- **Anthropic refuses sampling for every model** since API version 2026-10-21 (SDK 2.x): a temperature on any Claude
+  model is dropped, with W020 saying so.
+- **Budgets in exports:** the LangGraph deploy kit enforces per-run token, cost and time limits; everything else is
+  listed in GAPS.md and warned about (W026), which also shows for people who never export.
+- **New models without verified prices** are listed without them (W015: cost unknown) rather than guessed.
+- **Git sync deletes only what an earlier push wrote** (`.agentcanvas-files`); a folder without that file is never
+  pruned, so a stale file someone else added stays.
+- **Read-only API container in production compose**, with `API_READ_ONLY=false` as the way out until the image stage
+  confirms nothing writes elsewhere. Dumps now keep table owners; a hand restore elsewhere needs `--no-owner --no-acl`.
+- **The "?" key opens the shortcuts page** (no overlay); queued and cancelled experiments are neutral, not red.
+
 ## 2026-10-30
 
 ### Closing the open items: what was built, and what was left

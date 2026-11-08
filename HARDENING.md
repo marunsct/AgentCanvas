@@ -1,14 +1,15 @@
 # Hardening plan
 
-What is still open after the deep review of 2026-10-29 and the work that followed it. That review (seven read-only
-passes over run-time, control plane, security, web, Copilot and evaluation, adapters and exports, and docs, plus a
-check of the standards and the market) produced about 90 findings and a plan of 15 improvements; **all of the
-findings and the plan are done** except what needs a paid model or a service account, which is listed below (about 190 commits on the hardening branch, each with a test that fails
-without it, a changelog line, and the suites green on SQLite and Postgres). Their history is in `CHANGELOG.md`
-(*Unreleased*) and `decisions.md`, and the review's own list is in git: `git show ad11a56:HARDENING.md`.
+What is still open after the second deep review (2026-11-08) and the fixes that followed it. That review ran seven
+read-only passes (run-time and sandbox; control plane and security; web app; Copilot, evaluation and knowledge;
+adapters, exports and importers; infrastructure, operations and docs) and a check of standards, models and competitors.
+It found about 110 defects, from one critical (another organisation's SCIM token could take over a pending invitation)
+to many small ones; **all of them are fixed** on the hardening branch, each with a test that fails without it, a
+changelog line, and the suites green on SQLite and Postgres. The review's per-area lists are in the commit messages
+(ids CP-, RT-, W-, I-, P-, OP-, R-) and the first review's list is in git: `git show ad11a56:HARDENING.md`.
 
 **How to use this file.** One PR per item; every fix lands with a test that fails without it. In the same PR, delete
-the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`, …) so a PR title can name them. On 2026-10-30 a closing pass built what could be built here (OCR, spending by deployment, entered OAuth credentials, deployment file upload, multi-turn red teaming, screenshots, accessibility fixes, the reference schema) and ran every CI stage locally (frameworks, conformance, images, export, a Kubernetes cluster in kind); what is left needs a model, a service or a person.
+the item here and add anything new you find. Items keep short ids so a PR title can name them.
 
 ---
 
@@ -16,11 +17,43 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 
 | Id | Item | Why it is open | To close it |
 |---|---|---|---|
-| O-1 | **Run the Copilot evaluation on a real model** (G-11) and decide the default engine | The nightly job has never run (no CI runners since 2026-10-08). A local model was tried on 2026-10-30 (Ollama, `qwen3:8b`, CPU only): one build case took ten minutes and produced no proposal, so the 147 cases of both suites would take days and the score of a small model would not decide anything. It was stopped, and no hosted model was used. The Deep Agents engine passes every Copilot suite offline, but making it the default was left out until real scores exist (commit `6423f66` on the agent's branch `feat-copilot`, in the worktree under `.claude/worktrees/agent-a78fb83cd9ffa492c`) | `make copilot-evals MODEL=anthropic:claude-sonnet-5-5` for each engine (a GPU or a hosted model is needed for speed): record both scores in `docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md`, then cherry-pick `6423f66` if Deep Agents scores at least as well |
+| O-1 | **Run the Copilot evaluation on a real model** (G-11) and decide the default engine | The nightly job has never run (no CI runners since 2026-10-08). A local model was tried on 2026-10-30 (Ollama, `qwen3:8b`, CPU only): one build case took ten minutes and produced no proposal, so the 147 cases of both suites would take days and the score of a small model would not decide anything. It was stopped, and no hosted model was used. Left pending at the owner's request (2026-11-08): no AI inference runs as part of hardening. The Deep Agents engine passes every Copilot suite offline, but making it the default was left out until real scores exist (commit `6423f66` on the agent's branch `feat-copilot`, in the worktree under `.claude/worktrees/agent-a78fb83cd9ffa492c`) | `make copilot-evals MODEL=anthropic:claude-sonnet-5-5` for each engine (a GPU or a hosted model is needed for speed): record both scores in `docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md`, then cherry-pick `6423f66` if Deep Agents scores at least as well |
 | O-2 | **Try the two integrations built from reference docs against the real services** | The Claude Managed Agents export (`ant apply` bundle) and the Git round trip (GitHub pull requests) were built from the reference documentation and tested with golden files and a mock transport; nothing here could call Anthropic or GitHub | Apply a bundle with the real `ant` CLI; connect a scratch repository; fix what differs and add it to the golden files |
 | O-6 | **A person reading the product with a screen reader** | An automated scan (`e2e/axe.spec.ts`, axe-core, WCAG 2.1 A and AA, light and dark themes, every page and every editor tab) passes, and the inspector, menus and canvas are named and keyboard-reachable (`a11y-inspector.spec.ts`, `keyboard.spec.ts`). A machine cannot say whether the product is usable with NVDA, VoiceOver or JAWS | A screen-reader pass by a person; file what they find |
 
-## 2. Decided not to build (yet), with the reason
+## 2. Improvement plan (from the 2026-11-08 market and standards check)
+
+Ranked by what they add for the people who use AgentCanvas; sizes are S (days), M (a week or two), L (more).
+
+| Id | Item | Why | Size |
+|---|---|---|---|
+| F-1 | **MCP Tasks on the deployment MCP endpoint, approvals through URL-mode elicitation** | A run that pauses for a person returns a task the caller can poll or cancel, and the approval is answered through a link instead of timing out. MCP SEP-2663 (Tasks, Beta, heading for core); AWS AgentCore Gateway, Mastra and LangSmith shipped it in October | M |
+| F-2 | **MCP Server Card per deployment; A2A card caching headers and `application/a2a+json`** | Registries and clients discover deployments without a call; matches a2a-sdk 1.2/1.3 | S |
+| F-3 | **Framework pin bumps, through the conformance kit** | Pydantic AI 2.66 has security fixes (URL-download blocklist gap, header leaks in spans); LangGraph 1.2.20 adds strict resume (wire its per-interrupt ids into the Inbox); ADK 2.14, Agent Framework 1.25 (Python ≥ 3.11), CrewAI 1.15.37, Strands 1.64, Agno 3.1.12, LlamaIndex Workflows 2.26.1, Mastra 1.82, Claude Agent SDK 0.2.179, `mcp` 2.3.0. Several have breaking changes; run `scripts/ci-local.sh frameworks` and the conformance kit for each | S each |
+| F-4 | **Decide / classifier node** (FR-X-05) | A typed choice, probability or score through the gateway, also usable as an evaluator; OpenAI's Decisions API, ADK `ClassifierNode` and Strands `DecisionModel` all shipped in October | M |
+| F-5 | **Kill switch and run priority** | An audited "stop all in-flight runs" per organisation or deployment, and a priority per run or trigger (LangSmith shipped both) | S/M |
+| F-6 | **Repeated-run evaluation** | Each example k times: pass@k, variance, flakiness; argument matchers for tool calls; an automatic failure summary per experiment (ADK `--num_runs`, AgentCore failure analysis) | M |
+| F-7 | **Importer upkeep before 2026-11-30** | n8n 3.0 removed node types (AI Agent v1 modes, LangChain Code, the vector store Insert/Load nodes, OpenAI Assistant): flag them with named replacements; check the Langflow importer against 1.13 exports; re-test the Agents SDK importer on a fresh Agent Builder export | S |
+| F-8 | **AG-UI 1.0 endpoint for deployments** (revisits N-2 for deployments only) | AG-UI 1.0 is frozen and CopilotKit-style front ends, AgentCore and Agent Framework speak it | M |
+| F-9 | **Publish a deployment to Slack, Microsoft Teams or email** | Per-person connectors and the Inbox already exist; enterprises want agents where people work (ADK `TeamsRunner`, n8n Teams, LangSmith Fleet) | M |
+| F-10 | **"Schedule a follow-up" tool for agents** | An agent sets a one-off or recurring trigger on its own deployment, within policy and budget (OpenAI `automations`, Agno) | S |
+| F-11 | **Natural-language run search filters and a weekly insights report** | "failed runs about refunds last week over $0.10" on top of the existing run search (LangSmith) | M |
+| F-12 | **Custom roles and an erase-person action** | Org-defined permission sets for SCIM groups and tokens; GDPR erasure (LangSmith, Langflow 1.13) | M |
+| F-13 | **Browser-use block in the sandbox** | A headless browser behind the egress allow-list, a screenshot per step, approval before submit; the most visible gap against hosted competitors (Gemini Computer Use GA, n8n Browser Use) | L |
+| F-14 | **Live co-editing; voice** | N-3 and the audio part of N-4; large, after the rest | L |
+
+## 2a. Left over from the 2026-11-08 fixes
+
+- **Service connection:** a builder can still use the organisation's service connection by publishing and running the deployment (inherent in builders being allowed to publish). A schedule's own input may use any of the project's files.
+- **Thread ids** stay one namespace across organisations: whether an id is taken is visible, not by whom (namespacing would change what callers get back).
+- **Hosted edition:** only the OpenAI-compatible client is pinned to public addresses; other providers with their own address are refused there. No pinned sync client. The design-export kit (`designs/kit/canvas_tools.py`) still uses plain `is_global` (it cannot import AgentCanvas).
+- **Usage after a stop:** the CrewAI and OpenAI Agents adapters drain usage like the LangGraph one did before RT-4.
+- **Model catalog:** GPT-5.6 Sol/Terra/Luna and Gemini 3.8 Flash are listed without prices or capability flags (costs count as unknown, W015) until verified; `grok-4` has no retire date; Haiku 5.5 cache prices are derived from the stated multipliers.
+- **Production compose:** the API's read-only root and the in-memory home directory are checked statically; run `scripts/ci-images.sh` to confirm a framework writes nowhere else (`API_READ_ONLY=false` is the way out).
+- **Operations ideas not done:** a startup check that migrations are at head when `AUTO_MIGRATE` is off; a generated reference page of every server setting; HSTS and Permissions-Policy headers in the web image.
+- **Web:** the Run panel and chat input still re-render on every streamed token (they show the text).
+
+## 3. Decided not to build (yet), with the reason
 
 | Id | Item | Reason |
 |---|---|---|
@@ -31,7 +64,7 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 | N-6 | A memory embedding model per project | The LangGraph store's vector column has one size per store, so the model is a server setting (`AGENTCANVAS_MEMORY_EMBEDDING`). Per project would need a store per vector size |
 | N-7 | Decrypting secrets per project with a short lifetime instead of one cache per API process | Code that could read the cache could also read the KMS key; no tenant code runs in the API process (the sandbox is required in staging and production). See `decisions.md` |
 
-## 3. Carried over from before the review
+## 4. Carried over
 
 - **Cross-organisation sweep coverage:** the crawl reaches 64 of 76 id routes. A hand-written test in the same file covers nine of the rest (run search, run trace, agent code, bridge exports, uploads, MCP); the SCIM routes (their own bearer token, tested in `test_scim.py`), annotation items (need a flagged run) and the share conversation (the link's token is the capability) are not in the sweep. The test's output (`pytest -s`) lists what the crawl missed.
 - **Web:** the project is still chosen in `queries.ts` (about 58 uses of `PROJECT_ID`), not in a store; about 16 hand-written response types remain (Policies, Setup, CodeHelp differ from the generated ones in which fields are optional); the React Compiler lint rules (`set-state-in-effect`, `refs`, `immutability`) are off in `.oxlintrc.json` because about 25 effects set state by design.
@@ -41,16 +74,19 @@ the item here and add anything new you find. Items keep short ids (`O-1`, `N-2`,
 - **Sandbox:** side channels between sandbox containers on one host (CPU timing) are out of scope; run the sandbox on separate nodes (`sandbox.nodeSelector` in the chart) for tenants that need it. The in-process network block in the child is a guard against mistakes, not a wall (see `docs/agent-canvas-spec/19-threat-model.md`).
 - **Tests:** tokens built at import time in older tests expire after five minutes, so a very long suite run could trip late tests; give them 24-hour lifetimes when one does. Several agents once shared one scratch Postgres database and left each other's migration revisions in it: use a database of your own per branch.
 
-## 4. Watch
+## 5. Watch
 
-Dated items from the market and standards check of 2026-10-29; recheck them at the dates shown.
+Dated items from the check of 2026-11-08; recheck them at the dates shown.
 
-- **OpenAI Agent Builder, Evals and `v1/prompts` shut down 2026-11-30** (Evals read-only from 2026-10-31). The Agents SDK importer and the migration page are done (`docs/user-guide/switching.md`); recheck that OpenAI's export still matches what the importer reads.
-- **Claude Sonnet 4.5 retires 2026-11-30** (the catalog carries the date and the editor warns, W023); `gpt-5-mini` and others are reported to follow on 2026-12-11 (confirm on OpenAI's deprecations page and add the `retires` date).
-- **Flowise** is archived; its importer's fixtures follow the last release. **MCP** deprecates sampling, roots, logging and Dynamic Client Registration (kept for compatibility for twelve months from 2026-07-28). **A2A** 1.0 patch releases keep the extension mechanism moving.
-- **LiteLLM 1.106.x** breaks Google ADK tool calls ("No module named 'mcp'"); the pin stays at 1.105.7 until a release declares `mcp` (see `decisions.md`).
+- **2026-11-17 to 20:** Microsoft Ignite (Agent Framework ships a breaking change in most minor releases). **2026-11-30 to 12-04:** AWS re:Invent (AgentCore, Strands).
+- **2026-11-30:** Claude Sonnet 4.5 retires (in the catalog, W023); OpenAI Agent Builder, the Evals API and `v1/prompts` shut down (the importer and `docs/user-guide/switching.md` are ready).
+- **2026-12-01:** Gemini 2.5 Pro and Flash are routed to other models (in the catalog). **2026-12-11:** GPT-5, GPT-5 mini, nano, pro, o3 and o3-pro shut down (GPT-5 mini is in the catalog with its date).
+- **2027-01-06:** OpenAI self-serve fine-tuning stops taking new jobs (the fine-tuning export's docs say so). **2027-01-14:** GPT-4o, 4o-mini, 4.1 and 4.1-mini shut down: imported flows naming them will fail.
+- **openai-agents next release** removes the `Runner` aliases (`Agent.run()` / `run_sync()`); the importer reads both.
+- **MCP:** releases move to every six months (next in late March 2027); sampling, roots, logging and Dynamic Client Registration stay for compatibility until 2027-07-28. **A2A** spec 1.0.1; `a2a-sdk` 1.3 is stricter on clients.
+- **LiteLLM 1.106+** breaks Google ADK tool calls ("No module named 'mcp'"); the pin stays at 1.105.7 (try `litellm[mcp]` with the next bump).
 - **Framework pins** move weekly; `tests/test_framework_pins.py` lists every place a pin is written.
 
-## 5. Owner
+## 6. Owner
 
 Release tags v0.1.0–v0.32.x not pushed; delete the merged branches still on GitHub (`claude/project-thread-*` ×5, `claude/sprint-11…13-*`, `claude/trusting-curie-n0i720`, `claude/sandbox-warning`); revoke the token pasted earlier; merge #73, hold #69 (Python 3.15: `google-re2` has no wheel); commit or discard `.sitepkgs.tgz` (80 MB, untracked in the repository root); GitHub Actions has had no runners since 2026-10-08, so the nightly Copilot evaluation (`copilot-evals.yml`) has never run. After merging: the agents' worktrees under `.claude/worktrees/` can be removed (`git worktree prune`; they are ignored by git).
