@@ -308,6 +308,19 @@ def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
         assert "mkdocs==1.6.1" in text and "mkdocs-material==9.8.1" in text, path
 
 
+@pytest.mark.parametrize("size", [16, 24, 32])
+def test_every_aes_key_size_the_guides_allow_encrypts_checkpoints(monkeypatch, size):
+    from agentcanvas.adapters.langchain.persistence import checkpoint_serde
+
+    monkeypatch.setenv("LANGGRAPH_AES_KEY", "k" * size)
+    serde = checkpoint_serde()
+    kind, blob = serde.dumps_typed({"a": 1})
+    assert "aes" in kind and serde.loads_typed((kind, blob)) == {"a": 1}
+    for path in ["docs/user-guide/deploy.md", "docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md",
+                 "infra/.env.prod.example"]:  # fmt: skip
+        assert "exactly 32" not in (ROOT / path).read_text(), path
+
+
 def test_the_reference_schema_names_the_folder_the_migrations_are_in():
     import re
 

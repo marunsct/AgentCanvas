@@ -19,7 +19,7 @@
 ## Repository layout
 
 ```
-apps/api/        Python 3.12 — FastAPI control plane + runner, IR, validator, node library, compiler
+apps/api/        Python 3.12–3.14 (the image runs 3.14) — FastAPI control plane + runner, IR, validator, node library, compiler
 apps/web/        React 19 + TypeScript — canvas (React Flow), inspector, run panel
 packages/        shared artifacts (IR JSON Schema for the web app)
 infra/           Dockerfiles, nginx, compose.prod.yml, Helm chart (helm/agentcanvas), dev docker-compose, reference DDL

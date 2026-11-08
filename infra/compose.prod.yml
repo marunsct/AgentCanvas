@@ -21,7 +21,7 @@ x-api: &api
     AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
     AGENTCANVAS_EDITION: ${AGENTCANVAS_EDITION:-dev}
     AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:?set AGENTCANVAS_SECRET_KEY (64+ random characters)}
-    LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:?set LANGGRAPH_AES_KEY (32 characters) - checkpoints are encrypted at rest}
+    LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:?set LANGGRAPH_AES_KEY (16, 24 or 32 characters) - checkpoints are encrypted at rest}
     AGENTCANVAS_KMS_KEY: ${AGENTCANVAS_KMS_KEY:-}
     AGENTCANVAS_AUTO_MIGRATE: "false"          # the migrate service runs them once, before any replica starts
     AGENTCANVAS_SEED_DEV_DATA: ${AGENTCANVAS_SEED_DEV_DATA:-true}  # creates the default organisation and project

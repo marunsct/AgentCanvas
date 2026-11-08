@@ -93,7 +93,7 @@ a Helm hook Job before the API starts.
 | `DATABASE_URL` | `postgresql://user:pass@host:5432/agentcanvas` |
 | `AGENTCANVAS_SECRET_KEY` | 64+ random characters. Production refuses the development default. |
 | `AGENTCANVAS_ENV` | `prod` (default in compose prod and Helm), `staging` or `dev` |
-| `LANGGRAPH_AES_KEY` | 32 characters: encrypts conversation checkpoints at rest |
+| `LANGGRAPH_AES_KEY` | 16, 24 or 32 characters (32 for AES-256: `openssl rand -hex 16`): encrypts conversation checkpoints at rest |
 | `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>` |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `AZURE_OPENAI_API_KEY` | Model provider keys for the whole server; a project secret of the same name takes precedence ([Models and API keys](models.md)) |
 | `AGENTCANVAS_LOCAL_MODELS_HOST` | Host that local model servers (Ollama, LM Studio, vLLM, llama.cpp) are reached on when their address isn't set, e.g. `host.docker.internal` or a GPU machine's name |

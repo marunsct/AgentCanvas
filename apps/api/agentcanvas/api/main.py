@@ -269,7 +269,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     app.state.matura_feed.start()
             app.state.audit_sink = sink_for(settings)  # TS26: security-relevant entries also leave the app
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
-                log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
+                log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (16, 24 or 32 characters)")
             log.info(
                 "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
                 database=db.engine.dialect.name,
