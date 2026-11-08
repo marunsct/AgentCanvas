@@ -223,3 +223,38 @@ async def test_a_run_saved_the_bare_way_keeps_its_usage(app, api_client, monkeyp
     await app.state.runner.wait(r.json()["run_id"])
     run = (await api_client.get(f"/v1/runs/{r.json()['run_id']}")).json()
     assert run["status"] == "error" and run["tokens_in"] == 120 and run["tokens_out"] == 30 and run["cost_usd"] > 0
+
+
+# ------------------------------------------------------------------ RT-13 ----
+class BackupFailed:
+    """A graph whose model gateway reports a failed backup whose error echoes the key."""
+
+    async def astream(self, graph_input: Any, cfg: Any, **kw: Any):
+        from uuid import uuid4
+
+        from langchain_core.messages import AIMessage
+        from langchain_core.outputs import ChatGeneration, LLMResult
+
+        usage, run_id = cfg["callbacks"][0], uuid4()
+        usage.on_chat_model_start({}, [], run_id=run_id, metadata={"ac_gateway": True, "ac_model": "openai:gpt-5.5"})
+        note = {"model": "anthropic:claude-haiku-4-5",
+                "failed": [{"model": "openai:gpt-5.5", "error": "401: key sk-live-secret-42 refused"}]}  # fmt: skip
+        reply = AIMessage("x", response_metadata={"ac_gateway": note})
+        usage.on_llm_end(LLMResult(generations=[[ChatGeneration(message=reply)]]), run_id=run_id)
+        raise RuntimeError("stop")
+        yield {}
+
+
+async def test_usage_events_are_masked_like_every_other_event(monkeypatch):
+    """RT-13: `ac.usage` events were the one kind yielded without masking, and a failed backup's error text in them
+    can echo a key."""
+    adapter = LangChainAdapter()
+
+    async def graph(wf, resources):
+        return BackupFailed()
+
+    monkeypatch.setattr(adapter, "graph", graph)
+    res = adapter.new_resources(secrets={"OPENAI_API_KEY": "sk-live-secret-42"})
+    evs = [ev async for ev in adapter.execute(_spec(), res)]
+    usage = next(e for e in evs if e.get("name") == "ac.usage")
+    assert usage["value"]["failed"] and "sk-live-secret-42" not in str(evs)

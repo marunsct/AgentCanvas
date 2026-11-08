@@ -8,7 +8,7 @@ import logging
 import time
 import warnings
 from collections import OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -260,6 +260,20 @@ class LangChainAdapter:
 
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
+        """The run's events, each with the project's secret values masked: one place, so no event kind (usage
+        records carry a backup model's error text) can skip it (RT-13)."""
+        secrets = getattr(resources, "_secrets", None) or {}
+        hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
+        events = self._events(spec, resources, hidden)
+        try:
+            async for ev in events:
+                yield _redacted(ev, hidden)
+        finally:  # closed early (a budget reached, a cancel): the run's own clean-up runs now
+            await events.aclose()
+
+    async def _events(
+        self, spec: RunSpec, resources: ac.Resources, hidden: list[str]
+    ) -> AsyncGenerator[dict[str, Any]]:
         wf = spec.workflow
         if spec.pins or spec.mocks or spec.dry_run:  # debug aids: a one-off graph, never cached
             if spec.mocks:
@@ -307,7 +321,6 @@ class LangChainAdapter:
         token = _SECRETS.set(secrets)  # sdk.secret() in in-process scripts and custom nodes
         redaction = masking.redacting(wf.settings.trace_redact)  # the root run and model runs in LangSmith (S13)
         redaction.__enter__()
-        hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
         started: dict[str, float] = {}
         try:
             async for part in graph.astream(graph_input, cfg, **kwargs):
@@ -316,13 +329,13 @@ class LangChainAdapter:
                         started[ev["task_id"]] = time.perf_counter()
                     elif ev["type"] == "STEP_FINISHED" and ev["task_id"] in started:
                         ev["duration_ms"] = round((time.perf_counter() - started.pop(ev["task_id"])) * 1000)
-                    yield _redacted(ev, hidden)
+                    yield ev
                 for record in usage.records():
                     yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
                 for reply in usage.drain_replies():
-                    yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
+                    yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
                 for io in usage.drain_tool_io():
-                    yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
+                    yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
             for record in usage.records():  # reported after the last update
                 yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         except GraphRecursionError as exc:
@@ -338,7 +351,7 @@ class LangChainAdapter:
         except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
             for record in usage.records():
                 yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
-            yield _redacted({"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}, hidden)
+            yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
             return
         finally:
             with contextlib.suppress(ValueError):  # closed from another context (e.g. cancelled run)
@@ -346,28 +359,25 @@ class LangChainAdapter:
             redaction.__exit__(None, None, None)
             if spec.on_usage is not None:  # cancelled or timed out: the stream is closed, the usage still counts
                 for record in usage.drain():
-                    spec.on_usage(record)
+                    spec.on_usage(_redacted(record, hidden))
 
         for reply in usage.drain_replies():
-            yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
+            yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
         for io in usage.drain_tool_io():
-            yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
+            yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
         state = await self._state(graph, self._config(wf, spec.thread_id), names)
         for intr in state.interrupts:
-            yield _redacted({"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}, hidden)
+            yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}
         paused = bool(state.interrupts or state.next)
-        yield _redacted(
-            {
-                "type": "RUN_FINISHED",
-                "outcome": "interrupt" if paused else "success",
-                "breakpoint": paused and not state.interrupts,
-                "interrupts": [asdict(i) for i in state.interrupts],
-                "next": state.next,
-                "checkpoint_id": state.checkpoint_id,
-                "output": _outputs(wf, state.values),
-            },
-            hidden,
-        )
+        yield {
+            "type": "RUN_FINISHED",
+            "outcome": "interrupt" if paused else "success",
+            "breakpoint": paused and not state.interrupts,
+            "interrupts": [asdict(i) for i in state.interrupts],
+            "next": state.next,
+            "checkpoint_id": state.checkpoint_id,
+            "output": _outputs(wf, state.values),
+        }
 
     # --------------------------------------------------------------- state ----
     async def _state(self, graph: Any, cfg: RunnableConfig, names: dict[str, str]) -> ThreadState:
