@@ -20,11 +20,11 @@ async def test_the_runner_tells_connectors_who_the_run_acts_for(app, api_client,
     monkeypatch.setattr(adapter, "execute", spy)
     r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}})
     assert r.status_code == 200, r.text
-    assert seen == [RunIdentity("org_default", "usr_dev")]
+    assert seen == [RunIdentity("org_default", "usr_dev", service_ok=True)]  # the dev user is an admin (CP-3)
     pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
     headers = {"Authorization": f"Bearer {pub['api_key']}"}
     r = await api_client.post(
         f"/v1/deployments/{pub['deployment']['id']}/runs/wait", json={"input": {"who": "Ada"}}, headers=headers
     )
     assert r.status_code == 200, r.text
-    assert seen[-1] == RunIdentity("org_default", None) and len(seen) == 2
+    assert seen[-1] == RunIdentity("org_default", None, service_ok=True) and len(seen) == 2
