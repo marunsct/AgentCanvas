@@ -26,6 +26,31 @@ def test_a_model_that_cannot_be_reached_says_why(monkeypatch):
     assert evals.unusable(evals.DEMO) is None
 
 
+def test_a_debug_fix_that_deletes_the_broken_step_fails_and_an_unknown_case_is_an_error(monkeypatch):
+    """A fix that deletes the broken step leaves no validation error and passed; `--case` with a typo ran 0 cases,
+    reported 0/0 and exited 0."""
+    from agentcanvas.ir.commands import apply_batch, parse_commands
+    from agentcanvas.registry import default_registry
+    from agentcanvas.settings import Settings
+
+    registry = default_registry()
+    case = next(c for c in evals.debug_cases(Settings(env="test"), registry) if c["id"].endswith("/bad_output"))
+    start = case["start"]
+    assert set(case["keep"]) == {n.id for n in start.nodes}
+    broken = next(n for n in start.nodes if n.config.get("output") == "nowhere")
+    removed_edges = [e.id for e in start.edges if broken.id in (e.source.node, e.target.node)]
+    gutted, _ = apply_batch(
+        start, parse_commands([*({"op": "Disconnect", "id": e} for e in removed_edges),
+                               {"op": "RemoveNode", "id": broken.id}])
+    )  # fmt: skip
+    verdict = evals.judge(case, gutted, registry, evals.CaseResult(id=case["id"], passed=False))
+    assert not verdict.passed and verdict.removed == [broken.id]
+
+    monkeypatch.setattr("sys.argv", ["evals", "--model", evals.DEMO, "--case", "no-such-case"])
+    with pytest.raises(SystemExit, match="no case 'no-such-case'"):
+        evals.main()
+
+
 def test_the_harness_runs_offline_on_the_demo_model_and_writes_one_report(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(evals, "_ollama_up", lambda: False)
     out = tmp_path / "report.json"

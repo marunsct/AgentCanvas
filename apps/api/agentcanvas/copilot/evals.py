@@ -65,6 +65,7 @@ class CaseResult:
     applied: bool = False
     errors: list[str] = field(default_factory=list)
     missing_types: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)  # debug suite: steps of the workflow the fix deleted
     turns: int = 0
     tokens: int = 0
     seconds: float = 0.0
@@ -117,10 +118,19 @@ async def run_case(
         result.problem = f"proposal does not apply: {exc}"
         return result
     result.applied = True
+    return judge(case, built, registry, result)
+
+
+def judge(case: dict[str, Any], built: Workflow, registry: Registry, result: CaseResult) -> CaseResult:
+    """Whether the workflow the proposal built passes the case: no validation errors, the blocks a build case asks
+    for, and (a debug case) every step of the broken workflow still there: deleting the broken step silences the
+    validator without fixing anything."""
     result.errors = [f"{d.code} {d.message}" for d in validate(built, registry) if d.severity == "error"]
     present = {n.type for n in built.nodes} | {r.type for r in built.resources}
     result.missing_types = [t for t in case.get("types", []) if t not in present]
-    result.passed = not result.errors and not result.missing_types
+    kept = {n.id for n in built.nodes}
+    result.removed = [n for n in case.get("keep", []) if n not in kept]
+    result.passed = not result.errors and not result.missing_types and not result.removed
     return result
 
 
@@ -165,7 +175,8 @@ def debug_cases(settings: Settings, registry: Registry) -> list[dict[str, Any]]:
             except Exception:  # noqa: BLE001 - a mutation that does not fit this template is skipped
                 continue
             if any(d.severity == "error" for d in validate(broken_wf, registry)):
-                cases.append({"id": f"{name}/{bug}", "request": FIX_REQUEST, "start": broken_wf})
+                keep = [n.id for n in broken_wf.nodes]  # a fix repairs the steps, it does not delete them
+                cases.append({"id": f"{name}/{bug}", "request": FIX_REQUEST, "start": broken_wf, "keep": keep})
     return cases
 
 
@@ -235,7 +246,9 @@ async def run(
 def report(results: list[CaseResult], engine: str, model: str, suite: str) -> int:
     for r in results:
         status = "PASS" if r.passed else "FAIL"
-        detail = r.problem or "; ".join(r.errors + [f"missing {t}" for t in r.missing_types])
+        detail = r.problem or "; ".join(
+            r.errors + [f"missing {t}" for t in r.missing_types] + [f"deleted step {n}" for n in r.removed]
+        )
         print(f"{status} {r.id:12} {r.tokens:>7} tok {r.seconds:>5}s {detail}")
     passed = sum(r.passed for r in results)
     print(f"{passed}/{len(results)} passed ({engine}, {model}, {suite})")
@@ -273,9 +286,13 @@ def main() -> None:
     low: list[str] = []
     for suite in suites:
         done[suite] = results = asyncio.run(run(model, args.case, suite, args.engine))
+        if not results and not args.case:
+            raise SystemExit(f"the {suite} suite has no cases")
         passed = report(results, args.engine, model, suite)
         if results and passed / len(results) < args.min_pass:
             low.append(f"{suite}: {passed / len(results):.0%}")
+    if args.case and not any(done.values()):  # a typo would otherwise "pass" with 0/0 and exit 0
+        raise SystemExit(f"no case '{args.case}' in the {args.suite} suite(s)")
     if args.out:
         body: Any = {"model": model, "engine": args.engine, **{s: [asdict(r) for r in rs] for s, rs in done.items()}}
         if args.suite != "both":
