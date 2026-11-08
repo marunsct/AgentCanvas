@@ -24,7 +24,6 @@ import asyncio
 import hashlib
 import html.parser
 import io
-import ipaddress
 import json
 import socket
 from array import array
@@ -46,6 +45,7 @@ from agentcanvas.db.models import KnowledgeBase, KnowledgeChunk, KnowledgeDocume
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
+from agentcanvas.security.addresses import is_public
 from agentcanvas.services import ocr
 
 log = get_logger(__name__)
@@ -251,7 +251,7 @@ async def public_address(host: str, port: int) -> str:
         raise InvalidInput(f"cannot resolve '{host}': {exc}") from None
     addresses = [str(info[4][0]) for info in infos]
     for a in addresses:
-        if not ipaddress.ip_address(a.split("%")[0]).is_global:
+        if not is_public(a):  # NAT64 and other IPv6 forms of a private IPv4 address too (RT-15)
             raise InvalidInput(f"'{host}' resolves to a private or internal address; only public pages can be added")
     return addresses[0]
 

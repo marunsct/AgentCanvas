@@ -106,9 +106,11 @@ def _local_address(base_url: str) -> bool:
     import ipaddress
     from urllib.parse import urlsplit
 
+    from agentcanvas.security.addresses import is_public
+
     host = (urlsplit(base_url if "://" in base_url else f"http://{base_url}").hostname or "").rstrip(".").lower()
     try:
-        return not ipaddress.ip_address(host).is_global
+        return not is_public(ipaddress.ip_address(host))
     except ValueError:
         return bool(host) and ("." not in host or host.endswith((".local", ".internal", ".localhost", ".lan")))
 

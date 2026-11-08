@@ -14,6 +14,8 @@ import ipaddress
 import socket
 from typing import Any
 
+from agentcanvas.security.addresses import is_public
+
 
 class RefusedAddress(OSError):
     """The host resolves to a private, loopback, link-local (cloud metadata), reserved or multicast address."""
@@ -27,7 +29,7 @@ async def public_address(host: str, port: int) -> str:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
         answers = [str(info[4][0]) for info in infos]
     for a in answers:
-        if not ipaddress.ip_address(a.split("%")[0]).is_global:
+        if not is_public(a):  # NAT64 and other IPv6 forms of a private IPv4 address too (RT-15)
             raise RefusedAddress(f"'{host}' resolves to a private or internal address ({a}); refused")
     if not answers:
         raise RefusedAddress(f"'{host}' does not resolve")

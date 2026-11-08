@@ -871,8 +871,9 @@ async def _public_address(host: str, port: int) -> str:
     metadata, 169.254.169.254), reserved or multicast address (S7). The caller connects to this very address, so
     a second DNS answer cannot point the request elsewhere (rebinding)."""
     import asyncio
-    import ipaddress
     import socket
+
+    from agentcanvas.security.addresses import is_public
 
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
@@ -880,7 +881,7 @@ async def _public_address(host: str, port: int) -> str:
         raise ToolException(f"cannot resolve '{host}': {exc}") from None
     addresses = [str(info[4][0]) for info in infos]
     for a in addresses:
-        if not ipaddress.ip_address(a.split("%")[0]).is_global:
+        if not is_public(a):  # NAT64 and other IPv6 forms of a private IPv4 address too (RT-15)
             raise ToolException(f"'{host}' resolves to a private or internal address ({a}); refused")
     return addresses[0]
 

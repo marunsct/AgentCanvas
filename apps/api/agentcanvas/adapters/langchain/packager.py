@@ -66,6 +66,7 @@ RUNTIME_FILES = [
     "sampling.py",
     "sdk.py",
     "security/__init__.py",
+    "security/addresses.py",  # which addresses are public (the HTTP tool, RT-15)
     "security/imports.py",
     "workspace/__init__.py",
     "workspace/loader.py",

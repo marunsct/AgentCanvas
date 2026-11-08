@@ -33,6 +33,8 @@ import time
 from collections.abc import Awaitable, Callable
 from urllib.parse import quote, urlsplit
 
+from agentcanvas.security.addresses import effective, is_public
+
 HEAD_LIMIT = 16 * 1024
 DEFAULT_PORTS = (443, 80)
 Resolver = Callable[[str, int], Awaitable[list[str]]]
@@ -113,15 +115,12 @@ def allowed(host: str, port: int, allow: list[str]) -> str | None:
 
 
 def _ip(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    ip = ipaddress.ip_address(address.split("%")[0])
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return ip
+    """The address a connection reaches: the IPv4 one inside a mapped, NAT64, 6to4 … address (RT-15)."""
+    return effective(address)
 
 
 def _private(address: str) -> bool:
-    ip = _ip(address)
-    return not ip.is_global or ip.is_multicast
+    return not is_public(address)
 
 
 METADATA = (ipaddress.ip_network("fd00:ec2::254/128"),)  # AWS's IPv6 metadata address (IPv4's is link-local)

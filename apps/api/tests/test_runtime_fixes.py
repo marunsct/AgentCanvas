@@ -258,3 +258,53 @@ async def test_usage_events_are_masked_like_every_other_event(monkeypatch):
     evs = [ev async for ev in adapter.execute(_spec(), res)]
     usage = next(e for e in evs if e.get("name") == "ac.usage")
     assert usage["value"]["failed"] and "sk-live-secret-42" not in str(evs)
+
+
+# ------------------------------------------------------------------ RT-15 ----
+HIDDEN_PRIVATE = [
+    "64:ff9b::a9fe:a9fe",  # NAT64 of the cloud metadata address
+    "64:ff9b::a00:1",  # NAT64 of 10.0.0.1
+    "64:ff9b:1::a00:1",  # local-use NAT64
+    "::127.0.0.1",  # IPv4-compatible
+    "::a9fe:a9fe",
+    "::ffff:10.0.0.1",  # IPv4-mapped
+    "2002:a9fe:a9fe::1",  # 6to4
+    "2001:0:4136:e378:8000:63bf:3fff:fdd2",  # Teredo
+]
+
+
+@pytest.mark.parametrize("address", HIDDEN_PRIVATE)
+async def test_every_outbound_check_sees_through_ipv6_forms_of_private_addresses(address, monkeypatch):
+    """RT-15: NAT64 and IPv4-compatible addresses count as "global" for `ipaddress`, yet reach the IPv4 address
+    inside them; each outbound check had its own copy of the test. One shared helper is used everywhere."""
+    import socket
+
+    from agentcanvas.adapters.langchain import pinned
+    from agentcanvas.sandbox import egress
+    from agentcanvas.security.addresses import is_public
+
+    assert not is_public(address) and egress._private(address)
+    with pytest.raises(pinned.RefusedAddress):
+        await pinned.public_address(address, 443)
+
+    async def getaddrinfo(host, port, *a, **k):
+        return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (address, port, 0, 0))]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", getaddrinfo)
+    from langchain_core.tools import ToolException
+
+    with pytest.raises(ToolException, match="private or internal"):
+        await nodes._public_address("rebinding.example", 443)
+
+
+@pytest.mark.parametrize("address", ["8.8.8.8", "2606:4700:4700::1111", "64:ff9b::808:808", "::ffff:8.8.8.8"])
+def test_public_addresses_stay_public(address):
+    from agentcanvas.security.addresses import is_public
+
+    assert is_public(address)
+
+
+def test_nat64_of_the_metadata_address_is_never_reachable_from_a_sandbox():
+    from agentcanvas.sandbox import egress
+
+    assert egress._never("64:ff9b::a9fe:a9fe")
