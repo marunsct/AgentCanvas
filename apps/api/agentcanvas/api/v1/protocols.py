@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session, get_settings_dep
+from agentcanvas.api.urls import api_url
 from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start, own_thread
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
 from agentcanvas.db.repositories import LIGHT_RUN
@@ -467,7 +468,7 @@ async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depend
     """The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the
     workflow and its input fields; running it needs the key."""
     _, wf, semver = await _deployment(session, dep_id)
-    url = str(request.url_for("a2a_endpoint", dep_id=dep_id))
+    url = api_url(request, "a2a_endpoint", dep_id=dep_id)  # as callers reach it, e.g. behind nginx's /api
     return agent_card(wf, semver, url, request.headers.get("a2a-version"))
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from test_publish import bearer, make_greeter
 from test_versions import HIGH_CASE, new_triage
 
@@ -80,7 +82,7 @@ async def test_a_real_mcp_client_connects(app, api_client):
         tools = await client.list_tools()
         assert [t.name for t in tools] == ["greeter"]
         result = await client.call_tool("greeter", {"who": "Lin"})
-        assert result.structured_content["output"]["out"] == "Hello Lin"
+        assert (result.structured_content or {})["output"]["out"] == "Hello Lin"
 
 
 async def test_a2a_card_send_and_get(api_client):
@@ -308,3 +310,23 @@ async def test_another_deployments_thread_answers_like_an_unknown_one(api_client
     unknown = await api_client.post(url_b, json={"input": {"who": "x"}, "thread_id": "th_nope"}, headers=bearer(key_b))
     assert theirs.status_code == unknown.status_code == 404
     assert theirs.json()["detail"].replace(ran["thread_id"], "X") == unknown.json()["detail"].replace("th_nope", "X")
+
+
+async def test_the_agent_card_names_the_address_callers_reach_behind_nginx(app, api_client):
+    """OP-1: nginx serves the API under /api (and strips it) and terminates TLS: the card's address is the public one,
+    not http://host/v1/..., which nginx answers with the web app."""
+    import httpx
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    dep, _ = await _publish(api_client, await make_greeter(api_client))
+    path = f"/v1/deployments/{dep}/a2a/.well-known/agent-card.json"
+    proxied: Any = ProxyHeadersMiddleware(app, trusted_hosts="*")  # uvicorn --proxy-headers, as in the API image
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=proxied), base_url="http://canvas.test") as c:
+        headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Prefix": "/api"}
+        card = (await c.get(path, headers=headers)).json()
+        assert card["url"] == f"https://canvas.test/api/v1/deployments/{dep}/a2a"
+        odd = (await c.get(path, headers={"X-Forwarded-Prefix": "//evil.example"})).json()
+        assert odd["url"] == f"http://canvas.test/v1/deployments/{dep}/a2a"  # not a path: ignored
+    app.state.settings = app.state.settings.model_copy(update={"public_url": "https://agents.example.com/"})
+    card = (await api_client.get(path)).json()
+    assert card["url"] == f"https://agents.example.com/api/v1/deployments/{dep}/a2a"  # the configured address wins

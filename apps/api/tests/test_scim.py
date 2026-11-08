@@ -552,3 +552,11 @@ async def test_another_organisations_directory_cannot_re_address_a_shared_invita
         headers=scim.scim,
     )  # fmt: skip
     assert ok.status_code == 200 and ok.json()["userName"] == "new@example.com"
+
+
+async def test_location_is_the_public_address(app, scim):
+    """OP-1: with AGENTCANVAS_PUBLIC_URL set, Location is under its /api (where nginx serves the API)."""
+    app.state.settings = app.state.settings.model_copy(update={"public_url": "https://canvas.example.com"})
+    r = await scim.post(f"{S}/Users", json=user("lin@example.com"), headers=scim.scim)
+    assert r.status_code == 201, r.text
+    assert r.headers["location"] == f"https://canvas.example.com/api/scim/v2/Users/{r.json()['id']}"

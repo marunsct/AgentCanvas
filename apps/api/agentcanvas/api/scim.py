@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
 from agentcanvas.api.deps import get_session
+from agentcanvas.api.urls import api_base
 from agentcanvas.errors import DomainError
 from agentcanvas.services import scim
 from agentcanvas.services.scim import ScimError, ScimService
@@ -76,9 +77,7 @@ async def _body(request: Request) -> dict[str, Any]:
 
 
 def _located(request: Request, resource: dict[str, Any]) -> dict[str, str]:
-    prefix = request.headers.get("x-forwarded-prefix", "").rstrip("/")
-    base = str(request.base_url).rstrip("/") + prefix
-    return {"Location": f"{base}/scim/v2/{resource['meta']['resourceType']}s/{resource['id']}"}
+    return {"Location": f"{api_base(request)}/scim/v2/{resource['meta']['resourceType']}s/{resource['id']}"}
 
 
 # --- discovery ----------------------------------------------------------------------------------------------------
