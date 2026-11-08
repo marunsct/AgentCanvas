@@ -427,6 +427,7 @@ class Runner:
                         context=context,
                         trace_url=trace_ref(run_id),
                         labels=labels or None,
+                        origin=origin,
                     )
                 )
                 decided: list[str] = []

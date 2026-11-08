@@ -103,6 +103,24 @@ async def test_runs_from_before_the_index_are_indexed_from_their_recording(app, 
     assert (await search(api_client, "kettle"))["hits"][0]["thread_id"] == "th_refund"
 
 
+async def test_a_reindex_leaves_test_runs_out_and_stale_counts_only_what_it_can_add(app, api_client, monkeypatch):
+    """I-15: the run did not keep its origin, so a reindex indexed experiment and test runs the incremental index
+    leaves out; they, and runs past the newest CANDIDATES, counted as stale for good."""
+    wf = await make_chat(api_client)
+    await converse(app, api_client, wf)
+    async with app.state.db.sessionmaker() as s:
+        assert set((await s.scalars(select(Run.origin))).all()) == {"user"}  # the runner keeps it
+        await s.execute(update(Run).where(Run.thread_id == "th_hotel").values(origin="test"))
+        await s.execute(RunSearch.__table__.delete())
+        await s.commit()
+    assert (await search(api_client, "refund"))["stale"] == 2
+    assert (await api_client.post(f"{P}/runs/search/index")).json() == {"indexed": 2, "skipped": 0}
+    assert (await search(api_client, "hotel Rome", mode="keyword"))["hits"] == []  # the test run is not found
+    monkeypatch.setattr(run_search, "CANDIDATES", 1)
+    out = await search(api_client, "refund")
+    assert out["indexed"] == 1 and out["stale"] == 0  # all are in the index; only the newest one was ranked
+
+
 async def test_the_index_follows_retention_and_deleting_a_conversation(app, api_client):
     wf = await make_chat(api_client)
     await converse(app, api_client, wf)

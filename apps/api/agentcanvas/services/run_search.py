@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 
 from agentcanvas import knowledge_search as ks
 from agentcanvas.db.models import Project, Run, RunSearch, Thread, WorkflowRow
@@ -34,8 +34,10 @@ log = get_logger(__name__)
 
 MAX_TEXT = 4000  # characters kept (and embedded) per run
 CANDIDATES = 5000  # newest rows of a project a search ranks
+PEOPLES = or_(Run.origin.is_(None), Run.origin != "test")  # experiment and test runs are not conversations
 BATCH = 64
 SNIPPET = 220
+REINDEX_LIMIT = 2000  # runs one reindex fills in
 
 
 class RunHit(BaseModel):
@@ -164,7 +166,7 @@ class RunSearchService:
         await s.commit()
         return True
 
-    async def reindex(self, project_id: str, limit: int = 2000) -> dict[str, int]:
+    async def reindex(self, project_id: str, limit: int = REINDEX_LIMIT) -> dict[str, int]:
         """Index the project's newest runs that are not indexed (or were with another model), from their recording
         (runs from before the index) or kept events. Returns {indexed, skipped}."""
         indexed = skipped = 0
@@ -175,7 +177,7 @@ class RunSearchService:
                 select(Run.id, Run.thread_id, Thread.workflow_id, Run.recording, Run.events)
                 .join(Thread, Thread.id == Run.thread_id)
                 .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
-                .where(WorkflowRow.project_id == project_id, Run.status != "running", Run.id.not_in(done))
+                .where(WorkflowRow.project_id == project_id, Run.status != "running", Run.id.not_in(done), PEOPLES)
                 .order_by(Run.started_at.desc())
                 .limit(limit)
             )
@@ -201,13 +203,15 @@ class RunSearchService:
                 .select_from(Run)
                 .join(Thread, Thread.id == Run.thread_id)
                 .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
-                .where(WorkflowRow.project_id == project_id, Run.status != "running")
+                .where(WorkflowRow.project_id == project_id, Run.status != "running", PEOPLES)
             )
             if workflow_id:
                 rows_q = rows_q.where(RunSearch.workflow_id == workflow_id)
                 total_q = total_q.where(WorkflowRow.id == workflow_id)
             rows = list((await s.scalars(rows_q.order_by(RunSearch.created_at.desc()).limit(CANDIDATES))).all())
             total = int(await s.scalar(total_q) or 0)
+            # every row with this model, not only the CANDIDATES ranked: else a big project is "stale" for good
+            in_index = int(await s.scalar(rows_q.with_only_columns(func.count()).order_by(None)) or 0)
             names = dict((await s.execute(select(WorkflowRow.id, WorkflowRow.name))).all())
             started: dict[str, Any] = {}
             if rows:
@@ -233,4 +237,4 @@ class RunSearchService:
             )  # fmt: skip
             if len(hits) >= limit:
                 break
-        return RunSearchResult(hits=hits, model=model, indexed=len(rows), stale=max(0, total - len(rows)))
+        return RunSearchResult(hits=hits, model=model, indexed=len(rows), stale=max(0, total - in_index))

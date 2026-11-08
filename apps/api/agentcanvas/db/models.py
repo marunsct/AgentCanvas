@@ -310,6 +310,8 @@ class Run(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
     labels: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # the runner's origin: "user", "test" (experiments, test cases, Copilot test runs), … NULL before it was kept
+    origin: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
