@@ -111,6 +111,7 @@ function Appearance() {
 
 const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 const SHORTCUTS: [string, string][] = [
+  ["?", "Show these shortcuts, from any page"],
   [`${MOD} K`, "Command palette: add a block, run, open the Copilot, or type a request for it"],
   [`${MOD} Z`, "Undo (a Copilot proposal you accepted is one step)"],
   [`${MOD} Shift Z`, "Redo"],
@@ -127,7 +128,7 @@ function Shortcuts() {
   return (
     <section className="settings-card" aria-label="Keyboard shortcuts">
       <h2>Keyboard shortcuts</h2>
-      <p className="muted small">In the workflow editor. Shortcuts do nothing while you type in a field.</p>
+      <p className="muted small">In the workflow editor unless said otherwise. Shortcuts do nothing while you type in a field.</p>
       <table className="table">
         <tbody>{SHORTCUTS.map(([k, what]) => <tr key={k}><td style={{ width: "34%" }}><kbd>{k}</kbd></td><td>{what}</td></tr>)}</tbody>
       </table>

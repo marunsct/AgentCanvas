@@ -7,6 +7,7 @@ import { shouldRetry } from "../api/retry";
 import { AppShell, RouteBoundary } from "./AppShell";
 import { AuthGate } from "./AuthGate";
 import { HomePage } from "./HomePage";
+import { ShortcutKey } from "./ShortcutKey";
 
 // each page is its own chunk: the home page does not download the editor, CodeMirror or ELK
 const EditorPage = lazy(() => import("../editor/EditorPage").then((m) => ({ default: m.EditorPage })));
@@ -46,6 +47,7 @@ export function App() {
     <DialogHost />
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <ShortcutKey />
         <RouteBoundary label="This page">
         <Suspense fallback={<div className="page muted" role="status">Loading…</div>}>
         <Routes>
