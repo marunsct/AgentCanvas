@@ -464,6 +464,79 @@ def test_a_long_diff_is_cut_and_the_description_fits_github():
     assert len(body) <= gitsync.MAX_BODY + 100
 
 
+def _export_files(name: str) -> dict[str, bytes]:
+    from test_export_secrets import PACKAGERS, _workflow
+
+    from agentcanvas.services import github
+
+    out = PACKAGERS[name](_workflow({}))
+    if isinstance(out, tuple):  # (file name, zip) or (files, ...)
+        out = next(x for x in out if isinstance(x, bytes | dict))
+    if isinstance(out, bytes):
+        return github.files_of(out)
+    assert isinstance(out, dict), type(out)
+    tops = {k.split("/", 1)[0] for k in out}
+    strip = len(tops) == 1 and all("/" in k for k in out)  # one top folder, as in a zip
+    return {(k.split("/", 1)[1] if strip else k): v if isinstance(v, bytes) else str(v).encode()
+            for k, v in out.items()}  # fmt: skip
+
+
+def _export_names() -> list[str]:
+    from test_export_secrets import PACKAGERS
+
+    return list(PACKAGERS)
+
+
+@pytest.mark.parametrize("name", _export_names())
+def test_the_ci_file_runs_each_frameworks_own_tests(name):
+    """A Mastra export is TypeScript (package.json, `npm test`): the uv/pytest steps failed on every push of one. Each
+    export's CI uses its own toolchain, and the files it needs are in the export."""
+    files = _export_files(name)
+    link = GitLink(workflow_id="wf_x", repo=REPO, branch="b", folder="agents")
+    steps = yaml.safe_load(gitsync.ci_file(link, "main", "X", files))["jobs"]["export-tests"]["steps"]
+    runs = [s.get("run") for s in steps if "run" in s]
+    uses = [s["uses"].split("@")[0] for s in steps if "uses" in s]
+    if name == "mastra":
+        assert "package.json" in files and "pyproject.toml" not in files
+        assert uses[:2] == ["actions/checkout", "actions/setup-node"] and runs[-1] == "npm test"
+        assert "test" in json.loads(files["package.json"])["scripts"]
+    else:
+        assert "pyproject.toml" in files, sorted(files)[:20]
+        assert "astral-sh/setup-uv" in uses and runs == ["uv sync", "uv run pytest -q"]
+
+
+def _agent_frameworks() -> list[str]:
+    from agentcanvas import designs
+
+    return list(designs.AGENT_FRAMEWORKS)
+
+
+@pytest.mark.parametrize("framework", _agent_frameworks())
+def test_a_single_agent_export_is_a_python_project_the_ci_tests(framework):
+    from test_export_secrets import _workflow
+
+    from agentcanvas import designs
+    from agentcanvas.designs.export import export_files
+
+    wf = _workflow({})
+    if designs.AGENT_FRAMEWORKS[framework].api == "anthropic":  # Claude-only frameworks
+        wf.resources[0].config["model"] = "anthropic:claude-sonnet-5-5"
+    files = export_files(wf, designs.design_for(wf, wf.nodes[0]), framework)
+    names = {k.split("/", 1)[1] if "/" in k else k for k in files}
+    assert "pyproject.toml" in names, sorted(names)
+    link = GitLink(workflow_id="wf_x", repo=REPO, branch="b", folder="")
+    steps = yaml.safe_load(gitsync.ci_file(link, "main", "X", names))["jobs"]["export-tests"]["steps"]
+    assert [s.get("run") for s in steps if "run" in s] == ["uv sync", "uv run pytest -q"]
+
+
+def test_a_mastra_export_with_python_tools_installs_their_requirements():
+    link = GitLink(workflow_id="wf_x", repo=REPO, branch="b", folder="")
+    files = ["package.json", "src/workflow.ts", "python/sidecar.py", "python/requirements.txt"]
+    steps = yaml.safe_load(gitsync.ci_file(link, "main", "X", files))["jobs"]["export-tests"]["steps"]
+    runs = [s.get("run") for s in steps if "run" in s]
+    assert runs == ["pip install -r python/requirements.txt", "npm install --no-audit --no-fund", "npm test"]
+
+
 def test_the_ci_file_is_valid_yaml_for_any_folder():
     for folder in ("", "agents/my agent", "a-b/c.d"):
         link = GitLink(workflow_id="wf_x", repo=REPO, branch="feat/a b", folder=folder)

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -81,9 +82,25 @@ def parse_ir(data: bytes | None, wf_id: str) -> tuple[Workflow | None, str | Non
         return None, f"{IR_FILE} is not a valid AgentCanvas workflow ({first})"
 
 
-def ci_file(link: GitLink, base: str, name: str) -> str:
-    """The GitHub Actions workflow that runs the export's tests (`uv run pytest`: offline, no keys) on a pull request
-    into `base` that touches the folder, and on the branch itself; its job is the status check."""
+def ci_steps(files: Iterable[str] = ()) -> list[str]:
+    """How the export's own tests run (offline, no keys): `npm test` for a TypeScript export (Mastra: a
+    package.json and no pyproject.toml, with the Python helper's requirements when it has one), else `uv run
+    pytest`."""
+    found = set(files)
+    if "package.json" in found and "pyproject.toml" not in found:
+        steps = ['- uses: actions/setup-node@v4\n        with:\n          node-version: "22"']
+        if "python/requirements.txt" in found:  # tools, code steps, knowledge search: python/sidecar.py
+            steps += ["- uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"",
+                      "- run: pip install -r python/requirements.txt"]  # fmt: skip
+        return [*steps, "- run: npm install --no-audit --no-fund", "- run: npm test"]
+    return ["- uses: astral-sh/setup-uv@v5", "- run: uv sync", "- run: uv run pytest -q"]
+
+
+def ci_file(link: GitLink, base: str, name: str, files: Iterable[str] = ()) -> str:
+    """The GitHub Actions workflow that runs the export's tests (`ci_steps`: offline, no keys) on a pull request
+    into `base` that touches the folder, and on the branch itself; its job is the status check. `files` are the
+    export's paths, which tell a TypeScript export from a Python one."""
+    steps = "".join(f"      {s}\n" for s in ci_steps(files))
     folder = link.folder or "."
     where = f"{link.folder}/**" if link.folder else "**"
     quoted = json.dumps  # a JSON string is a YAML string: folders may hold spaces
@@ -105,10 +122,7 @@ jobs:
         working-directory: {quoted(folder)}
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync
-      - run: uv run pytest -q
-"""
+{steps}"""
 
 
 def pull_decision(draft: str, remote: str, synced: str | None) -> Literal["same", "unchanged", "apply", "conflict"]:
@@ -191,7 +205,7 @@ async def push(
     written = [p for p in (before or b"").decode("utf-8", "replace").splitlines() if safe_relative(p)]
     pushed = await github.push(
         all_files, repo=link.repo, branch=link.branch, folder=link.folder, message=message, token=token,
-        transport=transport, root_files={ci_path(wf_id): ci_file(link, base, name).encode()},
+        transport=transport, root_files={ci_path(wf_id): ci_file(link, base, name, all_files).encode()},
         delete=[p for p in written if p not in all_files], skip_unchanged=True,
     )  # fmt: skip
     pr = await github.open_pull_request(
