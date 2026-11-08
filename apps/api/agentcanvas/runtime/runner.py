@@ -433,9 +433,11 @@ class Runner:
                 if resume is not None:
                     decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
                 await s.commit()
-        except IntegrityError as exc:  # another replica created this new thread a moment earlier (R-6)
+        except IntegrityError as exc:
             self.active_by_thread.pop(thread_id, None)
-            raise Conflict(f"thread '{thread_id}' already has an active run") from exc
+            if _thread_taken(exc):  # another replica created this new thread a moment earlier (R-6)
+                raise Conflict(f"thread '{thread_id}' already has an active run") from exc
+            raise  # anything else is not a busy thread: never report it as one (RT-20)
         except BaseException:
             self.active_by_thread.pop(thread_id, None)
             raise
@@ -968,6 +970,12 @@ class Runner:
         async with self.db.sessionmaker() as s:
             q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
             return list((await s.scalars(q)).all())
+
+
+def _thread_taken(exc: IntegrityError) -> bool:
+    """The insert of a new thread lost to one with the same id: SQLite names the column, Postgres the key."""
+    text = str(exc.orig)
+    return "thread.id" in text or "thread_pkey" in text
 
 
 def _title(input: dict[str, Any] | None) -> str | None:

@@ -145,6 +145,25 @@ async def test_a_new_thread_another_server_created_a_moment_ago_is_a_409(app, ap
     assert "th_race" not in app.state.runner.active_by_thread
 
 
+async def test_another_integrity_error_is_not_reported_as_a_busy_thread(app, api_client, monkeypatch):
+    """RT-20: any IntegrityError while starting a run (a file claim, a missing version) said the thread "already has
+    an active run", which sent the caller retrying a request that can never work."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    from agentcanvas.services.files import FileService
+
+    wf = Workflow.model_validate((await greeter(api_client))["ir"])
+
+    async def claim(self, *a, **k):
+        raise IntegrityError("INSERT INTO file ...", {}, Exception("FOREIGN KEY constraint failed"))
+
+    monkeypatch.setattr(FileService, "claim", claim)
+    with pytest.raises(IntegrityError):
+        await app.state.runner.start(wf, input={"who": "x"}, thread_id="th_fk")
+    assert "th_fk" not in app.state.runner.active_by_thread
+
+
 async def test_an_error_before_the_adapter_runs_does_not_show_a_secret(app, api_client, monkeypatch):
     """R-7: errors raised outside the adapter's own handling (building the graph, an MCP server, a model client)
     reached the run's error event and the log with any key in their text."""
