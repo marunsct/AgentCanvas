@@ -24,7 +24,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session, get_settings_dep
@@ -602,9 +602,10 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
     """A task's state: the run that started it, or the latest run that answered it (labelled with the task)."""
     task_id = str(params.get("id") or "")
     thread = await _task_thread(session, dep, task_id)
-    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread.id).order_by(Run.started_at.desc())
-    runs = (await session.scalars(q)).all()
-    latest = next((r for r in runs if r.id == task_id or (r.labels or {}).get("a2a_task") == task_id), None)
+    # the newest run that is the task or answered it, found in SQL: a long conversation has many runs
+    task_run = or_(Run.id == task_id, Run.labels["a2a_task"].as_string() == task_id)
+    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread.id, task_run)
+    latest = await session.scalar(q.order_by(Run.started_at.desc(), Run.id.desc()).limit(1))
     handle = request.app.state.runner.handles.get(latest.id) if latest else None
     if handle is not None and handle.done.is_set():
         res = await _result(handle)

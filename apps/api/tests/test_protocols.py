@@ -330,3 +330,18 @@ async def test_the_agent_card_names_the_address_callers_reach_behind_nginx(app, 
     app.state.settings = app.state.settings.model_copy(update={"public_url": "https://agents.example.com/"})
     card = (await api_client.get(path)).json()
     assert card["url"] == f"https://agents.example.com/api/v1/deployments/{dep}/a2a"  # the configured address wins
+
+
+async def test_a2a_tasks_get_reads_one_run_whatever_the_conversation_holds(app, api_client):
+    """tasks/get finds the task's run in SQL (by id, or the run labelled with the task), not by loading them all."""
+    from test_efficiency import statements
+
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    url, auth = f"/v1/deployments/{dep}/a2a", bearer(key)
+    msg = {"message": {"role": "user", "messageId": "m1", "parts": [{"kind": "data", "data": {"who": "Grace"}}]}}
+    task = (await api_client.post(url, json=rpc("message/send", msg), headers=auth)).json()["result"]
+    with statements(app) as seen:
+        got = (await api_client.post(url, json=rpc("tasks/get", {"id": task["id"]}), headers=auth)).json()["result"]
+    assert got["status"]["state"] == "completed"
+    runs = [s for s in seen if "FROM run" in s and "run.thread_id" in s]
+    assert runs and all("LIMIT" in s for s in runs), runs
