@@ -107,3 +107,30 @@ def test_cloud_master_keys():
         master_key("vault:x", "dev")
     with pytest.raises(ValueError, match="32 characters"):
         LocalKey("short")
+
+
+def test_staging_and_production_warn_when_the_master_key_is_derived_from_the_secret_key():
+    from agentcanvas.api.main import kms_hint
+    from agentcanvas.settings import Settings
+
+    assert "AGENTCANVAS_KMS_PREVIOUS_KEYS" in (kms_hint(Settings(env="prod")) or "")
+    assert kms_hint(Settings(env="staging"))
+    assert kms_hint(Settings(env="prod", kms_key="file:/run/secrets/master.key")) is None
+    assert kms_hint(Settings(env="dev")) is None
+
+
+async def test_the_old_secret_key_in_a_file_keeps_secrets_readable_after_the_secret_key_changes(app, tmp_path):
+    """The procedure in docs/user-guide/deploy.md (Rotating AGENTCANVAS_SECRET_KEY)."""
+    from agentcanvas.settings import Settings
+
+    old_sk, new_sk = "o" * 64, "n" * 64
+    before = Keyring.from_settings(Settings(secret_key=old_sk))
+    async with app.state.db.sessionmaker() as s:
+        await SecretService(s, before).put("prj_default", "API_TOKEN", "token-x", None)
+    (tmp_path / "old-secret-key").write_text(old_sk + "\n")
+    previous = [f"file:{tmp_path / 'old-secret-key'}"]
+    after = Keyring.from_settings(Settings(secret_key=new_sk, kms_previous_keys=previous))
+    assert (await read(app, after))["API_TOKEN"] == "token-x"
+    async with app.state.db.sessionmaker() as s:
+        assert await after.rewrap(s) == 1
+    assert (await read(app, Keyring.from_settings(Settings(secret_key=new_sk))))["API_TOKEN"] == "token-x"

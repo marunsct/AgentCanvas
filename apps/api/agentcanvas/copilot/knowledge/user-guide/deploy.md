@@ -272,5 +272,29 @@ upgrade, after a snapshot.
 
 ## Rotating the secrets master key
 
-Set the new key in `AGENTCANVAS_KMS_KEY`, keep the old one in `AGENTCANVAS_KMS_PREVIOUS_KEYS`, then run
-`python -m agentcanvas.security.kms rewrap` in an API container.
+Set the new key in `AGENTCANVAS_KMS_KEY`, keep the old one in `AGENTCANVAS_KMS_PREVIOUS_KEYS` (a JSON list, e.g.
+`["file:/run/secrets/old-master.key"]`), then run `python -m agentcanvas.security.kms rewrap` in an API container.
+When every organisation's key is re-wrapped (the command prints how many it changed; run it again and it prints 0),
+remove the old key.
+
+## Rotating `AGENTCANVAS_SECRET_KEY`
+
+With `AGENTCANVAS_KMS_KEY` empty, the master key of project secrets is derived from `AGENTCANVAS_SECRET_KEY` (a
+staging or production server logs `kms.derived_from_secret_key` at startup to say so). Changing the secret key
+alone then makes every organisation's secrets unreadable: the API still starts, but logs
+`secret.org_key_unreadable` for each organisation, and runs that need a secret fail. Keep the old secret key as a
+previous master key while you move to the new one:
+
+1. With the old secret key still deployed, run `python -m agentcanvas.security.kms rewrap` once. Secrets saved
+   before envelope encryption (v0.3.0) are read with the secret key itself; this moves them onto their
+   organisation's data key, which the next steps keep readable.
+2. Write the old secret key, exactly as it is set now and with nothing else, to a file the API containers can
+   read, e.g. a mounted secret at `/run/secrets/old-secret-key`. A key file is read as one line, so the old key must
+   be at least 32 characters (production refuses shorter ones).
+3. Choose the master key from now on. Best: a key file (`file:/run/secrets/master.key`, 32+ random characters) or
+   your cloud KMS (`aws:…`, `gcp:…`) in `AGENTCANVAS_KMS_KEY`, so the secret key and the master key are separate.
+   Otherwise leave `AGENTCANVAS_KMS_KEY` empty and the new secret key becomes the master key.
+4. Deploy with the new `AGENTCANVAS_SECRET_KEY`, that `AGENTCANVAS_KMS_KEY`, and
+   `AGENTCANVAS_KMS_PREVIOUS_KEYS=["file:/run/secrets/old-secret-key"]`. Every replica reads secrets with either key.
+5. Run `python -m agentcanvas.security.kms rewrap` in an API container, then again to see `re-wrapped 0`.
+6. Remove `AGENTCANVAS_KMS_PREVIOUS_KEYS` and the old key file, and roll the API once more.

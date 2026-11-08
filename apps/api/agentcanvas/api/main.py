@@ -81,6 +81,18 @@ def sandbox_hint(settings: Settings) -> str | None:
     return None
 
 
+def kms_hint(settings: Settings) -> str | None:
+    """A warning for a staging or production server whose secrets master key is derived from its secret key."""
+    if settings.env in ("staging", "prod") and not settings.kms_key:
+        return (
+            "AGENTCANVAS_KMS_KEY is empty, so the master key of project secrets is derived from "
+            "AGENTCANVAS_SECRET_KEY: "
+            "changing that key makes every secret unreadable unless the old one is kept in "
+            "AGENTCANVAS_KMS_PREVIOUS_KEYS. Set AGENTCANVAS_KMS_KEY (file:, aws: or gcp:); see the deployment guide"
+        )
+    return None
+
+
 # the plan's work-item ids ("(S17)", "(M7-T3)", "(FR-X-13)") keep the code traceable; the API's readers do not need them
 _REF = r"(?:S\d+|M\d+-T\d+|T\d+|FR-[A-Z]+-\d+|SP-\d+|TS\d+)"
 _REFS = re.compile(rf"\s*\({_REF}(?:[ ,;/]+{_REF})*\)")
@@ -146,6 +158,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         interop.install_replies(DatabaseReplies(db))  # and what remote A2A agents answered paused steps (G-9)
         if hint := sandbox_hint(settings):
             log.warning("sandbox.not_isolated", mode=settings.script_execution, hint=hint)
+        if hint := kms_hint(settings):
+            log.warning("kms.derived_from_secret_key", hint=hint)
         if settings.script_execution == "subprocess":
             _not_dumpable()  # sandbox children run as this user: keep them from reading this process's memory
         observability.trace_engine(db.engine)
