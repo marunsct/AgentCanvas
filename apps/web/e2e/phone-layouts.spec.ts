@@ -63,6 +63,8 @@ test("the Inbox fits a phone, with a long step name and a long workflow name", a
   await page.goto("/inbox");
   const item = page.getByTestId("inbox-item").filter({ hasText: long.slice(0, 30) });
   await expect(item.first()).toBeVisible({ timeout: 10_000 });
+  // other tests' items may come first: bring this one up, then its button must be on screen (not off to the side)
+  await item.first().scrollIntoViewIfNeeded();
   await expect(item.first().getByRole("button", { name: "Approve" })).toBeInViewport();
   await fitsTheScreen(page, "Inbox");
 });
