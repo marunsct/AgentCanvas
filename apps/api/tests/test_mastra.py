@@ -334,6 +334,47 @@ console.log(JSON.stringify(out));
 
 
 @installed
+def test_the_messages_field_replaces_and_removes_by_id_like_langgraph(tmp_path):
+    """add_messages was a plain append: an agent re-sending the chat with ids doubled every message."""
+    script = """
+import { reduce } from "./flow.ts";
+const a = { id: "1", role: "user", content: "hi" }, b = { id: "2", role: "assistant", content: "hello" };
+const out = [
+  reduce("add_messages", [a, b], [a, { ...b, content: "hello again" }, { role: "user", content: "no id" }]),
+  reduce("add_messages", [a, b], { type: "remove", id: "1" }),
+  reduce("add_messages", [a, b], [{ type: "remove", id: "__remove_all__" }, { role: "user", content: "fresh" }]),
+  reduce("append", [a], [a]),
+];
+console.log(JSON.stringify(out));
+"""
+    got = _node(tmp_path, script)
+    assert got == _MESSAGES_EXPECTED
+
+
+_A, _B = {"id": "1", "role": "user", "content": "hi"}, {"id": "2", "role": "assistant", "content": "hello"}
+_MESSAGES_EXPECTED = [
+    [_A, {**_B, "content": "hello again"}, {"role": "user", "content": "no id"}],
+    [_B],
+    [{"role": "user", "content": "fresh"}],
+    [_A, _A],  # a plain list field still appends
+]
+
+
+def test_the_python_flow_engine_reduces_messages_like_langgraph():
+    from agentcanvas.adapters.supersteps import reduce
+
+    got = [
+        reduce("add_messages", [_A, _B], [_A, {**_B, "content": "hello again"}, {"role": "user", "content": "no id"}]),
+        reduce("add_messages", [_A, _B], {"type": "remove", "id": "1"}),
+        reduce(
+            "add_messages", [_A, _B], [{"type": "remove", "id": "__remove_all__"}, {"role": "user", "content": "fresh"}]
+        ),
+        reduce("append", [_A], [_A]),
+    ]
+    assert got == _MESSAGES_EXPECTED
+
+
+@installed
 def test_cancelling_a_run_ends_it_while_it_waits_on_the_server(tmp_path):
     folder = _engine_dir(tmp_path)
     source = (
