@@ -114,6 +114,26 @@ async def test_a_page_update_that_fails_does_not_break_the_rest_of_the_crawl(app
     assert docs["https://shop.example/shipping"]["name"] == "Shipping"  # kept as it was
 
 
+async def test_a_sitemap_never_removes_a_page_added_by_hand(app, api_client):
+    """I-17: a page added by hand that a sitemap also listed was adopted by it, and removed once the sitemap stopped
+    listing it."""
+    site = Site()
+    kb_id = await kb_with(api_client, app, site)
+    k = f"/v1/knowledge/{kb_id}"
+    assert (
+        await api_client.post(f"{k}/documents/url", json={"url": "https://shop.example/returns"})
+    ).status_code == 201
+    r = await api_client.post(f"{k}/documents/sitemap", json={"url": "https://shop.example/sitemap.xml"})
+    assert r.status_code == 201 and r.json()["added"] == 1, r.text
+    site.listed = ["/shipping"]
+    r = (await api_client.post(f"{k}/recrawl")).json()
+    assert r["removed"] == 0, r
+    assert await titles(api_client, kb_id) == ["Returns", "Shipping"]
+    site.listed = []  # the page the sitemap added does follow it
+    assert (await api_client.post(f"{k}/recrawl")).json()["removed"] == 1
+    assert await titles(api_client, kb_id) == ["Returns"]
+
+
 async def test_a_sitemap_adds_its_pages_and_follows_it(app, api_client):
     site = Site()
     kb_id = await kb_with(api_client, app, site)

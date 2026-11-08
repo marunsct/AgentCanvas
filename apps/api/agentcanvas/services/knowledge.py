@@ -694,6 +694,9 @@ class KnowledgeService:
                         del docs[final]
                         result["removed"] += 1
         known = {u for mapping in sitemaps.values() for u in mapping}
+        # the documents a sitemap added: only these follow a sitemap; a page added by hand is never adopted, so a
+        # sitemap that stops listing it cannot remove it (I-17)
+        adopted = {final for mapping in sitemaps.values() for final in mapping.values()}
         new_pages = [u for pages in listed.values() for u in pages if u not in known and u not in docs]
         new_pages = list(dict.fromkeys(new_pages))
         gate = asyncio.Semaphore(CRAWL_CONCURRENCY)
@@ -732,10 +735,11 @@ class KnowledgeService:
                 failed(url, got)
                 continue
             final, title, text = got
-            for sitemap, pages in listed.items():
-                if url in pages:
-                    sitemaps[sitemap][url] = final
-            if final in docs:  # redirects to a page the base already has
+            if final in docs:  # redirects to a page the base already has: followed only if a sitemap added it
+                if final in adopted:
+                    for sitemap, pages in listed.items():
+                        if url in pages:
+                            sitemaps[sitemap][url] = final
                 continue
             try:
                 await self.add(kb_id, title=title, text=text, kind="url", name=title, url=final, user_id=user_id)
@@ -743,10 +747,14 @@ class KnowledgeService:
             except (InvalidInput, Conflict) as exc:
                 await self.s.rollback()
                 failed(url, exc)
+                continue
+            for sitemap, pages in listed.items():
+                if url in pages:
+                    sitemaps[sitemap][url] = final
 
-        for sitemap, pages in listed.items():  # the pages that were already known stay mapped
+        for sitemap, pages in listed.items():  # a page another sitemap added is followed by this one too
             for url in pages:
-                if url not in sitemaps[sitemap] and url in docs:
+                if url not in sitemaps[sitemap] and url in docs and url in adopted:
                     sitemaps[sitemap][url] = url
 
         kb = await self.get(kb_id)
