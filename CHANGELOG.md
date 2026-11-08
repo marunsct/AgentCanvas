@@ -46,6 +46,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - In docker script execution, a cancelled or timed-out call can no longer leave its sandbox container running.
 - A sandboxed script that writes without end is stopped once its result passes 32 MB, and only the last 64 KB of what it
   printed is kept, so it cannot fill the server's memory.
+- Stopping a sandboxed script that had filled its output pipe no longer hangs the call: what is left in the pipes is
+  read and dropped while the stopped script is reaped.
 - In the hosted edition, OpenAI and Azure OpenAI models and embedders always connect through the public-address client,
   and other providers (and backups, embedders, Ollama's local default) may not set an address of their own.
 - A rotated project secret now reaches the next run at once; cached graphs kept the model clients and MCP tools built

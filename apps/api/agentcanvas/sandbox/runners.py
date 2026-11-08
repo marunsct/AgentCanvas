@@ -269,10 +269,17 @@ async def _communicate(proc: asyncio.subprocess.Process, data: bytes, import_pat
     return out, err
 
 
+async def _discard(stream: asyncio.StreamReader | None) -> None:
+    while stream is not None and await stream.read(CHUNK):
+        pass
+
+
 async def _stop(proc: asyncio.subprocess.Process, mode: str, name: str) -> None:
     if proc.returncode is None:
         proc.kill()
-        await proc.wait()
+        # `wait()` ends only once both pipes are closed, and a pipe whose reader was cancelled with a full buffer is
+        # paused, so its end is never seen: read what is left (and drop it) while waiting
+        await asyncio.gather(proc.wait(), _discard(proc.stdout), _discard(proc.stderr))
     if mode == "docker":  # killing the client leaves the container running: stop the container itself
         await _docker("rm", ["docker", "rm", "-f", name])
 
