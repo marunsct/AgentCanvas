@@ -28,7 +28,7 @@ export function ConnectPanel({ resource }: { resource: IRResource }) {
       <p className="small">
         {identity === "starter"
           ? "Runs use the connection of the person who starts them."
-          : "Runs use the organisation's service connection, whoever (or whatever) starts them."}
+          : "Runs with no person (schedules, webhooks, deployments) and admins' runs use the organisation's service connection; a builder's draft run cannot."}
       </p>
       {!url && <p className="muted small">Enter the server URL to connect.</p>}
       {url && (have && have.status === "active"
