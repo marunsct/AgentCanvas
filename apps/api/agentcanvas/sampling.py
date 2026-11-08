@@ -29,11 +29,13 @@ def refusing() -> frozenset[str]:
 
 
 def refuses(model_id: str) -> bool:
-    """`model_id` takes no sampling settings: its provider refuses them, or the catalog says so."""
+    """`model_id` takes no sampling settings: its provider refuses them, the catalog says so, or it is a dated or
+    suffixed version of a catalog id that does (`openai:gpt-5-mini-2025-08-07` is `openai:gpt-5-mini`)."""
     model_id = str(model_id or "")
     if model_id.partition(":")[0] in REFUSING_PROVIDERS:
         return True
-    return model_id in refusing()
+    ids = refusing()
+    return model_id in ids or any(model_id.startswith(f"{r}-") for r in ids)
 
 
 def without_sampling(model_id: str, params: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

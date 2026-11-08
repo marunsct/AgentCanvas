@@ -193,6 +193,13 @@ def test_a_long_prompt_is_charged_the_long_context_tier():
     assert price("anthropic:claude-opus-5-5", 900_000, 0) == pytest.approx(3.6)  # no tier: one price
 
 
+def test_a_dated_version_of_a_model_refuses_sampling_like_its_catalog_entry():
+    from agentcanvas.sampling import refuses
+
+    assert refuses("openai:gpt-5-mini-2025-08-07") and refuses("openai:gpt-6.1-sol-preview")
+    assert not refuses("openai:gpt-4.1") and not refuses("ollama:llama3.3") and not refuses("openai:gpt-5.5x")
+
+
 def test_templates_use_the_current_quick_model():
     import json
 
