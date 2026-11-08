@@ -56,9 +56,9 @@ export function SecretsSettings() {
       {remove.error && <p className="error-text small" role="alert">Could not delete the secret: {(remove.error as Error).message}</p>}
       {canBuild ? (
         <form className="row gap wrap" onSubmit={(e) => { e.preventDefault(); if (name && value) save.mutate(); }}>
-          <input placeholder="OPENAI_API_KEY" value={name} aria-label="secret name" className="mono"
+          <input placeholder="OPENAI_API_KEY" value={name} aria-label="secret name" className="mono" autoComplete="off"
             onChange={(e) => setName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))} />
-          <input type="password" placeholder="value (write-only)" value={value} aria-label="secret value" autoComplete="off"
+          <input type="password" placeholder="value (write-only)" value={value} aria-label="secret value" autoComplete="new-password"
             onChange={(e) => setValue(e.target.value)} />
           <button type="submit" className="primary" disabled={!name || !value || save.isPending}>{exists ? "Replace secret" : "Save secret"}</button>
         </form>

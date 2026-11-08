@@ -56,4 +56,12 @@ describe("Settings", () => {
     await act(async () => { at("/"); });
     expect(screen.getByTestId("playground-link")).toBeTruthy();
   });
+
+  it("keeps the browser from filling a saved password into a new secret", async () => {
+    as("builder");
+    await act(async () => { at("/settings/secrets"); });
+    // "off" is ignored for password fields: browsers filled in the person's own password
+    expect(screen.getByLabelText("secret value").getAttribute("autocomplete")).toBe("new-password");
+    expect(screen.getByLabelText("secret name").getAttribute("autocomplete")).toBe("off");
+  });
 });
