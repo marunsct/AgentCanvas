@@ -1,5 +1,5 @@
 /** The Copilot panel (S14): chat about the open workflow; its changes appear on the canvas to accept or reject. */
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { can, useCan, useMe } from "../api/session";
 import { useEditor } from "../editor/store";
@@ -11,6 +11,7 @@ import type { ModelOption, CopilotThreadOut, GuidePageRef } from "../api/generat
 import { confirmDialog } from "../ui/dialog";
 import { Markdown, slug } from "../ui/Markdown";
 import { Menu } from "../ui/Menu";
+import { useFollowBottom } from "../ui/useFollowBottom";
 import { billedTokens, type Brief, type ChatMessage, type Conversation, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
 import { describe, preview } from "./review";
 
@@ -175,7 +176,6 @@ export function CopilotPanel() {
   const canBuild = useCan("builder");
   const email = useMe((s) => s.me.email);
   const [mode, setMode] = useState<Mode>(can("builder") ? "build" : "ask");
-  const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (workflowId) void useCopilot.getState().load(workflowId).catch((e: Error) => useCopilot.setState({ error: e.message }));
@@ -187,15 +187,16 @@ export function CopilotPanel() {
     setMode(request.mode === "build" && !can("builder") ? "ask" : request.mode);
     void useCopilot.getState().send(request.text, request.mode === "build" && !can("builder") ? "ask" : request.mode);
   }, [request, conversation, busy]);
-  useEffect(() => { // newer browsers return a promise here: an effect must not return it as its cleanup
-    end.current?.scrollIntoView?.({ block: "end" });
-  }, [conversation?.messages.length, live?.text.length, live?.activity.length, live?.streaming.length, live?.todos.length]);
+  const { end, onScroll, follow } = useFollowBottom(
+    [conversation?.messages.length, live?.text.length, live?.activity.length, live?.streaming.length, live?.todos.length],
+  );
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     const t = text.trim();
     if (!t) return;
     setText("");
+    follow(); // sending: show the answer as it comes, wherever the log was scrolled
     void useCopilot.getState().send(t, mode);
   };
 
@@ -221,7 +222,7 @@ export function CopilotPanel() {
       )}
       {conversation.brief && <BriefCard brief={conversation.brief} />}
 
-      <div className="copilot-log" aria-live="polite">
+      <div className="copilot-log" aria-live="polite" onScroll={onScroll}>
         {conversation.messages.length === 0 && !live && (
           <div className="copilot-empty">
             <div className="copilot-hero">
