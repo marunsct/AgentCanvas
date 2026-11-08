@@ -1,18 +1,11 @@
 import type { RunEvent } from "./events";
 import { API_BASE, authFetch, failed } from "../api/client";
 
+import { parseMessage as parseFrames } from "./sseFrames";
+
 /** One SSE message's events: its `data:` lines, each a JSON event. A malformed line is skipped, not fatal. */
 export function parseMessage(message: string): RunEvent[] {
-  const out: RunEvent[] = [];
-  for (const line of message.split(/\r?\n/)) {
-    if (!line.startsWith("data:")) continue;
-    try {
-      out.push(JSON.parse(line.slice(5).trimStart()) as RunEvent);
-    } catch {
-      /* one bad frame must not end the stream */
-    }
-  }
-  return out;
+  return parseFrames<RunEvent>(message);
 }
 
 /**

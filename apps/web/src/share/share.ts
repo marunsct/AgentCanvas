@@ -1,3 +1,4 @@
+import { feed, parseMessage } from "../run/sseFrames";
 import type { FileRef } from "../ir/files";
 
 /** Share links (S23): the public chat page's talk with the API. No sign-in: the link's token is the capability, so
@@ -114,20 +115,7 @@ export async function closeConversation(token: string): Promise<void> {
 
 /** Feed SSE text to `onEvent`; returns what is left over (an incomplete message). */
 export function parseSse(buffer: string, onEvent: (e: ShareEvent) => void): string {
-  let sep: number;
-  while ((sep = buffer.indexOf("\n\n")) >= 0) {
-    const message = buffer.slice(0, sep);
-    buffer = buffer.slice(sep + 2);
-    for (const line of message.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      try {
-        onEvent(JSON.parse(line.slice(5).trimStart()) as ShareEvent);
-      } catch {
-        /* one bad frame must not end the reply (as in run/sse.ts) */
-      }
-    }
-  }
-  return buffer;
+  return feed<ShareEvent>(buffer, onEvent); // the run streams' framing: \r\n line ends too (a proxy may rewrite them)
 }
 
 async function stream(path: string, body: unknown, onEvent: (e: ShareEvent) => void, signal?: AbortSignal): Promise<void> {
@@ -140,7 +128,10 @@ async function stream(path: string, body: unknown, onEvent: (e: ShareEvent) => v
   let buffer = "";
   for (;;) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) { // a connection that closed right after the last line: its events (the answer's end) still count
+      for (const e of parseMessage<ShareEvent>(buffer)) onEvent(e);
+      break;
+    }
     buffer = parseSse(buffer + value, onEvent);
   }
 }

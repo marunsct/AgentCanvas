@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { embedSnippet, friendly, isEmbed, parseSse, tokenFromPath, type ShareEvent } from "./share";
+import { describe, expect, it, vi } from "vitest";
+import { embedSnippet, friendly, isEmbed, parseSse, sendMessage, tokenFromPath, type ShareEvent } from "./share";
 
 describe("share links (S23)", () => {
   it("reads the token and embed mode from the page address", () => {
@@ -25,6 +25,22 @@ describe("share links (S23)", () => {
       'data:{"type":"TEXT_MESSAGE_CONTENT","delta":"B"}\n\n', (e) => seen.push(e));
     expect(rest).toBe("");
     expect(seen.map((e) => (e as { delta?: string }).delta)).toEqual(["A", "B"]); // the bad frame used to throw
+  });
+
+  it("reads messages framed with \\r\\n, and a last message without a blank line after it", async () => {
+    const seen: ShareEvent[] = [];
+    expect(parseSse('data: {"type":"RUN_STARTED","runId":"r","threadId":"t"}\r\n\r\n', (e) => seen.push(e))).toBe("");
+    expect(seen.map((e) => e.type)).toEqual(["RUN_STARTED"]);
+    const body = 'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"Hi"}\n\ndata: {"type":"RUN_FINISHED","threadId":"t"}\n';
+    const fetchMock = vi.fn(async () => new Response(body, { headers: { "content-type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const got: ShareEvent[] = [];
+      await sendMessage("sh_x", "hello", null, (e) => got.push(e));
+      expect(got.map((e) => e.type)).toEqual(["TEXT_MESSAGE_CONTENT", "RUN_FINISHED"]); // the end used to be dropped
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("explains failures in plain words and makes the embed snippet", () => {
