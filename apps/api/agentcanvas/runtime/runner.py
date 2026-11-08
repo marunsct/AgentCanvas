@@ -68,6 +68,10 @@ class RunHandle:
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
     finishing: bool = False  # saving its outcome: a cancel now would cut the save short and wedge the thread
+    # a task cancelled before it began never runs its code, so nothing would finish the run: until `_pump` starts,
+    # a stop is a request it reads first (RT-10)
+    started: bool = False
+    stop_requested: bool = False
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
@@ -499,21 +503,9 @@ class Runner:
             h.changed.notify_all()
 
     async def _pump(self, h: RunHandle, spec: RunSpec) -> None:
+        h.started = True  # from here on a cancel reaches the code below, which always finishes the run
         started = time.perf_counter()
         CURRENT.set(RunIdentity(spec.org_id, spec.user_id))  # app connectors that sign in read it per call (G-7)
-        await self._emit(
-            h,
-            {
-                "type": "RUN_STARTED",
-                "runId": h.run_id,
-                "threadId": h.thread_id,
-                "workflowId": h.workflow_id,
-                "mode": spec.mode,
-                "adapter": spec.workflow.framework,
-            },
-        )
-        for note in h.routing:
-            await self._emit(h, {"type": "CUSTOM", "name": "ac.route", "value": note})
         status, error, interrupts = "error", None, []
         # The run's last events are published only after the run is finalised (saved, thread released): a client
         # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has
@@ -538,6 +530,21 @@ class Runner:
             budget.daily_max_cost_usd is not None or budget.monthly_max_cost_usd is not None
         )
         try:
+            if h.stop_requested:  # stopped before its task began (`_stop_task`)
+                raise asyncio.CancelledError
+            await self._emit(
+                h,
+                {
+                    "type": "RUN_STARTED",
+                    "runId": h.run_id,
+                    "threadId": h.thread_id,
+                    "workflowId": h.workflow_id,
+                    "mode": spec.mode,
+                    "adapter": spec.workflow.framework,
+                },
+            )
+            for note in h.routing:
+                await self._emit(h, {"type": "CUSTOM", "name": "ac.route", "value": note})
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
@@ -864,8 +871,15 @@ class Runner:
         h = self.handles.get(run_id)
         if h is None or not self._stoppable(h):
             return False
-        h.task.cancel()  # type: ignore[union-attr]
+        self._stop_task(h)
         return True
+
+    @staticmethod
+    def _stop_task(h: RunHandle) -> None:
+        if h.started:
+            h.task.cancel()  # type: ignore[union-attr]
+        else:
+            h.stop_requested = True
 
     async def drain(self, grace_s: float) -> list[str]:
         """Stop taking runs, give running ones `grace_s` to finish, then stop the rest at their last checkpoint
@@ -880,7 +894,7 @@ class Runner:
         left = [h for h in running if self._stoppable(h)]
         for h in left:
             h.drained = True
-            h.task.cancel()  # type: ignore[union-attr]
+            self._stop_task(h)
         await asyncio.gather(*(h.task for h in left if h.task), return_exceptions=True)
         if left:
             log.info("runner.drained", runs=[h.run_id for h in left])
@@ -907,13 +921,13 @@ class Runner:
             if h is not None and self._stoppable(h):
                 log.warning("run.superseded", run_id=run_id)
                 h.superseded = True
-                h.task.cancel()  # type: ignore[union-attr]
+                self._stop_task(h)
         return gone
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):
             if self._stoppable(h):
-                h.task.cancel()  # type: ignore[union-attr]
+                self._stop_task(h)
         await asyncio.gather(*(h.task for h in self.handles.values() if h.task), return_exceptions=True)
 
     # -------------------------------------------------------------- queries ----

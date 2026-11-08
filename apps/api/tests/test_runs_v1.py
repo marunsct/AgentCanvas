@@ -227,6 +227,21 @@ async def test_cancel_reattach_and_double_texting(api_client):
     assert tail == evs[-1:]
 
 
+async def test_a_run_cancelled_before_its_task_began_still_finishes(app, api_client):
+    """RT-10: a task cancelled before its first step never runs its code, so `done` was never set and the thread
+    stayed busy for ever ('already has an active run')."""
+    wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
+    from agentcanvas.ir.models import Workflow
+
+    ir = (await api_client.get(f"/v1/workflows/{wf}")).json()["ir"]
+    runner = app.state.runner
+    h = await runner.start(Workflow.model_validate(ir), thread_id="th_early", input={"seconds": 30})
+    assert await runner.cancel(h.run_id)  # nothing has awaited since the start: the task has not begun
+    await asyncio.wait_for(h.done.wait(), 5)
+    assert h.status == "cancelled" and "th_early" not in runner.active_by_thread
+    assert (await api_client.get("/v1/threads/th_early")).json()["status"] == "idle"
+
+
 async def test_concurrent_starts_on_one_thread_run_once(app, api_client):
     wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
     body = {"input": {"seconds": 30}, "thread_id": "th_race", "stream": False}
