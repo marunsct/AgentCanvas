@@ -306,3 +306,11 @@ def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
         text = (ROOT / path).read_text()
         assert "mkdocs-material" in text and "--with mkdocs-material " not in text, path
         assert "mkdocs==1.6.1" in text and "mkdocs-material==9.8.1" in text, path
+
+
+def test_the_reference_schema_names_the_folder_the_migrations_are_in():
+    import re
+
+    for path in ["infra/schema.sql", "scripts/export_schema_sql.sh"]:
+        (folder,) = re.findall(r"Alembic migrations \((apps/api/[\w/]+)\)", (ROOT / path).read_text())
+        assert (ROOT / folder).is_dir() and any((ROOT / folder).glob("*.py")), (path, folder)
