@@ -23,9 +23,11 @@ from agentcanvas.db.models import (
     InterruptTask,
     KnowledgeBase,
     Membership,
+    OAuthConnection,
     OnlineEvaluator,
     Organization,
     OrgPolicy,
+    PersonalToken,
     Project,
     Run,
     RunSearch,
@@ -266,11 +268,19 @@ class MemberRepo:
         await self.s.commit()
 
     async def remove(self, org_id: str, user_id: str) -> None:
+        """Remove a membership with what the person kept in this organisation: their API tokens and their app connector
+        sign-ins (suspending keeps them: a suspended member's tokens and runs are refused until reactivated)."""
         await self._lock(org_id)
         m = await self.s.get(Membership, (org_id, user_id))
         if m is None:
             raise NotFound(f"user '{user_id}' is not a member")
         await self.s.delete(m)
+        await self.s.execute(
+            delete(PersonalToken).where(PersonalToken.org_id == org_id, PersonalToken.user_id == user_id)
+        )
+        await self.s.execute(
+            delete(OAuthConnection).where(OAuthConnection.org_id == org_id, OAuthConnection.owner == user_id)
+        )
         await self._keep_an_admin(org_id)
         await self.s.commit()
 

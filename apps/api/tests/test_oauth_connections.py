@@ -549,3 +549,19 @@ def test_client_credentials_saved_before_cp3_keep_to_the_servers_already_connect
     got = dict(con.execute("SELECT issuer, resources FROM oauth_client").fetchall())
     con.close()
     assert {k: json.loads(v) for k, v in got.items()} == {AS: [MCP], "https://other.test": []}
+
+
+async def test_removing_a_member_deletes_their_connections_and_api_tokens_there(app, client, world):
+    """A person who leaves the organisation keeps no sign-in to its app connectors and no API token in it."""
+    from agentcanvas.db.models import PersonalToken
+
+    bobs = await connect(client, world, BOB, who="bob")
+    mine = await connect(client, world, ALICE, who="alice")
+    assert (await client.post("/v1/me/tokens", json={"name": "ci"}, headers=BOB)).status_code == 201
+    bob = await user_id(app, "bob-sub")
+    assert (await client.delete(f"/v1/org/members/{bob}", headers=ALICE)).status_code == 204
+    async with app.state.db.sessionmaker() as s:
+        left = (await s.scalars(select(OAuthConnection.id))).all()
+        tokens = (await s.scalars(select(PersonalToken.id).where(PersonalToken.user_id == bob))).all()
+    assert left == [mine["connection"]["id"]] and bobs["connection"]["id"] not in left
+    assert tokens == []
