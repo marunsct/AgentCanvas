@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterator
 
-from agentcanvas.ir.models import Node, Resource
+from agentcanvas.ir.models import BUDGET_LIMITS, Node, Resource, unenforced_limits
 from agentcanvas.registry import SAMPLING, provider_installed
 from agentcanvas.sampling import refuses
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
@@ -360,3 +360,21 @@ def cheapest_of_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     **where,
                 )
             seen.add(model)
+
+
+@rule
+def budget_not_exported(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W026: budget limits an export of the workflow does not enforce: every limit in a flow framework's code (the
+    AgentCanvas runner enforces them, and the exported code has none), the conversation, day and month limits in a
+    LangGraph project (its service checks each run on its own)."""
+    langgraph = ctx.wf.framework == "langchain"
+    found = unenforced_limits(ctx.wf, langgraph)
+    if found:
+        what = ", ".join(BUDGET_LIMITS[f] for f in found)
+        where = "a LangGraph export" if langgraph else f"an export to {ctx.wf.framework}"
+        yield warning(
+            "W026",
+            f"the budget's limits on {what} stop runs on AgentCanvas only: {where} does not enforce them",
+            path="settings.budget",
+            hint="set a spending cap at the model provider before running the export elsewhere (GAPS.md lists it)",
+        )

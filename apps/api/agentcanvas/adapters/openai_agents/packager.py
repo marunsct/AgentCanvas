@@ -24,7 +24,7 @@ from agentcanvas.adapters.langchain.packager import (
 )
 from agentcanvas.adapters.openai_agents.codegen import SDK_VERSION
 from agentcanvas.errors import InvalidInput
-from agentcanvas.ir.models import Workflow
+from agentcanvas.ir.models import Workflow, budget_gap
 from agentcanvas.tomltext import toml_string
 from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
@@ -390,6 +390,8 @@ def package(
         "tests/test_flow.py": TESTS.format(pkg=pkg),
         "tests/test_cases.json": json.dumps(_exportable_cases(wf, test_cases or []), indent=2) + "\n",
     }
+    if gap := budget_gap(wf, "an OpenAI Agents SDK flow"):  # the AgentCanvas runner enforces it; the flow does not
+        files["GAPS.md"] = f"# What runs differently in an OpenAI Agents SDK flow\n\n- {gap}\n"
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
     for rel in found.files if found else []:

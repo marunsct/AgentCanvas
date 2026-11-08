@@ -263,6 +263,37 @@ class Budget(_Base):
         return sorted({*(DEFAULT_ALERTS if self.alert_at is None else self.alert_at), 1.0})
 
 
+BUDGET_LIMITS = {  # Budget field -> how it reads in a sentence
+    "max_tokens": "tokens per run", "max_cost_usd": "cost per run", "max_seconds": "time per run",
+    "thread_max_tokens": "tokens per conversation", "thread_max_cost_usd": "cost per conversation",
+    "daily_max_cost_usd": "cost per day", "monthly_max_cost_usd": "cost per month",
+}  # fmt: skip
+PER_RUN_LIMITS = ("max_tokens", "max_cost_usd", "max_seconds")  # what a LangGraph export's service enforces
+
+
+def unenforced_limits(wf: Workflow, langgraph: bool) -> list[str]:
+    """The budget limits `wf` sets that an export does not enforce: all of them in a flow, bridge or other
+    framework's code; the conversation, day and month limits in a LangGraph project (its service keeps no
+    spending of other runs)."""
+    b = wf.settings.budget
+    if b is None:
+        return []
+    return [f for f in BUDGET_LIMITS if getattr(b, f) is not None and not (langgraph and f in PER_RUN_LIMITS)]
+
+
+def budget_gap(wf: Workflow, label: str, langgraph: bool = False) -> str | None:
+    """A GAPS.md line for the budget limits an export to `label` does not enforce (None: none)."""
+    found = unenforced_limits(wf, langgraph)
+    if not found:
+        return None
+    b = wf.settings.budget
+    what = ", ".join(f"{BUDGET_LIMITS[f]} ({getattr(b, f):g})" for f in found)
+    return (
+        f"The workflow's budget ({what}) is not enforced in {label}: runs are not stopped when they reach it. "
+        "Set a limit at the model provider (a spending cap or rate limit) or in your own code."
+    )
+
+
 class WorkflowSettings(_Base):
     recursion_limit: int = Field(default=50, ge=1, le=10_000)
     durability: Literal["exit", "async", "sync"] = "async"

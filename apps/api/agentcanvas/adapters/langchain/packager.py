@@ -42,7 +42,7 @@ from agentcanvas.adapters.langchain.interop import FRAMEWORKS
 from agentcanvas.designs import article
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.files import is_file_schema
-from agentcanvas.ir.models import Workflow
+from agentcanvas.ir.models import Workflow, budget_gap
 from agentcanvas.tomltext import toml_string
 from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
@@ -587,6 +587,8 @@ def canvas_only(wf: Workflow, label: str) -> list[str]:
     def unused(found: list[str]) -> str:
         return " and ".join(found) + (" do" if len(found) > 1 else " does") + f" not apply in {label}"
 
+    if budget := budget_gap(wf, label):  # the AgentCanvas runner enforces it; this code has no runner
+        out.append(budget)
     if defaults := [what for attr, what in names if getattr(wf.settings.node_defaults, attr, None)]:
         out.append(f"The workflow's default {unused(defaults)}: steps run once, with no time limit, and an error ends "
                    "the run.")  # fmt: skip
@@ -656,6 +658,8 @@ def package(
         ),
         "tests/test_cases.json": json.dumps(cases, indent=2) + "\n",
     }
+    if gap := budget_gap(wf, "this project", langgraph=True):  # the service enforces the per-run limits only
+        files["GAPS.md"] = f"# What runs differently in this project\n\n- {gap}\n"
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
     designed = designed_agents(wf)

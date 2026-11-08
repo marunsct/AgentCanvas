@@ -256,6 +256,10 @@
       "what": "This step is shown a file or image field, but its model cannot see images. Images are left out and a PDF is read as plain text, so layout, tables and scans are lost.",
       "fix": "Pick a model that takes images, or limit the step to the fields it needs under “Files to show the AI”."
     },
+    "W026": {
+      "what": "The workflow’s budget stops runs on AgentCanvas, but an export of this workflow does not enforce some of its limits: the exported code runs past them.",
+      "fix": "Keep the limit for runs on AgentCanvas. Before running the export elsewhere, set a spending cap at the model provider, or check the limits the message names in your own code (GAPS.md lists them)."
+    },
     "W021": {
       "what": "A header or environment value that looks like a key is typed in as plain text. Runs work, but an export would write it into the code, so exports refuse it.",
       "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."

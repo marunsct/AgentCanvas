@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import zipfile
+from typing import Any
 
 from test_versions import HIGH_CASE, new_triage
 
@@ -296,6 +297,42 @@ def _budget_workflow() -> dict:
             "nodes": [{"id": "n1", "type": "core.set", "name": "s", "config": {"values": {"out": "x"}}}],
             "edges": [{"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n1"}},
                       {"id": "e2", "kind": "flow", "source": {"node": "n1"}, "target": {"node": "END"}}]}  # fmt: skip
+
+
+def test_budget_limits_an_export_does_not_enforce_are_listed_and_warned_about():
+    """Every export dropped settings.budget without a word: GAPS.md lists the limits it does not enforce (all of
+    them in a flow or bridge, the conversation/day/month ones in a LangGraph project) and the editor warns (W026)."""
+    import pytest
+    from test_export_secrets import PACKAGERS, _workflow
+
+    from agentcanvas.services import github
+    from agentcanvas.validation import validate
+
+    base = _workflow({}).model_dump(mode="json")
+    budget = {"max_cost_usd": 0.5, "daily_max_cost_usd": 3}
+    wf = Workflow.model_validate({**base, "settings": {"budget": budget}})
+    for name, pack in PACKAGERS.items():
+        out: Any = pack(wf)
+        out = next(x for x in out if isinstance(x, bytes | dict)) if isinstance(out, tuple) else out
+        files = github.files_of(out) if isinstance(out, bytes) else {k.split("/", 1)[-1]: v for k, v in out.items()}
+        gaps: Any = files.get("GAPS.md", b"")
+        gaps = gaps if isinstance(gaps, str) else gaps.decode()
+        assert "cost per day (3)" in gaps, name
+        assert ("cost per run (0.5)" in gaps) == (name != "langgraph"), name  # the LangGraph service enforces it
+    plain = Workflow.model_validate(base)
+    assert not [d for d in validate(plain) if d.code == "W026"]
+    from agentcanvas.adapters.langchain import packager
+
+    _, zipped = packager.package(plain, source="")
+    assert "GAPS.md" not in github.files_of(zipped)  # nothing to list: no file
+    [w] = [d for d in validate(wf) if d.code == "W026"]
+    assert "cost per day" in w.message and "cost per run" not in w.message and "LangGraph" in w.message
+    crew = Workflow.model_validate({**base, "framework": "crewai", "settings": {"budget": {"max_seconds": 9}}})
+    [w] = [d for d in validate(crew) if d.code == "W026"]
+    assert "time per run" in w.message and "crewai" in w.message
+    with pytest.raises(StopIteration):
+        next(d for d in validate(Workflow.model_validate({**base, "settings": {"budget": {"max_tokens": 9}}}))
+             if d.code == "W026")  # fmt: skip
 
 
 GUARD_SCRIPT = """
