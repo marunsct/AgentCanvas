@@ -8,6 +8,55 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- Removing someone from an organisation now also deletes their API tokens and app connector connections there
+  (suspending still keeps them, refused until reactivated).
+- A project secret's value is now limited to 64 KB.
+- Client credentials an admin enters for a sign-in server are now used only for the app connector servers they were
+  entered with (enter the same client id with another server's address to add it), so another connector that names the
+  same sign-in server cannot receive tokens made with them; Connect asks before sending you to a sign-in server on
+  another host.
+- A connector set to act as the service account now uses the organisation's service connection only in runs no person
+  starts (schedules, webhooks, deployments, share links), a deployment's runs resumed from the inbox, and admins' own
+  runs; a builder's draft run is told to publish the workflow and run it there.
+- A published deployment's A2A agent card (and SCIM's Location) now gives the address callers can use behind the web
+  server: AGENTCANVAS_PUBLIC_URL + /api when set, otherwise the forwarded scheme and /api prefix; the web image's nginx
+  passes on https from a trusted proxy in front of it.
+- Runs started with a deployment key, a share link or a webhook now accept only files uploaded for that deployment (or
+  by the same share-link visitor), not the project's other files; a schedule's own input still uses any of the project's
+  files.
+- Listing conversations with a cursor from another organisation now answers "unknown cursor", and a thread id already in
+  use elsewhere is refused without saying where.
+- Unpublishing a deployment now switches its share link off and replaces it, and ends the visitors' conversations, so
+  publishing again does not bring back the old link.
+- LLM, pairwise and red-team judges are told that the workflow's input and output are data to grade, and an output can
+  no longer pose as part of the judge's instructions.
+- In docker and remote script execution, sandbox.json egress entries "*" and "~regex" (which only LangSmith understands)
+  are now reported as error E085 and refused at run time instead of silently allowing nothing; W074 is reported for
+  LangSmith only.
+- The sandbox egress proxy no longer passes a second request pipelined behind a plain-HTTP one to the upstream
+  unchecked; each connection carries one request and its body.
+- The HTTP tool, the hosted edition's model and MCP clients, knowledge-page fetching and the sandbox egress proxy now
+  refuse NAT64, IPv4-compatible, 6to4 and Teredo forms of private and cloud-metadata addresses.
+- Usage events (which carry a failed backup model's error text) now have project secret values masked like every other
+  run event.
+- The HTTP tool reads an answer only up to its response limit, so a very large or endless response no longer fills the
+  server's memory.
+- An event handler that starts (or resumes) a run whose code emits the same event no longer loops for ever: like emitted
+  events, such chains stop after 5 levels with an error in the event log.
+- In docker script execution, a cancelled or timed-out call can no longer leave its sandbox container running.
+- A sandboxed script that writes without end is stopped once its result passes 32 MB, and only the last 64 KB of what it
+  printed is kept, so it cannot fill the server's memory.
+- In the hosted edition, OpenAI and Azure OpenAI models and embedders always connect through the public-address client,
+  and other providers (and backups, embedders, Ollama's local default) may not set an address of their own.
+- A rotated project secret now reaches the next run at once; cached graphs kept the model clients and MCP tools built
+  with the old value.
+- Browsers no longer offer to fill a saved password into a new secret's value.
+- Several requests refused at once no longer each renew the sign-in, which could end the session and force a full sign-
+  in; a token that has already expired is renewed before the request is sent.
+- In the Helm chart, workspace code in the sandbox can no longer reach the cluster's DNS; the API passes it the egress
+  proxy's address (`AGENTCANVAS_EGRESS_PROXY_RESOLVE`).
+- The Helm chart trusts X-Forwarded-For from every RFC 1918 range by default, and the web image's `TRUSTED_PROXIES`
+  takes several ranges.
 - Single sign-on groups: on a server with several organisations, any organisation's groups table could enrol every person who signed in (an admin maps a claim every token carries, such as the issuer) and then list their names and addresses. A table now changes only its own members' and invitees' roles; adding others needs a single-organisation server or `AGENTCANVAS_SSO_GROUPS_ADD_MEMBERS=true`. The sync also no longer locks the organisation on requests where nothing changes.
 - SCIM: another organisation's directory could change the address of a person invited here who had not signed in yet, because an invitation is one user row for every organisation; whoever owned the new address then joined with this organisation's role. A pending user who belongs to another organisation can no longer be renamed or re-addressed through SCIM (409).
 - An error raised before a framework adapter could handle it (building the graph, reaching an MCP server, setting up
@@ -64,6 +113,106 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- A request that conflicts with a change saved at the same moment now gets a 409 Conflict asking to retry, instead of an
+  internal error.
+- When one organisation's data key cannot be unwrapped (for example after changing AGENTCANVAS_SECRET_KEY without
+  keeping the old master key), the API now starts, logs an error for that organisation and keeps trying, instead of
+  refusing to start.
+- The retention job now deletes all expired conversations in a tick (a batch at a time, within a time budget) instead of
+  at most 500 per organisation per hour, replicas share the work, and a conversation continued since the scan is kept.
+- Saving two project or organisation settings at the same moment (for example Copilot settings and knowledge defaults)
+  no longer loses one of the changes.
+- Reviewers and viewers can now connect (and disconnect) their own sign-in to an app connector, so a reviewer can resume
+  a run with their own connection.
+- Importing OpenAI Agents SDK code keeps the imports, constants and helpers its tools use, so the tools load and run;
+  tools without a docstring, with a run-context parameter, or run with agent.run_sync() import too.
+- CrewAI, Google ADK, OpenAI Agents, Mastra and the other flow frameworks no longer duplicate chat messages that a step
+  sends back with their ids, and honour message removals.
+- Pushing a Mastra flow to GitHub writes a CI check that runs its tests with Node.js, so the pull request's check no
+  longer fails.
+- A dated model id such as gpt-5-mini-2025-08-07 no longer gets a temperature its model refuses.
+- Imported path conditions whose text spans several lines now work; a comparison with an infinite number is listed in
+  the import report instead of failing at run time.
+- Imported Langflow, Flowise, n8n, Agent Spec and Agents SDK files no longer arrive with duplicate or reserved step and
+  block names.
+- Searching past conversations no longer finds experiment and test runs after you index older runs, and the "not indexed
+  yet" count is right on large projects.
+- The fine-tuning export no longer writes conversations with unanswered tool calls, or ones cut short when the run was
+  recorded; the preview lists them as left out, with the reason.
+- Searching a large knowledge base no longer holds up other requests on a server without pgvector, and semantic search
+  is faster.
+- Exporting a workflow with a large knowledge base, and searching many large knowledge bases on one server, takes far
+  less memory.
+- A web page you added to a knowledge base by hand is no longer removed when a sitemap that also listed it stops listing
+  it.
+- A knowledge base re-crawl where one page cannot be updated reports that page and carries on with the others, instead
+  of failing with a server error.
+- Knowledge bases built from web pages keep the text of pages that leave out </head> (common in minified HTML) or never
+  close a navigation menu.
+- Experiment results show how many examples each evaluator could not score, and a release gate no longer passes when
+  some examples went unscored. An online alert stays open while the evaluator fails to score live runs.
+- Copilot test runs and dry runs no longer call remote A2A or MCP agent steps; they record what would have been sent. A
+  test run also asks before using AI models that sit inside a subflow.
+- The Copilot runs at most 8 tools from one reply and tests the workflow at most 6 times per message, so a runaway
+  answer cannot run up model costs.
+- Accepting a Copilot proposal no longer overwrites workspace files you edited after the Copilot proposed its change; it
+  says which files changed and writes none.
+- When you accept a Copilot proposal while the Copilot is still answering, the new proposal keeps the file changes it
+  made on top of the accepted one.
+- A release gate no longer counts a simulated-user experiment as its evaluation; it runs the examples itself.
+- Knowledge bases chunked by markdown headings keep fenced code blocks whole: a # comment inside one no longer starts a
+  new section.
+- Red-team runs with model-written attacks no longer count an injection or jailbreak that never asked for the canary as
+  held; the built-in attacks take its place.
+- The retrieval evaluator matching by id now finds passages whose id has upper-case letters.
+- An LLM judge that replies with a score outside 0 to 1 (for example 7 on a 1-10 scale) or with true/false no longer
+  counts as a perfect pass; the example is left unscored with the reason.
+- Starting a run that fails on a database constraint other than a just-created thread no longer reports the misleading
+  "thread already has an active run".
+- After a restart (or on another replica) a run's secrets refresh and security check now use the workflow's own project
+  and organisation settings, not the default project's.
+- A long run's oldest events in memory now have long texts in step outputs and tool answers shortened, not only token
+  deltas, and trimming no longer slows down as the run grows.
+- A run whose full record could not be saved still records its tokens and cost, so budgets and spending reports count
+  it.
+- Cancelling a run the instant it starts no longer leaves its conversation stuck as running.
+- Reading text from pictures no longer raises the image-size safety limit for the whole server; each page of a multi-
+  page picture is size-checked and read in turn.
+- Debug runs with mocked models now search the project's knowledge bases and read its files like normal runs, instead of
+  losing them.
+- Runs that fail, are cancelled or hit their time budget now record the tokens and cost of the model calls they made
+  before stopping.
+- An Inbox answer whose run was cancelled or stopped by a restart before it took, or a question the run asks again,
+  shows in the Inbox again instead of staying decided.
+- A shared chat link no longer loses the end of an answer when the connection closes right after it, or behind a proxy
+  that rewrites line endings.
+- In the Inbox a decided item disappears straight away instead of staying clickable, deciding one item no longer blocks
+  the others, and an error shows on the item it belongs to.
+- Scrolling up in the Copilot to read an earlier message is no longer undone by the answer streaming in; sending a
+  message follows the answer again.
+- Double-clicking Send in the Copilot no longer starts the same request twice.
+- Leaving the Playground while an answer is being written now stops it instead of letting the model run on unseen.
+- A page that crashed no longer stays on screen after moving to another page, the top bar stays usable, and a page that
+  could not be downloaded after an update says so and offers Reload.
+- Queued and cancelled experiments no longer show a red status badge; only a failed one does.
+- A running experiment's results no longer flash "Loading results…" every second; they refresh in place every few
+  seconds.
+- After the server refuses an edit, the save badge says "Not saved" (hover for the reason) instead of "Saved".
+- Undo and redo pressed while an edit is still being saved now happen once the save lands, instead of being ignored.
+- Edits made in the moment the editor reloads after a conflicting or refused edit are no longer lost, and undo waits
+  until the reload is done.
+- Save as test case now shows why saving failed, and a double-click saves one test case.
+- Edits typed into a checkpoint's state in the Timeline are no longer wiped when a run ends and the history reloads.
+- A run left streaming in a background tab keeps updating (approvals, the result) instead of waiting until the tab is
+  shown again.
+- Opening a past run from the Runs tab while a run is streaming no longer mixes the live run's steps into it: the rows
+  wait until the run ends, and a thread opened any other way stops the old stream.
+- Forking from a checkpoint starts from a clean canvas instead of keeping the earlier run's node colours, streamed text
+  and costs.
+- A reviewer approving or rejecting a step is no longer refused because Dry run was ticked or pins were left in the
+  browser; the debug options are shown only to builders.
+- Double-clicking Approve, Reject, Continue or Fork no longer sends the decision twice and shows a false conflict error;
+  the buttons wait until the run has started.
 - Git sync: a workflow connected to a repository's root (no folder) opened a pull request that deleted every other file of the repository, and a folder link removed other workflows' sub-folders. A push now records the files it writes in `.agentcanvas-files` and removes only files an earlier push wrote.
 - An exported project whose workflow has an app connector or MCP server no longer fails its own smoke test on a machine that cannot reach that server: the test builds the graph with a recorded tool in its place.
 - The API no longer stops at start-up when neither `AGENTCANVAS_PUBLIC_URL` nor a CORS origin is set (the production compose files set neither): signing in to an app connector then says to set the public address.
@@ -424,6 +573,28 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- A staging or production server now warns at startup when AGENTCANVAS_KMS_KEY is empty, and the deployment guide
+  explains how to change AGENTCANVAS_SECRET_KEY without losing project secrets.
+- GAPS.md of an export lists the workflow budget limits it does not enforce, and the editor warns about them (W026).
+- A LangGraph export's service stops a run at the workflow budget's token, cost and time limits per run, as AgentCanvas
+  does.
+- Workflows on GPT-5 mini or Gemini 2.5 Pro/Flash warn before the provider stops serving them; GPT-5.6 Sol, Terra, Luna
+  and Gemini 3.8 Flash appear in the model list.
+- DeepSeek and xAI models default to deepseek-v4-pro and grok-4.7; workflows still on deepseek-chat or deepseek-reasoner
+  get a warning that DeepSeek no longer serves them.
+- Costs and budgets now count Claude Fable 5, Opus 5, Opus 4.8, 4.7 and 4.6, Sonnet 5 and Sonnet 4.6, Claude Haiku 5.5
+  prompts above 100K tokens at their long-context price, and Sonnet 5.5 cache reads at $0.20.
+- Press ? on any page (outside a field) to open the keyboard shortcuts.
+- A shared chat whose last message never finishes answering stops checking after three minutes and offers Check again or
+  Stop waiting, instead of staying locked.
+- While the canvas is coloured by a version comparison it shows "Comparing with vX · Clear", even after the Versions tab
+  is closed, and opening another workflow drops the comparison.
+- While a test run in a tab waits for an approval or an answer, the tab's title starts with "(waiting)".
+- In the test-run chat, the message you send appears straight away instead of after the answer.
+- The Helm chart adds PodDisruptionBudgets (`podDisruptionBudget.*`) and spreads the API, web, sandbox and egress pods
+  across nodes (`topologySpread.*`).
+- The Helm chart can sign in through Matura (`config.authMode: matura`, `config.matura.*`) and refuses `scriptExecution:
+  remote` with the sandbox service turned off.
 - Red teaming has a multi-turn category for chat workflows: conversations that escalate over several messages and then ask for a secret phrase, built in or written by an attacker model.
 - A caller with a deployment key can upload a file with `POST /v1/deployments/{id}/files` and send its reference in the run's input, instead of sending the bytes inline as base64.
 - App connectors whose provider has neither client ID metadata documents nor dynamic registration can be used: an admin enters the client id and secret made at the provider under Settings › Connections.
@@ -735,6 +906,24 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- The support triage example starts on GPT-5.6 Luna instead of the retiring GPT-5 mini.
+- A temperature set on any Claude model (including Haiku 4.5, Sonnet 4.5 and ids the catalog does not list) is no longer
+  sent, so those runs stop failing with a 400; W020 says so in the editor.
+- The "API down" alert no longer fires forever with the standard kubernetes-pods scrape job, and every alert links to
+  runbooks that now exist.
+- Compose backups now include the workspaces volume, a restore onto a new Postgres server re-creates the API's database
+  role first, and the deploy guide lists the keys to keep with each backup.
+- `make infra` publishes Postgres and Keycloak on 127.0.0.1 only and no longer starts Redis, which the API never used.
+- The production compose file binds the web port to 127.0.0.1 by default (`WEB_BIND`), runs the API with a read-only
+  root, no capabilities and a memory limit, and pins the Postgres image by digest; the deploy guide explains Postgres
+  major upgrades.
+- The production compose file starts Postgres with `max_connections=200` (`POSTGRES_MAX_CONNECTIONS`), and the deploy
+  guide gives the formula for sizing it.
+- With Docker Compose, every setting in `infra/.env.prod` (or `infra/.env.local`) now reaches the API, not only a fixed
+  list; `AGENTCANVAS_EGRESS_ALLOW_PRIVATE` reaches the egress proxy.
+- The Helm chart no longer assumes published images (set `image.api.repository` and `image.web.repository`), and `helm
+  install`/`upgrade` fail when the Secret lacks `LANGGRAPH_AES_KEY`, `AGENTCANVAS_SANDBOX_TOKEN` or
+  `AGENTCANVAS_EGRESS_SECRET`; the deploy guide lists every key.
 - The server uses the Anthropic SDK 2.3 and LangChain's Anthropic package 1.7.7, the current major versions.
 - No change for users: the end-to-end tests for the editor, debugging and Google ADK now pass with a real model as
   well as the demo one. (HARDENING section 5).
