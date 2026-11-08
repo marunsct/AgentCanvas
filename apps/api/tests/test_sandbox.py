@@ -488,3 +488,32 @@ async def test_the_run_gate_checks_again_after_the_workspace_changes():
     registries.append(object())  # the workspace code changed: a new registry
     await gate(wf)
     assert len(checked) == 2
+
+
+async def test_the_run_gate_is_not_fooled_by_a_reused_object_id(monkeypatch):
+    """RT-11: the cache key held `id(registry)`, which CPython hands to a new object once the old one is freed, so
+    new workspace code could pass on an older check. Keyed on the workspace revision (or the registry itself)."""
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services import run_gate
+    from agentcanvas.settings import Settings
+
+    monkeypatch.setattr(run_gate, "id", lambda obj: 42, raising=False)  # every registry gets the freed one's id
+    registries = [object()]
+    gate = run_gate.RunGate(Settings(), registry=lambda wf: registries[-1])
+    checked: list[object] = []
+    gate.blockers = lambda wf, registry=None: checked.append(registry) or []  # type: ignore[method-assign]
+    wf = Workflow.model_validate({"id": "wf_g", "name": "g", **GREETER})
+    await gate(wf)
+    registries.append(object())
+    await gate(wf)
+    assert len(checked) == 2
+    revisions = ["r1"]
+    gate = run_gate.RunGate(Settings(), registry=lambda wf: registries[-1], revision=lambda wf: revisions[-1])
+    gate.blockers = lambda wf, registry=None: checked.append(registry) or []  # type: ignore[method-assign]
+    await gate(wf)
+    await gate(wf)
+    revisions.append("r2")
+    await gate(wf)
+    assert len(checked) == 4

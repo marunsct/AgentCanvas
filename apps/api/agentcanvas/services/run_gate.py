@@ -32,11 +32,14 @@ class RunGate:
         settings: Settings,
         registry: Callable[[Workflow], Any] | None = None,
         settings_for: Callable[[Workflow], Awaitable[Settings]] | None = None,
+        revision: Callable[[Workflow], str] | None = None,
     ):
         self.settings = settings
         self.registry = registry  # the workflow's project registry (built-ins + workspace custom nodes)
         self.settings_for = settings_for  # the settings that apply to the workflow's organisation
-        self._passed: OrderedDict[str, None] = OrderedDict()
+        self.revision = revision  # the workflow's project workspace code revision
+        # passed checks -> the registry they were made with: kept alive, so its id is not reused by another (RT-11)
+        self._passed: OrderedDict[str, Any] = OrderedDict()
 
     def blockers(self, wf: Workflow, registry: Any = None, settings: Settings | None = None) -> list[dict[str, Any]]:
         settings = settings or self.settings
@@ -52,9 +55,11 @@ class RunGate:
         registry = self.registry(wf) if self.registry else None
         settings = await self.settings_for(wf) if self.settings_for else self.settings
         # the project's registry is rebuilt when its workspace code changes, and some rules read that code (E080
-        # imports from outside the workspace): a passed check holds for this code only (R-11)
-        key = f"{settings.edition}:{settings.allow_local_mcp}:{ir_hash(wf)}:{id(registry)}"
-        if key in self._passed:
+        # imports from outside the workspace): a passed check holds for this code only (R-11). The code's revision
+        # names it; without one the registry object does (CPython reuses a freed object's id, so the entry holds it)
+        code = self.revision(wf) if self.revision else str(id(registry))
+        key = f"{settings.edition}:{settings.allow_local_mcp}:{ir_hash(wf)}:{code}"
+        if key in self._passed and (self.revision or self._passed[key] is registry):
             self._passed.move_to_end(key)
             return
         errors = self.blockers(wf, registry, settings) if settings is not self.settings else self.blockers(wf, registry)
@@ -64,6 +69,6 @@ class RunGate:
                 "it cannot run until they are fixed",
                 errors=errors,
             )
-        self._passed[key] = None
+        self._passed[key] = None if self.revision else registry
         while len(self._passed) > CACHE_SIZE:
             self._passed.popitem(last=False)

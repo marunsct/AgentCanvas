@@ -222,6 +222,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     lambda wf: app.state.org_settings.for_project(
                         settings, projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)
                     ),
+                    lambda wf: app.state.projects.workspace(
+                        projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)
+                    ).revision(),
                 )
             )
             app.state.events = EventService(db, runner, app.state.projects)
