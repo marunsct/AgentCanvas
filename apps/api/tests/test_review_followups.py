@@ -301,8 +301,10 @@ def test_a_production_server_without_an_isolating_sandbox_says_so():
     from agentcanvas.api.main import sandbox_hint
     from agentcanvas.settings import Settings
 
-    assert sandbox_hint(Settings(env="prod", script_execution="subprocess"))
+    hint = sandbox_hint(Settings(env="prod", script_execution="subprocess"))
+    assert hint and "AGENTCANVAS_SCRIPT_EXECUTION=remote" in hint  # the isolating mode the deploy files use
     assert sandbox_hint(Settings(env="staging", script_execution="inprocess"))
+    assert sandbox_hint(Settings(env="prod", script_execution="remote")) is None
     assert sandbox_hint(Settings(env="prod", script_execution="docker")) is None
     assert sandbox_hint(Settings(env="prod", script_execution="langsmith")) is None
     assert sandbox_hint(Settings(env="dev", script_execution="inprocess")) is None

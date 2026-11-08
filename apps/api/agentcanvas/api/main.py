@@ -75,8 +75,8 @@ def sandbox_hint(settings: Settings) -> str | None:
     """A warning for a staging or production server whose workspace code is not isolated from the API."""
     if settings.env in ("staging", "prod") and settings.script_execution in ("inprocess", "subprocess"):
         return (
-            "workspace code runs as the API's user and can read its files; set AGENTCANVAS_SCRIPT_EXECUTION=docker "
-            "or langsmith when people you do not trust can edit workspaces"
+            "workspace code runs as the API's user and can read its files; set AGENTCANVAS_SCRIPT_EXECUTION=remote "
+            "(the sandbox service), docker or langsmith when people you do not trust can edit workspaces"
         )
     return None
 
