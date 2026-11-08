@@ -198,3 +198,28 @@ async def test_usage_of_a_cancelled_run_is_recorded(app, api_client, monkeypatch
     run = (await api_client.get(f"/v1/runs/{run_id}")).json()
     assert run["status"] == "cancelled" and run["tokens_in"] == 120 and run["tokens_out"] == 30
     assert run["cost_usd"] > 0
+
+
+# ------------------------------------------------------------------ RT-12 ----
+async def test_a_run_saved_the_bare_way_keeps_its_usage(app, api_client, monkeypatch):
+    """RT-12: when saving a run in full failed, the fallback kept its status but dropped its tokens and cost, so
+    budgets and spending reports missed what it spent."""
+    from test_publish import make_greeter
+
+    from agentcanvas.runtime import runner as runner_module
+
+    def broken(*a: Any, **k: Any) -> Any:
+        raise ValueError("the events cannot be stored")
+
+    monkeypatch.setattr(runner_module, "compact", broken)  # the full save fails
+    real = app.state.runner.adapters["langchain"]
+
+    async def graph(wf, resources):
+        return SpendsThen("raise")
+
+    monkeypatch.setattr(real, "graph", graph)
+    wf = await make_greeter(api_client)
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "stream": False})
+    await app.state.runner.wait(r.json()["run_id"])
+    run = (await api_client.get(f"/v1/runs/{r.json()['run_id']}")).json()
+    assert run["status"] == "error" and run["tokens_in"] == 120 and run["tokens_out"] == 30 and run["cost_usd"] > 0

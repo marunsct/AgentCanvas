@@ -721,18 +721,25 @@ class Runner:
     async def _finish_bare(self, h: RunHandle, status: str, error: str | None, thread_status: str) -> None:
         """The least a finished run must leave in the database when saving everything failed (a recording or a usage
         figure the column cannot store): its status and a free thread. Without it the thread would stay 'running' and
-        refuse every later message."""
-        try:
-            async with self.db.sessionmaker() as s:
-                await s.execute(
-                    update(Run)
-                    .where(Run.id == h.run_id, Run.status == "running")
-                    .values(status=status, error=error, ended_at=datetime.now(UTC), handover=h.drained)
-                )
-                await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
-                await s.commit()
-        except Exception:
-            log.exception("run.finish_bare_failed", run_id=h.run_id)
+        refuse every later message. Its tokens and cost are kept too (budgets and reports count them), unless they
+        are what could not be stored."""
+        usage = {
+            "tokens_in": h.usage["input_tokens"], "tokens_out": h.usage["output_tokens"],
+            "cost_usd": h.usage["cost_usd"], "cache_hits": h.usage["cache_hits"], "fallbacks": h.usage["fallbacks"],
+        }  # fmt: skip
+        for extra in (usage, {}):
+            try:
+                async with self.db.sessionmaker() as s:
+                    await s.execute(
+                        update(Run)
+                        .where(Run.id == h.run_id, Run.status == "running")
+                        .values(status=status, error=error, ended_at=datetime.now(UTC), handover=h.drained, **extra)
+                    )
+                    await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
+                    await s.commit()
+                return
+            except Exception:
+                log.exception("run.finish_bare_failed", run_id=h.run_id, with_usage=bool(extra))
 
     def _priced(self, h: RunHandle, raw: dict[str, Any]) -> dict[str, Any]:
         """Add the cost to a usage event and to the run's totals."""
