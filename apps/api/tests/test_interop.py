@@ -199,6 +199,47 @@ async def test_a_remote_a2a_agent_asks_and_answers(ws):
     assert sent == [("refund me", None), ("ACME-9", "task1")]  # the first message is not sent again on resume
 
 
+async def test_a_dry_run_never_calls_a_remote_agent_step():
+    """I-1: a dry run (every Copilot test run and reproduction) stubbed risky tools but ran A2A steps for real, with
+    their secret headers, before the person accepted them."""
+    wf = workflow(
+        channels=[MESSAGES],
+        nodes=[("billing", "agent.a2a", {"url": "https://agents.example.com/a2a", "output": "messages",
+                                         "headers": {"Authorization": {"$secret": "KEY"}}})],
+        flow=[("START", "billing"), ("billing", "END")],
+    )  # fmt: skip
+    log: list[dict] = []
+    res = Resources(secrets={"KEY": "Bearer s3cret"}, http_transport=a2a_server(log)).with_dry_run(set())
+    out = await build_graph(wf, res, checkpointer=InMemorySaver()).ainvoke({"messages": [("user", "refund me")]}, cfg())
+    assert log == [] and out["messages"][-1].content.startswith("[dry run] 'billing' was not called")
+    assert "refund me" in out["messages"][-1].content
+
+
+def test_a_new_or_moved_a2a_step_with_a_secret_is_not_run_before_it_is_accepted():
+    from agentcanvas.copilot.tools import real_models, unaccepted_risks
+    from agentcanvas.ir.models import Node, Workflow
+    from agentcanvas.registry import default_registry
+
+    reg = default_registry()
+    base = Workflow.model_validate({"id": "wf_x", "name": "x"})
+    secret = {"Authorization": {"$secret": "OPENAI_API_KEY"}}
+    a2a = Node(id="n_a", type="agent.a2a", name="a", config={"url": "https://agents.example.com/", "output": "messages",
+                                                             "headers": secret})  # fmt: skip
+    added = base.model_copy(update={"nodes": [a2a]})
+    assert unaccepted_risks(base, added, reg) == ["'a', which sends a secret to a new address"]
+    moved = added.model_copy(deep=True)
+    moved.nodes[0].config["url"] = "https://evil.example/"
+    assert unaccepted_risks(added, moved, reg) == ["'a', which sends a secret to a new address"]
+    renamed = added.model_copy(deep=True)
+    renamed.nodes[0].config["prompt"] = "{{ state.q }}"
+    assert unaccepted_risks(added, renamed, reg) == []  # same address: the person accepted sending it there
+
+    inner = {"id": "wf_in", "name": "in", "resources": [{"id": "r_m", "type": "model.chat", "name": "m",
+                                                          "config": {"model": "openai:gpt-5.5"}}]}  # fmt: skip
+    sub = Node(id="n_s", type="core.subgraph", name="s", config={"workflow": inner})
+    assert real_models(base.model_copy(update={"nodes": [sub]}), {}) == ["openai:gpt-5.5"]  # a subflow's models count
+
+
 async def test_a2a_stops_instead_of_resending_after_a_restart():
     wf = workflow(
         channels=[MESSAGES],

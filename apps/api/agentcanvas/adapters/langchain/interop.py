@@ -482,6 +482,24 @@ async def _a2a_endpoint(client: Any, url: str, headers: dict[str, str], private_
     return await _pinned(endpoint, headers, private_ok)
 
 
+def dry_run_node(*, name: str, framework: str, output: str, sent: Callable[[Any], Any]) -> Callable:
+    """A step that would act outside (a remote agent) as a dry run has it: it records what it would have sent
+    (`sent(state)`) and answers with a note, never calling out (FR-X-02)."""
+
+    async def run(state: Any) -> dict:
+        what = json.loads(json.dumps(sent(state), default=str))
+        try:
+            get_stream_writer()({"ac_dry_run": {"tool": name, "args": what}})
+        except Exception:  # noqa: BLE001 - outside a graph run there is no stream to record to
+            pass
+        _trace(node=name, framework=framework, input=json.dumps(what)[:800], skipped=True)
+        return _update(output, name, f"[dry run] '{name}' was not called. It would have received: "
+                       f"{json.dumps(what)[:800]}")  # fmt: skip
+
+    run.__name__ = name
+    return run
+
+
 # ------------------------------------------------------------- remote: MCP ----
 def mcp_agent_node(
     *, node_id: str, name: str, tools: list[Any], tool: str, arguments: dict[str, str], output: str = "messages",

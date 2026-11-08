@@ -16,6 +16,7 @@ from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.plan import Plan, PlannedResource, lower
 from agentcanvas.ir.models import Workflow
+from agentcanvas.validation.blast import stubbed_in_dry_run
 
 _SPECIAL = {"START": START, "END": END}
 MEMORY_OPS = {"core.memory_recall": "recall", "core.memory_remember": "remember", "core.memory_forget": "forget"}
@@ -152,6 +153,27 @@ def designed_agent(plan: Plan, n: Any, model: Any, tools: list[Any]) -> Any:
     )
 
 
+def _registry(resources: Any) -> Any:
+    provider = getattr(resources, "registry", None)
+    return provider() if callable(provider) else None
+
+
+def _dry_run_step(n: Any) -> Any:
+    """Step `n` (a remote agent) as a dry run has it: it records what it would have sent and calls nobody."""
+    cfg = n.config
+    if n.type == "agent.mcp":
+        arguments = cfg.get("arguments") or {}
+        return interop.dry_run_node(
+            name=n.name, framework="mcp", output=cfg.get("output", "messages"),
+            sent=lambda state: {k: interop.render_template(v, state) for k, v in arguments.items()},
+        )  # fmt: skip
+    prompt = cfg.get("prompt", "")
+    return interop.dry_run_node(
+        name=n.name, framework=n.type.removeprefix("agent."), output=cfg.get("output", "messages"),
+        sent=lambda state: {"message": interop._input_text(prompt, state)},
+    )  # fmt: skip
+
+
 def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, store=None, cache: BaseCache | None = None):
     State = ac.make_state_type("State", plan.channels)
     Input, Output = ac.make_io_types(plan.channels, plan.settings)
@@ -160,6 +182,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
     ac.apply_node_defaults(builder, plan.settings.get("node_defaults"))
     routes: dict[str, Any] = {}
     objs: dict[str, Any] = {}
+    registry = _registry(resources) if resources.dry_run is not None else None
     for pr in plan.resources:
         objs[pr.resource.name] = _resource(pr, plan, resources, objs)
 
@@ -305,6 +328,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             )
         else:  # pragma: no cover - the validator rejects unknown types first
             raise ValueError(f"unsupported node type {n.type}")
+        if resources.dry_run is not None and p.pinned is None and not p.bypass and stubbed_in_dry_run(n, registry):
+            fn = _dry_run_step(n)  # a remote agent: a dry run (a test run, the Copilot's too) never calls it
         builder.add_node(n.name, fn, metadata={"canvas_node_id": n.id}, **ac.node_options(**p.options))
 
     for src, dst in plan.plain_edges:

@@ -126,6 +126,17 @@ def blast_radius(wf: Workflow, registry: Registry | None = None) -> BlastRadius:
     return out
 
 
+STUBBED_NODE_EFFECTS = {"external_write", "message_send"}  # a step that acts outside by itself (a remote agent)
+
+
+def stubbed_in_dry_run(n: Node, registry: Registry | None = None) -> bool:
+    """Whether a dry run replaces step `n` by a recorder: its block writes externally or sends messages by itself
+    (an A2A or MCP agent step), as its manifest's `side_effects` say. Code steps still run: what they run is checked
+    before a test run instead."""
+    m = (registry or default_registry()).get(n.type)
+    return bool(m and set(m.side_effects or []) & STUBBED_NODE_EFFECTS)
+
+
 def dry_run_tools(wf: Workflow, registry: Registry | None = None) -> set[str]:
     """Tool names a dry run replaces by recorders: every tool with a risky capability (subgraphs included)."""
     registry = registry or default_registry()

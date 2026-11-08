@@ -295,8 +295,12 @@ def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[
         m = registry.get(n.type) if registry else None
         runs_code = n.type == "core.script" or (m is not None and "code_exec" in (m.side_effects or []))
         old = old_nodes.get(n.id)
-        if runs_code and (old is None or old.type != n.type or old.config != n.config):
+        changed = old is None or old.type != n.type or old.config != n.config
+        if runs_code and changed:
             out.append(f"the new or changed code step '{n.name}'")
+        elif changed and secret_refs(n.config) and _endpoint(n.config) != _endpoint(old.config if old else {}):
+            # a remote agent step (A2A) with a secret header: a dry run stubs it, but never risk the secret
+            out.append(f"'{n.name}', which sends a secret to a new address")
     for r in resources:
         old = old_resources.get(r.name)
         if old is not None and old.type == r.type and old.config == r.config:
@@ -349,9 +353,10 @@ async def run_test(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def real_models(wf: Workflow, mocks: dict[str, Any]) -> list[str]:
-    """The workflow's chat models a test run would call for real (those without scripted replies in `mocks`)."""
+    """The workflow's chat models a test run would call for real (those without scripted replies in `mocks`),
+    subgraphs' included."""
     return sorted(
-        str(r.config.get("model") or r.name) for r in wf.resources if r.type == "model.chat" and r.name not in mocks
+        {str(r.config.get("model") or r.name) for r in _flat(wf)[1] if r.type == "model.chat" and r.name not in mocks}
     )
 
 
