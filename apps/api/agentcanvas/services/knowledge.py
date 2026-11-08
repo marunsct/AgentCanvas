@@ -35,7 +35,7 @@ from typing import Any, ClassVar, Literal
 from urllib.parse import urljoin, urlsplit
 
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import and_, delete, func, null, or_, select, text
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
@@ -71,6 +71,8 @@ MAX_PAGE_BYTES = 5 * 1024 * 1024
 URL_TIMEOUT_S = 20.0
 EMBED_BATCH = 64
 INDEX_CACHE = 16  # knowledge bases held in memory per instance
+INDEX_CACHE_BYTES = 256 * 2**20  # and about this much of their text and vectors at most; a bigger one is not kept
+EXPORT_BATCH = 1000  # chunks read at a time by an export
 SAMPLES = Path(__file__).resolve().parent.parent / "registry" / "knowledge"
 TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".rst", ".log", ".yaml", ".yml"}
 SUFFIXES = TEXT_SUFFIXES | {".pdf", ".docx", ".html", ".htm"} | ocr.IMAGE_SUFFIXES
@@ -386,6 +388,15 @@ def pack(vector: Sequence[float]) -> bytes:
     return a.tobytes()
 
 
+def compact(data: bytes | None) -> array[float] | None:
+    """A stored vector as a float32 array: a quarter of a list of Python floats in memory (I-6)."""
+    if not data:
+        return None
+    a = array("f")
+    a.frombytes(data)
+    return a
+
+
 def unpack(data: bytes | None) -> list[float] | None:
     if not data:
         return None
@@ -415,7 +426,7 @@ def literal(vector: Sequence[float]) -> str:
 
 
 # ---------------------------------------------------------------- the index ----
-_INDEX: OrderedDict[str, tuple[int, ks.Index]] = OrderedDict()  # kb id -> (version, index)
+_INDEX: OrderedDict[str, tuple[int, ks.Index, int]] = OrderedDict()  # kb id -> (version, index, its size in bytes)
 _PGVECTOR: dict[str, tuple[int, ...] | None] = {}  # database -> pgvector's version, when the chunks are searched there
 _COMPARABLE: OrderedDict[tuple[str, int, int], bool] = OrderedDict()  # (kb id, version, dims) -> one model's vectors
 _INSERT = text(
@@ -946,12 +957,22 @@ class KnowledgeService:
         return out
 
     # -------------------------------------------------------------------- search ----
+    async def _heads(self, kb_id: str) -> dict[str, tuple[str, str]]:
+        """Per document: (title, source) for search results, read without the documents' whole text (I-6)."""
+        rows = await self.s.execute(
+            select(
+                KnowledgeDocument.id, KnowledgeDocument.source, KnowledgeDocument.name, KnowledgeDocument.url,
+                func.substr(KnowledgeDocument.content, 1, 2000).label("head"),
+            ).where(KnowledgeDocument.kb_id == kb_id)
+        )  # fmt: skip
+        return {r.id: (title_of(r.source, r.name, r.head or ""), r.url or r.name) for r in rows.all()}
+
     async def index(self, kb: KnowledgeBase) -> ks.Index:
         cached = _INDEX.get(kb.id)
         if cached and cached[0] == kb.version:
             _INDEX.move_to_end(kb.id)
             return cached[1]
-        docs = {d.id: d for d in await self.documents(kb.id)}
+        docs = await self._heads(kb.id)
         if await self.pgvector() is None:
             rows: Sequence[Any] = (
                 await self.s.scalars(
@@ -960,7 +981,7 @@ class KnowledgeService:
                     .order_by(KnowledgeChunk.doc_id, KnowledgeChunk.ordinal)
                 )
             ).all()
-            vectors = [unpack(r.vector) for r in rows]
+            vectors: list[Any] = [compact(r.vector) for r in rows]
         else:  # the vectors are in the pgvector column
             rows = (
                 await self.s.execute(
@@ -971,20 +992,23 @@ class KnowledgeService:
                     {"kb": kb.id},
                 )
             ).all()
-            vectors = [json.loads(r.embedding) if r.embedding else None for r in rows]
+            vectors = [array("f", json.loads(r.embedding)) if r.embedding else None for r in rows]
         chunks = []
         for r, vector in zip(rows, vectors, strict=True):
-            doc = docs.get(r.doc_id)
-            if doc is None:
+            head = docs.get(r.doc_id)
+            if head is None:
                 continue
             chunks.append({
-                "id": r.id, "doc_id": r.doc_id, "title": self._title(doc), "source": doc.url or doc.name,
+                "id": r.id, "doc_id": r.doc_id, "title": head[0], "source": head[1],
                 "text": r.text, "page": r.page, "heading": r.heading, "vector": vector,
             })  # fmt: skip
         index = await asyncio.to_thread(ks.Index, chunks)
-        _INDEX[kb.id] = (kb.version, index)
-        while len(_INDEX) > INDEX_CACHE:
-            _INDEX.popitem(last=False)
+        size = sum(2 * len(c["text"]) + 4 * len(c["vector"] or ()) + 400 for c in chunks)  # roughly, with its terms
+        _INDEX.pop(kb.id, None)
+        if size <= INDEX_CACHE_BYTES:
+            _INDEX[kb.id] = (kb.version, index, size)
+            while len(_INDEX) > INDEX_CACHE or sum(x[2] for x in _INDEX.values()) > INDEX_CACHE_BYTES:
+                _INDEX.popitem(last=False)
         return index
 
     async def search(
@@ -1101,9 +1125,57 @@ class KnowledgeService:
     async def export(self, kb: KnowledgeBase) -> str:
         """The knowledge base as `knowledge/<name>.jsonl` for exported projects. A stale one ships without its
         vectors (they may be another model's than the header names), so the export searches it by keywords too."""
-        index = await self.index(kb)
-        chunks = [{**c, "vector": None} for c in index.chunks] if kb.stale else index.chunks
-        return ks.dump_jsonl(kb.name, kb.embedding, chunks)
+        out = io.StringIO()
+        out.write(ks.jsonl_header(kb.name, kb.embedding) + "\n")
+        # read from the database a batch at a time, never cached: an export is a one-off (I-6). Built-in vectors
+        # are recomputed on loading, a stale base's left out: then they are not even read
+        vectors = (kb.embedding.get("model") or ks.BUILTIN) != ks.BUILTIN and not kb.stale
+        heads = await self._heads(kb.id)
+        pg = await self.pgvector() is not None
+        after: tuple[str, int] = ("", -1)
+        while True:
+            if pg:
+                vector_col = "CAST(embedding AS text)" if vectors else "NULL"
+                rows = (
+                    await self.s.execute(
+                        text(
+                            f"SELECT id, doc_id, ordinal, text, page, heading, {vector_col} AS vector FROM "
+                            "knowledge_chunk WHERE kb_id = :kb AND (doc_id > :d OR (doc_id = :d AND ordinal > :o)) "
+                            "ORDER BY doc_id, ordinal LIMIT :n"
+                        ),
+                        {"kb": kb.id, "d": after[0], "o": after[1], "n": EXPORT_BATCH},
+                    )
+                ).all()
+            else:
+                cols = [KnowledgeChunk.id, KnowledgeChunk.doc_id, KnowledgeChunk.ordinal, KnowledgeChunk.text,
+                        KnowledgeChunk.page, KnowledgeChunk.heading]  # fmt: skip
+                rows = (
+                    await self.s.execute(
+                        select(*cols, (KnowledgeChunk.vector if vectors else null()).label("vector"))
+                        .where(
+                            KnowledgeChunk.kb_id == kb.id,
+                            or_(
+                                KnowledgeChunk.doc_id > after[0],
+                                and_(KnowledgeChunk.doc_id == after[0], KnowledgeChunk.ordinal > after[1]),
+                            ),
+                        )
+                        .order_by(KnowledgeChunk.doc_id, KnowledgeChunk.ordinal)
+                        .limit(EXPORT_BATCH)
+                    )
+                ).all()
+            for r in rows:
+                if (head := heads.get(r.doc_id)) is None:
+                    continue
+                if not vectors or r.vector is None:
+                    vector = None
+                else:
+                    vector = json.loads(r.vector) if pg else compact(r.vector)
+                chunk = {"id": r.id, "doc_id": r.doc_id, "title": head[0], "source": head[1], "text": r.text,
+                         "page": r.page, "heading": r.heading, "vector": vector}  # fmt: skip
+                out.write(ks.jsonl_row(chunk, keep_vector=vectors) + "\n")
+            if len(rows) < EXPORT_BATCH:
+                return out.getvalue()
+            after = (rows[-1].doc_id, rows[-1].ordinal)
 
     # ------------------------------------------------------------------- samples ----
     async def sample(self, project_id: str, name: str = "handbook", user_id: str | None = None) -> KnowledgeBase:

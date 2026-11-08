@@ -289,13 +289,21 @@ def dump_jsonl(name: str, embedding: dict[str, Any], chunks: Sequence[dict[str, 
     """A knowledge base as JSON lines: a header, then one chunk per line. Built-in vectors are left out (loading
     recomputes them); a provider model's are kept, since recomputing them needs the provider."""
     builtin = (embedding.get("model") or BUILTIN) == BUILTIN
-    lines = [json.dumps({"knowledge_base": name, "embedding": {"model": embedding.get("model") or BUILTIN}})]
-    for c in chunks:
-        row = {k: c.get(k) for k in ("id", "doc_id", "title", "source", "text", "page", "heading")}
-        if not builtin and c.get("vector"):
-            row["vector"] = [round(float(v), 6) for v in c["vector"]]
-        lines.append(json.dumps(row, ensure_ascii=False))
+    lines = [jsonl_header(name, embedding), *(jsonl_row(c, keep_vector=not builtin) for c in chunks)]
     return "\n".join(lines) + "\n"
+
+
+def jsonl_header(name: str, embedding: dict[str, Any]) -> str:
+    """The first line of `dump_jsonl`."""
+    return json.dumps({"knowledge_base": name, "embedding": {"model": embedding.get("model") or BUILTIN}})
+
+
+def jsonl_row(c: dict[str, Any], *, keep_vector: bool) -> str:
+    """One chunk's line of `dump_jsonl`."""
+    row = {k: c.get(k) for k in ("id", "doc_id", "title", "source", "text", "page", "heading")}
+    if keep_vector and c.get("vector"):
+        row["vector"] = [round(float(v), 6) for v in c["vector"]]
+    return json.dumps(row, ensure_ascii=False)
 
 
 def load_jsonl(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:

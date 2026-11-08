@@ -173,6 +173,39 @@ async def test_a_stale_knowledge_base_is_searched_by_keywords_until_it_is_reinde
         assert calls == [["lost laptop"]]
 
 
+async def test_an_export_reads_the_database_in_batches_and_caches_nothing(app, monkeypatch):
+    """I-6: an export built the whole in-memory index (every vector a list of Python floats) and cached it, and
+    the cache held up to 16 such bases however big they were."""
+    from array import array
+
+    async def provider(texts):
+        return [[0.25, float(len(t) % 5), 1.0] for t in texts]
+
+    def factory(spec, secrets):
+        return kn.builtin_embed if (spec.get("model") or ks.BUILTIN) == ks.BUILTIN else provider
+
+    monkeypatch.setattr(kn, "EXPORT_BATCH", 2)
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s, embedder=factory)
+        kb = await svc.create("prj_default", "export-batches", embedding=kn.Embedding(model="fake:embed-3"))
+        for i in range(5):
+            await svc.add(kb.id, title=f"Doc {i}", text=f"# Doc {i}\n\nPolicy number {i} says something.")
+        kb = await svc.get(kb.id)
+        kn.forget(kb.id)
+        exported = await svc.export(kb)
+        assert kb.id not in kn._INDEX  # one-off: not kept in memory
+        header, chunks = ks.load_jsonl(exported)
+        assert header["embedding"]["model"] == "fake:embed-3" and len(chunks) == 5
+        index = await svc.index(kb)
+        assert exported == ks.dump_jsonl(kb.name, kb.embedding, index.chunks)  # the same file as from the index
+        assert all(isinstance(c["vector"], array) for c in index.chunks)  # float32, not lists of floats
+        assert [c["title"] for c in index.chunks] == [f"Doc {i}" for i in range(5)]
+
+        monkeypatch.setattr(kn, "INDEX_CACHE_BYTES", 100)  # bigger than the cache may hold: built, not kept
+        kn.forget(kb.id)
+        assert len((await svc.index(kb)).chunks) == 5 and kb.id not in kn._INDEX
+
+
 async def test_a_file_is_embedded_with_the_title_it_is_cited_by(app):
     """E-12: a PDF or Word file was embedded with its metadata title but searched and cited by its file name, so
     its vectors changed on the next reindex."""
