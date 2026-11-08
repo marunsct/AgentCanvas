@@ -139,7 +139,7 @@ async def test_a_token_of_someone_who_left_is_401(app, client):
         bob_id = bob.id
     assert (await client.delete(f"/v1/org/members/{bob_id}", headers=ALICE)).status_code == 204
     r = await client.get("/v1/me", headers=bearer(bobs["token"]))
-    assert r.status_code == 401 and "no longer an active member" in r.json()["detail"]
+    assert r.status_code == 401  # leaving deletes the person's tokens in the organisation
 
 
 async def test_a_token_cannot_make_another_token(client):
