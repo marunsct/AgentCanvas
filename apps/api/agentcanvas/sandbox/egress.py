@@ -184,6 +184,10 @@ class EgressProxy:
                 return await _refuse(writer, 400, "send absolute http:// URLs, or CONNECT for https")
             if "content-length" in headers and "transfer-encoding" in headers:  # two framings: request smuggling
                 return await _refuse(writer, 400, "a request may not have both Content-Length and Transfer-Encoding")
+            if headers.get("transfer-encoding", "chunked").lower() != "chunked" or not (
+                headers.get("content-length", "0").isdigit()
+            ):
+                return await _refuse(writer, 400, "a request body is framed by a Content-Length or chunked")
             host, port = url.hostname, url.port or 80
         if allowed(host, port, allow) is None:
             return await _refuse(writer, 403, f"{host}:{port} is not in this project's sandbox.json egress list")
@@ -217,6 +221,17 @@ class EgressProxy:
             host_line = f"Host: {host}" + ("" if port == 80 else f":{port}")  # never another virtual host
             up_writer.write(("\r\n".join([first, host_line, *kept, "Connection: close", "", ""])).encode("latin-1"))
         await writer.drain()
+        if method != "CONNECT":
+            # one request per connection: its own body goes up, and nothing after it, so a second request pipelined
+            # behind it can never reach the upstream unchecked (RT-16); then the answer comes back until it ends
+            try:
+                await _copy_body(reader, up_writer, headers)
+                await _pipe(up_reader, writer)
+            except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, ValueError):
+                pass
+            finally:
+                up_writer.close()
+            return
         try:
             # when one side is done, the other gets a moment to finish its last bytes, then both are closed
             tasks = [asyncio.create_task(_pipe(reader, up_writer)), asyncio.create_task(_pipe(up_reader, writer))]
@@ -247,6 +262,32 @@ async def _refuse(writer: asyncio.StreamWriter, status: int, reason: str, auth: 
         + body
     )
     await writer.drain()
+
+
+async def _copy_body(src: asyncio.StreamReader, dst: asyncio.StreamWriter, headers: dict[str, str]) -> None:
+    """Forward exactly one request body: `Content-Length` bytes, or chunks up to the last one and its trailers."""
+    if headers.get("transfer-encoding"):
+        while True:
+            line = await src.readuntil(b"\r\n")
+            dst.write(line)
+            size = int(line.split(b";")[0].strip(), 16)
+            if size == 0:
+                while (trailer := await src.readuntil(b"\r\n")) != b"\r\n":
+                    dst.write(trailer)
+                dst.write(b"\r\n")
+                break
+            await _copy_exactly(src, dst, size + 2)  # the chunk and its CRLF
+    else:
+        await _copy_exactly(src, dst, int(headers.get("content-length", "0")))
+    await dst.drain()
+
+
+async def _copy_exactly(src: asyncio.StreamReader, dst: asyncio.StreamWriter, n: int) -> None:
+    while n > 0:
+        data = await src.readexactly(min(n, 65536))
+        dst.write(data)
+        await dst.drain()
+        n -= len(data)
 
 
 async def _pipe(src: asyncio.StreamReader, dst: asyncio.StreamWriter) -> None:

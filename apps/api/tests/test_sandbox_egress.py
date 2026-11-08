@@ -197,6 +197,42 @@ async def test_plain_http_goes_to_the_checked_host_with_no_hop_by_hop_headers():
         server.close()
 
 
+@pytest.mark.parametrize("framing", ["length", "chunked"])
+async def test_a_request_pipelined_behind_a_plain_http_one_never_reaches_the_upstream(framing):
+    """RT-16: only the first request's head was rewritten; what followed on the connection went up raw, so a second
+    request pipelined behind it reached the checked address with any Host (another virtual host) it liked."""
+    got = bytearray()
+
+    async def keeps_reading(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            while chunk := await asyncio.wait_for(reader.read(65536), 0.5):
+                got.extend(chunk)
+        except TimeoutError:
+            pass
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(keeps_reading, "127.0.0.1", 0)
+    up = server.sockets[0].getsockname()[1]
+    proxy, port = await _proxy()
+    try:
+        user, password = sign([f"api.example.com:{up}"], SECRET, 60)
+        auth = base64.b64encode(f"{user}:{password}".encode()).decode()
+        frame, body = (("Content-Length: 5", b"hello") if framing == "length"
+                       else ("Transfer-Encoding: chunked", b"5\r\nhello\r\n0\r\n\r\n"))  # fmt: skip
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(f"POST http://api.example.com:{up}/x HTTP/1.1\r\n{frame}\r\nProxy-Authorization: Basic {auth}"
+                     "\r\n\r\n".encode() + body + b"GET /admin HTTP/1.1\r\nHost: internal-admin\r\n\r\n")  # fmt: skip
+        await writer.drain()
+        answer = await asyncio.wait_for(reader.read(), 5)
+        writer.close()
+        assert b"200 OK" in answer and got.endswith(body) and b"internal-admin" not in got
+    finally:
+        await proxy.close()
+        server.close()
+
+
 def test_a_credential_names_its_call_and_lives_for_the_call_only():
     import json
 
