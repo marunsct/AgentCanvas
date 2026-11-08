@@ -238,9 +238,27 @@ The sandbox token and the egress secret encrypt nothing kept: new ones work with
 
 ## Upgrades
 
-Pull the new images and roll the API. On shutdown each replica stops taking runs, lets running ones reach a step
-boundary and hands them to another replica, which resumes them. Conversations move to a newly published workflow
-version only when it is resume-compatible.
+Build (or pull) the new images and roll the API. On shutdown each replica stops taking runs, lets running ones reach
+a step boundary and hands them to another replica, which resumes them. Conversations move to a newly published
+workflow version only when it is resume-compatible. Take a backup first.
+
+- **Helm:** push the new images and `helm upgrade agentcanvas infra/helm/agentcanvas -f my-values.yaml --set
+  image.api.tag=<new> --set image.web.tag=<new>`. The migration Job runs first; the API rolls one pod at a time and
+  never drops below its replica count, so there is no downtime.
+- **Compose:** build the new images (the commands under Option 1, or set `API_IMAGE` / `WEB_IMAGE` to new tags), then
+  `docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait`. The `migrate` service runs again
+  before the API starts. Compose recreates **every API replica at once**: open streams end and requests fail for the
+  half minute or so until the new replicas are ready, and runs that were going resume on them (each replica takes over
+  handed-over runs at startup). Upgrade in a quiet hour, or use Kubernetes for rolling upgrades.
+
+## Scaling
+
+- **API:** stateless; add replicas for more concurrent runs and requests (`API_REPLICAS` in `infra/.env.prod`, then
+  `up -d`; `api.replicas` in Helm). Each replica adds up to 50 database connections: check `max_connections` (see
+  Database connections above). Replicas share the workspaces volume (in Kubernetes a ReadWriteMany one).
+- **Sandbox:** each sandbox container runs one call at a time; add `SANDBOX_REPLICAS` / `sandbox.replicas` when
+  workspace code waits for a free sandbox ("every sandbox was busy").
+- **Web:** nginx only; two replicas are plenty for most teams (`web.replicas`).
 
 ### Postgres major versions
 

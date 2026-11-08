@@ -321,6 +321,14 @@ def test_every_aes_key_size_the_guides_allow_encrypts_checkpoints(monkeypatch, s
         assert "exactly 32" not in (ROOT / path).read_text(), path
 
 
+def test_the_guide_says_how_to_upgrade_and_scale_each_way_of_running():
+    guide = (ROOT / "docs" / "user-guide" / "deploy.md").read_text()
+    upgrades = guide.split("## Upgrades", 1)[1].split("\n## ", 1)[0]
+    assert "docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait" in upgrades
+    assert "every API replica at once" in upgrades and "helm upgrade" in upgrades
+    assert "## Scaling" in guide and "API_REPLICAS" in guide.split("## Scaling", 1)[1]
+
+
 def test_the_reference_schema_names_the_folder_the_migrations_are_in():
     import re
 
