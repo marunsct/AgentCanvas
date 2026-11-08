@@ -1,15 +1,15 @@
 /** Inbox (M4-T4 UI): every pending approval/input across workflows; deciding resumes the run in the background. */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
-import { PROJECT_ID, useInbox } from "../api/queries";
+import { type InboxItem, PROJECT_ID, useInbox } from "../api/queries";
 import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
 import { QueryStatus } from "../ui/QueryStatus";
 import { PageHeader } from "../ui/PageHeader";
 import { toast } from "../ui/dialog";
 import { ago, exact } from "../ui/time";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { EmptyState } from "../ui/EmptyState";
 import { Inbox } from "lucide-react";
 
@@ -19,14 +19,31 @@ export function InboxPage() {
   const names = [...new Map((inbox.data ?? []).filter((i) => i.workflow_id).map((i) => [i.workflow_id!, i.workflow_name ?? "Workflow"])).entries()];
   const shown = (inbox.data ?? []).filter((i) => !only || i.workflow_id === only);
   const qc = useQueryClient();
-  const decide = useMutation({
-    mutationFn: ({ id, value }: { id: string; value: unknown }) =>
-      apiFetch(`/inbox/${id}/decision`, { method: "POST", json: { value } }),
-    onSuccess: () => {
+  // per item: a decided item used to stay clickable until the list reloaded (a second click: a 409), one decision
+  // in flight disabled every card, and one failure was shown under all of them
+  const deciding = useRef(new Set<string>());
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const mark = (id: string, on: boolean) => {
+    if (on) deciding.current.add(id);
+    else deciding.current.delete(id);
+    setBusy(new Set(deciding.current));
+  };
+  const decide = async (id: string, value: unknown) => {
+    if (deciding.current.has(id)) return;
+    mark(id, true);
+    setErrors((all) => Object.fromEntries(Object.entries(all).filter(([k]) => k !== id)));
+    try {
+      await apiFetch(`/inbox/${id}/decision`, { method: "POST", json: { value } });
+      qc.setQueryData<InboxItem[]>(["inbox"], (items) => items?.filter((i) => i.id !== id));
       toast("Decided: the run continues");
       setTimeout(() => void qc.invalidateQueries({ queryKey: ["inbox"] }), 300);
-    },
-  });
+    } catch (e) {
+      setErrors((all) => ({ ...all, [id]: (e as Error).message }));
+    } finally {
+      mark(id, false);
+    }
+  };
   return (
     <div className="page">
       <PageHeader title="Inbox" description="Runs waiting for a person, in every project: an approval, an edit or an answer. Deciding resumes the run." />
@@ -58,11 +75,11 @@ export function InboxPage() {
                 {item.workflow_id && <> · <Link to={`/workflows/${item.workflow_id}?thread=${item.thread_id}`}>see the run</Link></>}
               </small>
             </header>
-            <DecisionCard intr={item} busy={decide.isPending || !can("reviewer")} onDecide={(value) => decide.mutate({ id: item.id, value })} />
+            <DecisionCard intr={item} busy={busy.has(item.id) || !can("reviewer")} onDecide={(value) => void decide(item.id, value)} />
+            {errors[item.id] && <p className="error-text" role="alert">Could not decide: {errors[item.id]}</p>}
           </article>
         ))}
       </div>
-      {decide.error && <p className="error-text">{(decide.error as Error).message}</p>}
     </div>
   );
 }
