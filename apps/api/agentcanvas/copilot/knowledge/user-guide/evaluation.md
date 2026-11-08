@@ -118,7 +118,9 @@ model on your own best answers. Pick a source:
   annotation queue, thumbs up or down from API callers and share links; *online scores too* adds the production
   evaluators') and nobody gave it a thumbs-down. The example is the conversation as the model saw it: the system
   prompt, the user's message, the tool calls the agent made with their results, and its answer. Only successful
-  runs with a recorded input qualify, and a Planning Agent's helpers' own turns are left out.
+  runs with a recorded input qualify, and a Planning Agent's helpers' own turns are left out. A run is also left
+  out when one of its tool calls has no recorded result, or when what it kept was cut short (a very long run, or a
+  message or tool result too long to keep whole): it would teach the model a broken or cut-off conversation.
 - **A dataset.** Each example's input becomes the user message and its reference answer the assistant's; pick a
   split to export only that part. Examples without a reference are left out.
 
@@ -130,5 +132,9 @@ model on your own best answers. Pick a source:
 | **Plain messages** | `{"messages": [...], "metadata": {...}}`; tool calls as `{name, arguments}` objects; the run, scores and workflow in `metadata` |
 
 The system message defaults to the first prompt written on the workflow's agents; type another one, or `-` for none.
+
+OpenAI has announced that its self-serve fine-tuning stops taking new jobs on 6 January 2027. The file stays valid
+chat-format JSONL, which other fine-tuning services and open-source trainers read; the plain format suits trainers
+that want the tool calls as objects.
 The file holds run content (secrets are already masked in what runs keep): only builders can export, and every
 export is in the audit log.
