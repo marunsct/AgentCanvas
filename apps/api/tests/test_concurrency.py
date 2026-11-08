@@ -200,3 +200,29 @@ async def test_a_long_runs_oldest_text_is_trimmed_but_its_numbers_stay(app, monk
     untrimmed = 400 * len('{"type": "TEXT_MESSAGE_CONTENT", "delta": "' + "x" * 100 + '", "seq": 400}')
     assert h.size < untrimmed * 0.7 and [e["seq"] for e in h.events] == list(range(1, 401))
     assert h.events[0]["delta"] == "" and all(e["delta"] == "x" * 100 for e in h.events[-100:])  # newest whole
+
+
+async def test_a_long_runs_large_step_outputs_are_trimmed_too_and_each_event_is_looked_at_once(app, monkeypatch):
+    """RT-14: only token deltas were emptied, so a run of big step outputs (or tool answers) grew without bound,
+    and every new event past the limit rescanned the whole list from the start."""
+    from agentcanvas.runtime import runner as runner_module
+    from agentcanvas.runtime.runner import RunHandle
+
+    monkeypatch.setattr(runner_module, "RUNNING_BYTES", 400_000)
+    seen: list[int] = []
+    real = getattr(runner_module, "_shrunk", lambda v: v)
+
+    def shrunk(v):
+        if isinstance(v, dict) and "seq" in v:  # an event, not a value inside one
+            seen.append(v["seq"])
+        return real(v)
+
+    monkeypatch.setattr(runner_module, "_shrunk", shrunk, raising=False)
+    h = RunHandle(run_id="run_steps", thread_id="th_steps", workflow_id="wf")
+    for i in range(600):
+        await app.state.runner._emit(h, {"type": "STEP_FINISHED", "task_id": f"t{i}", "output": {"text": "y" * 2000}})
+    assert h.size < 400_000 and [e["seq"] for e in h.events] == list(range(1, 601))
+    first = h.events[0]
+    assert first["trimmed"] and first["task_id"] == "t0" and len(first["output"]["text"]) < 300
+    assert all(e["output"]["text"] == "y" * 2000 for e in h.events[-100:])  # the newest stay whole
+    assert len(seen) == len(set(seen))  # no event shrunk (or looked at) twice

@@ -79,6 +79,7 @@ class RunHandle:
     trace_redact: list[str] = field(default_factory=list)  # the workflow's fields that never reach a trace
     held: list[dict[str, Any]] = field(default_factory=list)  # last events, published once the run is saved (see _pump)
     size: int = 0  # about how many bytes its events take in memory (finished runs are evicted by this too)
+    trimmed_to: int = 0  # events before this index were already looked at by `_trim`
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
     routing: list[dict[str, Any]] = field(default_factory=list)  # the model each routed block got (services/routing.py)
@@ -149,8 +150,20 @@ def rubric_scores(h: Any) -> list[RunScore]:
     return out
 
 
-RUNNING_BYTES = 64 * 1024 * 1024  # a running run's events in memory before its oldest text deltas are emptied
+RUNNING_BYTES = 64 * 1024 * 1024  # a running run's events in memory before its oldest ones are shrunk
 KEEP_RECENT = 100  # events at the end that are never emptied
+TRIM_TEXT = 200  # what a trimmed event keeps of each long text in it
+
+
+def _shrunk(value: Any) -> Any:
+    """`value` with every string longer than TRIM_TEXT cut to that length (a copy; `value` is left as it is)."""
+    if isinstance(value, str):
+        return value if len(value) <= TRIM_TEXT else value[:TRIM_TEXT] + "…"
+    if isinstance(value, dict):
+        return {k: _shrunk(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_shrunk(v) for v in value]
+    return value
 
 
 def _without_secrets(text: str) -> str:
@@ -825,16 +838,27 @@ class Runner:
 
     @staticmethod
     def _trim(h: RunHandle) -> None:
-        """A run going on for hours keeps every token delta for late subscribers: past RUNNING_BYTES the oldest
-        deltas are emptied in place (their numbers stay, so `after=` still works; the full text is in the run's
-        final events and its checkpoint) (R-8)."""
-        for i, ev in enumerate(h.events[:-KEEP_RECENT]):  # the newest stay whole, whatever the size
-            if h.size <= RUNNING_BYTES * 3 // 4:
-                break
-            if ev.get("type") == "TEXT_MESSAGE_CONTENT" and ev.get("delta"):
-                before = len(json.dumps(ev, default=str))
-                h.events[i] = {**ev, "delta": "", "trimmed": True}
-                h.size -= before - len(json.dumps(h.events[i], default=str))
+        """A run going on for hours keeps every event for late subscribers: past RUNNING_BYTES the oldest are
+        shrunk in place, token deltas emptied and long text in other events (step outputs, tool answers) cut to
+        TRIM_TEXT characters. Their numbers stay, so `after=` still works; the full text is in the run's final
+        events and its checkpoint (R-8). Each event is looked at once: `trimmed_to` remembers where this stopped,
+        so a long run does not rescan its whole list on every new event (RT-14)."""
+        end = len(h.events) - KEEP_RECENT  # the newest stay whole, whatever the size
+        i = h.trimmed_to
+        while i < end and h.size > RUNNING_BYTES * 3 // 4:
+            ev = h.events[i]
+            i += 1
+            if ev.get("type") in ("RUN_STARTED", "RUN_FINISHED", "RUN_ERROR") or ev.get("trimmed"):
+                continue
+            if ev.get("type") == "TEXT_MESSAGE_CONTENT":
+                small = {**ev, "delta": "", "trimmed": True} if ev.get("delta") else ev
+            else:
+                shrunk = _shrunk(ev)
+                small = {**shrunk, "trimmed": True} if shrunk != ev else ev
+            if small is not ev:
+                h.size -= len(json.dumps(ev, default=str)) - len(json.dumps(small, default=str))
+                h.events[i - 1] = small
+        h.trimmed_to = i
 
     def _evict(self) -> None:
         """Forget the oldest finished runs beyond `keep_finished` and `keep_bytes` of events (running ones stay)."""
