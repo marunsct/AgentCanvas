@@ -22,10 +22,15 @@ kubeconform_run() {   # the Kubernetes API schemas check on rendered manifests (
   if need kubeconform; then kubeconform -strict -summary -kubernetes-version 1.31.0 -
   else docker run --rm -i "$KUBECONFORM_IMAGE" -strict -summary -kubernetes-version 1.31.0 -; fi
 }
+PARTIAL=$(mktemp); trap 'rm -f "$PARTIAL"' EXIT
+partial() { echo "$1" >> "$PARTIAL"; }   # a stage that passed but left a check out: it counts as skipped, not passed
 stage() {  # stage <name> <command...>: run, record, keep going so one report shows every failure
   local name=$1; shift
   printf '\n\033[1m== %s ==\033[0m\n' "$name"
-  if ( set -e; "$@" ); then OK+=("$name"); else BAD+=("$name"); fi
+  : > "$PARTIAL"
+  if ( set -e; "$@" ); then
+    if [ -s "$PARTIAL" ]; then SKIP+=("$name (passed in part: $(paste -sd ';' "$PARTIAL"))"); else OK+=("$name"); fi
+  else BAD+=("$name"); fi
 }
 skip() { printf '\n== %s == skipped: %s\n' "$1" "$2"; SKIP+=("$1 ($2)"); }
 
@@ -59,6 +64,7 @@ s_api() {
     trap pg_stop RETURN
   else
     echo "WARNING: no Docker, or Postgres did not start: the API tests run on SQLite only (row-level security and the Postgres dialect are not tested)"
+    partial "SQLite only, no Postgres"
   fi
   ( cd apps/api && uv sync --frozen && uv run python scripts/export_ir_schema.py \
       && git diff --exit-code ../../packages/ir-schema agentcanvas/copilot/knowledge/user-guide \
@@ -99,7 +105,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
              --set autoscaling.enabled=true | kubeconform_run >/dev/null \
         || return 1
     done
-  else echo "export: neither helm nor docker is here, the Kubernetes charts are not linted"; fi
+  else echo "export: neither helm nor docker is here, the Kubernetes charts are not linted"; partial "charts not linted"; fi
   if need docker; then
     for d in "$ex"/local/*/* "$ex"/server/*/*; do
       [ -d "$d/deploy" ] || continue   # a framework's own project (CrewAI, Agno...) has no deploy files: its tests run below
@@ -107,7 +113,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
       DOMAIN=a.example.com POSTGRES_PASSWORD=x docker compose -f "$d"/deploy/*/docker-compose.yml config -q || { rm "$d/.env"; return 1; }
       rm "$d/.env"
     done
-  else echo "export: docker missing, the compose files are not checked"; fi
+  else echo "export: docker missing, the compose files are not checked"; partial "compose files not checked"; fi
   for t in "$ex"/aws/*/*/deploy/aws/task-definition.json; do python3 -m json.tool "$t" >/dev/null || return 1; done
   # ~150 projects, each with its own environment: one at a time, and each environment is deleted once its tests ran
   # (the cloud runners had a disk for this; a laptop fills up)
@@ -120,7 +126,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
     for d in "$ex"/local/ticket_triage/support-triage "$ex"/local/mixed_team/mixed-framework-team; do
       deploy_export "$d" || { echo "export deploy failed in $d"; return 1; }
     done
-  fi
+  else partial "no export deployed"; fi
   for d in "$ex"/openai_agents/*/* "$ex"/crewai/*/* "$ex"/google_adk/*/* "$ex"/pydantic_ai/*/* "$ex"/agno/*/* \
            "$ex"/microsoft_agent_framework/*/* "$ex"/strands/*/* "$ex"/llamaindex/*/*; do
     ( cd "$d" && uv sync -q && uv run pytest -q ); rc=$?; rm -rf "$d/.venv"
@@ -131,7 +137,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
       ( cd "$d" && npm install -s --no-audit --no-fund && npm test ); rc=$?; rm -rf "$d/node_modules"
       [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
     done
-  fi
+  else partial "Mastra exports not tested (node missing)"; fi
 }
 s_mastra_types() {   # the Mastra runtime is TypeScript that Node runs with its types stripped: check them with tsc, strictly
   local d tsc="$ROOT/apps/web/node_modules/.bin/tsc" src="$ROOT/apps/api/agentcanvas/adapters/mastra"

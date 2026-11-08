@@ -275,6 +275,26 @@ def test_the_nightly_copilot_evaluation_uses_a_listed_model_and_says_when_it_ski
     assert "title=Copilot evaluation skipped" in workflow and "GITHUB_STEP_SUMMARY" in workflow
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="no bash")
+def test_local_ci_reports_a_stage_that_left_checks_out_as_skipped_not_passed():
+    script = (ROOT / "scripts" / "ci-local.sh").read_text()
+    head = script[script.index("declare -a OK") : script.index("\nskip()")]  # the bookkeeping, not the stages
+    probe = (
+        head
+        + """
+whole() { true; }
+part() { partial "charts not linted"; }
+broken() { false; }
+stage whole whole; stage part part; stage broken broken
+printf 'OK=%s|SKIP=%s|BAD=%s' "${OK[*]}" "${SKIP[*]}" "${BAD[*]}"
+"""
+    )
+    done = subprocess.run(["bash", "-c", probe], capture_output=True, text=True, timeout=30, check=False)
+    out = done.stdout.rsplit("\n", 1)[-1]
+    assert out == "OK=whole|SKIP=part (passed in part: charts not linted)|BAD=broken", done.stdout + done.stderr
+    assert 'partial "SQLite only, no Postgres"' in script and script.count('partial "') >= 4
+
+
 def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
     import re
 
