@@ -32,6 +32,18 @@ def clip(value: Any, depth: int = 0) -> Any:
     return value
 
 
+def was_clipped(value: Any) -> bool:
+    """Whether `clip` may have cut `value` (a string cut to MAX_TEXT characters and an ellipsis, a list of
+    MAX_ITEMS items): what a run kept of it is not the whole of it."""
+    if isinstance(value, str):
+        return len(value) == MAX_TEXT + 1 and value.endswith("…")
+    if isinstance(value, dict):
+        return any(was_clipped(v) for v in value.values())
+    if isinstance(value, list):
+        return len(value) >= MAX_ITEMS or any(was_clipped(v) for v in value)
+    return False
+
+
 def _one(ev: dict[str, Any], t: int) -> dict[str, Any] | None:
     kind = ev.get("type")
     node = ev.get("canvas_node_id")

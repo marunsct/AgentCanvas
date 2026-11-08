@@ -92,6 +92,30 @@ def test_openai_format_has_json_string_arguments_matching_tool_call_ids_and_the_
     }  # fmt: skip
 
 
+def test_unanswered_clipped_or_truncated_turns_are_left_out_with_the_reason():
+    """I-10: a tool call without a recorded result made an invalid OpenAI file and shifted the ids of the next
+    results onto the wrong calls; a run whose events or texts were cut was exported as if it were whole."""
+    from agentcanvas.runtime.trajectory import MAX_TEXT
+
+    def call(*names: str) -> dict:
+        return {"role": "assistant", "content": "", "tool_calls": [{"name": n, "arguments": {}} for n in names]}
+
+    def result(name: str) -> dict:
+        return {"role": "tool", "name": name, "content": "ok"}
+
+    two_steps = [call("a", "b"), result("a"), call("c"), result("c"), {"role": "assistant", "content": "done"}]
+    assert finetune.unanswered(two_steps) == ["b"]
+    assert finetune.incomplete([], two_steps) == "the tool call b has no recorded result"
+    out = finetune.render(two_steps, "openai", {})["messages"]
+    assert out[3]["tool_call_id"] == out[2]["tool_calls"][0]["id"]  # c's result answers c, not the unanswered b
+
+    whole = [call("a"), result("a"), {"role": "assistant", "content": "done"}]
+    assert finetune.unanswered(whole) == [] and finetune.incomplete([], whole) == ""
+    assert "too many" in finetune.incomplete([{"type": "ac.truncated"}], whole)
+    cut = [call("a"), {**result("a"), "content": "x" * MAX_TEXT + "…"}, {"role": "assistant", "content": "done"}]
+    assert "cut short" in finetune.incomplete([], cut)
+
+
 def test_the_plain_format_keeps_arguments_as_objects_and_carries_the_metadata():
     out = finetune.render(
         [{"role": "user", "content": "hi"}, *finetune.turns(EVENTS)[:2]], "messages", {"run_id": "r1"}

@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Run, RunScore, Thread
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.trajectory import was_clipped
 from agentcanvas.services.run_search import strings
 
 Format = Literal["openai", "messages"]
@@ -116,6 +117,31 @@ def turns(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def unanswered(messages: list[dict[str, Any]]) -> list[str]:
+    """The tool calls without a result right after them (OpenAI refuses such a file: every call needs its answer)."""
+    out: list[str] = []
+    waiting: list[str] = []
+    for m in messages:
+        if m["role"] == "tool":
+            if waiting:
+                waiting.pop(0)
+            continue
+        out += waiting
+        waiting = [str(c.get("name")) for c in m.get("tool_calls") or []] if m["role"] == "assistant" else []
+    return out + waiting
+
+
+def incomplete(run_events: list[dict[str, Any]], replies: list[dict[str, Any]]) -> str:
+    """Why a run's recorded turn is not the whole conversation, or "" when it is."""
+    if any(e.get("type") == "ac.truncated" for e in run_events):
+        return "the run kept only its first events (it had too many): its conversation is cut short"
+    if any(was_clipped(m.get("content")) or was_clipped(m.get("tool_calls")) for m in replies):
+        return "a message or tool result was too long and kept cut short: it would teach a cut-off answer"
+    if missing := unanswered(replies):
+        return f"the tool call {missing[0]} has no recorded result"
+    return ""
+
+
 def _schema_of(value: Any) -> dict[str, Any]:
     if isinstance(value, bool):
         return {"type": "boolean"}
@@ -134,9 +160,10 @@ def render(messages: list[dict[str, Any]], fmt: Format, metadata: dict[str, Any]
         return {"messages": messages, "metadata": metadata}
     out_messages: list[dict[str, Any]] = []
     tools: dict[str, dict[str, Any]] = {}
-    pending: list[str] = []  # ids of the tool calls the next tool messages answer
+    pending: list[str] = []  # ids of this assistant message's tool calls the next tool messages answer
     for n, m in enumerate(messages):
         if m["role"] == "assistant" and m.get("tool_calls"):
+            pending = []  # an earlier message's unanswered calls never take this one's results
             calls = []
             for k, c in enumerate(m["tool_calls"]):
                 cid = f"call_{n}_{k}"
@@ -205,6 +232,9 @@ class FinetuneService:
             replies = turns(run.events or [])
             if not asked or not replies or replies[-1]["role"] != "assistant":
                 out.skipped.append(Skipped(ref=run.id, reason="no recorded input and answer to learn from"))
+                continue
+            if why := incomplete(run.events or [], replies):
+                out.skipped.append(Skipped(ref=run.id, reason=why))
                 continue
             messages = [*([{"role": "system", "content": sys_msg}] if sys_msg else []),
                         {"role": "user", "content": asked}, *replies]  # fmt: skip
