@@ -91,6 +91,11 @@ class ModelInfo(BaseModel):
     # prompt caching: reading cached input, and writing it (5-minute cache); None = charged as ordinary input
     price_cache_read_per_mtok: float | None = None
     price_cache_write_per_mtok: float | None = None
+    # a long-context tier: a call whose prompt has more than `price_above_tokens` input tokens is charged these per
+    # 1M input and output tokens instead (Claude Haiku 5.5: above 100K), its cache prices scaled like the input's
+    price_above_tokens: int | None = None
+    price_in_above_per_mtok: float | None = None
+    price_out_above_per_mtok: float | None = None
     # takes temperature / top_p / top_k: current Claude models refuse non-default values (400) and reasoning models
     # such as GPT-5 take the default only, so a run leaves them out for a model marked False
     sampling: bool = True

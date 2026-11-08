@@ -177,16 +177,24 @@ def price(
 ) -> float | None:
     """USD for a model call from catalog prices; None when the model or its prices are unknown. `tokens_in`
     includes the input read from (`cache_read`) and written to (`cache_write`) the prompt cache, each at its own
-    price when the catalog has one."""
+    price when the catalog has one. A prompt above the model's long-context threshold is charged its long-context
+    prices (the cache prices scaled like the input price)."""
     info = default_registry().model(model_id or "")
     if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
         return None
-    read = info.price_cache_read_per_mtok if info.price_cache_read_per_mtok is not None else info.price_in_per_mtok
-    write = info.price_cache_write_per_mtok if info.price_cache_write_per_mtok is not None else info.price_in_per_mtok
+    p_in, p_out, scale = info.price_in_per_mtok, info.price_out_per_mtok, 1.0
+    if (
+        info.price_above_tokens is not None
+        and tokens_in > info.price_above_tokens
+        and info.price_in_above_per_mtok is not None
+        and info.price_out_above_per_mtok is not None
+    ):
+        scale = info.price_in_above_per_mtok / p_in if p_in else 1.0
+        p_in, p_out = info.price_in_above_per_mtok, info.price_out_above_per_mtok
+    read = info.price_cache_read_per_mtok * scale if info.price_cache_read_per_mtok is not None else p_in
+    write = info.price_cache_write_per_mtok * scale if info.price_cache_write_per_mtok is not None else p_in
     plain = max(0, tokens_in - cache_read - cache_write)
-    return (
-        plain * info.price_in_per_mtok + cache_read * read + cache_write * write + tokens_out * info.price_out_per_mtok
-    ) / 1_000_000
+    return (plain * p_in + cache_read * read + cache_write * write + tokens_out * p_out) / 1_000_000
 
 
 def usage_price(model_id: str | None, usage: dict[str, Any]) -> float | None:

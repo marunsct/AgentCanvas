@@ -45,8 +45,8 @@ def test_the_server_does_not_start_with_a_bad_price_table(monkeypatch):
 
 def test_prompt_cache_reads_and_writes_are_priced_apart():
     """E-1: LangChain's input count includes the cached part; reads cost a fraction, writes a little more."""
-    # Sonnet 5.5: $2 in, $0.10 cache read, $2.50 cache write, $10 out per million
-    assert price("anthropic:claude-sonnet-5-5", 1_000_000, 0, cache_read=900_000) == pytest.approx(0.2 + 0.09)
+    # Sonnet 5.5: $2 in, $0.20 cache read, $2.50 cache write, $10 out per million
+    assert price("anthropic:claude-sonnet-5-5", 1_000_000, 0, cache_read=900_000) == pytest.approx(0.2 + 0.18)
     assert price("anthropic:claude-sonnet-5-5", 1_000_000, 0, cache_write=1_000_000) == pytest.approx(2.5)
     [m] = priced(CATALOG, '{"openai:gpt-5.5": [5, 30, 0.5, 5]}')
     assert (m.price_cache_read_per_mtok, m.price_cache_write_per_mtok) == (0.5, 5.0)
@@ -165,7 +165,32 @@ def test_the_catalog_lists_current_models_with_prices():
     ):
         info = reg.model(model)
         assert info is not None and info.price_in_per_mtok is not None, model
-    assert price("anthropic:claude-haiku-5-5", 1_000_000, 1_000_000) == pytest.approx(0.6)
+    assert price("anthropic:claude-haiku-5-5", 100_000, 1_000_000) == pytest.approx(0.01 + 0.5)
+
+
+def test_every_claude_model_the_platform_serves_is_priced_and_refuses_sampling():
+    """Claude Managed Agents takes these ids (designs/managed.py), and a canvas may use any of them: an id missing
+    from the catalog was priced at nothing, so a budget never stopped a run on it."""
+    from agentcanvas.designs import managed
+
+    reg = default_registry()
+    for name in managed.MODELS:
+        info = reg.model(f"anthropic:{name}")
+        assert info is not None, name
+        assert None not in (info.price_in_per_mtok, info.price_out_per_mtok, info.price_cache_read_per_mtok,
+                            info.price_cache_write_per_mtok), name  # fmt: skip
+        assert info.sampling is False, name
+    assert reg.model("anthropic:claude-sonnet-5-5").price_cache_read_per_mtok == 0.2  # type: ignore[union-attr]
+    assert price("anthropic:claude-opus-4-7", 1_000_000, 0) == pytest.approx(5.0)
+
+
+def test_a_long_prompt_is_charged_the_long_context_tier():
+    """Claude Haiku 5.5 costs $0.10 / $0.50 per MTok up to 100K prompt tokens and $0.50 / $2.50 above that."""
+    assert price("anthropic:claude-haiku-5-5", 100_000, 10_000) == pytest.approx((100_000 * 0.1 + 10_000 * 0.5) / 1e6)
+    assert price("anthropic:claude-haiku-5-5", 100_001, 10_000) == pytest.approx((100_001 * 0.5 + 10_000 * 2.5) / 1e6)
+    cached = price("anthropic:claude-haiku-5-5", 200_000, 0, cache_read=150_000)
+    assert cached == pytest.approx((50_000 * 0.5 + 150_000 * 0.05) / 1e6)  # cache reads scaled like the input
+    assert price("anthropic:claude-opus-5-5", 900_000, 0) == pytest.approx(3.6)  # no tier: one price
 
 
 def test_templates_use_the_current_quick_model():

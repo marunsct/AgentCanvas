@@ -7101,6 +7101,17 @@
             "title": "Label",
             "type": "string"
           },
+          "price_above_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Above Tokens"
+          },
           "price_cache_read_per_mtok": {
             "anyOf": [
               {
@@ -7123,6 +7134,17 @@
             ],
             "title": "Price Cache Write Per Mtok"
           },
+          "price_in_above_per_mtok": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price In Above Per Mtok"
+          },
           "price_in_per_mtok": {
             "anyOf": [
               {
@@ -7133,6 +7155,17 @@
               }
             ],
             "title": "Price In Per Mtok"
+          },
+          "price_out_above_per_mtok": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Out Above Per Mtok"
           },
           "price_out_per_mtok": {
             "anyOf": [
