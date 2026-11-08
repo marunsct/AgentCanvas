@@ -23,6 +23,10 @@ interface Message {
 
 let nextId = 1;
 
+/** A saved conversation still being answered is checked every AWAY_POLL_MS, at most AWAY_POLLS times (3 minutes). */
+export const AWAY_POLL_MS = 2000;
+export const AWAY_POLLS = 90;
+
 export function SharePage() {
   const token = tokenFromPath(location.pathname) ?? "";
   const embed = isEmbed(location.search);
@@ -62,11 +66,17 @@ export function SharePage() {
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)));
   }, [token, restore]);
 
+  // the poll used to go on for ever (an answer that never ends, a run the server lost) with the input locked
+  const [gaveUp, setGaveUp] = useState(false);
   useEffect(() => {
-    if (!away) return;
-    const timer = setInterval(() => { loadConversation(token).then(restore).catch(() => undefined); }, 2000);
+    if (!away || gaveUp) return;
+    let polls = 0;
+    const timer = setInterval(() => {
+      if (++polls > AWAY_POLLS) { setGaveUp(true); return; }
+      loadConversation(token).then(restore).catch(() => undefined);
+    }, AWAY_POLL_MS);
     return () => clearInterval(timer);
-  }, [away, token, restore]);
+  }, [away, gaveUp, token, restore]);
 
   // the postMessage API for the site that frames this page (embedApi.ts): prefill from the parent, events to it
   const allowed = info?.frame_origins;
@@ -220,7 +230,14 @@ export function SharePage() {
         ))}
         <div ref={logEnd} />
       </div>
-      {away && <p className="share-notice" role="status">Your last message is still being answered…</p>}
+      {away && !gaveUp && <p className="share-notice" role="status">Your last message is still being answered…</p>}
+      {away && gaveUp && (
+        <p className="share-notice" role="status" data-testid="share-gave-up">
+          Your last message is taking a long time to answer.{" "}
+          <button type="button" className="link" onClick={() => setGaveUp(false)}>Check again</button>{" "}
+          <button type="button" className="link" onClick={() => { setAway(false); setGaveUp(false); }}>Stop waiting</button>
+        </p>
+      )}
       {notice && <p className="share-notice" role="status">{notice}</p>}
       {approval && !busy && (
         <div className="share-decide" role="group" aria-label="Your answer">

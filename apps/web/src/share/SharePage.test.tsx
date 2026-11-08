@@ -158,3 +158,26 @@ describe("share page postMessage API (G-15)", () => {
     expect(full.value).toBe(""); // a full page is not framed: it takes no commands
   });
 });
+
+describe("share page, a saved message still being answered", () => {
+  it("stops checking after a while and lets the visitor stop waiting", async () => {
+    const { AWAY_POLL_MS, AWAY_POLLS } = await import("./SharePage");
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      loadConversation.mockResolvedValue({ thread_id: "th_1", busy: true, messages: [{ role: "user", text: "hi" }] });
+      render(<SharePage />);
+      expect(await screen.findByText(/still being answered/)).toBeTruthy();
+      await act(async () => { vi.advanceTimersByTime(AWAY_POLL_MS * (AWAY_POLLS + 5)); });
+      const calls = loadConversation.mock.calls.length;
+      expect(calls).toBeLessThanOrEqual(AWAY_POLLS + 1); // the first load, then the polls; it used to poll for ever
+      await act(async () => { vi.advanceTimersByTime(AWAY_POLL_MS * 10); });
+      expect(loadConversation.mock.calls.length).toBe(calls);
+      fireEvent.click(screen.getByRole("button", { name: "Stop waiting" }));
+      expect(screen.queryByTestId("share-gave-up")).toBeNull();
+      expect(screen.queryByText(/still being answered/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      loadConversation.mockResolvedValue({ thread_id: null, busy: false, messages: [] });
+    }
+  });
+});
