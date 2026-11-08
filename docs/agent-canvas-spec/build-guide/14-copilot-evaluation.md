@@ -44,8 +44,9 @@ You need a repository admin on GitHub and an API key from Anthropic (or OpenAI).
 2. **Add it to the repository**: on GitHub, open the repository → **Settings** → **Secrets and variables** →
    **Actions** → **New repository secret**. Name it `ANTHROPIC_API_KEY` and paste the key.
 3. **Optionally choose the model**: on the same page, under the **Variables** tab, add `COPILOT_EVAL_MODEL` with a
-   value such as `anthropic:claude-sonnet-5-5`. Without it the job uses `anthropic:claude-haiku-4-5`, the cheapest
-   option. To use OpenAI instead, add the secret `OPENAI_API_KEY` and set `COPILOT_EVAL_MODEL` to an OpenAI model,
+   value such as `anthropic:claude-sonnet-5-5`. Without it the job uses `anthropic:claude-haiku-5-5`, the cheapest
+   option. Without a key the job still ends green, with a "Copilot evaluation skipped" notice and a line in the run's
+   summary. To use OpenAI instead, add the secret `OPENAI_API_KEY` and set `COPILOT_EVAL_MODEL` to an OpenAI model,
    such as `openai:gpt-5-mini`.
 4. **Try it once**: **Actions** → **copilot-evals** → **Run workflow**. The optional `model` field overrides the
    variable for that run only.
@@ -75,7 +76,7 @@ need GitHub or a repository secret:
 ```
 cd apps/api
 export ANTHROPIC_API_KEY=…                     # not needed for a local model
-uv run python -m agentcanvas.copilot.evals --model anthropic:claude-haiku-4-5 --engine deepagents --suite build
+uv run python -m agentcanvas.copilot.evals --model anthropic:claude-haiku-5-5 --engine deepagents --suite build
 uv run python -m agentcanvas.copilot.evals --model ollama:qwen3 --engine loop --suite debug --out debug.json
 uv run python -m agentcanvas.copilot.evals --model ollama:qwen3 --case greeter     # one case
 ```

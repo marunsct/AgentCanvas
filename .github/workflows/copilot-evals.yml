@@ -30,13 +30,15 @@ jobs:
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      MODEL: ${{ inputs.model || vars.COPILOT_EVAL_MODEL || 'anthropic:claude-haiku-4-5' }}
+      MODEL: ${{ inputs.model || vars.COPILOT_EVAL_MODEL || 'anthropic:claude-haiku-5-5' }}
     steps:
       - name: Is there a key?
         id: key
         run: |
           if [ -z "$ANTHROPIC_API_KEY$OPENAI_API_KEY" ]; then
-            echo "::notice::No ANTHROPIC_API_KEY or OPENAI_API_KEY secret: the Copilot evaluation needs one, skipped."
+            # the job ends green with every other step skipped; say so where people look, not only in the log
+            echo "::notice title=Copilot evaluation skipped::No ANTHROPIC_API_KEY or OPENAI_API_KEY secret in this repository: nothing was evaluated."
+            echo "### Copilot evaluation (${{ matrix.engine }}): skipped, no provider key in the repository's secrets" >> "$GITHUB_STEP_SUMMARY"
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"

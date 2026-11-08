@@ -263,6 +263,18 @@ def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
     assert f"{pool} + {overflow} + {POOL_SIZE} = {per_replica}" in guide  # the guide's sum is the code's defaults
 
 
+def test_the_nightly_copilot_evaluation_uses_a_listed_model_and_says_when_it_skips():
+    import json
+    import re
+
+    workflow = (ROOT / ".github" / "workflows" / "copilot-evals.yml").read_text()
+    (default,) = re.findall(r"vars\.COPILOT_EVAL_MODEL \|\| '([^']+)'", workflow)
+    catalog = json.loads((ROOT / "apps" / "api" / "agentcanvas" / "registry" / "models.json").read_text())
+    models = catalog if isinstance(catalog, list) else catalog.get("models", catalog)
+    assert default == "anthropic:claude-haiku-5-5" and default in json.dumps(models)
+    assert "title=Copilot evaluation skipped" in workflow and "GITHUB_STEP_SUMMARY" in workflow
+
+
 def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
     import re
 
