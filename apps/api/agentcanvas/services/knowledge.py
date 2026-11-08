@@ -109,35 +109,55 @@ def knowledge_embedder(adapter: Any) -> EmbedderFactory:
 
 # ---------------------------------------------------------------- extraction ----
 class _Html(html.parser.HTMLParser):
-    """Visible text of an HTML page, one block per line; the <title> is kept apart."""
+    """Visible text of an HTML page, one block per line; the <title> is kept apart. Open elements are kept as a
+    stack, so an element left unclosed (valid HTML5 drops </head>, and pages forget </nav>) ends where its parent
+    does, and a skipped one never swallows the rest of the page (I-5)."""
 
     SKIP: ClassVar[set[str]] = {"script", "style", "noscript", "template", "svg", "head", "nav", "footer"}
     BLOCK: ClassVar[set[str]] = {"p", "div", "section", "article", "li", "tr", "br", "pre", "td"} | {
         f"h{i}" for i in range(1, 7)
     }
+    VOID: ClassVar[set[str]] = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr",
+    }  # fmt: skip
+    # what <head> may hold: anything else starts the body, as browsers read it (the end tag is optional)
+    HEAD_CONTENT: ClassVar[set[str]] = {"title", "meta", "link", "style", "script", "noscript", "base", "template"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.title = ""
-        self._skip = 0
+        self._open: list[str] = []
+        self._skip = 0  # skipped elements among the open ones
         self._in_title = False
 
+    def _close(self, tag: str) -> None:
+        """Ends the latest open `tag` and every element left open inside it."""
+        for i in range(len(self._open) - 1, -1, -1):
+            if self._open[i] == tag:
+                self._skip -= sum(t in self.SKIP for t in self._open[i:])
+                del self._open[i:]
+                return
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if "head" in self._open and (tag == "body" or tag not in self.HEAD_CONTENT):
+            self._close("head")
         if tag == "title":
             self._in_title = True
-        elif tag in self.SKIP:
-            self._skip += 1
-        elif tag in self.BLOCK:
+            return
+        if tag not in self.VOID:
+            self._open.append(tag)
+            self._skip += tag in self.SKIP
+        if tag in self.BLOCK and not self._skip:
             self.parts.append("\n\n" + ("#" * int(tag[1]) + " " if tag[0] == "h" and tag[1:].isdigit() else ""))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self._in_title = False
-        elif tag in self.SKIP and self._skip:
-            self._skip -= 1
-        elif tag in self.BLOCK:
+            return
+        if tag in self.BLOCK and not self._skip:
             self.parts.append("\n\n")
+        self._close(tag)
 
     def handle_data(self, data: str) -> None:
         if self._in_title:

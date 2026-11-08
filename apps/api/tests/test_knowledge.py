@@ -48,6 +48,16 @@ def test_markdown_headings_are_parsed_in_linear_time():
     ]
 
 
+def test_html_without_end_tags_keeps_its_body():
+    """I-5: <head> without </head> (valid HTML5; minifiers drop it) or a <nav> never closed hid the whole page."""
+    title, text = kn.html_text("<html><head><title>Leave</title><meta charset=utf-8><body><h1>Leave</h1><p>25 days")
+    assert title == "Leave" and text == "# Leave\n\n25 days"
+    assert kn.html_text("<head><title>T</title><p>Body text")[1] == "Body text"  # no <body> tag either
+    page = "<body><header><nav><a>Home</a><a>About</a></header><main><p>Carry over 5 days.</p></main><footer>(c)"
+    assert kn.html_text(page)[1] == "Carry over 5 days."
+    assert kn.html_text("<div><nav>menu</nav><p>a<p>b</div><svg><path/><text>x</text></svg>c")[1] == "a\n\nb\n\nc"
+
+
 def test_markdown_headings_inside_code_fences_are_code():
     """I-11: a `# comment` in a fenced shell or Python block started a new section and cut the code in two."""
     text = (
