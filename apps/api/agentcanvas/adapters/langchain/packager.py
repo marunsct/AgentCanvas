@@ -56,6 +56,7 @@ RUNTIME_FILES = [
     "adapters/langchain/interop.py",
     "adapters/langchain/nodes.py",
     "adapters/langchain/parts.py",
+    "adapters/langchain/spend.py",  # the deploy kit's per-run budget
     "adapters/langchain/testing.py",
     "expr.py",
     "filecontent.py",

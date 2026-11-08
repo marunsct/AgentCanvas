@@ -360,6 +360,9 @@ def kit_json(wf: Workflow, f: Facts, target: Target) -> str:
             "context_fields": [{"name": c.name, "source": c.source, "required": c.required}
                                for c in wf.context.fields],
             "recursion_limit": s.recursion_limit,
+            # the per-run limits of the workflow budget (the service enforces them; agentcanvas/.../spend.py)
+            "budget": {k: v for k, v in (s.budget.model_dump() if s.budget else {}).items()
+                       if k in ("max_tokens", "max_cost_usd", "max_seconds") and v is not None},
             "error_routes": any(n.policies and n.policies.error_route for n in wf.nodes),
         },
         indent=2,

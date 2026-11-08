@@ -39,12 +39,16 @@ from langgraph.types import Command  # noqa: E402
 from pydantic import BaseModel, Field, StringConstraints  # noqa: E402
 
 import __PKG__.checks as checks  # noqa: E402
+from agentcanvas.adapters.langchain.spend import BudgetExceeded, SpendLimit  # noqa: E402
 from __PKG__ import graph as generated  # noqa: E402
 from __PKG__.server import make_resources  # noqa: E402
 
 KIT = checks.KIT
 log = logging.getLogger("__PKG__")
 RUN_TIMEOUT_S = float(os.environ.get("RUN_TIMEOUT_SECONDS", "300"))
+# the workflow budget's per-run limits (max_tokens, max_cost_usd, max_seconds), as AgentCanvas enforces them; the
+# limits per conversation, day and month are not enforced here (GAPS.md)
+BUDGET: dict[str, Any] = KIT.get("budget") or {}
 # token streaming skips LangGraph error handlers, so workflows with error routes stream steps only (as on AgentCanvas)
 STREAM_MODES = ["tasks"] if KIT["error_routes"] else ["tasks", "messages"]
 ORG_KEY = "agentcanvas_org_id"  # memories are kept per organisation; a self-hosted service is one organisation
@@ -192,10 +196,14 @@ class Service:
                 self.runs.popitem(last=False)
             yield {"type": "RUN_STARTED", "runId": run_id, "threadId": thread_id}
             cfg = self.config(thread_id, run_id, metadata, context)
+            spend = SpendLimit(BUDGET) if BUDGET.get("max_tokens") or BUDGET.get("max_cost_usd") else None
+            if spend is not None:
+                cfg["callbacks"] = [spend]
+            seconds = min(RUN_TIMEOUT_S, BUDGET["max_seconds"]) if BUDGET.get("max_seconds") else RUN_TIMEOUT_S
             started = time.perf_counter()
             names = KIT["node_ids"]
             try:
-                async with asyncio.timeout(RUN_TIMEOUT_S):
+                async with asyncio.timeout(seconds):
                     async for part in self.graph.astream(
                         graph_input, cfg, context=context or None, stream_mode=STREAM_MODES, version="v2"
                     ):
@@ -217,11 +225,21 @@ class Service:
                             if text and isinstance(text, str) and getattr(chunk, "type", "") in ("ai", "AIMessageChunk"):
                                 node = meta.get("langgraph_node")
                                 yield {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": names.get(node), "delta": text}
+                        if spend is not None and spend.over:  # a step's error route caught it: stop all the same
+                            raise BudgetExceeded(spend.over)
             except TimeoutError:
+                if seconds < RUN_TIMEOUT_S:
+                    yield {"type": "RUN_ERROR", "code": "budget_exceeded", "runId": run_id, "threadId": thread_id,
+                           "message": f"budget exceeded: ran longer than {seconds:g} s"}  # fmt: skip
+                    return
                 yield {"type": "RUN_ERROR", "code": "timeout", "runId": run_id, "threadId": thread_id,
                        "message": f"the run took longer than {RUN_TIMEOUT_S:g} s (RUN_TIMEOUT_SECONDS)"}  # fmt: skip
                 return
             except Exception as exc:  # noqa: BLE001 - every failure reaches the caller as RUN_ERROR
+                if spend is not None and spend.over:
+                    yield {"type": "RUN_ERROR", "code": "budget_exceeded", "runId": run_id, "threadId": thread_id,
+                           "message": spend.over}  # fmt: skip
+                    return
                 log.exception("run failed", extra={"run_id": run_id, "thread_id": thread_id})
                 yield {"type": "RUN_ERROR", "code": "error", "runId": run_id, "threadId": thread_id,
                        "message": f"{type(exc).__name__}: {exc}"}  # fmt: skip

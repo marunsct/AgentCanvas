@@ -235,6 +235,69 @@ async def test_deploy_kit_for_every_target(api_client, tmp_path):
     assert "API_KEYS=\n" not in (tmp_path / "local/triage/.env").read_text()
 
 
+async def test_the_deploy_kit_stops_a_run_at_the_workflow_budget():
+    """settings.budget was dropped by the export: the service now gets the per-run limits (kit.json) and a callback
+    that counts each reply's tokens and prices them from the vendored catalog, as the AgentCanvas runner does."""
+    import pytest
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+    from langchain_core.messages import AIMessage
+
+    from agentcanvas.adapters.langchain.packager import RUNTIME_FILES
+    from agentcanvas.adapters.langchain.spend import BudgetExceeded, SpendLimit, call_price
+
+    assert "adapters/langchain/spend.py" in RUNTIME_FILES
+    template = (deploykit.KIT_DIR / "app.py.tmpl").read_text()
+    assert "SpendLimit(BUDGET)" in template and "budget_exceeded" in template
+
+    def model(tokens: int) -> GenericFakeChatModel:
+        usage = {"input_tokens": tokens, "output_tokens": 100, "total_tokens": tokens + 100}
+        replies = iter([AIMessage(content="ok", usage_metadata=usage)] * 5)  # type: ignore[arg-type]
+        return GenericFakeChatModel(messages=replies, metadata={"ac_model": "anthropic:claude-opus-5-5"})
+
+    spend = SpendLimit({"max_tokens": 2500})
+    await model(1000).ainvoke("hi", config={"callbacks": [spend]})
+    await model(1000).ainvoke("hi", config={"callbacks": [spend]})
+    assert spend.tokens == 2200 and spend.over is None
+    with pytest.raises(BudgetExceeded, match=r"3300 of 2500"):
+        await model(1000).ainvoke("hi", config={"callbacks": [spend]})
+    with pytest.raises(BudgetExceeded):  # no later call starts
+        await model(10).ainvoke("hi", config={"callbacks": [spend]})
+    costly = SpendLimit({"max_cost_usd": 1.0})
+    await model(100_000).ainvoke("hi", config={"callbacks": [costly]})  # $0.40 + $0.002 on Opus 5.5
+    assert costly.cost == pytest.approx(call_price("anthropic:claude-opus-5-5", {"input_tokens": 100_000,
+                                                                               "output_tokens": 100}))  # fmt: skip
+    with pytest.raises(BudgetExceeded, match="USD for this run"):
+        for _ in range(3):
+            await model(100_000).ainvoke("hi", config={"callbacks": [costly]})
+    assert call_price("anthropic:claude-haiku-5-5", {"input_tokens": 200_000, "output_tokens": 0}) == pytest.approx(
+        0.1
+    )  # the long-context tier, as runner.price
+
+    wf = Workflow.model_validate(
+        {
+            **_budget_workflow(),
+            "settings": {
+                "budget": {
+                    "max_tokens": 50,
+                    "max_cost_usd": 0.5,
+                    "max_seconds": 30,
+                    "thread_max_tokens": 9,
+                    "daily_max_cost_usd": 3,
+                }
+            },
+        }
+    )
+    kit = json.loads(deploykit.kit_json(wf, deploykit.facts(wf, "b", "1.0.0"), deploykit.TARGETS["local"]))
+    assert kit["budget"] == {"max_tokens": 50, "max_cost_usd": 0.5, "max_seconds": 30}
+
+
+def _budget_workflow() -> dict:
+    return {"id": "wf_b", "name": "B", "state": {"channels": [{"name": "out", "default": ""}]},
+            "nodes": [{"id": "n1", "type": "core.set", "name": "s", "config": {"values": {"out": "x"}}}],
+            "edges": [{"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n1"}},
+                      {"id": "e2", "kind": "flow", "source": {"node": "n1"}, "target": {"node": "END"}}]}  # fmt: skip
+
+
 GUARD_SCRIPT = """
 import asyncio
 
