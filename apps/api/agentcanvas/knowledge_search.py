@@ -167,8 +167,10 @@ class Index:
     terms: list[Counter[str]] = field(default_factory=list)
     df: Counter[str] = field(default_factory=Counter)
     avgdl: float = 0.0
+    norms: list[float] = field(default_factory=list)  # each chunk's vector length, computed once, not per query
 
     def __post_init__(self) -> None:
+        self.norms = [math.sqrt(sum(x * x for x in c["vector"])) if c.get("vector") else 0.0 for c in self.chunks]
         self.terms = [Counter(words(embed_text(c))) for c in self.chunks]
         for t in self.terms:
             self.df.update(t.keys())
@@ -195,7 +197,13 @@ class Index:
         return all(c.get("vector") and len(c["vector"]) == len(query_vector) for c in self.chunks)
 
     def semantic(self, query_vector: Sequence[float]) -> list[float]:
-        return [cosine(query_vector, c["vector"]) if c.get("vector") else 0.0 for c in self.chunks]
+        """The cosine of the query with each chunk's vector (the chunks' lengths were computed with the index)."""
+        qn = math.sqrt(sum(x * x for x in query_vector))
+        out = []
+        for c, n in zip(self.chunks, self.norms, strict=True):
+            v = c.get("vector")
+            out.append(sum(x * y for x, y in zip(query_vector, v, strict=True)) / (qn * n) if v and qn and n else 0.0)
+        return out
 
 
 def search(

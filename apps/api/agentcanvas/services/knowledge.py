@@ -1024,7 +1024,10 @@ class KnowledgeService:
         qv = None
         if mode != "keyword" and query.strip() and index.chunks:
             qv = (await self._embed(kb, [query]))[0]
-        return ks.search(index, query, mode=mode, top_k=top_k, min_score=min_score, query_vector=qv)
+        # ranks every chunk in Python: in a worker thread, so a big base does not stall the server (I-16)
+        return await asyncio.to_thread(
+            ks.search, index, query, mode=mode, top_k=top_k, min_score=min_score, query_vector=qv
+        )
 
     async def _search_in_database(
         self, kb: KnowledgeBase, query: str, mode: str, top_k: int, min_score: float, version: tuple[int, ...]

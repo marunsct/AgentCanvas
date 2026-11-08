@@ -206,6 +206,32 @@ async def test_an_export_reads_the_database_in_batches_and_caches_nothing(app, m
         assert len((await svc.index(kb)).chunks) == 5 and kb.id not in kn._INDEX
 
 
+async def test_an_in_process_search_ranks_off_the_event_loop_with_lengths_computed_once(app, monkeypatch):
+    """I-16: ranking every chunk ran on the event loop, and each query recomputed every chunk vector's length."""
+    import threading
+
+    index = ks.Index([{"id": "a", "text": "x", "vector": [3.0, 4.0]}, {"id": "b", "text": "y", "vector": None}])
+    assert index.norms == [5.0, 0.0]
+    assert index.semantic([3.0, 4.0]) == [pytest.approx(1.0), 0.0]
+
+    threads: list[str] = []
+    real = ks.search
+
+    def spy(*args, **kwargs):
+        threads.append(threading.current_thread().name)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ks, "search", spy)
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s)
+        kb = await svc.create("prj_default", "threads")
+        await svc.add(kb.id, title="Leave", text="Everyone gets 25 vacation days.")
+        if await svc.pgvector() is not None:
+            pytest.skip("searched by Postgres")
+        assert (await svc.search(await svc.get(kb.id), "vacation"))[0]["title"] == "Leave"
+    assert threads and threads[0] != threading.main_thread().name
+
+
 async def test_a_file_is_embedded_with_the_title_it_is_cited_by(app):
     """E-12: a PDF or Word file was embedded with its metadata title but searched and cited by its file name, so
     its vectors changed on the next reindex."""
