@@ -277,6 +277,7 @@ def safe_return(path: str | None) -> str:
 class Begun:
     authorization_url: str
     issuer: str
+    resource: str
 
 
 class Connections:
@@ -295,6 +296,15 @@ class Connections:
         found = await s.get(OAuthClient, (org_id, meta.issuer, self.redirect_uri))  # entered by an admin, or registered
         fernet = await self.keyring.fernet(s, org_id)
         if found is not None:
+            # an admin's credentials sign in only to the servers they were entered for: another server that names the
+            # same sign-in server (a builder's own, say) would otherwise receive tokens made with them (CP-3)
+            if found.resources is not None and meta.resource not in found.resources:
+                allowed = ", ".join(sorted({host_of(r) for r in found.resources})) or "no server yet"
+                raise InvalidInput(
+                    f"the sign-in credentials an admin entered for {host_of(meta.issuer)} are for {allowed}, not "
+                    f"{host_of(meta.resource)}. An admin allows this server by entering them again with its address "
+                    "(Settings > Connections > Sign-in credentials)"
+                )
             secret = fernet.decrypt(found.client_secret_enc).decode() if found.client_secret_enc else None
             return found.client_id, secret
         if meta.cimd and self.public_url.startswith("https://"):
@@ -336,8 +346,9 @@ class Connections:
         self, s: AsyncSession, *, org_id: str, server_url: str, client_id: str, client_secret: str | None
     ) -> OAuthClient:
         """Use the client id (and secret) an admin made at the provider, for the authorization server of this MCP
-        server: for providers that take neither client ID metadata documents nor dynamic registration (N-5). Replaces
-        a registration made earlier."""
+        server: for providers that take neither client ID metadata documents nor dynamic registration (N-5). They are
+        used for this MCP server only; entering the same client id with another server's address adds that server
+        (the secret is kept unless a new one is given). Another client id replaces the registration made earlier."""
         self._need_public_url()
         meta = await discover(secure_url(server_url, "the server"), public_only=self.public_only)
         fernet = await self.keyring.fernet(s, org_id)
@@ -346,7 +357,11 @@ class Connections:
         if row is None:
             row = OAuthClient(org_id=org_id, issuer=meta.issuer, redirect_uri=self.redirect_uri)
             s.add(row)
-        row.client_id, row.client_secret_enc = client_id, enc
+        if row.client_id == client_id and row.resources is not None:  # the same app: one more server for it
+            row.resources = sorted({*row.resources, meta.resource})
+            row.client_secret_enc = enc or row.client_secret_enc
+        else:
+            row.client_id, row.client_secret_enc, row.resources = client_id, enc, [meta.resource]
         await s.commit()
         return row
 
@@ -387,7 +402,7 @@ class Connections:
             params["scope"] = meta.scope
         base = meta.authorization_endpoint
         sep = "&" if urlsplit(base).query else "?"
-        return Begun(f"{base}{sep}{urlencode(params)}", meta.issuer)
+        return Begun(f"{base}{sep}{urlencode(params)}", meta.issuer, meta.resource)
 
     async def complete(
         self, s: AsyncSession, *, org_id: str, user_id: str, code: str, state: str, iss: str | None = None

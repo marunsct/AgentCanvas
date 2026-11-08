@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import httpx2
 import pytest
-from fake_oauth import AS, MCP, FakeWorld
+from fake_oauth import AS, EVIL, MCP, FakeWorld
 from sqlalchemy import select
 from test_auth import SIGNING_JWK, bearer, settings, token  # noqa: F401 - `settings` turns OIDC sign-in on
 
@@ -436,7 +436,8 @@ async def test_an_admin_enters_the_client_credentials_of_a_provider_without_regi
     )  # fmt: skip
     assert put.status_code == 200, put.text
     assert put.json() | {"created_at": None} == {"issuer": AS, "host": "as.test", "client_id": "gh_client_1",
-                                                  "has_secret": True, "created_at": None}  # fmt: skip
+                                                  "has_secret": True, "resources": [MCP],
+                                                  "created_at": None}  # fmt: skip
     assert "s3cret-value-xyz" not in put.text
     listed = (await client.get("/v1/connections/clients", headers=ALICE)).json()
     assert listed["redirect_uri"] == "https://canvas.test/oauth/callback"  # what the admin registers at the provider
@@ -467,6 +468,28 @@ async def test_entered_credentials_win_over_a_metadata_document_and_can_be_remov
     assert again.status_code == 404
 
 
+async def test_entered_credentials_sign_in_only_to_the_servers_they_were_entered_for(client, world):
+    """CP-3: a builder's own MCP server that names the organisation's sign-in server must not get tokens made with the
+    admin's client credentials; the admin allows another server by entering the same client id with its address."""
+    world.dcr = False
+    body = {"server_url": MCP, "client_id": "gh_client_1", "client_secret": "s3cret-value-xyz"}
+    assert (await client.put("/v1/connections/clients", json=body, headers=ALICE)).status_code == 200
+    refused = await authorize(client, BOB, server_url=EVIL)
+    assert refused.status_code == 422 and "are for mcp.test, not evil.test" in refused.text
+    ok = (await authorize(client, BOB)).json()  # the server they were entered for
+    assert (ok["host"], ok["issuer_host"], ok["resource"]) == ("mcp.test", "as.test", MCP)  # shown before the sign-in
+    more = await client.put("/v1/connections/clients", json={"server_url": EVIL, "client_id": "gh_client_1"},
+                            headers=ALICE)  # fmt: skip
+    assert more.json()["resources"] == [EVIL, MCP] and more.json()["has_secret"] is True  # the secret is kept
+    assert (await authorize(client, BOB, server_url=EVIL)).status_code == 200
+    other = await client.put("/v1/connections/clients", json={"server_url": MCP, "client_id": "gh_client_2"},
+                             headers=ALICE)  # fmt: skip
+    assert other.json()["resources"] == [MCP] and other.json()["has_secret"] is False  # another app: starts over
+    world.dcr = True
+    assert (await client.delete("/v1/connections/clients", params={"issuer": AS}, headers=ALICE)).status_code == 204
+    assert (await authorize(client, BOB, server_url=EVIL)).status_code == 200  # its own registration: allowed
+
+
 async def test_only_an_admin_manages_client_credentials(client, world):
     body = {"server_url": MCP, "client_id": "x"}
     assert (await client.put("/v1/connections/clients", json=body, headers=BOB)).status_code == 403
@@ -495,3 +518,34 @@ async def test_the_api_starts_with_no_cors_origin_and_no_public_url(app):
     application = create_app(bare)
     async with application.router.lifespan_context(application):
         assert application.state.oauth.public_url == ""
+
+
+def test_client_credentials_saved_before_cp3_keep_to_the_servers_already_connected(tmp_path):
+    """CP-3 migration: a client row could be an admin's or a registration; it keeps to what already worked."""
+    import json
+    import sqlite3
+
+    from agentcanvas.db.session import run_alembic
+
+    db = tmp_path / "m.db"
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "a9d3f7b1c5e2")
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO organization (id, name) VALUES ('org_x', 'X')")
+    for issuer in (AS, "https://other.test"):
+        con.execute(
+            "INSERT INTO oauth_client (org_id, issuer, redirect_uri, client_id) VALUES ('org_x', ?, 'r', 'c')",
+            (issuer,),
+        )
+    con.execute(
+        "INSERT INTO oauth_connection (id, org_id, owner, resource, issuer, token_endpoint, client_id, "
+        "access_token_enc)"
+        " VALUES ('oac_1', 'org_x', 'usr_1', ?, ?, 't', 'c', x'00')",
+        (MCP, AS),
+    )
+    con.commit()
+    con.close()
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "head")
+    con = sqlite3.connect(db)
+    got = dict(con.execute("SELECT issuer, resources FROM oauth_client").fetchall())
+    con.close()
+    assert {k: json.loads(v) for k, v in got.items()} == {AS: [MCP], "https://other.test": []}

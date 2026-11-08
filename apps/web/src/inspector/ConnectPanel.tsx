@@ -20,7 +20,7 @@ export function ConnectPanel({ resource }: { resource: IRResource }) {
     if (!url) return;
     setBusy(true);
     setError(null);
-    try { await connect(url, identity === "service"); } catch (e) { setError((e as Error).message); setBusy(false); }
+    try { if (!(await connect(url, identity === "service"))) setBusy(false); } catch (e) { setError((e as Error).message); setBusy(false); }
   };
   const mayConnect = identity === "starter" || admin;
   return (

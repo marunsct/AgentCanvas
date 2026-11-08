@@ -86,11 +86,12 @@ function ClientCredentials() {
       <QueryStatus q={clients} what="the credentials" />
       {clients.data && clients.data.clients.length > 0 && (
         <table className="table" aria-label="client credentials">
-          <thead><tr><th>Sign-in server</th><th>Client id</th><th>Secret</th><th aria-label="actions" /></tr></thead>
+          <thead><tr><th>Sign-in server</th><th>Client id</th><th>Secret</th><th>For</th><th aria-label="actions" /></tr></thead>
           <tbody>
             {clients.data.clients.map((c) => (
               <tr key={c.issuer}>
                 <td title={c.issuer}><code>{c.host}</code></td><td><code>{c.client_id}</code></td><td>{c.has_secret ? "kept" : "none"}</td>
+                <td className="small">{c.resources ? c.resources.join(", ") || "no server yet" : "any server (registered by AgentCanvas)"}</td>
                 <td className="actions">
                   <button type="button" className="link small" aria-label={`remove the credentials for ${c.host}`} disabled={forget.isPending}
                     onClick={async () => {

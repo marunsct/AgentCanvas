@@ -33,6 +33,10 @@ class AuthorizeIn(BaseModel):
 
 class AuthorizeOut(BaseModel):
     authorization_url: str = Field(description="send the browser here")
+    resource: str = Field(description="the MCP server the connection is for (tokens are sent there)")
+    host: str = Field(description="the MCP server's host")
+    issuer: str = Field(description="the sign-in server the browser goes to")
+    issuer_host: str = Field(description="the sign-in server's host: show it when it differs from `host`")
 
 
 class CallbackIn(BaseModel):
@@ -85,7 +89,10 @@ async def list_connections(
 class ClientIn(BaseModel):
     server_url: str = Field(max_length=2000, description="the app connector's server URL; its sign-in server is found")
     client_id: str = Field(min_length=1, max_length=500)
-    client_secret: str | None = Field(None, max_length=2000, description="for a confidential client; kept encrypted")
+    client_secret: str | None = Field(
+        None, max_length=2000,
+        description="for a confidential client; kept encrypted. Left out with the same client id: the saved one stays",
+    )  # fmt: skip
 
 
 class ClientOut(BaseModel):
@@ -93,6 +100,10 @@ class ClientOut(BaseModel):
     host: str
     client_id: str
     has_secret: bool
+    resources: list[str] | None = Field(
+        description="the MCP servers entered credentials sign in to (no other server may use them); null: "
+        "AgentCanvas registered itself"
+    )
     created_at: datetime
 
 
@@ -104,7 +115,7 @@ class ClientsOut(BaseModel):
 def _client_out(c: Any) -> ClientOut:
     return ClientOut(
         issuer=c.issuer, host=oauth.host_of(c.issuer), client_id=c.client_id, has_secret=bool(c.client_secret_enc),
-        created_at=c.created_at,
+        resources=c.resources, created_at=c.created_at,
     )  # fmt: skip
 
 
@@ -175,7 +186,10 @@ async def authorize(
         return_to=body.return_to,
     )  # fmt: skip
     note(request, target=f"server={oauth.host_of(body.server_url)}", service=body.service, issuer=begun.issuer)
-    return AuthorizeOut(authorization_url=begun.authorization_url)
+    return AuthorizeOut(
+        authorization_url=begun.authorization_url, resource=begun.resource, host=oauth.host_of(begun.resource),
+        issuer=begun.issuer, issuer_host=oauth.host_of(begun.issuer),
+    )  # fmt: skip
 
 
 @router.post("/connections/callback", response_model=CallbackOut)

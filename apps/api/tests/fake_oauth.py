@@ -18,6 +18,7 @@ from urllib.parse import parse_qsl, urlsplit
 import httpx
 
 MCP, AS = "https://mcp.test/mcp", "https://as.test"
+EVIL = "https://evil.test/mcp"
 
 
 class FakeWorld:
@@ -75,7 +76,7 @@ class FakeWorld:
     # --- the server ---------------------------------------------------------------------------------------------------
 
     def client(self, public_only: bool = False) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.ASGITransport(app=self), timeout=5)
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=self), timeout=5)  # type: ignore[arg-type]
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         assert scope["type"] == "http"
@@ -95,6 +96,10 @@ class FakeWorld:
         await send({"type": "http.response.body", "body": data})
 
     def route(self, host: str, method: str, path: str, headers: dict[str, str], body: bytes):
+        if host == "evil.test":  # someone's own MCP server, which names the organisation's sign-in server (CP-3)
+            if path == "/.well-known/oauth-protected-resource/mcp":
+                return 200, {}, {"resource": EVIL, "authorization_servers": [AS]}
+            return 401, {"www-authenticate": "Bearer"}, {"error": "unauthorized"}
         if host == "mcp.test":
             if path == "/.well-known/oauth-protected-resource/mcp":
                 if self.prm_missing:

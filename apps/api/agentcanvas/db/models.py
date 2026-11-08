@@ -965,7 +965,9 @@ class OAuthFlow(Base):
 
 
 class OAuthClient(Base):
-    """AgentCanvas's registration at an authorization server (dynamic client registration), once per organisation."""
+    """AgentCanvas's client at an authorization server, once per organisation: a dynamic registration it made itself,
+    or client credentials an admin entered (N-5). Entered credentials are for the MCP servers the admin entered them
+    with (`resources`), never for another server that names the same sign-in server (CP-3)."""
 
     __tablename__ = "oauth_client"
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
@@ -973,4 +975,6 @@ class OAuthClient(Base):
     redirect_uri: Mapped[str] = mapped_column(Text, primary_key=True)
     client_id: Mapped[str] = mapped_column(Text)
     client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # entered by an admin: the MCP servers (canonical addresses) they are for. None: AgentCanvas registered itself
+    resources: Mapped[list[Any] | None] = mapped_column(Json, nullable=True)
     created_at: Mapped[datetime] = _now()

@@ -146,6 +146,22 @@ export type Service = boolean;
  */
 export type AuthorizationUrl = string;
 /**
+ * the MCP server's host
+ */
+export type Host = string;
+/**
+ * the sign-in server the browser goes to
+ */
+export type Issuer1 = string;
+/**
+ * the sign-in server's host: show it when it differs from `host`
+ */
+export type IssuerHost = string;
+/**
+ * the MCP server the connection is for (tokens are sent there)
+ */
+export type Resource1 = string;
+/**
  * the block (node or resource id) selected
  */
 export type Selected = string | null;
@@ -212,7 +228,7 @@ export type Iss = string | null;
 export type State = string;
 export type CreatedAt4 = string;
 export type ExpiresAt = string | null;
-export type Host = string;
+export type Host1 = string;
 export type Id7 = string;
 /**
  * 'you', 'service', or (for admins) another person's id
@@ -221,7 +237,7 @@ export type Owner = string;
 /**
  * the MCP server's address
  */
-export type Resource1 = string;
+export type Resource2 = string;
 export type Scope = string | null;
 /**
  * 'active', or 'reconnect' when the server no longer accepts it
@@ -440,7 +456,7 @@ export type Size = number;
 export type Strategy = "paragraphs" | "sentences" | "fixed" | "markdown";
 export type ClientId1 = string;
 /**
- * for a confidential client; kept encrypted
+ * for a confidential client; kept encrypted. Left out with the same client id: the saved one stays
  */
 export type ClientSecret = string | null;
 /**
@@ -450,11 +466,15 @@ export type ServerUrl1 = string;
 export type ClientId2 = string;
 export type CreatedAt5 = string;
 export type HasSecret = boolean;
-export type Host1 = string;
+export type Host2 = string;
 /**
  * the sign-in server these credentials are for
  */
-export type Issuer1 = string;
+export type Issuer2 = string;
+/**
+ * the MCP servers entered credentials sign in to (no other server may use them); null: AgentCanvas registered itself
+ */
+export type Resources = string[] | null;
 export type Clients = ClientOut[];
 /**
  * register this as the redirect (callback) address at the provider
@@ -3934,6 +3954,10 @@ export interface AuthorizeIn {
  */
 export interface AuthorizeOut {
   authorization_url: AuthorizationUrl;
+  host: Host;
+  issuer: Issuer1;
+  issuer_host: IssuerHost;
+  resource: Resource1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -4085,10 +4109,10 @@ export interface CallbackOut {
 export interface ConnectionOut {
   created_at: CreatedAt4;
   expires_at: ExpiresAt;
-  host: Host;
+  host: Host1;
   id: Id7;
   owner: Owner;
-  resource: Resource1;
+  resource: Resource2;
   scope: Scope;
   status: Status1;
   updated_at: UpdatedAt1;
@@ -4242,8 +4266,9 @@ export interface ClientOut {
   client_id: ClientId2;
   created_at: CreatedAt5;
   has_secret: HasSecret;
-  host: Host1;
-  issuer: Issuer1;
+  host: Host2;
+  issuer: Issuer2;
+  resources: Resources;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
