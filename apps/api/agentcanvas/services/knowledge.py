@@ -671,7 +671,8 @@ class KnowledgeService:
         def failed(url: str, exc: Exception) -> None:
             result["failed"].append({"url": url, "error": str(exc)[:300]})
 
-        docs = {d.url: d for d in await self.documents(kb_id) if d.source == "url" and d.url}
+        # plain values, not the rows: a failed page update rolls back, which expires every loaded row (I-4)
+        docs = {d.url: (d.id, d.sha256) for d in await self.documents(kb_id) if d.source == "url" and d.url}
         listed: dict[str, list[str]] = {}  # sitemap -> the addresses it lists now
         for sitemap in sitemaps:
             try:
@@ -689,7 +690,7 @@ class KnowledgeService:
                 if url not in pages:
                     del sitemaps[sitemap][url]
                     if (gone := docs.get(final)) and final not in wanted:
-                        await self.remove(kb_id, gone.id)
+                        await self.remove(kb_id, gone[0])
                         del docs[final]
                         result["removed"] += 1
         known = {u for mapping in sitemaps.values() for u in mapping}
@@ -706,19 +707,19 @@ class KnowledgeService:
 
         fetched = dict(await asyncio.gather(*(fetch(u) for u in [*docs, *new_pages])))
 
-        for url, doc in docs.items():  # pages already in the base: unchanged, or replaced
+        for url, (doc_id, digest) in docs.items():  # pages already in the base: unchanged, or replaced
             got = fetched[url]
             if isinstance(got, InvalidInput):
                 failed(url, got)
                 continue
             _, title, text = got
-            if hashlib.sha256(text.replace("\x00", "").strip().encode()).hexdigest() == doc.sha256:
+            if hashlib.sha256(text.replace("\x00", "").strip().encode()).hexdigest() == digest:
                 result["unchanged"] += 1
                 continue
             try:
-                await self.add(kb_id, title=title, text=text, kind="url", name=title, url=doc.url, user_id=user_id,
+                await self.add(kb_id, title=title, text=text, kind="url", name=title, url=url, user_id=user_id,
                                commit=False)  # fmt: skip
-                await self._drop(doc)
+                await self._drop(await self.document(kb_id, doc_id))
                 await self._touch(await self.get(kb_id))
                 result["updated"] += 1
             except (InvalidInput, Conflict) as exc:

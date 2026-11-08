@@ -95,6 +95,25 @@ async def test_a_page_that_cannot_be_fetched_keeps_its_document(app, api_client)
     assert await titles(api_client, kb_id) == ["Returns"]
 
 
+async def test_a_page_update_that_fails_does_not_break_the_rest_of_the_crawl(app, api_client):
+    """I-4: the rollback after a failed page update expired every loaded document, and reading the next one's hash
+    raised MissingGreenlet: the re-crawl answered 500."""
+    site = Site()
+    kb_id = await kb_with(api_client, app, site)
+    k = f"/v1/knowledge/{kb_id}"
+    for p in ("shipping", "returns"):
+        r = await api_client.post(f"{k}/documents/url", json={"url": f"https://shop.example/{p}"})
+        assert r.status_code == 201
+    site.pages["/shipping"] = ("Returns", "Returns are accepted for thirty days.")  # the text returns has: refused
+    site.pages["/returns"] = ("Returns", "Returns are accepted for sixty days now.")
+    r = await api_client.post(f"{k}/recrawl")
+    assert r.status_code == 200, r.text
+    got = r.json()
+    assert got["updated"] == 1 and [f["url"] for f in got["failed"]] == ["https://shop.example/shipping"]
+    docs = {d["url"]: d for d in (await api_client.get(f"{k}/documents")).json()}
+    assert docs["https://shop.example/shipping"]["name"] == "Shipping"  # kept as it was
+
+
 async def test_a_sitemap_adds_its_pages_and_follows_it(app, api_client):
     site = Site()
     kb_id = await kb_with(api_client, app, site)
