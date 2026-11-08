@@ -299,10 +299,93 @@ def test_openai_agents_sdk_code_imports():
     [path] = ir["metadata"]["kit"]["files"]
     assert path == "tools/wf_sdk1_tools.py"
     code = ir["metadata"]["kit"]["files"][path]
-    assert "@tool\ndef lookup_order" in code and "@function_tool" not in code
+    assert '@tool(description="Look up an order\'s status by its id.")\ndef lookup_order' in code
+    assert "@function_tool" not in code
     compile(code, path, "exec")
     text = " ".join(report)
     assert "web search" in text and "guardrails" in text and "Planning Agent" in text
+    wf = Workflow.model_validate({**ir, "metadata": {}})
+    assert not [d for d in validate(wf) if d.severity == "error"]
+
+
+SDK_TOOLS = '''
+import json
+import math as m
+from dataclasses import dataclass
+
+from agents import Agent, RunContextWrapper, function_tool
+
+RATE = 0.2
+UNUSED = 42
+
+
+@dataclass
+class Account:
+    owner: str
+
+
+def _fmt(x: float) -> str:
+    return json.dumps({"total": round(x, 2)})
+
+
+@function_tool(description_override="Adds the tax to an amount.")
+def with_tax(amount: float) -> str:
+    return _fmt(amount * (1 + RATE))
+
+
+@function_tool
+def root(ctx: RunContextWrapper[Account], x: float) -> float:
+    """The square root of x."""
+    return m.sqrt(x)
+
+
+@function_tool
+def whoami(ctx: RunContextWrapper[Account]) -> str:
+    return ctx.context.owner
+
+
+@function_tool(name_override="describe_account")
+def describe(owner: str) -> str:
+    """Describes an account."""
+    return repr(Account(owner))
+
+
+helper = Agent(name="Helper", instructions="Use the tools.", tools=[with_tax, root, whoami, describe])
+first = Agent(name="First", instructions="Say hi.")
+result = first.run_sync("hi")
+answer = helper.run_sync(result.final_output)
+'''
+
+
+def test_agents_sdk_tools_keep_what_they_use_and_import(tmp_path, monkeypatch):
+    """Only the @function_tool bodies were copied: the module's imports, constants and helpers were lost (NameError),
+    a tool without a docstring could not be made (LangChain needs a description) and the run-context parameter was
+    shown to the model."""
+    import importlib
+    import sys
+
+    _, ir, report, _ = import_document(SDK_TOOLS, wf_id="wf_t")
+    [(path, code)] = ir["metadata"]["kit"]["files"].items()
+    assert "UNUSED" not in code and "Agent(" not in code and "RunContextWrapper" not in code
+    (tmp_path / "tools").mkdir()
+    (tmp_path / path).write_text(code)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    mod = importlib.import_module(path.removesuffix(".py").replace("/", "."))
+    try:
+        assert mod.with_tax.description == "Adds the tax to an amount."
+        assert json.loads(mod.with_tax.invoke({"amount": 10})) == {"total": 12.0}
+        assert mod.root.description == "The square root of x." and set(mod.root.args) == {"x"}
+        assert mod.root.invoke({"x": 9}) == 3.0
+        assert mod.whoami.description == "Whoami." and mod.whoami.args == {}
+        assert mod.describe.name == "describe_account"
+        assert mod.describe.invoke({"owner": "ana"}) == "Account(owner='ana')"  # the class keeps its @dataclass
+    finally:
+        sys.modules.pop(mod.__name__, None)
+    text = " ".join(report)
+    assert "Tool 'whoami' had no docstring" in text and "Tool 'whoami' reads the SDK's run context (ctx)" in text
+    assert "Tool 'root' reads" not in text  # root never reads its context
+    order = [n["name"] for n in sorted(ir["nodes"], key=lambda n: n["id"])]
+    assert order == ["first", "helper"]  # agent.run_sync(...) calls, in the order the code makes them
     wf = Workflow.model_validate({**ir, "metadata": {}})
     assert not [d for d in validate(wf) if d.severity == "error"]
 

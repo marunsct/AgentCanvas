@@ -5,10 +5,12 @@ The Python is read with `ast` and never run. What carries over:
 - every `Agent(...)`: its name, `instructions` (text), `model`, `model_settings` (temperature, max tokens), `tools`
   and `output_type`, as an AI agent block with its model block;
 - `@function_tool` functions, as Python tools: their source goes to the project's workspace
-  (`tools/<workflow key>_tools.py`, written as a LangChain `@tool`), added when the workflow is created;
+  (`tools/<workflow key>_tools.py`, written as a LangChain `@tool` with its description, without the SDK's run
+  context parameter), with the imports, constants, helpers and classes of the file they use, added when the
+  workflow is created;
 - `handoffs=[...]` and `other.as_tool(...)`: the agent becomes a Planning Agent and the others its specialists;
-- the order of the `Runner.run(...)` calls (an Agent Builder export runs its agents one after another), else the
-  agent no other agent hands off to.
+- the order of the `Runner.run(agent, ...)` and `agent.run(...)` / `agent.run_sync(...)` calls (an Agent Builder
+  export runs its agents one after another), else the agent no other agent hands off to.
 
 Hosted tools (web search, file search, code interpreter), guardrails and branching code are listed in the report with
 what to use instead.
@@ -17,6 +19,7 @@ what to use instead.
 from __future__ import annotations
 
 import ast
+import builtins
 from typing import Any
 
 from agentcanvas.agentspec import ident
@@ -31,6 +34,9 @@ HOSTED = {
     "ImageGenerationTool": "image generation",
 }
 TYPES = {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}
+CONTEXT_TYPES = ("RunContextWrapper", "ToolContext")  # the SDK's run context: the SDK fills it, never the model
+TOOLS_HEAD = ('"""Tools imported from OpenAI Agents SDK code."""\n\nfrom __future__ import annotations\n\n'
+              "from langchain_core.tools import tool\n")  # fmt: skip
 MAX_SOURCE = 500_000  # characters of Python in one file
 
 
@@ -69,6 +75,47 @@ def _kw(call: ast.Call, key: str) -> ast.AST | None:
     return next((k.value for k in call.keywords if k.arg == key), None)
 
 
+def _bound(stmt: ast.stmt) -> set[str]:
+    """The module-level names a statement defines."""
+    if isinstance(stmt, ast.Import | ast.ImportFrom):
+        return {(a.asname or a.name).split(".")[0] for a in stmt.names if a.name != "*"}
+    if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+        return {stmt.name}
+    targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target] if isinstance(stmt, ast.AnnAssign) else []
+    return {n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name)}
+
+
+def _reads(node: ast.AST) -> set[str]:
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+
+
+def _locals(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    a = fn.args
+    params = {x.arg for x in [*a.posonlyargs, *a.args, *a.kwonlyargs, *[v for v in (a.vararg, a.kwarg) if v]]}
+    stored = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store | ast.Del)}
+    inner = {n.name for n in ast.walk(fn) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)}
+    caught = {n.name for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler) and n.name}
+    return params | stored | (inner - {fn.name}) | caught
+
+
+def _is_agents_import(stmt: ast.stmt) -> bool:
+    if isinstance(stmt, ast.ImportFrom):
+        return (stmt.module or "").split(".")[0] == "agents" or stmt.module == "__future__"
+    return isinstance(stmt, ast.Import) and any(a.name.split(".")[0] == "agents" for a in stmt.names)
+
+
+def _context_param(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.arg | None:
+    """The first parameter when it is the SDK's run context (`ctx: RunContextWrapper[...]`)."""
+    args = [*fn.args.posonlyargs, *fn.args.args]
+    if not args or args[0].annotation is None:
+        return None
+    ann = args[0].annotation
+    base = ann.value if isinstance(ann, ast.Subscript) else ann
+    if isinstance(base, ast.Constant) and isinstance(base.value, str):  # a string annotation
+        return args[0] if base.value.split("[")[0].split(".")[-1] in CONTEXT_TYPES else None
+    return args[0] if _name(base) in CONTEXT_TYPES else None
+
+
 class _Reader:
     def __init__(self, source: str, b: Builder, key: str):
         self.source, self.b, self.key = source, b, key
@@ -79,7 +126,8 @@ class _Reader:
         self.agents: dict[str, ast.Call] = {}  # variable -> Agent(...) call
         self.functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
         self.classes: dict[str, ast.ClassDef] = {}
-        self.order: list[str] = []  # agents in the order Runner.run calls them
+        self.order: list[str] = []  # agents in the order Runner.run / agent.run calls them
+        self.runs: list[tuple[int, int, str | None, str | None]] = []  # (line, column, owner, first argument)
         self.tool_rids: dict[str, str] = {}
         self.files: dict[str, str] = {}
 
@@ -96,18 +144,23 @@ class _Reader:
                 self.classes[node.name] = node
             elif isinstance(node, ast.Call) and _name(node.func) in ("run", "run_sync", "run_streamed"):
                 owner = node.func.value if isinstance(node.func, ast.Attribute) else None
-                if owner is not None and _name(owner) == "Runner" and node.args:
-                    first = _name(node.args[0])
-                    if first and first not in self.order:
-                        self.order.append(first)
+                if owner is not None:
+                    first = _name(node.args[0]) if node.args else None
+                    self.runs.append((node.lineno, node.col_offset, _name(owner), first))
             elif isinstance(node, ast.If | ast.Match) and self._inside_workflow(node):
                 self.b.note("The code branches (if/else); the workflow runs its agents in order. Add a Choose a path "
                             "step where the original chose between agents.")  # fmt: skip
         if not self.agents:
             raise ImportError_("no Agent(...) found in this code")
+        for _, _, owner, first in sorted(self.runs, key=lambda r: (r[0], r[1])):  # in the order the code runs them
+            # Runner.run(agent, ...) (and Agent.run(agent, ...)), or agent.run(...) / agent.run_sync(...)
+            var = first if owner in ("Runner", "Agent") else owner if owner in self.agents else None
+            if var and var in self.agents and var not in self.order:
+                self.order.append(var)
 
     def _inside_workflow(self, node: ast.AST) -> bool:
-        return "Runner." in ast.unparse(node)[:2000]
+        text = ast.unparse(node)[:2000]
+        return "Runner." in text or any(f"{a}.run" in text for a in self.agents)
 
     # ---- blocks ----
     def model(self, call: ast.Call, label: str) -> str:
@@ -128,17 +181,108 @@ class _Reader:
         fn = self.functions.get(name)
         if fn is None:
             return None
-        module = f"tools/{self.key}_tools.py"
         rid = f"r_{len(self.b.resources) + 1}"
         self.b.resources.append({"id": rid, "type": "tool.python", "name": ident(name, self.b.names, "tool"),
                                  "config": {"import_path": f"tools.{self.key}_tools:{name}"}})  # fmt: skip
-        body = ast.get_source_segment(self.source, fn) or ""
-        lines = [ln for ln in body.splitlines() if not ln.lstrip().startswith("@function_tool")]
-        self.files.setdefault(module, '"""Tools imported from OpenAI Agents SDK code."""\n\nfrom langchain_core.tools '
-                              "import tool\n")  # fmt: skip
-        self.files[module] += "\n\n@tool\n" + "\n".join(lines) + "\n"
         self.tool_rids[name] = rid
         return rid
+
+    def _agent_code(self, stmt: ast.stmt) -> bool:
+        """A statement that makes or runs agents (it stays behind: the workflow is the agents now)."""
+        for n in ast.walk(stmt):
+            if isinstance(n, ast.Call) and _name(n.func) in ("Agent", "Runner", "run", "run_sync", "run_streamed"):
+                return True
+            if isinstance(n, ast.Name) and (n.id in self.agents or n.id == "Runner"):
+                return True
+        return False
+
+    def _tool_source(self, fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+        """`fn` as a LangChain `@tool`: its description given (the override, the docstring, or one made up), the
+        SDK's run-context parameter left out."""
+        label = fn.name
+        deco = next((d for d in fn.decorator_list if _name(d.func if isinstance(d, ast.Call) else d)
+                     == "function_tool"), None)  # fmt: skip
+        override = _const(_kw(deco, "description_override")) if isinstance(deco, ast.Call) else None
+        tool_name = _const(_kw(deco, "name_override")) if isinstance(deco, ast.Call) else None
+        description = override if isinstance(override, str) and override.strip() else ast.get_docstring(fn)
+        if not description:
+            description = fn.name.replace("_", " ").strip().capitalize() + "."
+            self.b.note(f"Tool '{label}' had no docstring or description: it is described to the model as "
+                        f"'{description}'; write a better one in tools/{self.key}_tools.py.")  # fmt: skip
+        ctx = _context_param(fn)
+        if ctx is None:
+            body = ast.get_source_segment(self.source, fn) or ast.unparse(fn)
+        else:
+            plain = ast.parse(ast.unparse(fn)).body[0]
+            assert isinstance(plain, ast.FunctionDef | ast.AsyncFunctionDef)
+            plain.decorator_list = []
+            args = plain.args.posonlyargs if plain.args.posonlyargs else plain.args.args
+            args.pop(0)
+            body = ast.unparse(plain)
+            if ctx.arg in _reads(fn):
+                self.b.note(f"Tool '{label}' reads the SDK's run context ({ctx.arg}), which a LangChain tool does not "
+                            f"get: change it in tools/{self.key}_tools.py.")  # fmt: skip
+        head = f"@tool({tool_name!r}, description={description!r})" if isinstance(tool_name, str) and tool_name else (
+            f"@tool(description={description!r})")  # fmt: skip
+        return head + "\n" + body
+
+    def _segment(self, stmt: ast.stmt) -> str:
+        """A module-level statement as written, its decorators included."""
+        decorators = getattr(stmt, "decorator_list", [])
+        start = min([stmt.lineno, *(d.lineno for d in decorators)]) - 1
+        lines = self.source.splitlines()[start : stmt.end_lineno or stmt.lineno]
+        return "\n".join(lines) if lines else ast.unparse(stmt)
+
+    def tools_module(self) -> str:
+        """The tools' file: each `@function_tool` as a LangChain tool, with the imports, constants, helpers and
+        classes of the original file they use (found by name; agent code stays behind)."""
+        fns = [self.functions[n] for n in self.tool_rids]
+        top = self.tree.body
+        defs: dict[str, list[int]] = {}
+        held: set[str] = set()  # names only agent code defines
+        for i, stmt in enumerate(top):
+            if stmt in fns or _is_agents_import(stmt):
+                continue
+            if not isinstance(stmt, ast.Import | ast.ImportFrom | ast.FunctionDef | ast.AsyncFunctionDef
+                              | ast.ClassDef | ast.Assign | ast.AnnAssign):  # fmt: skip
+                continue
+            if self._agent_code(stmt):
+                held |= _bound(stmt)
+                continue
+            for n in _bound(stmt):
+                defs.setdefault(n, []).append(i)
+        needed: set[int] = set()
+        for fn in fns:
+            ctx = _context_param(fn)
+            a = fn.args
+            parts_of = [*fn.body, *([fn.returns] if fn.returns else []), *a.defaults, *(d for d in a.kw_defaults if d)]
+            parts_of += [x.annotation for x in [*a.posonlyargs, *a.args, *a.kwonlyargs, *[v for v in (a.vararg, a.kwarg)
+                         if v]] if x.annotation is not None and x is not ctx]  # fmt: skip
+            free = {n for part in parts_of for n in _reads(part)} - _locals(fn) - set(dir(builtins))
+            missing = sorted(n for n in free if n not in defs and n not in self.functions)
+            if missing:
+                why = "made by the agent code" if set(missing) <= held else "not defined in this file"
+                self.b.note(f"Tool '{fn.name}' uses {', '.join(missing)}, {why}: add it to tools/{self.key}_tools.py.")
+            todo, seen = list(free), set()
+            while todo:
+                n = todo.pop()
+                if n in seen:
+                    continue
+                seen.add(n)
+                for i in defs.get(n, []):
+                    if i not in needed:
+                        needed.add(i)
+                        todo += _reads(top[i])
+        parts = [TOOLS_HEAD]
+        imports = [top[i] for i in sorted(needed) if isinstance(top[i], ast.Import | ast.ImportFrom)]
+        if imports:
+            parts.append("".join(self._segment(x) + "\n" for x in imports))
+        for i in sorted(needed):
+            if not isinstance(top[i], ast.Import | ast.ImportFrom):
+                parts.append("\n\n" + self._segment(top[i]) + "\n")
+        for fn in fns:
+            parts.append("\n\n" + self._tool_source(fn) + "\n")
+        return "\n".join(p for p in parts[:2]) + "".join(parts[2:])
 
     def output_schema(self, node: ast.AST | None, label: str) -> dict[str, Any] | None:
         cls = self.classes.get(_name(node) or "") if node is not None else None
@@ -242,6 +386,8 @@ class _Reader:
         skipped = [a for a in self.agents if a not in order and a not in handed]
         if skipped:
             self.b.note(f"Agents not run by the code were left out: {', '.join(skipped)}.")
+        if self.tool_rids:
+            self.files[f"tools/{self.key}_tools.py"] = self.tools_module()
         return self.files
 
 
