@@ -895,6 +895,7 @@ CREATE TABLE public.run (
     cache_hits integer DEFAULT 0 NOT NULL,
     fallbacks integer DEFAULT 0 NOT NULL,
     events jsonb,
+    origin text,
     CONSTRAINT run_mode CHECK ((mode = ANY (ARRAY['normal'::text, 'debug'::text]))),
     CONSTRAINT run_status CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'interrupted'::text, 'error'::text, 'cancelled'::text])))
 );
