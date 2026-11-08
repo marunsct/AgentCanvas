@@ -485,7 +485,7 @@ async def test_usage_per_node_and_run_totals(app, api_client, monkeypatch):
 
     demo_triage(app)
     for model_id, (p_in, p_out) in {
-        "openai:gpt-5-mini": (1.0, 4.0),
+        "openai:gpt-5.6-luna": (1.0, 4.0),
         "anthropic:claude-sonnet-5-5": (3.0, 15.0),
     }.items():
         info = default_registry().model(model_id)
@@ -496,7 +496,7 @@ async def test_usage_per_node_and_run_totals(app, api_client, monkeypatch):
     usage = [e["value"] for e in evs if e.get("name") == "ac.usage"]
     assert {u["canvas_node_id"] for u in usage} == {"n_cls", "n_ag"}  # the agent's inner model counts for n_ag
     cls = next(u for u in usage if u["canvas_node_id"] == "n_cls")
-    assert cls["model"] == "openai:gpt-5-mini"
+    assert cls["model"] == "openai:gpt-5.6-luna"
     assert cls["cost_usd"] == pytest.approx((cls["input_tokens"] * 1.0 + cls["output_tokens"] * 4.0) / 1e6)
     steps = [e for e in evs if e["type"] == "STEP_FINISHED"]
     assert steps and all(isinstance(e["duration_ms"], int) for e in steps)
