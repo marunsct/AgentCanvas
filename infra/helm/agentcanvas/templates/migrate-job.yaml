@@ -36,7 +36,7 @@ spec:
           command:
             - sh
             - -c
-            - export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && alembic upgrade head && python -m agentcanvas.db.app_role
+            - export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && python -m agentcanvas.db.migrate && python -m agentcanvas.db.app_role
           env:
             {{- include "agentcanvas.apiEnv" . | nindent 12 }}
           envFrom:

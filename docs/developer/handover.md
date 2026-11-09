@@ -155,7 +155,10 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds with every 
   closed, add what you found); [decisions.md](decisions.md) for a judgment call; user guide pages for anything
   people see (+ `mkdocs.yml` nav, then `make schema` to refresh the Copilot's copy); this file when a convention,
   command or owner decision changes. [README](README.md#keeping-the-docs-current) has the rules.
-- Bump the API version in `api/main.py` for each release; regenerate the schema afterwards.
+- Bump the version for each release in `apps/api/pyproject.toml` (the API reports it from there), `apps/web/package.json`,
+  the chart's `appVersion` and the `VERSION` argument of both Dockerfiles (`test_deploy_files.py` keeps them equal);
+  regenerate the schema afterwards. A migration must leave the previous release working on the migrated database
+  (expand, migrate, contract): the deploy guide's rollback runs the previous images on it.
 - New public or own-credential routes must be added to the allowlists in `apps/api/tests/test_auth.py`.
   Admin-only routes go in the role exceptions in `api/deps.py`.
 - LangChain/LangGraph imports only under `agentcanvas/adapters/` (`lint-imports` enforces it).

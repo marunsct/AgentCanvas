@@ -282,6 +282,31 @@ workflow version only when it is resume-compatible. Take a backup first.
   half minute or so until the new replicas are ready, and runs that were going resume on them (each replica takes over
   handed-over runs at startup). Upgrade in a quiet hour, or use Kubernetes for rolling upgrades.
 
+Afterwards, Settings › You › About (or `GET /v1/version`) shows the new release, and `agentcanvas_build_info` which
+release each pod runs.
+
+### Rolling back
+
+When an upgrade goes wrong, run the previous images on the same database. A release's migrations are written so that
+the release before it still runs on the migrated database (new tables and columns that the older code ignores), so
+the schema stays where it is: the migration step of the older image sees a database a later release migrated, logs
+`db.newer_than_code` and leaves it alone, and the API starts.
+
+- **Helm:** `helm rollback agentcanvas` returns to the previous revision (`helm history agentcanvas` lists them;
+  `helm rollback agentcanvas <revision>` picks one), or `helm upgrade` with the previous `image.api.tag` and
+  `image.web.tag`.
+- **Compose:** set `API_IMAGE` and `WEB_IMAGE` to the previous tags (or build the previous commit), then
+  `docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait`. Images older than the release
+  that added this section run a bare `alembic upgrade head` as their migration step, which fails on the newer
+  database; start those with `up -d --wait --no-deps api web`, which skips it. (`helm rollback` runs no migration Job.)
+- **Check** that Settings › You › About shows the previous release, then upgrade again once the fix is out.
+- **Downgrading the schema** is rarely needed, and only when a release's notes say its migrations do not work with
+  the release before. It can drop data the newer columns hold, so take a backup first, and run it with the **newer**
+  image (only it has those migrations' downgrade steps), down to the revision the previous image reports with
+  `alembic heads`: for example `docker compose -f infra/compose.prod.yml --env-file infra/.env.prod run --rm migrate
+  alembic downgrade <revision>`, then roll back the images.
+- **When data is damaged**, restore the backup taken before the upgrade ([Backups](#backups)).
+
 ## Scaling
 
 - **API:** stateless; add replicas for more concurrent runs and requests (`API_REPLICAS` in `infra/.env.prod`, then

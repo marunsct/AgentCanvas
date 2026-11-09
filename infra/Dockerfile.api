@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # API image (M8-T1). Build context: apps/api
 #   docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
-# Runs as uid 10001. Migrations: `alembic upgrade head` (the compose `migrate` service, the Helm hook Job).
+# Runs as uid 10001. Migrations: `python -m agentcanvas.db.migrate` (the compose `migrate` service, the Helm hook Job).
 # Base images are pinned by digest (Dependabot proposes updates weekly). To pull one from a mirror, replace the
 # exact reference: --build-context 'python:3.12-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/python@sha256:<digest>'
 # Mastra (step 8) is built from the Node.js image only when asked for

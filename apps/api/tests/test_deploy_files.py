@@ -575,3 +575,13 @@ def test_the_version_is_the_same_everywhere_and_the_image_carries_its_commit():
         assert f'ARG VERSION="{version}"' in runtime and 'org.opencontainers.image.version="${VERSION}"' in runtime
     assert "AGENTCANVAS_GIT_SHA=${GIT_SHA}" in (ROOT / "infra" / "Dockerfile.api").read_text()  # GET /v1/version
     assert 'GIT_SHA="${GIT_SHA}" pnpm build' in (ROOT / "infra" / "Dockerfile.web").read_text()  # Settings > About
+
+
+def test_the_migration_step_lets_a_rolled_back_api_start():
+    """compose's `migrate` service and the Helm hook Job run `python -m agentcanvas.db.migrate`, which leaves a database
+    a later release migrated alone: a bare `alembic upgrade head` fails there, and the API waits for this step."""
+    migrate = " ".join(compose("compose.prod.yml")["services"]["migrate"]["command"])
+    job = (ROOT / "infra" / "helm" / "agentcanvas" / "templates" / "migrate-job.yaml").read_text()
+    for command in (migrate, job):
+        assert "python -m agentcanvas.db.migrate && python -m agentcanvas.db.app_role" in command
+        assert "alembic upgrade head" not in command

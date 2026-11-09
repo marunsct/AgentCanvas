@@ -134,7 +134,8 @@ services:
       APP_DB_USER: agentcanvas_app
       APP_DB_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}
     # migrations as the owner, then the API's own role: no superuser, no BYPASSRLS
-    command: ["sh", "-c", "alembic upgrade head && python -m agentcanvas.db.app_role"]
+    # migrate: `alembic upgrade head`, except on a database a later release migrated (a rollback: left as it is)
+    command: ["sh", "-c", "python -m agentcanvas.db.migrate && python -m agentcanvas.db.app_role"]
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"

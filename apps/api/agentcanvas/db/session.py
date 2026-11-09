@@ -54,7 +54,12 @@ class Database:
             yield s
 
     async def migrate(self) -> None:
-        """Alembic `upgrade head` (runs in a worker thread because env.py drives its own event loop)."""
+        """Alembic `upgrade head` (runs in a worker thread because env.py drives its own event loop). A database
+        newer than the code (the server was rolled back) is left as it is: Alembic cannot find its revision and would
+        fail, and the migrations are additive, so the older code runs on it."""
+        current, heads = await self.revisions()
+        if _newer_than_code(current, heads):
+            return
         await asyncio.to_thread(run_alembic, self.url, "upgrade", "head")
 
     async def revisions(self) -> tuple[set[str], set[str]]:
@@ -78,27 +83,36 @@ class Database:
         """With AUTO_MIGRATE off, refuse to start on a database the migrations have not reached (its queries would
         fail on missing columns, request by request). A revision this code does not know is a newer database (a
         rollback of the server): it is logged, and the server starts."""
-        from alembic.config import Config
-        from alembic.script import ScriptDirectory
-
         current, heads = await self.revisions()
-        if current == heads:
-            return
-        cfg = Config()
-        cfg.set_main_option("script_location", str(MIGRATIONS))
-        script = ScriptDirectory.from_config(cfg)
-        known = {r.revision for r in script.walk_revisions()}
-        if current and not current <= known:
-            log.warning("db.newer_than_code", database=sorted(current), code=sorted(heads))
+        if current == heads or _newer_than_code(current, heads):
             return
         raise RuntimeError(
             f"the database is at migration {', '.join(sorted(current)) or 'none'} and this server needs "
-            f"{', '.join(sorted(heads))}: run `alembic upgrade head` (the image: `python -m alembic upgrade head`), "
+            f"{', '.join(sorted(heads))}: run `alembic upgrade head` (the image: `python -m agentcanvas.db.migrate`), "
             "or set AGENTCANVAS_AUTO_MIGRATE=true"
         )
 
     async def dispose(self) -> None:
         await self.engine.dispose()
+
+
+def _newer_than_code(current: set[str], heads: set[str]) -> bool:
+    """The database is at a revision these migrations do not know: a later release migrated it (logged)."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    if not current or current == heads:
+        return False
+    cfg = Config()
+    cfg.set_main_option("script_location", str(MIGRATIONS))
+    known = {r.revision for r in ScriptDirectory.from_config(cfg).walk_revisions()}
+    if current <= known:
+        return False
+    log.warning(
+        "db.newer_than_code", database=sorted(current), code=sorted(heads),
+        hint="a later release migrated this database; it is left as it is (see Rolling back in the deploy guide)",
+    )  # fmt: skip
+    return True
 
 
 def _sqlite_foreign_keys(dbapi_connection, _record) -> None:

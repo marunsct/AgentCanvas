@@ -117,7 +117,7 @@ web:
   podAnnotations: {}
 
 migrations:
-  enabled: true                   # `alembic upgrade head` as a pre-install / pre-upgrade hook Job
+  enabled: true                   # migrations (`python -m agentcanvas.db.migrate`) as a pre-install / pre-upgrade hook Job
 
 workspaces:
   # project workspaces (git repositories) are shared by every API replica: a ReadWriteMany volume
