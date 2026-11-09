@@ -8,13 +8,13 @@ setup:      ## install Python and web dependencies
 	cd apps/api && uv sync
 	cd apps/web && pnpm install
 
-crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai
-	cd apps/api && uv venv --allow-existing --python 3.13 .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.39
+crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai, from its lock as in the image
+	cd apps/api && uv venv --allow-existing --python 3.13 .frameworks/crewai \
+	  && uv pip sync --require-hashes --python .frameworks/crewai/bin/python framework-locks/crewai.txt
 
 framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent Framework (S33), Strands and LlamaIndex (S35) workflows: a framework in its own environment, e.g. make framework FW=agno
-	cd apps/api && uv venv --allow-existing .frameworks/$(FW) && uv pip install --python .frameworks/$(FW)/bin/python \
-	  $$(uv run python -c "from agentcanvas.designs import AGENT_FRAMEWORKS as A; print(' '.join(A['$(FW)'].packages))") \
-	  cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0
+	cd apps/api && uv venv --allow-existing --python $(if $(filter crewai,$(FW)),3.13,3.14) .frameworks/$(FW) \
+	  && uv pip sync --require-hashes --python .frameworks/$(FW)/bin/python framework-locks/$(FW).txt
 
 mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm, as pinned by package-lock.json, in apps/api/.frameworks/mastra (needs Node.js 22.18+)
 	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json .frameworks/mastra/ \
@@ -66,6 +66,7 @@ framework-versions: ## which agent framework pins are behind their latest releas
 
 framework-bump: ## move one framework pin everywhere it is written: make framework-bump PKG=crewai VERSION=1.15.39
 	cd apps/api && uv run python scripts/framework_versions.py bump "$(PKG)" "$(VERSION)"
+	cd apps/api && uv run python scripts/framework_versions.py lock
 	cd apps/api && uv run pytest -q -p no:cacheprovider tests/test_framework_pins.py tests/test_framework_versions.py
 
 screenshots: ## retake the pictures in docs/user-guide/img (fake-model server, made-up data)

@@ -22,8 +22,8 @@ we find out that one exists.
    (`codegen.py` writes exported projects; the runtime runs flows), `adapters/langchain/interop.py` (the "Agent from
    another framework" block), `scripts/smoke_frameworks.py`, and the conformance kit. Write down what changes for us.
 2. **Move the pin everywhere**: `make framework-bump PKG=<package> VERSION=<version>`. It rewrites exports, CI, the
-   image, docs, code-generator constants and manifests, regenerates the mirror file, and runs
-   `tests/test_framework_pins.py`, which fails if any place was missed. Then
+   image, docs, code-generator constants and manifests, regenerates the mirror file, re-locks the framework
+   environments (below), and runs `tests/test_framework_pins.py`, which fails if any place was missed. Then
    `cd apps/api && uv run python scripts/export_ir_schema.py` (the guide copy the Copilot reads names the version).
 3. **Rebuild the framework's environment**: `make framework FW=<id>` (`make crewai`, `make mastra` for those two).
 4. **Make the code changes** from step 1, each with a test that fails without it.
@@ -37,6 +37,21 @@ we find out that one exists.
    judgement call (a feature not adopted, a pin held back and why).
 
 One framework per pull request: when something breaks, the cause is obvious and the rest can still go out.
+
+## The framework environments' locks
+
+The image (`FRAMEWORKS=...`), `make crewai` and `make framework` install each framework environment from
+`apps/api/framework-locks/<id>.txt`: every package, transitive ones included, pinned with its hashes, so two builds
+ship the same packages and a hijacked release cannot slip in unreviewed. `tests/test_framework_versions.py` fails
+when a lock no longer holds the pins.
+
+- `uv run python scripts/framework_versions.py lock [<id>...]` regenerates them (`make framework-bump` does it). It
+  leaves out releases younger than 7 days, except the pinned packages themselves and the sibling packages a new pin
+  requires at its own version: a malicious release is usually found and pulled within days.
+- To take a security fix published less than 7 days ago, pass `--cooldown 0`.
+- When a package caps a dependency below its fixed version and the cap does not apply to how we run it, write the
+  requirement in `framework-locks/<id>.overrides.txt` with the reason (`google_adk.overrides.txt` raises filelock past
+  LiteLLM's cap). Remove it once the pin that set the cap moves on.
 
 ## Holding a version back
 

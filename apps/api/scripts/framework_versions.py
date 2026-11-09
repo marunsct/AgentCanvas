@@ -4,6 +4,7 @@
     uv run python scripts/framework_versions.py --json       # the same, for a script or a CI job
     uv run python scripts/framework_versions.py bump crewai 1.15.39   # rewrite every place `crewai` is pinned
     uv run python scripts/framework_versions.py requirements          # rewrite infra/frameworks/requirements.txt
+    uv run python scripts/framework_versions.py lock [<id>...]        # re-lock the framework environments
 
 A framework's version is written in several places (exports, CI, the image, docs, code generators, manifests); see
 tests/test_framework_pins.py, which fails when they disagree. `bump` rewrites them all and then that test proves it.
@@ -15,9 +16,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 import urllib.request
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -46,6 +49,17 @@ CHANGELOGS = {
 }
 # files a pin is written in besides `pkg==version` (a code generator's constant, a manifest's "framework" line)
 REQUIREMENTS = ROOT / "infra" / "frameworks" / "requirements.txt"
+# The framework environments the server runs workflows in (the image's FRAMEWORKS, `make crewai`, `make framework`),
+# each installed from a lock with every transitive package pinned and hashed, so the image ships what was tested:
+# id -> its Python (CrewAI supports Python <3.14; the others run on the image's 3.14)
+LOCKS = API / "framework-locks"
+ENVIRONMENTS = {
+    "crewai": "3.13", "google_adk": "3.14", "pydantic_ai": "3.14", "agno": "3.14", "microsoft_agent_framework": "3.14",
+    "strands": "3.14", "llamaindex": "3.14",
+}  # fmt: skip
+RUNTIME = ("cel-python==0.5.0", "jinja2==3.1.6", "jsonschema==4.26.0")  # the flow runtime's imports (not CrewAI's)
+# a transitive release younger than this is not locked: a hijacked release is usually caught and pulled within days
+COOLDOWN = "7 days"
 # a code generator's constant that holds a package's bare version (tests/test_framework_pins.py checks each)
 CONSTANTS = {
     "openai-agents": "SDK_VERSION", "crewai": "CREWAI_VERSION", "google-adk": "ADK_VERSION",
@@ -57,7 +71,10 @@ CONSTANTS = {
 }  # fmt: skip
 TEXT_NAMES = {"Makefile"}  # files without a suffix that pins are written in (and Dockerfile.*)
 TEXT_SUFFIXES = {".py", ".json", ".yml", ".yaml", ".md", ".sh", ".toml", ".txt", ".ts", ".tmpl", ".j2"}
-SKIP_DIRS = {"node_modules", ".venv", ".frameworks", ".git", "dist", "site", "test-results", ".ci-tmp"}
+# framework-locks: a lock's hashes belong to its versions, so `lock` regenerates it rather than `bump` editing it
+SKIP_DIRS = {
+    "node_modules", ".venv", ".frameworks", ".git", "dist", "site", "test-results", ".ci-tmp", "framework-locks",
+}  # fmt: skip
 # history, lockfiles, and this tool's own test (its fixtures spell out old pins on purpose)
 SKIP_FILES = {
     "CHANGELOG.md",
@@ -189,6 +206,43 @@ def requirements_text() -> str:
     return "\n".join(lines) + "\n"
 
 
+def environment_requirements(fid: str) -> list[str]:
+    """What a framework environment holds: the framework's pins, and the flow runtime's own imports."""
+    sys.path.insert(0, str(API))
+    from agentcanvas.designs import AGENT_FRAMEWORKS
+
+    packages = list(AGENT_FRAMEWORKS[fid].packages)
+    return packages if fid == "crewai" else [*packages, *RUNTIME]
+
+
+def lock(fid: str, cooldown: str = COOLDOWN) -> Path:
+    """Resolve framework-locks/<fid>.txt with uv: every platform, the environment's Python, hashes. Releases younger
+    than the cooldown are left out, except the pinned packages themselves (a bump just chose them) and what one of them
+    requires at exactly its own new version (a framework's sibling packages, released with it)."""
+    requirements = environment_requirements(fid)
+    out = LOCKS / f"{fid}.txt"
+    LOCKS.mkdir(exist_ok=True)
+    cmd = ["uv", "pip", "compile", "-", "--quiet", "--universal", "--generate-hashes", "--python-version",
+           ENVIRONMENTS[fid], "--custom-compile-command", f"uv run python scripts/framework_versions.py lock {fid}",
+           "-o", str(out)]  # fmt: skip
+    # <fid>.overrides.txt: a transitive package raised past a cap that does not apply to how we run it (say why there)
+    if (LOCKS / f"{fid}.overrides.txt").is_file():
+        cmd += ["--overrides", f"{LOCKS.name}/{fid}.overrides.txt"]
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    exempt = set(pins(" ".join(requirements))) if cooldown != "0" else set()
+    for _ in range(20):
+        window = ["--exclude-newer", cooldown, *(f"--exclude-newer-package={p}={now}" for p in sorted(exempt))]
+        done = subprocess.run([*cmd, *(window if cooldown != "0" else [])], input="\n".join(requirements) + "\n",
+                              text=True, capture_output=True, check=False, cwd=API)  # fmt: skip
+        sibling = re.search(r"`([^`]+)` was filtered by `exclude-newer`.*\n?.*The requested version", done.stderr)
+        if done.returncode == 0:
+            return out
+        if not sibling or sibling.group(1) in exempt:
+            raise SystemExit(f"{fid}: uv pip compile failed\n{done.stderr}")
+        exempt.add(sibling.group(1))
+    raise SystemExit(f"{fid}: too many packages newer than the cooldown")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
@@ -197,7 +251,17 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("package")
     b.add_argument("version")
     sub.add_parser("requirements", help="rewrite infra/frameworks/requirements.txt from the pins")
+    lk = sub.add_parser("lock", help="re-lock framework environments (all, or the ids given) in framework-locks/")
+    lk.add_argument("ids", nargs="*", metavar="id", help=", ".join(ENVIRONMENTS))
+    lk.add_argument("--cooldown", default=COOLDOWN, help=f'skip releases younger than this (default "{COOLDOWN}"; '
+                    '"0" to take a security fix published since)')  # fmt: skip
     args = parser.parse_args(argv)
+    if args.cmd == "lock":
+        if unknown := set(args.ids) - set(ENVIRONMENTS):
+            parser.error(f"not a framework environment: {', '.join(sorted(unknown))}")
+        for fid in args.ids or ENVIRONMENTS:
+            print(lock(fid, args.cooldown).relative_to(ROOT))
+        return 0
     if args.cmd == "requirements":
         REQUIREMENTS.parent.mkdir(parents=True, exist_ok=True)
         REQUIREMENTS.write_text(requirements_text())
