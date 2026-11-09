@@ -29,6 +29,9 @@ const view = () => {
 };
 const type = (text: string) => act(() => { const v = view(); v.dispatch({ changes: { from: v.state.doc.length, insert: text } }); });
 const text = () => view().state.doc.toString();
+/** The editor is drawn after its container: wait for CodeMirror itself (a loaded machine is slower to get there). */
+const ready = () =>
+  waitFor(() => expect(screen.getByTestId("code-editor").querySelector(".cm-editor")).not.toBeNull());
 
 let server: Record<string, string>;
 const ver = (content: string) => `h:${content}`; // the server's version is a hash of the text
@@ -73,7 +76,7 @@ const saveButton = () => screen.getByRole("button", { name: "Save" }) as HTMLBut
 describe("WorkspacePage", () => {
   it("keeps what was typed while a save was on its way as unsaved", async () => {
     renderPage();
-    await screen.findByTestId("code-editor");
+    await ready();
     let answer: ((v: unknown) => void) | null = null;
     type("y = 2\n");
     apiFetch.mockImplementationOnce((_p, init) => {
@@ -94,7 +97,7 @@ describe("WorkspacePage", () => {
 
   it("shows a newer copy of the file when nothing was typed", async () => {
     const qc = renderPage();
-    await screen.findByTestId("code-editor");
+    await ready();
     server["tools/a.py"] = "x = 2\n"; // the Copilot, a teammate or a Git pull changed it
     await act(() => qc.invalidateQueries({ queryKey: ["file"] }));
     await waitFor(() => expect(text()).toBe("x = 2\n"));
@@ -103,7 +106,7 @@ describe("WorkspacePage", () => {
 
   it("does not save over a newer copy: it says so, and saves only when told to keep this one", async () => {
     renderPage();
-    await screen.findByTestId("code-editor");
+    await ready();
     type("y = 1\n");
     server["tools/a.py"] = "x = 2\n"; // changed elsewhere while this was being edited
     fireEvent.click(saveButton());
@@ -120,7 +123,7 @@ describe("WorkspacePage", () => {
 
   it("loads the newer copy when asked, in place of the unsaved text", async () => {
     const qc = renderPage();
-    await screen.findByTestId("code-editor");
+    await ready();
     type("y = 1\n");
     server["tools/a.py"] = "x = 2\n";
     await act(() => qc.invalidateQueries({ queryKey: ["file"] }));
@@ -134,7 +137,7 @@ describe("WorkspacePage", () => {
 
   it("asks before another page replaces unsaved changes, and stays when told to keep editing", async () => {
     renderPage();
-    await screen.findByTestId("code-editor");
+    await ready();
     type("y = 1\n");
     fireEvent.click(screen.getByTestId("secrets-link"));
     const ask = await screen.findByRole("dialog", { name: /Discard your changes/ });
@@ -151,7 +154,7 @@ describe("WorkspacePage", () => {
 
   it("leaves without asking when nothing is unsaved", async () => {
     renderPage();
-    await screen.findByTestId("code-editor");
+    await ready();
     fireEvent.click(screen.getByTestId("secrets-link"));
     expect(await screen.findByText("Settings page")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
