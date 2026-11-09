@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import re
 from collections import OrderedDict
@@ -129,7 +130,10 @@ def _service(request: Request, session: AsyncSession, settings: Settings) -> Wor
 
 
 def _pack(registry: Registry, templates: dict[str, dict[str, Any]]) -> Pack:
-    key = json.dumps([[m.type, m.version, m.provenance] for m in registry.all()] + sorted(templates))
+    # a built-in block is known by its version; a project's own block by everything the pack says about it, so two
+    # projects' blocks of the same name never share a pack, and an edited block shows at once
+    shape = [[m.type, m.version] if m.provenance == "builtin" else m.model_dump(mode="json") for m in registry.all()]
+    key = hashlib.sha256(json.dumps([shape, sorted(templates)], sort_keys=True, default=str).encode()).hexdigest()
     if key in _packs:
         _packs.move_to_end(key)
         return _packs[key]
