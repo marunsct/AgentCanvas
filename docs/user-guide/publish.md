@@ -51,7 +51,11 @@ The deployment's first **API key** is shown **once**, when the deployment is cre
 
 A deployment can have several keys at once (up to 20 that work), each with a name and, if you like, an expiry, so
 each caller can have its own and a key can be replaced without downtime. Only a fingerprint (SHA-256) of a key is
-stored, and a key is shown once, when it is made. Builders manage them:
+stored, and a key is shown once, when it is made. Builders manage them under the deployment in the Publish panel:
+**API keys** lists the working keys (name, first characters, expiry, last use; **Show revoked and expired keys** adds
+the others), **Add key** makes one with a name and an expiry (never, 30 days, 90 days or a year) and shows it once,
+and **Revoke** stops one. **Rotate key** asks how many hours the current keys keep working (0 stops them at once) and
+shows the new key. The same through the API:
 
 | Request | Does |
 |---|---|

@@ -1,5 +1,5 @@
-/** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with rotate / unpublish, and their
- * share links (S23). */
+/** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with their keys (E-8), rotate /
+ * unpublish, and their share links (S23). */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
@@ -7,6 +7,7 @@ import type { Check, DeploymentOut, OrgSettingsOut, PublishOut } from "../api/ge
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
+import { DeploymentKeys } from "./DeploymentKeys";
 import { ShareSection } from "./ShareSection";
 import { confirmDialog, promptDialog } from "../ui/dialog";
 
@@ -38,12 +39,24 @@ export function PublishSection({ wfId }: { wfId: string }) {
     onError: (e) => { setChecks(e instanceof ApiError ? (e.problem.checklist as Check[] | undefined) ?? null : null); refresh(); },
   });
   const rotate = async (d: DeploymentOut) => {
-    if (!(await confirmDialog({ title: "Issue a new key?", body: "The current key stops working immediately.", confirm: "Issue a new key", danger: true }))) return;
+    const hours = await promptDialog({
+      title: "Issue a new key?",
+      body: "The deployment's other keys stop working after the number of hours you enter: 0 stops them now, more gives callers time to move to the new key.",
+      confirm: "Issue a new key", danger: true,
+      input: { label: "Hours the current keys keep working", value: "0", required: true },
+    });
+    if (hours === null) return;
+    const overlap = Number(hours.trim());
+    if (!Number.isInteger(overlap) || overlap < 0 || overlap > 720) {
+      setActionError("Enter a whole number of hours from 0 to 720.");
+      return;
+    }
     setActionError(null);
     try {
-      const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST" });
+      const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST", json: { overlap_hours: overlap } });
       setKey({ deployment: d.id, key: out.api_key });
       refresh();
+      void qc.invalidateQueries({ queryKey: ["deployment-keys", d.id] });
     } catch (e) {
       setActionError(`Could not rotate the key: ${(e as Error).message}`);
     }
@@ -105,6 +118,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
               {d.active && can("builder") && <button type="button" className="small" onClick={() => void rotate(d)}>Rotate key</button>}
               {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
+            {d.active && can("builder") && <DeploymentKeys deployment={d} onNewKey={(k) => setKey({ deployment: d.id, key: k })} />}
             {d.active && <ConnectSection deployment={d} apiKey={key?.deployment === d.id ? key.key : undefined} />}
             {d.active && can("builder") && <ShareSection deployment={d} />}
           </li>
