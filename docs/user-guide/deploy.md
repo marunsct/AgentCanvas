@@ -277,11 +277,14 @@ neither sees no rows.
 
 ### Security events and audit forwarding
 
-AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
-unpublishing, deployment keys and callback secrets, secrets, approvals, members, organisation settings and policies, release gates, trace
-export, project workspaces, API and SCIM tokens, every change SCIM or the sign-in token's groups make to members
-and roles, and app connector servers that changed tools a deployment pinned, `mcp_tool_drift`) also leave the server,
-in every sign-in mode:
+AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones also leave the
+server, in every sign-in mode: publishing and unpublishing, deployment keys, callback secrets and share links,
+triggers (webhooks and schedules) created or switched on, secrets, OAuth app credentials and connected accounts,
+sandbox settings, approvals (and conversation state edited by hand), where approval notifications go, the
+organisation's **Stop all runs**, members, invitations accepted, organisation settings and policies, spending caps,
+release gates, trace export, project workspaces, API and SCIM tokens, deleted projects and workflows, erased
+memories, git connections and pushes, app connector servers that changed tools a deployment pinned
+(`mcp_tool_drift`), and every change SCIM or the sign-in token's groups make to members and roles:
 
 - **Always**, as a JSON log line `audit.event` (logger `agentcanvas.audit`, level info) with `org_id`, `actor_id`,
   `action`, `target`, `detail`, `ip` and `at`. Ship the API's logs to your SIEM and filter on it.

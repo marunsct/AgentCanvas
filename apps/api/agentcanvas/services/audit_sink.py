@@ -36,11 +36,19 @@ SECURITY_ACTIONS = frozenset({
     "publish", "unpublish", "rotate_key",  # workflows published to an environment, their keys
     "create_deployment_key", "revoke_deployment_key",
     "rotate_callback_secret",  # the secret that signs a deployment's run callbacks
+    "update_share", "regenerate_share",  # public share links of deployments
+    "create_trigger", "enable_trigger",  # webhooks and schedules: a way in that runs workflows without a person
     "put_secret", "delete_secret",  # project secrets
-    "decide", "resume_thread", "api_resume",  # approvals of paused runs (inbox, canvas, public API)
-    "set_member", "remove_member",  # members and roles (dev and oidc modes)
+    "put_client", "delete_client", "callback", "delete_connection",  # OAuth app credentials and connected accounts
+    "put_sandbox",  # what the project's code may reach (network, limits)
+    "decide", "resume_thread", "api_resume", "share_resume",  # approvals of paused runs (inbox, canvas, API, share)
+    "edit_state",  # a conversation's state changed by hand, past what was approved
+    "stop_all_runs",  # the organisation's kill switch
+    "set_member", "remove_member", "accept_invitation",  # members and roles (dev and oidc modes)
     "put_org_settings", "create_policy", "replace_policy", "delete_policy",  # organisation settings and policies
     "put_notifications",  # where approval notifications (and what they say) go
+    "delete_project", "delete_workflow", "erase",  # deletions that cannot be undone (memory erasure)
+    "connect", "disconnect", "push", "push_to_github",  # workflow code sent to a git remote
     "set_gate", "delete_gate",  # release gates
     "put_trace_export", "delete_trace_export",  # where traces (and the data in them) are sent
     "set_project_workspace",  # a project moved between Matura workspaces
