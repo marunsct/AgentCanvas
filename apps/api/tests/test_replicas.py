@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from test_kill_switch import SLOW, _start_slow
 from test_redeploy import run_row
 from test_runs_v1 import make
@@ -119,3 +119,27 @@ async def test_deleting_a_conversation_whose_run_does_not_stop_is_refused(app, a
     assert (await run_row(app, run_id)).status == "running"  # still there: delete again once it has stopped
     await app.state.runner.cancel(run_id)
     await app.state.runner.wait(run_id)
+
+
+async def test_a_run_whose_conversation_was_deleted_elsewhere_stops(app, api_client, monkeypatch):
+    """Rows deleted under a running run (another replica, the retention job): its heartbeat stops it, and the state
+    its last checkpoint wrote is deleted too."""
+    forgotten: list[str] = []
+    forget = app.state.runner.forget_thread
+
+    async def recording(thread_id: str) -> None:
+        forgotten.append(thread_id)
+        await forget(thread_id)
+
+    monkeypatch.setattr(app.state.runner, "forget_thread", recording)
+    wf = await make(api_client, SLOW)
+    run_id = await _start_slow(app, api_client, wf)
+    thread_id = (await run_row(app, run_id)).thread_id
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(delete(Run).where(Run.thread_id == thread_id))
+        await s.execute(delete(Thread).where(Thread.id == thread_id))
+        await s.commit()
+    assert await app.state.runner.heartbeat() == [run_id]
+    h = await asyncio.wait_for(app.state.runner.wait(run_id), 10)
+    assert h.status == "cancelled"
+    assert forgotten == [thread_id]

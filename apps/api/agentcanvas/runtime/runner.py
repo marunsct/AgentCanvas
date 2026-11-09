@@ -47,6 +47,7 @@ ResourcesFactory = Callable[[str, Workflow | None], Any]
 STOPPED_BY_ADMIN = "stopped by an admin (stop all runs)"  # the kill switch (F-5); its reason is in the audit log
 FORGET_PAGE = 500  # conversations whose saved state is deleted per query, when a workflow or project goes
 CANCELLED_BY_USER = "cancelled by user"  # Stop pressed on the run
+CONVERSATION_DELETED = "its conversation was deleted"
 
 
 @dataclass
@@ -800,7 +801,10 @@ class Runner:
                     )
                 )
                 if res.rowcount == 0:  # type: ignore[attr-defined]
+                    gone = await s.get(Thread, h.thread_id) is None
                     await s.commit()
+                    if gone:  # deleted while it ran: what its last checkpoint saved must not outlive it
+                        await self.forget_thread(h.thread_id)
                     return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
                 untouched = not any(e.get("type") == "STEP_FINISHED" for e in h.events)
@@ -1052,20 +1056,25 @@ class Runner:
             await s.execute(
                 update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
             )
-            gone = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.status != "running"))).all())
-            q = select(Run.id, Run.stop_reason).where(Run.id.in_(ids), Run.stop_requested.is_(True))
-            asked = (await s.execute(q)).all()
+            rows = (
+                await s.execute(select(Run.id, Run.status, Run.stop_requested, Run.stop_reason).where(Run.id.in_(ids)))
+            ).all()
             await s.commit()
+        gone = [run_id for run_id, status, _, _ in rows if status != "running"]
+        asked = [(run_id, reason) for run_id, status, stop, reason in rows if stop and status == "running"]
+        # its row was deleted (its conversation, on another instance or by retention): nothing to save it to
+        deleted = sorted(set(ids) - {run_id for run_id, *_ in rows})
         for run_id, reason in asked:  # Stop or the kill switch (F-5), pressed on another instance
-            if run_id not in gone:
-                await self.cancel(run_id, reason or STOPPED_BY_ADMIN)
+            await self.cancel(run_id, reason or STOPPED_BY_ADMIN)
+        for run_id in deleted:
+            await self.cancel(run_id, CONVERSATION_DELETED)
         for run_id in gone:
             h = self.handles.get(run_id)
             if h is not None and self._stoppable(h):
                 log.warning("run.superseded", run_id=run_id)
                 h.superseded = True
                 self._stop_task(h)
-        return gone
+        return gone + [run_id for run_id in deleted if run_id in self.handles]
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):
