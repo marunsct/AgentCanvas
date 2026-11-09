@@ -13,7 +13,8 @@ from test_runs_v1 import make
 
 from agentcanvas.api.main import create_app
 
-JOBS = ("experiments", "handover", "cron", "retention", "crawl", "secrets")
+# the hand-over job stops last, after the drain: its ticks keep the heartbeat of runs finishing in the grace period
+JOBS = ("experiments", "cron", "retention", "crawl", "secrets", "handover")
 
 
 async def rest(stream) -> list[str]:
@@ -51,6 +52,10 @@ async def test_sigterm_stops_the_schedulers_ends_streams_and_drains_before_uvico
             # ends at once, instead of holding uvicorn's wait for open connections
             assert await asyncio.wait_for(rest(presence), 5) == []
             await asyncio.wait_for(app.state.runner.wait(run_id), 10)
+            for _ in range(100):  # the hand-over job stops once the drain is over
+                if len(stopped) == len(JOBS):
+                    break
+                await asyncio.sleep(0.05)
             assert app.state.runner.draining and stopped == list(JOBS)
             row = await run_row(app, run_id)
             assert (row.status, row.handover) == ("interrupted", True)  # handed over during the wait

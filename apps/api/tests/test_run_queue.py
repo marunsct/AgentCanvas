@@ -100,19 +100,22 @@ async def test_a_waiting_run_can_be_stopped(app, api_client, limited):
 
 async def test_waiting_runs_are_counted_in_a_gauge(app, api_client, limited):
     """`agentcanvas_runs_queued`: a queue that only grows (a stuck slot, a limit set too low) shows on a dashboard."""
-    from agentcanvas.observability import RUNS_QUEUED
+    from prometheus_client import REGISTRY
 
-    before = RUNS_QUEUED._value.get()
+    def queued() -> float:
+        return REGISTRY.get_sample_value("agentcanvas_runs_queued") or 0.0
+
+    before = queued()
     first = await _start_slow(app, api_client, limited)
     stopped, admitted = await _start(api_client, limited, 30), await _start(api_client, limited, 0)
     assert await _queued(app, stopped) and await _queued(app, admitted)
-    assert RUNS_QUEUED._value.get() == before + 2
+    assert queued() == before + 2
     await app.state.runner.cancel(stopped)  # stopped while it waited
     assert (await asyncio.wait_for(app.state.runner.wait(stopped), 10)).status == "cancelled"
-    assert RUNS_QUEUED._value.get() == before + 1
+    assert queued() == before + 1
     await app.state.runner.cancel(first)  # a slot frees: the other one takes it
     assert (await asyncio.wait_for(app.state.runner.wait(admitted), 10)).status == "success"
-    assert RUNS_QUEUED._value.get() == before
+    assert queued() == before
 
 
 async def test_a_dead_servers_runs_stop_counting(app, api_client, limited):

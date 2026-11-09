@@ -93,9 +93,12 @@ async def test_deleting_a_conversation_on_another_replica_stops_its_run_first(ap
     thread_id = (await run_row(app, run_id)).thread_id
     async with replica(settings) as (_, b):
         deleting = asyncio.create_task(b.delete(f"/v1/threads/{thread_id}"))
-        await asyncio.sleep(0.5)
-        assert not deleting.done()  # it waits for the run to stop: the run would write to deleted rows
+        for _ in range(100):  # the other replica marks the run (slower on a loaded machine)
+            if (await run_row(app, run_id)).stop_requested:
+                break
+            await asyncio.sleep(0.05)
         assert (await run_row(app, run_id)).stop_requested is True
+        assert not deleting.done()  # it waits for the run to stop: the run would write to deleted rows
         await app.state.runner.heartbeat()
         res = await asyncio.wait_for(deleting, 10)
         assert res.status_code == 204, res.text
@@ -135,6 +138,7 @@ async def test_a_run_whose_conversation_was_deleted_elsewhere_stops(app, api_cli
     wf = await make(api_client, SLOW)
     run_id = await _start_slow(app, api_client, wf)
     thread_id = (await run_row(app, run_id)).thread_id
+    forgotten.clear()  # a new conversation's first run clears any state left under its id: not what is checked here
     async with app.state.db.sessionmaker() as s:
         await s.execute(delete(Run).where(Run.thread_id == thread_id))
         await s.execute(delete(Thread).where(Thread.id == thread_id))
