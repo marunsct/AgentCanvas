@@ -8,7 +8,7 @@ FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d
 ARG PNPM_VERSION=10
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /repo/apps/web
-COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
+COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 # the type check also covers test fixtures that read the IR schema package and an example workflow
 COPY packages/ir-schema/ /repo/packages/ir-schema/

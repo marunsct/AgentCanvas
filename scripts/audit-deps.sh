@@ -27,7 +27,7 @@ done
 echo "== Mastra runtime (npm, production dependencies)"
 ( cd apps/api/agentcanvas/adapters/mastra && npm audit --omit=dev --audit-level moderate ) || failed+=(mastra)
 echo "== web app (pnpm, production dependencies)"
-( cd apps/web && pnpm audit --prod --audit-level high ) || failed+=(web)
+( cd apps/web && pnpm audit --prod --audit-level moderate ) || failed+=(web)
 
 if [ ${#failed[@]} -gt 0 ]; then echo "audit: known vulnerabilities in: ${failed[*]}" >&2; exit 1; fi
 echo "audit: no known vulnerabilities"

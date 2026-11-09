@@ -413,9 +413,21 @@ def test_the_audit_covers_every_dependency_tree_the_images_ship_and_the_scan_see
     so the framework environments and the Mastra npm tree the Docker app ships were never checked by either gate."""
     audit = (ROOT / "scripts" / "audit-deps.sh").read_text()
     assert "apps/api/framework-locks/*.txt" in audit and "--require-hashes" in audit
-    assert "adapters/mastra && npm audit --omit=dev" in audit and "pnpm audit --prod" in audit
+    assert "adapters/mastra && npm audit --omit=dev --audit-level moderate" in audit
+    assert "pnpm audit --prod --audit-level moderate" in audit  # fast-uri's moderate advisories passed at high
     assert "scripts/audit-deps.sh" in (ROOT / "scripts" / "ci-local.sh").read_text()
     assert "scripts/audit-deps.sh" in (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     images = re.sub(r"\\\n\s*", "", (ROOT / "scripts" / "ci-images.sh").read_text())  # one line per command
     build = next(line for line in images.splitlines() if "Dockerfile.api" in line and "docker build" in line)
     assert "--build-arg FRAMEWORKS=all" in build and "--build-arg WITH_MASTRA=true" in build
+
+
+def test_the_web_image_installs_with_the_web_apps_pnpm_settings():
+    """pnpm-workspace.yaml holds the web app's overrides (fast-uri past its advisories): an image that installed without
+    it would fail the frozen install, or with a looser lock ship the vulnerable release."""
+    copy = next(
+        line for line in (ROOT / "infra" / "Dockerfile.web").read_text().splitlines() if "pnpm-lock.yaml" in line
+    )
+    assert "apps/web/pnpm-workspace.yaml" in copy
+    settings = yaml.safe_load((ROOT / "apps" / "web" / "pnpm-workspace.yaml").read_text())
+    assert settings["overrides"]["fast-uri@>=3.0.0 <3.1.9"] == "3.1.9"

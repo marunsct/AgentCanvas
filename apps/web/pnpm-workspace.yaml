@@ -1,0 +1,6 @@
+# pnpm settings for the web app (a single package, not a workspace of several).
+overrides:
+  # fast-uri below 3.1.9 / 4.2.3 (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr), through @rjsf/utils and ajv; remove
+  # once @rjsf and ajv require the fixed releases
+  fast-uri@>=3.0.0 <3.1.9: 3.1.9
+  fast-uri@>=4.0.0 <4.2.3: 4.2.3
