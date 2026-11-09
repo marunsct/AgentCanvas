@@ -1,5 +1,5 @@
 /** Thin fetch wrapper for the AgentCanvas API: JSON in/out, If-Match versions, problem+json errors. */
-import { accessToken, renew, signInAgain, tokenExpired } from "./auth";
+import { accessToken, renew, signInAgain, stepUp, tokenExpired } from "./auth";
 
 export interface Problem {
   type?: string;
@@ -26,18 +26,30 @@ export function withAuth(init?: HeadersInit): Headers {
   return headers;
 }
 
-/** A 401 that renewing could not fix means the session ended: sign in again (see `signInAgain`; no-op in dev mode). */
-export async function failed(res: Response): Promise<ApiError> {
-  if (res.status === 401) signInAgain();
-  return new ApiError(res.status, (await res.json().catch(() => ({}))) as Problem);
+/** The problem type of a 401 that asks for a stronger (multi-factor) sign-in, not a fresh token. */
+export const MFA_REQUIRED = "https://agentcanvas.dev/errors/mfa-required";
+
+/** Whether a 401 says the sign-in was not strong enough (RFC 9470), so renewing the same session would not help. */
+export function wantsStepUp(res: Response): boolean {
+  return res.status === 401 && (res.headers.get("www-authenticate") ?? "").includes("insufficient_user_authentication");
 }
 
-/** `fetch` with the bearer token; on 401 renew the token once without leaving the page and retry. A token known to
- * have expired is renewed before sending, rather than spending a request on a certain 401. */
+/** A 401 that renewing could not fix means the session ended: sign in again (see `signInAgain`; no-op in dev mode).
+ * One that asks for multi-factor sign-in signs in again with it (`stepUp`). */
+export async function failed(res: Response): Promise<ApiError> {
+  const problem = (await res.json().catch(() => ({}))) as Problem;
+  if (res.status === 401 && problem.type === MFA_REQUIRED) stepUp(typeof problem.acr_values === "string" ? problem.acr_values : null);
+  else if (res.status === 401) signInAgain();
+  return new ApiError(res.status, problem);
+}
+
+/** `fetch` with the bearer token; on 401 renew the token once without leaving the page and retry (not when the API
+ * asks for a stronger sign-in: a renewed token would not be). A token known to have expired is renewed before
+ * sending, rather than spending a request on a certain 401. */
 export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
   if (tokenExpired()) await renew();
   const res = await fetch(url, { ...init, headers: withAuth(init.headers) });
-  if (res.status !== 401 || !(await renew())) return res;
+  if (res.status !== 401 || wantsStepUp(res) || !(await renew())) return res;
   return fetch(url, { ...init, headers: withAuth(init.headers) });
 }
 

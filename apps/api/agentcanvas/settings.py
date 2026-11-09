@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     oidc_trust_email: bool = False
     oidc_jwks_cache_s: int = 3600  # how long the provider's signing keys are kept before they are fetched again
     oidc_leeway_s: int = 30  # clock skew tolerated on exp/nbf/iat
+    # what every sign-in must show about how the person signed in: an `acr` (authentication level, as the identity
+    # provider names it, e.g. Keycloak's "2") on this list, or an `amr` (methods, e.g. "mfa", "hwk") on that one. Empty
+    # (default): no requirement. A sign-in without it is asked to sign in again at the provider, with these acr_values
+    oidc_required_acr: list[str] = []
+    oidc_required_amr: list[str] = []
+    # what counts as multi-factor for an organisation that requires it (Settings > Organisation > Security): an `acr`
+    # on the first list or an `amr` on the second. Entra ID, Okta and Auth0 put "mfa" in `amr`; Keycloak needs an
+    # acr level configured (and listed here)
+    oidc_mfa_acr: list[str] = []
+    oidc_mfa_amr: list[str] = ["mfa"]
     # Matura (auth_mode = matura). The API URL, app slug and client secret read the change feed; the webhook
     # secret checks POST /v1/matura/events; the portal is where admins manage members and roles.
     matura_url: str | None = None  # e.g. https://matura.example.com

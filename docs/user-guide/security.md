@@ -86,6 +86,9 @@ has no row-level security.
 - **Allowed networks**: an admin can accept the organisation's requests only from listed networks, for every kind of
   credential, sign-ins, API tokens, deployment keys, share links and SCIM alike
   ([Allowed networks](accounts.md#allowed-networks)).
+- **Multi-factor sign-in**: the operator can require an authentication level or method (`acr`, `amr`) for every
+  sign-in, and an admin can require a second factor of the organisation's members; a sign-in without it is sent back
+  to the identity provider ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)).
 
 ## Workspace code and the sandbox
 

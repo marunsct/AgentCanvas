@@ -93,10 +93,6 @@ def check(conn: HTTPConnection, org_id: str, org_settings: dict[str, Any] | None
     )
 
 
-async def check_org(conn: HTTPConnection, session: AsyncSession, org_id: str, what: str) -> None:
-    check(conn, org_id, await session.scalar(select(Organization.settings).where(Organization.id == org_id)), what)
-
-
 async def check_deployment(conn: HTTPConnection, session: AsyncSession, dep_id: str, what: str) -> None:
     """The allow-list of the organisation a deployment belongs to (its keys and its share link). An unknown
     deployment passes: the credential check that follows refuses it."""

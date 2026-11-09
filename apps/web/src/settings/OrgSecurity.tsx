@@ -1,6 +1,7 @@
-/** Settings › Organisation › Security (E-8): the networks the organisation's requests may come from. The list covers
- * every credential acting in the organisation (sign-ins, API tokens, deployment keys, share links, SCIM); the server
- * refuses a list that leaves out the admin saving it. Admins change it. */
+/** Settings › Organisation › Security (E-8): the networks the organisation's requests may come from, and whether its
+ * members must sign in with multi-factor authentication. The list covers every credential acting in the organisation
+ * (sign-ins, API tokens, deployment keys, share links, SCIM); the server refuses a list that leaves out the admin
+ * saving it, and requiring MFA from an admin whose own sign-in is not. Admins change them. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
@@ -14,6 +15,9 @@ export interface OrgSecurityOut {
   allowed_networks: string[];
   your_address: string | null;
   networks_ignored: boolean;
+  require_mfa: boolean;
+  mfa_available: boolean;
+  your_sign_in_is_mfa: boolean;
 }
 type WithSecurity = OrgSettingsOut & { security?: OrgSecurityOut };
 
@@ -28,10 +32,15 @@ export function OrgSecurity() {
   const q = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<WithSecurity>("/org/settings") });
   const sec = q.data?.security;
   const [text, setText] = useState("");
-  useEffect(() => { if (sec) setText(sec.allowed_networks.join("\n")); }, [sec]);
+  const [requireMfa, setRequireMfa] = useState(false);
+  useEffect(() => { if (sec) { setText(sec.allowed_networks.join("\n")); setRequireMfa(sec.require_mfa); } }, [sec]);
   const save = useMutation({
-    mutationFn: () => apiFetch<WithSecurity>("/org/settings", { method: "PUT", json: { security: { allowed_networks: networkLines(text) } } }),
-    onSuccess: (out) => { qc.setQueryData(["org-settings"], out); toast("Saved the allowed networks"); },
+    mutationFn: () => apiFetch<WithSecurity>("/org/settings", {
+      method: "PUT",
+      // only what changed: switching MFA needs a real sign-in, and saving the list must not depend on that
+      json: { security: { allowed_networks: networkLines(text), ...(requireMfa !== sec?.require_mfa ? { require_mfa: requireMfa } : {}) } },
+    }),
+    onSuccess: (out) => { qc.setQueryData(["org-settings"], out); toast("Saved the security settings"); },
   });
   if (!sec) return <section className="settings-card"><h2>Security</h2><QueryStatus q={q} what="the security settings" /></section>;
   return (
@@ -50,6 +59,19 @@ export function OrgSecurity() {
         placeholder="any address" onChange={(e) => setText(e.target.value)} />
       <p className="muted small">
         Your address: <code>{sec.your_address ?? "unknown"}</code>. It must be on the list, so saving cannot lock you out.
+      </p>
+      <h3>Multi-factor sign-in</h3>
+      <label className="row">
+        <input type="checkbox" data-testid="require-mfa" checked={requireMfa} onChange={(e) => setRequireMfa(e.target.checked)}
+          disabled={!admin || !sec.mfa_available || (!sec.require_mfa && !sec.your_sign_in_is_mfa)} />
+        Members must sign in with a second factor
+      </label>
+      <p className="muted small">
+        {!sec.mfa_available
+          ? "Needs sign-in through an identity provider; this server has none."
+          : sec.your_sign_in_is_mfa
+            ? "A member whose sign-in has no second factor is sent back to the identity provider to add one. API tokens are not affected."
+            : "To switch it on, sign in with a second factor first: your current sign-in does not count as multi-factor here, so requiring it would lock you out."}
       </p>
       {admin
         ? <button type="button" className="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</button>

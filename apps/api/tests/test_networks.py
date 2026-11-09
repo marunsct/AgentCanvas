@@ -40,9 +40,8 @@ async def test_an_admin_cannot_save_a_list_that_leaves_them_out(api_client):
     assert (await api_client.get("/v1/org/settings")).json()["security"]["allowed_networks"] == []
     r = await allow(api_client, INSIDE, "10.1.2.3")
     assert r.status_code == 200, r.text
-    assert r.json()["security"] == {
-        "allowed_networks": [INSIDE, "10.1.2.3/32"], "your_address": "127.0.0.1", "networks_ignored": False,
-    }  # fmt: skip
+    assert r.json()["security"] | {"allowed_networks": [INSIDE, "10.1.2.3/32"], "your_address": "127.0.0.1",
+                                   "networks_ignored": False} == r.json()["security"]  # fmt: skip
     assert (await allow(api_client, "nonsense")).status_code == 422
     too_many = await api_client.put("/v1/org/settings", json={"security": {"allowed_networks": ["10.0.0.1"] * 101}})
     assert too_many.status_code == 422

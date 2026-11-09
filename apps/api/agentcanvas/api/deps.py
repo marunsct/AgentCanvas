@@ -6,19 +6,22 @@ import re
 import unicodedata
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db import rls
+from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
 from agentcanvas.log import get_logger
 from agentcanvas.security.auth import Authenticator
-from agentcanvas.services import matura, networks, sso_groups, tokens
+from agentcanvas.services import matura, mfa, networks, sso_groups, tokens
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -50,6 +53,8 @@ class CurrentUser:
     email: str = ""
     memberships: dict[str, str] = field(default_factory=dict)  # org id -> role
     token_id: str | None = None  # signed in with a personal API token (G-13), not the identity provider
+    # the identity provider's token claims (acr, amr: how the person signed in); None for API tokens and dev mode
+    claims: dict[str, Any] | None = field(default=None, repr=False)
 
 
 def _authenticator(request: Request) -> Authenticator:
@@ -75,7 +80,10 @@ async def current_user(
     """The signed-in user and the organisation this request acts in, from an address the organisation's IP
     allow-list admits (403 otherwise, `services/networks.py`)."""
     user = await _signed_in(request, credentials, org, session)
-    await networks.check_org(request, session, user.org_id, "API token" if user.token_id else "sign-in")
+    own = await session.scalar(select(Organization.settings).where(Organization.id == user.org_id))
+    networks.check(request, user.org_id, own, "API token" if user.token_id else "sign-in")
+    if user.claims is not None:  # the organisation may require multi-factor sign-in (services/mfa.py)
+        mfa.check_org(request.app.state.settings, own, user.claims)
     return user
 
 
@@ -105,12 +113,15 @@ async def _signed_in(
     if credentials is None or not credentials.credentials:
         raise Unauthorized("sign in: send Authorization: Bearer <token>")
     identity = await _authenticator(request).verify(credentials.credentials)
+    mfa.check_server(settings, identity.claims)  # before anyone is provisioned from a token that lacks it
     if settings.auth_mode == "matura":  # the token names the organisation and the permissions (TS9a)
         uid, org_id, role, email, memberships = await matura.sign_in(
             session, identity.claims, org, matura.portal_base(settings)
         )
         await rls.scope(session, org_id)  # Postgres: this request's queries see only this organisation's rows
-        return CurrentUser(id=uid, org_id=org_id, role=role, email=email, memberships=memberships)
+        return CurrentUser(
+            id=uid, org_id=org_id, role=role, email=email, memberships=memberships, claims=identity.claims
+        )
     repo = UserRepo(session)
     # only a verified email is stored: invitations and the admin bootstrap match people by it
     email = identity.email if identity.email_verified else ""
@@ -151,7 +162,10 @@ async def _signed_in(
         raise Forbidden(f"you are not a member of organisation '{org_id}'")
     if org_id != default:
         await repo.used(uid, org_id)  # choosing another organisation makes it the default
-    return CurrentUser(id=uid, org_id=org_id, role=memberships[org_id], email=user_email, memberships=memberships)
+    return CurrentUser(
+        id=uid, org_id=org_id, role=memberships[org_id], email=user_email, memberships=memberships,
+        claims=identity.claims,
+    )  # fmt: skip
 
 
 # path/query parameters that name a resource, and its kind (M7-T2)

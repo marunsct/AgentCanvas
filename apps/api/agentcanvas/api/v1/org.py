@@ -17,7 +17,7 @@ from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
-from agentcanvas.services import matura, networks, org_settings, scim, tokens
+from agentcanvas.services import matura, mfa, networks, org_settings, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spending import spending
 from agentcanvas.services.sso_groups import GroupMapping
@@ -215,7 +215,7 @@ class OrgSettings(BaseModel):
     sso_groups: GroupMapping | None = Field(
         None, description="OIDC groups claim -> roles, applied at sign-in; null: roles are set by hand"
     )
-    security: OrgSecurity | None = Field(None, description="the IP allow-list")
+    security: OrgSecurity | None = Field(None, description="the IP allow-list and required multi-factor sign-in")
 
 
 DEFAULT_ENVIRONMENTS = ["dev", "staging", "prod"]
@@ -231,12 +231,19 @@ class OrgSecurity(BaseModel):
         description="the only networks (CIDR or addresses) requests may come from, for every sign-in, token, "
         "deployment key, share link and SCIM; [] or null: any address. Your own address must be on it",
     )  # fmt: skip
+    require_mfa: bool | None = Field(
+        None, description="members must sign in with multi-factor authentication; turning it on needs a sign-in "
+        "that is multi-factor itself",
+    )  # fmt: skip
 
 
 class OrgSecurityOut(BaseModel):
     allowed_networks: list[str] = Field(description="[]: requests may come from any address")
     your_address: str | None = Field(description="the address this request came from, as the allow-list sees it")
     networks_ignored: bool = Field(description="the operator switched every allow-list off (an emergency)")
+    require_mfa: bool = Field(description="members must sign in with multi-factor authentication")
+    mfa_available: bool = Field(description="people sign in through an identity provider, so MFA can be required")
+    your_sign_in_is_mfa: bool = Field(description="this request's sign-in counts as multi-factor on this server")
 
 
 class OrgLimitsOut(BaseModel):
@@ -260,7 +267,8 @@ class OrgSettingsOut(BaseModel):
     security: OrgSecurityOut
 
 
-async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
+async def _settings_out(session: AsyncSession, request: Request, user: CurrentUser) -> OrgSettingsOut:
+    org_id = user.org_id
     org = await session.get(Organization, org_id)
     if org is None:
         raise NotFound(f"organisation '{org_id}' not found")
@@ -280,7 +288,9 @@ async def _settings_out(session: AsyncSession, request: Request, org_id: str) ->
         sso_groups_editable=server.auth_mode == "oidc",
         security=OrgSecurityOut(
             allowed_networks=networks.of(org.settings), your_address=str(ip) if (ip := networks.client_ip(request))
-            else None, networks_ignored=server.ignore_org_networks,
+            else None, networks_ignored=server.ignore_org_networks, require_mfa=mfa.org_requires(org.settings),
+            mfa_available=server.auth_mode != "dev",
+            your_sign_in_is_mfa=user.claims is not None and mfa.is_mfa(server, user.claims),
         ),
     )  # fmt: skip
 
@@ -290,7 +300,7 @@ async def get_org_settings(
     request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> OrgSettingsOut:
     """Organisation settings: its name, how long conversations are kept (M8-T4), and the server's other retentions."""
-    return await _settings_out(session, request, user.org_id)
+    return await _settings_out(session, request, user)
 
 
 @router.put("/settings", response_model=OrgSettingsOut)
@@ -336,6 +346,21 @@ async def put_org_settings(
             )
         rest = {k: v for k, v in (org.settings or {}).items() if k != networks.KEY}
         org.settings = {**rest, networks.KEY: allowed} if allowed else rest or None
+    if body.security is not None and "require_mfa" in body.security.model_fields_set:
+        on = bool(body.security.require_mfa)
+        if on:
+            refuse_token(user, "require multi-factor sign-in")
+            if request.app.state.settings.auth_mode == "dev":
+                raise Conflict("multi-factor sign-in is required at an identity provider: this server has none")
+            if user.claims is None or not mfa.is_mfa(request.app.state.settings, user.claims):
+                raise InvalidInput(
+                    "sign in with a second factor first: your sign-in does not count as multi-factor here, and "
+                    "requiring it would lock you out (the operator sets what counts: AGENTCANVAS_OIDC_MFA_AMR, _ACR)"
+                )
+        elif mfa.org_requires(org.settings):
+            refuse_token(user, "stop requiring multi-factor sign-in")
+        rest = {k: v for k, v in (org.settings or {}).items() if k != mfa.KEY}
+        org.settings = {**rest, mfa.KEY: True} if on else rest or None
     if "sso_groups" in body.model_fields_set:
         if request.app.state.settings.auth_mode != "oidc":
             raise Conflict("groups map to roles only when people sign in with OpenID Connect (AUTH_MODE=oidc)")
@@ -343,7 +368,7 @@ async def put_org_settings(
     await session.commit()
     await session.refresh(org)  # an attribute set to SQL NULL is reloaded
     note(request, target=f"org_id={user.org_id}", **body.model_dump(exclude_unset=True))
-    return await _settings_out(session, request, user.org_id)
+    return await _settings_out(session, request, user)
 
 
 class ScimStatus(BaseModel):

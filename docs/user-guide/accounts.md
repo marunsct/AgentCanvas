@@ -138,6 +138,22 @@ their signature already proves who sent them.
   which switches every organisation's list off (the page says so) until you fix yours; then they unset it.
 - Changes are in the audit log (`put_org_settings`).
 
+## Multi-factor sign-in
+
+An admin can require that the organisation's members sign in with a second factor: **Settings › Organisation ›
+Security › Members must sign in with a second factor**. While they act in the organisation, a sign-in that does not
+count as multi-factor is sent back to the identity provider to sign in again with one; other organisations a person
+belongs to are not affected. What counts is the operator's choice (by default, the provider says `mfa` in the token's
+`amr`; see [Multi-factor sign-in](deploy.md#multi-factor-sign-in)), and the operator can require it for the whole
+server instead.
+
+- To switch it on, sign in with a second factor first: the page refuses (and the box stays off) when your own sign-in
+  does not count, so an admin cannot lock the organisation out. An API token cannot switch it on or off.
+- Personal API tokens are not affected: they never pass through the identity provider, and they are made from a
+  sign-in. Cap their lifetime too (see [API tokens](#api-tokens)) if that matters to you.
+- Changes are in the audit log (`put_org_settings`).
+- Needs sign-in through an identity provider (OpenID Connect or Matura); in local mode there is none.
+
 ## Audit log
 
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a

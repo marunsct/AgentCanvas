@@ -176,6 +176,33 @@ For provisioning over SCIM point the provider at `https://<your app>/api/scim/v2
 [Provisioning](accounts.md#provisioning-from-your-directory-scim). The web container's proxy forwards `/api/scim/v2` like
 any other API path and tells the API its `/api` prefix (`X-Forwarded-Prefix`) so the addresses it returns are right.
 
+### Multi-factor sign-in
+
+AgentCanvas reads how a person signed in from the access token: `acr` (the authentication level, named by the
+provider) and `amr` (the methods used, such as `pwd`, `mfa`, `otp`, `hwk`).
+
+| Setting | Effect |
+|---|---|
+| `AGENTCANVAS_OIDC_REQUIRED_ACR`, `AGENTCANVAS_OIDC_REQUIRED_AMR` | Every sign-in on the server must show an `acr` from the first list or an `amr` from the second, e.g. `AGENTCANVAS_OIDC_REQUIRED_AMR='["mfa"]'`. Empty (default): no requirement |
+| `AGENTCANVAS_OIDC_MFA_ACR`, `AGENTCANVAS_OIDC_MFA_AMR` | What counts as multi-factor for an organisation that requires it ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)). Default: `amr` contains `mfa` |
+
+A token that does not show it gets `401` with problem type `…/errors/mfa-required` and
+`WWW-Authenticate: Bearer error="insufficient_user_authentication"` (RFC 9470), naming the `acr_values` to ask for.
+The web app then signs in again at the provider with `prompt=login` and those `acr_values`; if the provider still
+does not ask for a second factor, the page shows the error instead of signing in again in a loop. It is the
+provider that decides to ask for one:
+
+| Provider | What to set |
+|---|---|
+| Keycloak | Step-up authentication: an authentication flow with conditions by level of authentication, and the mapping of `acr` values to levels in the client (for example `gold` to level 2). List that value in `AGENTCANVAS_OIDC_MFA_ACR` (or `_REQUIRED_ACR`) and leave the `amr` lists empty, unless you add Keycloak's `amr` mapper. |
+| Entra ID | A Conditional Access policy that requires MFA for the app; Entra ID then puts `mfa` in `amr`. |
+| Okta | An app sign-on policy (or authentication policy) that requires a second factor; Okta puts `mfa` in `amr`. |
+| Auth0 | Multi-factor authentication, with an Action that asks for it for this API; Auth0 puts `mfa` in `amr`. |
+
+Personal API tokens and deployment keys do not pass through the provider and are not affected. Sessions renew
+silently at the provider: how long one may stay idle or last at most is set there (the refresh token's idle and
+maximum lifetimes).
+
 ### Sign-in through Matura
 
 [Matura](https://github.com/marunsct/Platform) manages sign-in, organisations, members and roles for several apps.
