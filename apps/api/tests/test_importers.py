@@ -507,3 +507,41 @@ def test_agents_sdk_code_written_against_agents_classic_imports_too():
     assert kind == plain_kind == "openai_agents"
     shape = lambda d: sorted((n["type"], n["name"]) for n in d["nodes"])  # noqa: E731
     assert shape(ir) == shape(plain_ir)
+
+
+def test_an_agent_builder_export_keeps_hosted_tools_and_instruction_functions():
+    """How Agent Builder writes code (export: Code > Agents SDK > Python): hosted tools are variables
+    (`web_search_preview = WebSearchTool(...)`), and instructions with variables are a function returning an f-string.
+    Both were reported as missing ("the tool 'web_search_preview' is not defined", "computed by code")."""
+    text = (FILES / "openai_agent_builder_export.py.txt").read_text()
+    kind, ir, report, _ = import_document(text, wf_id="wf_AB1")
+    wf = Workflow.model_validate(ir)
+    assert kind == "openai_agents" and not [d for d in validate(wf) if d.severity == "error"]
+    nodes = {n.name: n for n in wf.nodes}
+    assert ("START", None, "classifier") in _flows(wf) and ("classifier", None, "trend_query") in _flows(wf)
+    prompt = nodes["trend_query"].config["system_prompt"]
+    assert prompt == "Find the latest official figures for the region {state_region}. Cite each source."
+    joined = "\n".join(report)
+    assert "not defined in this file" not in joined and "computed by code" not in joined
+    assert "Agent 'trend query' used web search" in joined
+    assert "hosted MCP server: add it as an App connector (MCP) ('docs' at https://mcp.example.com/mcp)" in joined
+    assert "its instructions use state_region" in joined
+
+
+def test_agents_made_by_a_function_and_instructions_in_a_constant_import():
+    text = '''from agents import Agent, Runner
+
+PROMPT = """You plan carousels."""
+
+
+def build_planner() -> Agent:
+    return Agent(name="Planner", instructions=PROMPT, model="gpt-5-mini")
+
+
+async def main(text: str):
+    return await Runner.run(build_planner(), text)
+'''
+    _, ir, report, _ = import_document(text, wf_id="wf_AB2")
+    (node,) = ir["nodes"]
+    assert node["name"] == "planner" and node["config"]["system_prompt"] == "You plan carousels."
+    assert not [r for r in report if "computed by code" in r or "left out" in r]
