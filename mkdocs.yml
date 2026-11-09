@@ -80,6 +80,7 @@ nav:
       - Troubleshooting FAQ: agent-canvas-spec/build-guide/11-troubleshooting-faq.md
       - Traceability: agent-canvas-spec/build-guide/12-traceability.md
       - Copilot real-model evaluation: agent-canvas-spec/build-guide/14-copilot-evaluation.md
+      - Upgrading an agent framework: agent-canvas-spec/build-guide/16-framework-upgrades.md
       - Sprint plan & execution log: agent-canvas-spec/build-guide/13-sprint-plan.md
       - Spikes:
           - SP-2 LangSmith sandbox: agent-canvas-spec/build-guide/spikes/SP-2-langsmith-sandbox.md

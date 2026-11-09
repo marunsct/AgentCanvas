@@ -373,7 +373,7 @@ def test_an_export_lists_its_tools_and_settings(tmp_path):
     assert "'allow_private_network': False" in tools  # Python literals, not JSON
     assert 'APPROVE = ["lookup_order"]' in tools
     assert "OPENAI_API_KEY=" in str(files["helper-agno/.env.example"])
-    assert '"agno==3.1.11"' in str(files["helper-agno/pyproject.toml"])
+    assert '"agno==3.1.12"' in str(files["helper-agno/pyproject.toml"])
     compile(str(files["helper-agno/tests/test_agent.py"]), "test_agent.py", "exec")
 
 

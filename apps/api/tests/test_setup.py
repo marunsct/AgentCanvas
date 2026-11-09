@@ -154,3 +154,17 @@ def test_a_run_sends_a_provider_key_only_to_the_provider():
     assert chat_model_args("lmstudio:m", {}, secrets)[1]["api_key"] == "lm-project"
     elsewhere = chat_model_args("lmstudio:m", {"base_url": "https://collector.example.com/v1"}, secrets)
     assert elsewhere[1]["api_key"] == "not-needed"
+
+
+def test_openai_client_models_ask_for_their_streamed_usage():
+    """A streamed answer reports its tokens only when the client asks (stream_options.include_usage); LangChain asks
+    by itself only for OpenAI's own address, so runs and the Copilot on LM Studio, vLLM or llama.cpp counted no tokens
+    and no cost (found by the Copilot evaluation on LM Studio: the streaming engine read 0 tokens)."""
+    from agentcanvas.adapters.langchain.nodes import chat_model_args
+
+    for model in ("lmstudio:m", "vllm:m", "openai_compatible:m", "openai:gpt-5.5", "llamacpp:m"):
+        params = {"base_url": "http://127.0.0.1:1234/v1"} if model.startswith(("openai_compatible", "vllm")) else {}
+        assert chat_model_args(model, params, {"OPENAI_API_KEY": "sk-1234567"})[1]["stream_usage"] is True, model
+    off = chat_model_args("lmstudio:m", {"stream_usage": False}, {})[1]
+    assert off["stream_usage"] is False  # a workflow that turns it off keeps it off
+    assert "stream_usage" not in chat_model_args("anthropic:claude-haiku-5-5", {}, {})[1]  # reports usage anyway

@@ -1,7 +1,7 @@
 {
   "id": "microsoft_agent_framework",
   "label": "Microsoft Agent Framework",
-  "framework": "agent-framework-core 1.23.0",
+  "framework": "agent-framework-core 1.25.0",
   "version": "0.1.0",
   "tier": "T2",
   "description": "The workflow becomes a Microsoft Agent Framework flow: an async function for each block, Agent Framework Agents (an OpenAIChatCompletionClient, tools, a response_format for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's approval (the Agent Framework's approval_mode=\"always_require\"). Runs need the Agent Framework installed on the server (`make framework FW=microsoft_agent_framework`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",

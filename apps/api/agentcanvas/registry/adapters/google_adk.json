@@ -1,7 +1,7 @@
 {
   "id": "google_adk",
   "label": "Google ADK",
-  "framework": "google-adk 2.13.0",
+  "framework": "google-adk 2.14.0",
   "version": "0.1.0",
   "tier": "T2",
   "description": "The workflow becomes a native Google ADK 2 graph workflow: a function node for each block, wired with ADK's edges, route dicts and JoinNodes, with ADK Agents (LiteLLM models) for the AI blocks. Any catalog model works, and tool calls can wait for a person's approval. Runs need ADK installed on the server (`make framework FW=google_adk`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",

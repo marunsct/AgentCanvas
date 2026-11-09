@@ -8,6 +8,7 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- Pydantic AI 2.66.0 for exports, the bridge and the flow runtime: it fixes crafted JSON or schema resource use, a cloud-metadata gap in its URL-download blocklist, and header leaks in trace spans.
 - Dependencies: pyasn1 0.6.5 and pypdf 6.21.4, which fix denial-of-service bugs (CVE-2026-119194 to 119197, CVE-2026-119203 to 119205) the image scan reported.
 - Removing someone from an organisation now also deletes their API tokens and app connector connections there
   (suspending still keeps them, refused until reactivated).
@@ -116,6 +117,11 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The Copilot evaluation checks a template that has blocks of its own (Lead scoring with research) against a registry that knows them; its cases could never pass before.
+- Models on OpenAI-compatible servers (LM Studio, vLLM, llama.cpp, any OpenAI-compatible address) and OpenAI at an address of its own now report their tokens when they stream, so runs, budgets, the spending report and the Copilot count their tokens and cost; they had read zero. Found by the Copilot evaluation on LM Studio.
+- The memory inspector answers 422 for a namespace label with a period or a control character instead of a server error.
+- Workflows with error routes stream tokens again: LangGraph 1.2.20 runs error handlers in every stream mode, so the "token streaming is off" warning and its workaround are gone.
+- Accessibility (WCAG 2.5.3, Label in Name, found by axe-core 4.14): each block in the palette is now a button named by its visible label, with its description read separately, and the Workspace page's sandbox.json button is named by its visible text.
 - The web image starts with several `TRUSTED_PROXIES` ranges (the Helm chart's default lists three); nginx refused to start with "invalid number of the geo parameters".
 - A request that conflicts with a change saved at the same moment now gets a 409 Conflict asking to retry, instead of an
   internal error.
@@ -577,6 +583,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- The OpenAI Agents SDK importer also reads code written with `from agents.classic import ...`, where the SDK's next major release keeps today's API.
+- Framework upgrades: `make framework-versions` lists every agent framework pin with its latest release and changelog, `make framework-bump PKG= VERSION=` moves a pin everywhere it is written, Dependabot watches a generated list of the pins (one pull request per framework), and the build guide has the upgrade procedure.
 - Costs and budgets count GPT-5.6 Sol, Terra and Luna (with their price above 272K prompt tokens) and Gemini 3.8 Flash, at the providers' published prices (Gemini at its price from 2027-01-01; it is half that until then).
 - A staging or production server now warns at startup when AGENTCANVAS_KMS_KEY is empty, and the deployment guide
   explains how to change AGENTCANVAS_SECRET_KEY without losing project secrets.
@@ -911,6 +919,14 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- Claude Agent SDK 0.2.179 for designed-agent exports (bundled Claude Code CLI updates only).
+- Mastra 1.82.0 (with the AI SDK's OpenAI-compatible client 3.0.87) for Mastra flows and exports; 1.81 fixes resuming a paused agent run on another server instance, which is how AgentCanvas resumes approvals.
+- Agno 3.1.12 and LlamaIndex Workflows 2.26.1 for flows, exports and the agent block (LlamaIndex core 0.14.25 and its OpenAI-like client 0.8.1 are already the latest).
+- Strands Agents 1.64.0 for flows, exports and the agent block, with its OpenAI client held at 2.54.0 (Strands now allows 3.x; moving to it is a separate, tested step). An "Ask AI" step whose prompt is empty once filled in now ends the run with a message naming the step, instead of Strands' "Input prompt is blank".
+- CrewAI 1.15.39 for flows, exports and the agent block. The Docker image now runs CrewAI on its own Python 3.13 (CrewAI supports Python below 3.14; it had been installed on 3.14), and exported CrewAI projects declare Python below 3.14 so `uv sync` resolves.
+- Google ADK 2.14.0 for flows, exports and the agent block; LiteLLM stays at 1.105.7, inside ADK's own supported range. None of ADK's breaking changes (enum tool arguments, structured skill-script arguments, Vertex sessions) touch what AgentCanvas generates or runs.
+- Microsoft Agent Framework 1.25.0 (with its OpenAI client 1.18.1, which needs it) for flows, exports and the agent block. It now needs Python 3.11 or newer; none of its breaking changes (MCP discovery limits, AG-UI workflow scopes, declarative MCP sessions, workflow span names) touch what AgentCanvas uses.
+- The server runs LangGraph 1.2.20, LangChain 1.4.9 (core 1.7.6), Deep Agents 0.7.34, the MCP SDK 2.3.0 and FastMCP 4.1.6.
 - The support triage example starts on GPT-5.6 Luna instead of the retiring GPT-5 mini.
 - A temperature set on any Claude model (including Haiku 4.5, Sonnet 4.5 and ids the catalog does not list) is no longer
   sent, so those runs stop failing with a 400; W020 says so in the editor.

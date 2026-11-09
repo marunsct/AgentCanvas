@@ -22,7 +22,6 @@ from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.services import knowledge, template_kit
-from agentcanvas.workspace.catalog import scan
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "agentcanvas/registry/templates"
 SAMPLES = Path(__file__).resolve().parents[1] / "agentcanvas/registry/knowledge"
@@ -43,18 +42,8 @@ def with_knowledge(wf: Workflow, data: bytes) -> bytes:
 
 
 def kit_workspace(wf: Workflow, root: Path):
-    """A template's own workspace code (`metadata.kit.files`: custom blocks, tools), written where a project's would
-    be, with the registry that knows its blocks: what the API's export has for a project that opened the template."""
-    files = ((wf.metadata or {}).get("kit") or {}).get("files") or {}
-    if not files:
-        return default_registry(), None
-    for rel, text in files.items():
-        path = root / template_kit.fill(rel, wf.id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(template_kit.fill(text, wf.id), encoding="utf-8")
-    builtin = {m.type for m in default_registry().all()}
-    custom = [m for m in scan(root).nodes if m.type not in builtin]
-    return default_registry().with_manifests(custom), root
+    """A template's own workspace code and the registry that knows its blocks (services/template_kit.kit_registry)."""
+    return template_kit.kit_registry(wf, default_registry(), root)
 
 
 def main(out: Path) -> None:

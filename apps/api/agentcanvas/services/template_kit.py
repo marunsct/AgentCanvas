@@ -161,3 +161,24 @@ async def add_records(session: AsyncSession, kit: Kit, wf_id: str, user_id: str 
         out.triggers += 1
     await session.commit()
     return out
+
+
+def kit_registry(wf: Any, registry: Any, root: Any) -> tuple[Any, Any]:
+    """The registry that knows a template's own blocks (its kit's `nodes/` code, written under `root` as a project
+    that opened the template would have it), and that workspace root; (registry, None) when the template has none.
+    Used where templates are checked or exported without a project: the export script and the Copilot evaluation."""
+    from pathlib import Path
+
+    from agentcanvas.workspace.catalog import scan
+
+    files = ((wf.metadata or {}).get(KIT) or {}).get("files") or {}
+    if not files:
+        return registry, None
+    base = Path(root)
+    for rel, text in files.items():
+        path = base / fill(rel, wf.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(fill(text, wf.id), encoding="utf-8")
+    builtin = {m.type for m in registry.all()}
+    custom = [m for m in scan(base).nodes if m.type not in builtin]
+    return registry.with_manifests(custom), base

@@ -46,6 +46,8 @@ The method exists on `BaseCheckpointSaver` but `InMemorySaver`, `AsyncSqliteSave
 **P-15 ✅ A node's `error_handler` does not run; the run fails with the original exception (Sprint 2).**
 In langgraph 1.2.12, node-level error handlers are **bypassed when streaming with `stream_mode` containing `"messages"` or `"custom"`, or with `subgraphs=True`** (they work with `invoke`, `"updates"`, `"tasks"`, `"values"`). Verified for raised exceptions and `NodeTimeoutError`. Workaround in the runner: workflows that declare an error route stream with `["tasks", "updates"]` only (no token streaming) and emit `CUSTOM ac.warning tokens_disabled`. The strict-xfail canary `tests/test_upstream_canaries.py` turns red when upstream fixes it.
 
+**Fixed in langgraph 1.2.20 (2026-11-09):** error handlers run with every stream mode and with subgraphs, so the workaround was removed and workflows with error routes stream tokens again. `test_upstream_error_handler_with_every_stream_mode` fails if the bug comes back.
+
 **P-16 ✅ `Please remove duplicate middleware instances.` when building an agent (Sprint 5).**
 `create_agent` rejects two middleware with the same `.name`. Names include a key for some types (`PIIMiddleware[email]`, `ToolCallLimitMiddleware[send_email]`) but not for others (two `ModelCallLimitMiddleware` clash). Deep Agents (deepagents 0.7) already contain `SummarizationMiddleware` in their base stack, so wiring a Summarization widget into a Deep Agent fails the same way. **Planning (`TodoListMiddleware`) is no longer in the Deep Agent base stack** — the widget's "Planning" toggle adds it, so a separate To-dos widget would clash. Validator **E035** reports all three cases before a run.
 

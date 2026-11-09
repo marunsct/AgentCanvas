@@ -11,8 +11,8 @@ from agentcanvas.adapters import flowgen
 from agentcanvas.adapters.openai_agents.codegen import _py
 from agentcanvas.ir.models import Workflow
 
-AGENT_FRAMEWORK_VERSION = "1.23.0"
-AGENT_FRAMEWORK_OPENAI_VERSION = "1.17.0"
+AGENT_FRAMEWORK_VERSION = "1.25.0"
+AGENT_FRAMEWORK_OPENAI_VERSION = "1.18.1"
 RUNTIME_IMPORT = "from agentcanvas.adapters.microsoft_agent_framework import runtime as rt"
 STEP_TYPES = flowgen.STEP_TYPES
 RESOURCE_TYPES = flowgen.RESOURCE_TYPES

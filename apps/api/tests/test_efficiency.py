@@ -86,6 +86,8 @@ async def test_deployment_scores_are_bucketed_by_the_database(app, api_client):
     )
     run, thread = ran.json()["run_id"], ran.json()["thread_id"]
     hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) - timedelta(hours=3)
+    if (hour + timedelta(hours=1)).date() != hour.date():  # both hours on one day, or the daily view has two
+        hour -= timedelta(hours=2)
     async with app.state.db.sessionmaker() as s:
         rows = [(hour + timedelta(minutes=i % 50), 1.0 if i % 4 else 0.0, bool(i % 4), 0.001) for i in range(200)]
         rows += [(hour + timedelta(hours=1, minutes=5), None, False, 0.0)]  # scored nothing: counted, not averaged

@@ -34,19 +34,19 @@ class Framework:
 
 FRAMEWORKS: dict[str, Framework] = {
     "openai_agents": Framework("OpenAI Agents SDK", "openai-agents==0.24.0", "agents", "Runner.run(agent, input)"),
-    "crewai": Framework("CrewAI", "crewai==1.15.33", "crewai", "crew.kickoff_async(inputs=…) or agent.kickoff_async"),
-    "google_adk": Framework("Google ADK", "google-adk==2.13.0", "google.adk", "InMemoryRunner(agent).run_async"),
-    "pydantic_ai": Framework("Pydantic AI", "pydantic-ai-slim==2.63.0", "pydantic_ai", "agent.run(input)"),
-    "agno": Framework("Agno", "agno==3.1.11", "agno", "agent.arun(input)"),
-    "strands": Framework("Strands Agents", "strands-agents==1.62.0", "strands", "agent.invoke_async(input)"),
+    "crewai": Framework("CrewAI", "crewai==1.15.39", "crewai", "crew.kickoff_async(inputs=…) or agent.kickoff_async"),
+    "google_adk": Framework("Google ADK", "google-adk==2.14.0", "google.adk", "InMemoryRunner(agent).run_async"),
+    "pydantic_ai": Framework("Pydantic AI", "pydantic-ai-slim==2.66.0", "pydantic_ai", "agent.run(input)"),
+    "agno": Framework("Agno", "agno==3.1.12", "agno", "agent.arun(input)"),
+    "strands": Framework("Strands Agents", "strands-agents==1.64.0", "strands", "agent.invoke_async(input)"),
     "llamaindex": Framework(
-        "LlamaIndex Workflows", "llama-index-workflows==2.25.0", "workflows", "workflow.run(input=…)"
+        "LlamaIndex Workflows", "llama-index-workflows==2.26.1", "workflows", "workflow.run(input=…)"
     ),
     "microsoft_agent_framework": Framework(
-        "Microsoft Agent Framework", "agent-framework-core==1.23.0", "agent_framework", "agent.run(input)"
+        "Microsoft Agent Framework", "agent-framework-core==1.25.0", "agent_framework", "agent.run(input)"
     ),
     "claude_agent_sdk": Framework(
-        "Claude Agent SDK", "claude-agent-sdk==0.2.174", "claude_agent_sdk", "query(prompt, options)"
+        "Claude Agent SDK", "claude-agent-sdk==0.2.179", "claude_agent_sdk", "query(prompt, options)"
     ),
     "callable": Framework("Python function", "", "", "async def run(input: dict, ctx) -> str | dict"),
 }

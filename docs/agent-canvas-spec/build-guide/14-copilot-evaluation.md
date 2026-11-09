@@ -68,6 +68,27 @@ FAIL rag             25110 tok  30.2s missing core.memory_recall
 A red run means a suite fell below 70%. Download the engine's artifact for the full JSON. A failure that every
 model shares usually points at our prompts or tools rather than at the model.
 
+## Results so far
+
+**2026-11-09, on this machine:** `qwen3.6-35b-a3b-mtp` (Qwen3.6 35B-A3B, 4-bit) served by LM Studio on two Radeon
+RX 7900 GPUs (`MODEL=lmstudio:qwen3.6-35b-a3b-mtp`), both suites, both engines, no hosted model and no cost.
+
+| Engine | build | debug | time (debug) | tokens per case |
+|---|---|---|---|---|
+| Loop (default) | 7 of 10 | 136 of 137 | about 12 min | about 70,000 (the debug suite's 9.7M over 137 cases) |
+| Deep Agents | 7 of 10 | 135 of 137 | about 32 min | 1.5 to 3.6 times the loop's on the cases rerun |
+
+- The build cases both engines missed are "greeter", "per_topic" and "mcp" for the loop (a step or block the case
+  expects was missing); Deep Agents missed others, each time stopping at its step limit.
+- The debug figures include the three "Lead scoring with research" cases, rerun after a harness fix (the template's
+  own block was unknown to the harness, so they could not pass before); all three now pass on both engines.
+- Deep Agents reached its step limit on most cases, also ones it passed. Its token counts were zero on LM Studio
+  until models on OpenAI-compatible servers were asked for their streamed usage (fixed the same day).
+
+**Decision:** the loop engine stays the default. The two engines pass the same share of cases, but Deep Agents takes
+about 2.7 times as long, uses more tokens and works up to its step limit. Revisit with a hosted model (the nightly job)
+or after tuning Deep Agents' step budget; the switch is ready on the branch `pending/copilot-deep-agents-default`.
+
 ## Running it on your own computer
 
 The same harness runs locally with any model the app supports, including a local one through Ollama. You don't

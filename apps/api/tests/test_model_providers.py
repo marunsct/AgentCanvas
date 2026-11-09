@@ -57,16 +57,18 @@ def test_project_secret_named_after_the_provider_is_the_key():
     model, params = chat_model_args("mistralai:mistral-small-latest", {}, {"MISTRAL_API_KEY": "m-key"})
     assert (model, params) == ("mistralai:mistral-small-latest", {"api_key": "m-key"})
     # an explicit key in the config wins; a provider without a key leaves the params alone
-    assert chat_model_args("openai:gpt-5.5", {"api_key": "mine"}, {"OPENAI_API_KEY": "x"})[1] == {"api_key": "mine"}
+    assert chat_model_args("openai:gpt-5.5", {"api_key": "mine"}, {"OPENAI_API_KEY": "x"})[1] == {
+        "api_key": "mine", "stream_usage": True,  # a streamed answer reports its tokens only when asked
+    }  # fmt: skip
     assert chat_model_args("ollama:llama3.3", {}, {"OPENAI_API_KEY": "x"}) == ("ollama:llama3.3", {})
 
 
 def test_openai_compatible_local_servers():
     assert chat_model_args("lmstudio:qwen3-8b", {}, {}) == (
-        "openai:qwen3-8b", {"base_url": "http://localhost:1234/v1", "api_key": "not-needed"},
+        "openai:qwen3-8b", {"base_url": "http://localhost:1234/v1", "stream_usage": True, "api_key": "not-needed"},
     )  # fmt: skip
     model, params = chat_model_args("vllm:llama", {"base_url": "http://gpu:9000/v1", "api_key": "k"}, {})
-    assert (model, params) == ("openai:llama", {"base_url": "http://gpu:9000/v1", "api_key": "k"})
+    assert (model, params) == ("openai:llama", {"base_url": "http://gpu:9000/v1", "api_key": "k", "stream_usage": True})
     with pytest.raises(ValueError, match="needs a base URL"):
         chat_model_args("openai_compatible:some-model", {}, {})
 

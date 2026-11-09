@@ -1,7 +1,7 @@
 {
   "id": "crewai",
   "label": "CrewAI",
-  "framework": "crewai 1.15.33",
+  "framework": "crewai 1.15.39",
   "version": "0.1.0",
   "tier": "T2",
   "description": "The workflow becomes a native CrewAI flow: a method for each block, chained with @start, @listen and @router, with CrewAI Agents for the AI blocks and Crew blocks for teams of agents with tasks. Any catalog model works. Runs need CrewAI installed on the server (`make crewai`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",

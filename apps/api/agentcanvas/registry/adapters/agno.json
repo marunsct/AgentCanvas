@@ -1,7 +1,7 @@
 {
   "id": "agno",
   "label": "Agno",
-  "framework": "agno 3.1.11",
+  "framework": "agno 3.1.12",
   "version": "0.1.0",
   "tier": "T2",
   "description": "The workflow becomes an Agno flow: an async function for each block, Agno Agents (OpenAILike models, tools, output_schema for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's confirmation (Agno's requires_confirmation). Runs need Agno installed on the server (`make framework FW=agno`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",

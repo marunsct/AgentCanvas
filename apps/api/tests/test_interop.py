@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 import httpx
@@ -133,7 +134,8 @@ async def test_a_missing_framework_says_what_to_install(tmp_path):
     (tmp_path / "tools" / "x.py").write_text("agent = object()\n")
     wf = agent_wf({"framework": "google_adk", "import_path": "tools.x:agent"})
     graph = build_graph(wf, Resources(workspace=tmp_path), checkpointer=InMemorySaver())
-    with pytest.raises(interop.AgentError, match=r"Google ADK is not installed here: add `google-adk==2\.13\.0`"):
+    pin = re.escape(interop.FRAMEWORKS["google_adk"].package)  # the pinned version, whatever it is today
+    with pytest.raises(interop.AgentError, match=rf"Google ADK is not installed here: add `{pin}`"):
         await graph.ainvoke({"messages": [("user", "hi")]}, cfg())
 
 
@@ -142,7 +144,7 @@ def test_rules_exports_and_hosted_edition(ws):
                    "side_effects": ["external_write"]})  # fmt: skip
     assert "E070" not in codes(wf)  # the approval comes before the agent acts
     assert "E041" in {d.code for d in validate(wf, edition="hosted")}  # runs workspace code in the server process
-    assert "crewai==1.15.33" in dependencies(wf)
+    assert "crewai==1.15.39" in dependencies(wf)
     bad = agent_wf({"framework": "crewai", "import_path": "os:system"})
     assert "E080" in errors(bad)
     assert errors(agent_wf({"framework": "langflow", "import_path": "tools.fw:crew"}))

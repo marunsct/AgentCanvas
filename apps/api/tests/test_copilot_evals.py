@@ -87,3 +87,17 @@ def test_the_make_target_is_documented_and_runs_both_suites():
     assert re.search(r"--suite both .*--fallback-to-demo", out) and "ollama:qwen3" in out
     pages = [ROOT / "docs/user-guide/copilot.md", ROOT / "docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md"]
     assert all("make copilot-evals" in p.read_text() for p in pages)
+
+
+def test_debug_cases_know_their_templates_own_blocks():
+    """A template with a block of its own (lead_scoring_pro's templates.score_lead, from its kit) was checked against
+    the plain registry, so each of its cases started with "unknown node type" and no fix could ever pass."""
+    from agentcanvas.copilot.evals import debug_cases
+    from agentcanvas.registry import default_registry
+    from agentcanvas.settings import get_settings
+    from agentcanvas.validation import validate
+
+    cases = debug_cases(get_settings(), default_registry())
+    unknown = [c["id"] for c in cases if any(d.code == "E005" for d in validate(c["start"], c.get("registry")))]
+    assert not unknown, unknown
+    assert any(c["id"].startswith("lead_scoring_pro/") for c in cases)  # still tested, now fairly

@@ -36,10 +36,9 @@ from agentcanvas.settings import get_settings
 from agentcanvas.validation.blast import dry_run_tools
 
 STREAM_MODES = ["tasks", "updates", "messages", "custom"]
-# langgraph 1.2.12 skips node `error_handler`s when streaming "messages"/"custom" or with subgraphs=True
-# (FAQ P-15, canary test `test_upstream_error_handler_with_messages_stream`). Workflows that use error routes
-# therefore stream without tokens until upstream is fixed.
-SAFE_STREAM_MODES = ["tasks", "updates"]
+# langgraph before 1.2.20 skipped node `error_handler`s when streaming "messages"/"custom" or with subgraphs=True
+# (FAQ P-15); workflows with error routes streamed without tokens. Fixed upstream: the canary in
+# tests/test_upstream_canaries.py now checks it stays fixed.
 warnings.filterwarnings("ignore", message=".*langchain.mcp.*beta.*")  # surfaced as I010 diagnostics instead
 
 
@@ -292,23 +291,12 @@ class LangChainAdapter:
             graph_input: Any = Command(resume=value)
         else:
             graph_input = spec.input
-        error_routes = any(n.policies and n.policies.error_route for n in wf.nodes)
         kwargs: dict[str, Any] = {
-            "stream_mode": SAFE_STREAM_MODES if error_routes else STREAM_MODES,
-            "subgraphs": not error_routes,
+            "stream_mode": STREAM_MODES,
+            "subgraphs": True,
             "version": "v2",
             "durability": spec.durability or wf.settings.durability,
         }
-        if error_routes:
-            yield {
-                "type": "CUSTOM",
-                "name": "ac.warning",
-                "value": {
-                    "code": "tokens_disabled",
-                    "message": "Token streaming is off for workflows with error routes "
-                    "(upstream LangGraph issue, FAQ P-15).",
-                },
-            }
         if spec.context:
             kwargs["context"] = spec.context
         if spec.mode == "debug":
