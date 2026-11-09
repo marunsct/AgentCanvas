@@ -596,8 +596,12 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 
 ### Added
 - [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
-- **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
+- **Decide with AI** block (`core.decide`): a model picks one of the paths you describe and saves
   `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
+  It runs on every framework, asked with the same words and read the same way (on CrewAI a `@router` method, on ADK a
+  routed node, on the flow frameworks and Mastra a step whose path is the choice), and exports do the same.
+- **AI classification** evaluator (`classifier`): a model puts the output in one of your categories (polite or rude,
+  on topic or not), asked like Decide with AI; it passes in a passing category, optionally only when sure enough.
 - Each experiment target says why its runs failed: run errors and evaluator comments grouped (numbers and quoted values
   taken out), with the examples of each group and a one-line summary (`failures`, `failure_summary`).
 - The tool trajectory evaluator can check arguments: an example's expected call can be `{"name", "args"}`, an argument
