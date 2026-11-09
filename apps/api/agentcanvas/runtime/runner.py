@@ -742,7 +742,7 @@ class Runner:
                     await self._emit(h, {"type": "CUSTOM", "name": "ac.queued", "value": place})
 
                 await self.admission.wait(
-                    h.run_id, spec.org_id, h.project_id, queued, _pending(h, spec), caller=h.caller_run_id
+                    h.run_id, spec.org_id, h.project_id, queued, lambda: _pending(h, spec), caller=h.caller_run_id
                 )
                 h.waiting = False
                 started = time.perf_counter()  # its duration (and budget's time limit) count from here

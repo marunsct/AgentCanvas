@@ -117,14 +117,15 @@ class Admission:
         org_id: str | None,
         project_id: str | None,
         on_queued: Callable[[dict[str, Any]], Awaitable[None]],
-        pending: dict[str, Any] | None = None,
+        pending: Callable[[], dict[str, Any]] | None = None,
         caller: str | None = None,
     ) -> None:
         """Return when the run may go: at once without a limit, else once it has a slot. `on_queued` is told the
         run's place in the queue when it has to wait, and again when its place changes. `pending`: what the run
-        was started with, kept on its row while it waits (a hand-over starts it again with it). `caller`: the run
-        of the organisation this one was called by (runtime/nesting.py): while it holds a slot, this run works within
-        it instead of waiting behind it. Raises QueueTimeout after `max_wait_s` without a slot."""
+        was started with, kept on its row while it waits (a hand-over starts it again with it), made only then.
+        `caller`: the run of the organisation this one was called by (runtime/nesting.py): while it holds a slot,
+        this run works within it instead of waiting behind it. Raises QueueTimeout after `max_wait_s` without a
+        slot."""
         if org_id is None:
             return
         if await self.limit_of(project_id) <= 0:
@@ -132,7 +133,9 @@ class Admission:
         if caller is not None and await self._holds_slot(caller, org_id):
             return
         async with self.db.sessionmaker() as s:
-            await s.execute(update(Run).where(Run.id == run_id).values(queued=True, pending=pending))
+            await s.execute(
+                update(Run).where(Run.id == run_id).values(queued=True, pending=pending() if pending else None)
+            )
             await s.commit()
         w = _Waiter(run_id, project_id, on_queued)
         self._waiting.setdefault(org_id, {})[run_id] = w
