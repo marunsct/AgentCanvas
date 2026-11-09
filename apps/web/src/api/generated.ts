@@ -2522,6 +2522,14 @@ export type Targets5 =
 export type Commands2 = {
   [k: string]: unknown;
 }[];
+/**
+ * the git commit the server's image was built from, when it was given
+ */
+export type Commit2 = string | null;
+/**
+ * the release, e.g. 0.33.0
+ */
+export type Version15 = string;
 export type DryRun1 = boolean;
 export type InterruptId1 = string | null;
 export type Mocks1 = {
@@ -2633,7 +2641,7 @@ export type Size2 = number;
 /**
  * the saved text's version, for the next save's If-Match
  */
-export type Version15 = string;
+export type Version16 = string;
 /**
  * true when people sign in with OpenID Connect (not dev or Matura mode)
  */
@@ -3026,7 +3034,7 @@ export type Ids1 = string[] | null;
 /**
  * run against a version instead of the draft
  */
-export type Version16 = string | null;
+export type Version17 = string | null;
 export type Failed2 = number;
 export type Passed3 = number;
 export type Results2 = CaseResult[];
@@ -3216,6 +3224,17 @@ export type Semver1 = string;
 export type WorkspaceCommit = string | null;
 export type Bump = "major" | "minor" | "patch";
 export type Message12 = string;
+/**
+ * the Copilot proposals accepted since the version before, and by whom
+ */
+export type CopilotChanges1 = CopilotChange[];
+export type CreatedAt38 = string;
+export type CreatedBy3 = string | null;
+export type Id64 = string;
+export type IrHash5 = string;
+export type Message13 = string;
+export type Semver2 = string;
+export type WorkspaceCommit1 = string | null;
 export type Model13 = string | null;
 export type Name66 = string;
 export type SystemPrompt1 = string;
@@ -3358,29 +3377,29 @@ export type Tools4 =
       string,
       string
     ];
-export type CreatedAt38 = string;
+export type CreatedAt39 = string;
 export type Diagnostics5 = Diagnostic[];
-export type Id64 = string;
-export type IrHash5 = string;
+export type Id65 = string;
+export type IrHash6 = string;
 export type Name67 = string;
 export type ProjectId6 = string;
 export type UpdatedAt12 = string;
-export type Version17 = number;
-export type Id65 = string;
+export type Version18 = number;
+export type Id66 = string;
 export type Name68 = string;
 export type UpdatedAt13 = string;
-export type Version18 = number;
+export type Version19 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
 export type Name69 = string;
-export type Id66 = string;
+export type Id67 = string;
 export type IsDefault = boolean;
 export type Name70 = string;
 /**
  * default: the latest version
  */
-export type Version19 = number | null;
-export type Id67 = string;
+export type Version20 = number | null;
+export type Id68 = string;
 export type Kind14 = string;
 /**
  * what the content is, read from its first bytes
@@ -3391,7 +3410,7 @@ export type Size3 = number;
 /**
  * the commit message
  */
-export type Message13 = string | null;
+export type Message14 = string | null;
 /**
  * replace changes made on the branch since the last sync
  */
@@ -3399,31 +3418,12 @@ export type Overwrite1 = boolean;
 /**
  * a version's semver; the draft when left out
  */
-export type Version20 = string | null;
-/**
- * the git commit the server's image was built from, when it was given
- */
-export type Commit2 = string | null;
-/**
- * the release, e.g. 0.33.0
- */
-export type Version21 = string;
+export type Version21 = string | null;
 export type Error11 = string | null;
 export type Ok4 = boolean;
 export type Reply1 = string | null;
 export type Detail4 = string;
 export type Ok5 = boolean;
-/**
- * the Copilot proposals accepted since the version before, and by whom
- */
-export type CopilotChanges1 = CopilotChange[];
-export type CreatedAt39 = string;
-export type CreatedBy3 = string | null;
-export type Id68 = string;
-export type IrHash6 = string;
-export type Message14 = string;
-export type Semver2 = string;
-export type WorkspaceCommit1 = string | null;
 
 export interface ApiSchemas {
   AddNode?: AddNode;
@@ -3632,6 +3632,7 @@ export interface ApiSchemas {
   RecrawlResult?: RecrawlResult;
   RedTeamIn?: RedTeamIn;
   RefactorOut?: RefactorOut;
+  ReleaseOut?: ReleaseOut;
   RemoveNode?: RemoveNode;
   RemoveResource?: RemoveResource;
   RenameNode?: RenameNode;
@@ -3725,6 +3726,7 @@ export interface ApiSchemas {
   UrlIn?: UrlIn;
   VersionDetail?: VersionDetail;
   VersionIn?: VersionIn;
+  VersionOut?: VersionOut;
   WorkflowIn?: WorkflowIn;
   WorkflowOut?: WorkflowOut;
   WorkflowPage?: WorkflowPage;
@@ -3734,10 +3736,8 @@ export interface ApiSchemas {
   agentcanvas__api__v1__datasets__PushIn?: PushIn;
   agentcanvas__api__v1__files__FileOut?: FileOut1;
   agentcanvas__api__v1__gitsync__PushIn?: PushIn1;
-  agentcanvas__api__v1__server__VersionOut?: VersionOut;
   agentcanvas__api__v1__setup__TestOut?: TestOut;
   agentcanvas__api__v1__traces__TestOut?: TestOut1;
-  agentcanvas__api__v1__versions__VersionOut?: VersionOut1;
   agentcanvas__api__v1__workspace__FileOut?: FileOut;
 }
 /**
@@ -6756,6 +6756,14 @@ export interface RefactorOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "ReleaseOut".
+ */
+export interface ReleaseOut {
+  commit: Commit2;
+  version: Version15;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "ReplaceIR".
  */
 export interface ReplaceIR {
@@ -6899,7 +6907,7 @@ export interface SavedFile {
   modified: Modified1;
   path: Path6;
   size: Size2;
-  version: Version15;
+  version: Version16;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7360,7 +7368,7 @@ export interface Pins4 {
  */
 export interface TestRunIn {
   ids?: Ids1;
-  version?: Version16;
+  version?: Version17;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7610,6 +7618,20 @@ export interface VersionIn {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "VersionOut".
+ */
+export interface VersionOut {
+  copilot_changes?: CopilotChanges1;
+  created_at: CreatedAt38;
+  created_by: CreatedBy3;
+  id: Id64;
+  ir_hash: IrHash5;
+  message: Message13;
+  semver: Semver2;
+  workspace_commit: WorkspaceCommit1;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "WorkflowIn".
  */
 export interface WorkflowIn {
@@ -7624,11 +7646,11 @@ export interface WorkflowIn {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt38;
+  created_at: CreatedAt39;
   diagnostics: Diagnostics5;
-  id: Id64;
+  id: Id65;
   ir: Ir5;
-  ir_hash: IrHash5;
+  ir_hash: IrHash6;
   /**
    * created from a template: the files, dataset, evaluators, tests and schedule it added
    */
@@ -7637,7 +7659,7 @@ export interface WorkflowOut {
   name: Name67;
   project_id: ProjectId6;
   updated_at: UpdatedAt12;
-  version: Version17;
+  version: Version18;
 }
 export interface Ir5 {
   [k: string]: unknown;
@@ -7658,10 +7680,10 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id65;
+  id: Id66;
   name: Name68;
   updated_at: UpdatedAt13;
-  version: Version18;
+  version: Version19;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7675,7 +7697,7 @@ export interface WorkflowPatch {
  * via the `definition` "WorkspaceOut".
  */
 export interface WorkspaceOut {
-  id: Id66;
+  id: Id67;
   is_default: IsDefault;
   name: Name70;
 }
@@ -7684,7 +7706,7 @@ export interface WorkspaceOut {
  * via the `definition` "agentcanvas__api__v1__datasets__PushIn".
  */
 export interface PushIn {
-  version?: Version19;
+  version?: Version20;
 }
 /**
  * A file reference, as a run's input carries it.
@@ -7693,7 +7715,7 @@ export interface PushIn {
  * via the `definition` "agentcanvas__api__v1__files__FileOut".
  */
 export interface FileOut1 {
-  id: Id67;
+  id: Id68;
   kind?: Kind14;
   media_type: MediaType;
   name: Name71;
@@ -7704,17 +7726,9 @@ export interface FileOut1 {
  * via the `definition` "agentcanvas__api__v1__gitsync__PushIn".
  */
 export interface PushIn1 {
-  message?: Message13;
+  message?: Message14;
   overwrite?: Overwrite1;
-  version?: Version20;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "agentcanvas__api__v1__server__VersionOut".
- */
-export interface VersionOut {
-  commit: Commit2;
-  version: Version21;
+  version?: Version21;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7732,18 +7746,4 @@ export interface TestOut {
 export interface TestOut1 {
   detail: Detail4;
   ok: Ok5;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "agentcanvas__api__v1__versions__VersionOut".
- */
-export interface VersionOut1 {
-  copilot_changes?: CopilotChanges1;
-  created_at: CreatedAt39;
-  created_by: CreatedBy3;
-  id: Id68;
-  ir_hash: IrHash6;
-  message: Message14;
-  semver: Semver2;
-  workspace_commit: WorkspaceCommit1;
 }

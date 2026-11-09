@@ -12,7 +12,7 @@ import { CodeHelp } from "./CodeHelp";
 import { FileTree } from "./FileTree";
 import { KIND_LABEL, starter } from "./starters";
 import { QueryStatus } from "../ui/QueryStatus";
-import type { FileOut, FileContent, FilesOut } from "../api/generated";
+import type { FileOut, FileContent, FilesOut, SavedFile } from "../api/generated";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 import { PageHeader } from "../ui/PageHeader";
 
@@ -25,7 +25,7 @@ const POLICY = "sandbox.json";
 const POLICY_TEMPLATE = `${JSON.stringify({ egress: [], inject: [], timeout_s: 30, memory_mb: 512 }, null, 2)}\n`;
 const enc = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 /** A file as read; `version` (a hash of its text) goes back as If-Match on save so a newer copy is not overwritten. */
-type Opened = FileContent & { version?: string };
+type Opened = FileContent;
 /** The server copy the editor's text started from. */
 interface Base { path: string; version?: string; content: string }
 
@@ -82,13 +82,13 @@ export function WorkspacePage() {
 
   const save = useMutation({
     mutationFn: ({ path, content, version }: { path: string; content: string; version?: string }) =>
-      apiFetch<{ diagnostics: LintItem[]; version?: string }>(`${base()}/files/${enc(path)}`, {
+      apiFetch<SavedFile>(`${base()}/files/${enc(path)}`, {
         method: "PUT", json: { content }, headers: version ? { "If-Match": `"${version}"` } : undefined,
       }),
     onSuccess: (out, { path, content }) => {
-      if (path === selected) { setOrigin({ path, version: out.version, content }); setDiagnostics(out.diagnostics); }
+      if (path === selected) { setOrigin({ path, version: out.version, content }); setDiagnostics(out.diagnostics ?? []); }
       // the cached copy is what reopening the file shows: keep it in step with what was saved
-      qc.setQueryData<Opened>(["file", PROJECT_ID, path], (old) => ({ ...old, path, content, diagnostics: out.diagnostics, version: out.version }));
+      qc.setQueryData<Opened>(["file", PROJECT_ID, path], (old) => ({ ...old, path, content, diagnostics: out.diagnostics ?? [], version: out.version }));
       void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
       void qc.invalidateQueries({ queryKey: ["workspace-catalog"] }); // new tools / custom nodes
       void qc.invalidateQueries({ queryKey: ["node-types"] });

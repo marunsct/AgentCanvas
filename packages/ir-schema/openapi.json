@@ -9813,6 +9813,33 @@
         "title": "RefactorOut",
         "type": "object"
       },
+      "ReleaseOut": {
+        "properties": {
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the git commit the server's image was built from, when it was given",
+            "title": "Commit"
+          },
+          "version": {
+            "description": "the release, e.g. 0.33.0",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "commit"
+        ],
+        "title": "ReleaseOut",
+        "type": "object"
+      },
       "RemoveNode": {
         "additionalProperties": false,
         "description": "Removes a node and every edge touching it.",
@@ -14324,6 +14351,72 @@
         "title": "VersionIn",
         "type": "object"
       },
+      "VersionOut": {
+        "properties": {
+          "copilot_changes": {
+            "description": "the Copilot proposals accepted since the version before, and by whom",
+            "items": {
+              "$ref": "#/components/schemas/CopilotChange"
+            },
+            "title": "Copilot Changes",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ir_hash": {
+            "title": "Ir Hash",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "semver": {
+            "title": "Semver",
+            "type": "string"
+          },
+          "workspace_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Commit"
+          }
+        },
+        "required": [
+          "id",
+          "semver",
+          "message",
+          "ir_hash",
+          "workspace_commit",
+          "created_by",
+          "created_at"
+        ],
+        "title": "VersionOut",
+        "type": "object"
+      },
       "WorkflowIn": {
         "properties": {
           "model": {
@@ -14639,33 +14732,6 @@
         "title": "PushIn",
         "type": "object"
       },
-      "agentcanvas__api__v1__server__VersionOut": {
-        "properties": {
-          "commit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "the git commit the server's image was built from, when it was given",
-            "title": "Commit"
-          },
-          "version": {
-            "description": "the release, e.g. 0.33.0",
-            "title": "Version",
-            "type": "string"
-          }
-        },
-        "required": [
-          "version",
-          "commit"
-        ],
-        "title": "VersionOut",
-        "type": "object"
-      },
       "agentcanvas__api__v1__setup__TestOut": {
         "properties": {
           "error": {
@@ -14717,72 +14783,6 @@
           "detail"
         ],
         "title": "TestOut",
-        "type": "object"
-      },
-      "agentcanvas__api__v1__versions__VersionOut": {
-        "properties": {
-          "copilot_changes": {
-            "description": "the Copilot proposals accepted since the version before, and by whom",
-            "items": {
-              "$ref": "#/components/schemas/CopilotChange"
-            },
-            "title": "Copilot Changes",
-            "type": "array"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "created_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "ir_hash": {
-            "title": "Ir Hash",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "semver": {
-            "title": "Semver",
-            "type": "string"
-          },
-          "workspace_commit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workspace Commit"
-          }
-        },
-        "required": [
-          "id",
-          "semver",
-          "message",
-          "ir_hash",
-          "workspace_commit",
-          "created_by",
-          "created_at"
-        ],
-        "title": "VersionOut",
         "type": "object"
       },
       "agentcanvas__api__v1__workspace__FileOut": {
@@ -31458,7 +31458,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/agentcanvas__api__v1__server__VersionOut"
+                  "$ref": "#/components/schemas/ReleaseOut"
                 }
               }
             },
@@ -37315,7 +37315,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/agentcanvas__api__v1__versions__VersionOut"
+                    "$ref": "#/components/schemas/VersionOut"
                   },
                   "title": "Response List Versions V1 Workflows  Wf Id  Versions Get",
                   "type": "array"
@@ -37402,7 +37402,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/agentcanvas__api__v1__versions__VersionOut"
+                  "$ref": "#/components/schemas/VersionOut"
                 }
               }
             },

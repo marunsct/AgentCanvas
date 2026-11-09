@@ -21,15 +21,15 @@ class ServerSetting(BaseModel):
     env: str = Field(description="the environment variable an operator sets it with")
 
 
-class VersionOut(BaseModel):
+class ReleaseOut(BaseModel):
     version: str = Field(description="the release, e.g. 0.33.0")
     commit: str | None = Field(description="the git commit the server's image was built from, when it was given")
 
 
-@router.get("/version", response_model=VersionOut)
-async def server_version() -> VersionOut:
+@router.get("/version", response_model=ReleaseOut)
+async def server_version() -> ReleaseOut:
     """The release and commit this server runs (Settings > About), for any signed-in user: what support asks for."""
-    return VersionOut(version=version.VERSION, commit=version.COMMIT)
+    return ReleaseOut(version=version.VERSION, commit=version.COMMIT)
 
 
 @router.get("/openapi.json", include_in_schema=False)
