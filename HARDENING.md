@@ -49,7 +49,6 @@ Ranked by what they add for the people who use AgentCanvas; sizes are S (days), 
 - **Hosted edition:** only the OpenAI-compatible client is pinned to public addresses; other providers with their own address are refused there. No pinned sync client. The design-export kit (`designs/kit/canvas_tools.py`) still uses plain `is_global` (it cannot import AgentCanvas).
 - **Usage after a stop:** the CrewAI and OpenAI Agents adapters drain usage like the LangGraph one did before RT-4.
 - **Model catalog:** GPT-5.6 and Gemini 3.8 Flash have their published prices (2026-11-09) but no capability flags (vision, sampling) yet. GPT-5.6 Sol's price is promotional until 2026-11-30 and its later price is not published: recheck then. Gemini 3.8 Flash is recorded at its 2027 price (double the introductory one), so budgets err on the safe side until then. `grok-4` has no retire date; Haiku 5.5 cache prices are derived from the stated multipliers.
-- **Production compose:** the API's read-only root and the in-memory home directory are checked statically; run `scripts/ci-images.sh` to confirm a framework writes nowhere else (`API_READ_ONLY=false` is the way out).
 - **Operations ideas not done:** a startup check that migrations are at head when `AUTO_MIGRATE` is off; a generated reference page of every server setting; HSTS and Permissions-Policy headers in the web image.
 - **Web:** the Run panel and chat input still re-render on every streamed token (they show the text).
 
