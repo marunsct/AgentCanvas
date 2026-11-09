@@ -87,7 +87,8 @@ Once a workflow is published, people who are not developers can use it from a li
 2. Give the page a **Title**, a **Greeting** (the first thing visitors read) and up to six **Suggested questions**
    (one per line; visitors click one to start). Press **Save**.
 3. **Copy link** and send it to people, or **Open the page** to try it yourself. The page works on phones and
-   follows the visitor's light or dark setting.
+   follows the visitor's light or dark setting. Each message, the greeting and the message box take the direction
+   of their own text, so Arabic or Hebrew reads right to left; the page's own buttons and notes are in English.
 
 Visitors need no account. Each message they send runs the published version, and the answer streams in as it is
 written (when the workflow has a safety block, the answer appears once it has passed the checks). **New

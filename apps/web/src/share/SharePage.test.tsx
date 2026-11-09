@@ -216,3 +216,20 @@ describe("share page, checking on a saved answer", () => {
     }
   });
 });
+
+describe("share page, right-to-left text", () => {
+  it("lets each message, the greeting and the message box take the direction of their own text", async () => {
+    loadConversation.mockResolvedValueOnce({
+      thread_id: "th_1", busy: false,
+      messages: [{ role: "user", text: "שלום" }, { role: "assistant", text: "مرحبا! كيف يمكنني المساعدة؟", run_id: "run_1" }],
+    });
+    render(<SharePage />);
+    const answer = await screen.findByText("مرحبا! كيف يمكنني المساعدة؟");
+    // the hidden "Assistant:" label is English: the direction goes on the text alone, not the whole bubble
+    expect(answer.getAttribute("dir")).toBe("auto");
+    expect(answer.textContent).toBe("مرحبا! كيف يمكنني المساعدة؟");
+    expect(screen.getByText("שלום").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("Send a picture.").getAttribute("dir")).toBe("auto");
+    expect(screen.getByLabelText("Your message").getAttribute("dir")).toBe("auto");
+  });
+});
