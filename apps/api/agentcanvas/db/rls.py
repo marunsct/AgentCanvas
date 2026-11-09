@@ -83,6 +83,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "share_thread": ("deployment_id", "deployment"),
     "online_evaluator": ("deployment_id", "deployment"),
     "run": ("thread_id", "thread"),
+    "run_callback": ("run_id", "run"),
     "run_search": ("workflow_id", "workflow"),
     "spend_archive": ("workflow_id", "workflow"),
     "presence": ("workflow_id", "workflow"),

@@ -278,7 +278,7 @@ neither sees no rows.
 ### Security events and audit forwarding
 
 AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
-unpublishing, deployment keys, secrets, approvals, members, organisation settings and policies, release gates, trace
+unpublishing, deployment keys and callback secrets, secrets, approvals, members, organisation settings and policies, release gates, trace
 export, project workspaces, API and SCIM tokens, and every change SCIM or the sign-in token's groups make to members
 and roles) also leave the server, in every sign-in mode:
 

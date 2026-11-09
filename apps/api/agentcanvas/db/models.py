@@ -201,6 +201,9 @@ class Deployment(Base):
     key_prefix: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     created_at: Mapped[datetime] = _now()
+    # signs the completion callbacks of its runs (services/callbacks.py), encrypted with the organisation's data key;
+    # NULL until a builder creates one: until then runs cannot ask for a callback
+    callback_secret: Mapped[str | None] = mapped_column(Text)
 
 
 class DeploymentKey(Base):
@@ -380,6 +383,35 @@ class Run(Base):
     origin: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
+class RunCallback(Base):
+    """A deployment run's completion callback (E-2): the caller's `callback_url`, sent the run's result once it ended,
+    signed with the deployment's callback secret and tried again with growing pauses until it answers 2xx. Every
+    server delivers due ones; a conditional update gives each attempt to exactly one."""
+
+    __tablename__ = "run_callback"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','delivered','failed')", name="run_callback_status"),
+        # the delivery job reads only callbacks still to send
+        Index(
+            "run_callback_due_idx",
+            "next_at",
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+        Index("run_callback_deployment_idx", "deployment_id"),  # deleting a deployment (cascade)
+    )
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    attempts: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
+    next_at: Mapped[datetime] = _now()  # not before: the next attempt (or the end of the current one's lease)
+    last_status: Mapped[int | None] = mapped_column(Integer)  # the HTTP status of the last attempt
+    last_error: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    created_at: Mapped[datetime] = _now()
 
 
 class SpendArchive(Base):

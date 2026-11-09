@@ -119,6 +119,33 @@ restarted: a finished run's result is kept with the run, for as long as the orga
 run that a server restart stopped is continued by another server, and the `GET` answers with the run that continues
 it (its own `run_id`). Only runs of the deployment whose key you send are found; any other id answers `404`.
 
+### Be called back when a run ends
+
+Instead of asking, a caller can be told: add `"callback_url": "https://…"` to the run request (`runs`, `runs/wait`,
+`runs/stream`, or a `resume`). When the run ends (finished, paused for a person, failed or stopped), AgentCanvas
+sends that address a `POST` with the run's result as `GET …/runs/{run_id}` gives it, plus `"type": "run.finished"`
+and `deployment_id`:
+
+```json
+{"type": "run.finished", "deployment_id": "dep_…", "run_id": "run_…", "thread_id": "th_…",
+ "status": "success", "output": {…}, "interrupts": [], "error": null}
+```
+
+- **First create the deployment's callback secret:** **Callback secret** next to the deployment on the **Versions**
+  tab (or `POST /v1/deployments/{id}/callback-secret`, as a builder). It is shown once; creating a new one replaces
+  it at once, also for callbacks not sent yet. A run that asks for a callback before the deployment has a secret is
+  refused (`422`).
+- **Check the signature** before you trust a callback, exactly as for [incoming webhooks](#triggers):
+  `X-AgentCanvas-Signature` is `sha256=` and the hex HMAC-SHA256, keyed with the callback secret, of the
+  `X-AgentCanvas-Timestamp` value, a `.` and the raw body. Refuse a timestamp more than 5 minutes old.
+- **Only `https://` addresses** are accepted, never a link-local or cloud metadata address, and on the hosted
+  edition only public ones (checked again on every delivery).
+- **At least once:** an answer other than `2xx` (or none within 10 seconds) is tried again after about 30 seconds,
+  1.5 minutes, 4.5 minutes and so on, up to an hour apart, 8 times in all (about 3 hours). The same callback can
+  arrive twice: `X-AgentCanvas-Delivery` (the run id) tells repeats apart. Redirects are not followed.
+- Builders see each run's callback (sent, still being tried, or given up, with the receiver's last answer) in
+  `GET /v1/runs/{run_id}` under `callback`.
+
 Through the web server (production setups) the same paths are under `/api/`. The public API is rate-limited per
 key, per webhook and per project (`429` with `Retry-After` when exceeded). Errors, versioning and where to get the
 full OpenAPI reference (production included): [API reference](api.md).

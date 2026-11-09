@@ -52,6 +52,7 @@ from agentcanvas.security.kms import Keyring
 from agentcanvas.services import oauth, routing
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.audit_sink import sink_for
+from agentcanvas.services.callbacks import CallbackJob
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.files import FileStore
@@ -289,6 +290,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db, app.state.projects, Exporter(public_only=settings.edition == "hosted")
             )
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
+            # E-2: deployment runs' completion callbacks, delivered by every server
+            app.state.callbacks = CallbackJob(db, runner, app.state.keyring, public_only=settings.edition == "hosted")
+            runner.finish_hooks.append(app.state.callbacks.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring, catchup_s=settings.cron_catchup_s)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
@@ -309,6 +313,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.retention.start()
                 app.state.crawl.start()
                 app.state.handover.start()
+                app.state.callbacks.start()
                 app.state.online.start()
                 app.state.secrets.start()
             app.state.matura_feed = None
@@ -338,6 +343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # after the drain: its ticks keep the heartbeat of runs finishing in the grace period (a draining
                 # server neither sweeps nor claims), so no other server takes them for orphaned and runs them twice
                 await app.state.handover.stop()
+                await app.state.callbacks.stop()  # after the drain: the runs that ended in it are called back
 
             app.state.wind_down = WindDown(wind_down)
             try:

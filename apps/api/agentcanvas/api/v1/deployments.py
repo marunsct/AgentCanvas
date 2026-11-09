@@ -32,6 +32,7 @@ from agentcanvas.db.models import (
     Organization,
     Project,
     Run,
+    RunCallback,
     RunScore,
     Thread,
     WorkflowVersion,
@@ -43,7 +44,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, gates, networks
+from agentcanvas.services import annotation, callbacks, gates, networks
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
@@ -295,6 +296,20 @@ async def rotate_key(
     return KeyOut(api_key=value, key=_key(row))
 
 
+class CallbackSecretOut(BaseModel):
+    callback_secret: str = Field(description="shown once: the receiver checks each callback's signature with it")
+
+
+@router.post("/deployments/{dep_id}/callback-secret", response_model=CallbackSecretOut)
+async def rotate_callback_secret(
+    dep_id: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> CallbackSecretOut:
+    """Create the secret that signs this deployment's run callbacks, or replace it (the old one stops signing at
+    once, also for callbacks still waiting to be delivered). Runs can ask for a callback once it exists."""
+    dep = await DeploymentService(session).require(dep_id)
+    return CallbackSecretOut(callback_secret=await callbacks.set_secret(session, request.app.state.keyring, dep))
+
+
 @router.delete("/deployments/{dep_id}", status_code=204)
 async def unpublish(dep_id: str, session: AsyncSession = Depends(get_session)) -> Response:
     await DeploymentService(session).unpublish(dep_id)
@@ -302,6 +317,11 @@ async def unpublish(dep_id: str, session: AsyncSession = Depends(get_session)) -
 
 
 # ------------------------------------------------------------------------------------------ public API ----
+CALLBACK_HELP = (
+    "an https address sent the run's result (a signed POST) once it ends; needs the deployment's callback secret"
+)
+
+
 class ApiRunIn(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     thread_id: str | None = Field(None, description="continue a conversation this deployment started")
@@ -312,11 +332,13 @@ class ApiRunIn(BaseModel):
     metadata: dict[str, Annotated[str, StringConstraints(max_length=200)]] = Field(
         default_factory=dict, max_length=20, description="labels for this run; online evaluators can filter on them"
     )
+    callback_url: str | None = Field(None, max_length=2000, description=CALLBACK_HELP)
 
 
 class ApiResumeIn(BaseModel):
     value: Any = None
     interrupt_id: str | None = None
+    callback_url: str | None = Field(None, max_length=2000, description=CALLBACK_HELP)
 
 
 class ApiResult(BaseModel):
@@ -390,14 +412,31 @@ async def _start(
     against the rate limits) in this request."""
     dep, wf = caller or await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
+    callback = await _callback_url(request, session, dep, body.callback_url)
     if body.thread_id:
         await own_thread(session, dep, body.thread_id)
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
-    return await request.app.state.runner.start(
+    h = await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
+    await _add_callback(session, dep, h, callback)
+    return h
+
+
+async def _callback_url(request: Request, session: AsyncSession, dep: Deployment, url: str | None) -> str | None:
+    """The run's callback address, checked before the run starts (422 when it may not be used)."""
+    if url is None:
+        return None
+    await callbacks.require_secret(session, dep)
+    return await callbacks.check_url(url, request.app.state.settings.edition == "hosted")
+
+
+async def _add_callback(session: AsyncSession, dep: Deployment, h: RunHandle, url: str | None) -> None:
+    if url is not None:
+        session.add(RunCallback(run_id=h.run_id, deployment_id=dep.id, url=url))
+        await session.commit()
 
 
 async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str) -> Thread:
@@ -623,10 +662,12 @@ async def api_resume(
     response.headers.update(AI_HEADER)
     await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
+    callback = await _callback_url(request, session, dep, body.callback_url)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
         deployment_id=dep.id, version_id=version_id, caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
+    await _add_callback(session, dep, h, callback)
     await session.close()
     return await _result(h)

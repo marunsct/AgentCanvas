@@ -24,7 +24,16 @@ from sqlalchemy.orm import defer
 from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import (
+    Deployment,
+    InterruptTask,
+    Project,
+    Run,
+    RunCallback,
+    Thread,
+    WorkflowRow,
+    WorkflowVersion,
+)
 from agentcanvas.db.repositories import LIGHT_RUN, delete_thread_rows
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
@@ -108,6 +117,16 @@ class ForkRequest(BaseModel):
     stream: bool = True
 
 
+class CallbackOut(BaseModel):
+    url: str
+    status: str = Field(description="pending, delivered or failed (given up after its last attempt)")
+    attempts: int
+    last_status: int | None = Field(None, description="the HTTP status the receiver answered last")
+    last_error: str | None = None
+    next_at: datetime | None = Field(None, description="when it is tried next (pending only)")
+    delivered_at: datetime | None = None
+
+
 class RunOut(BaseModel):
     id: str
     thread_id: str
@@ -122,6 +141,7 @@ class RunOut(BaseModel):
     cost_usd: float = 0.0
     traced: bool = False  # GET /v1/runs/{id}/trace opens it in LangSmith
     queued: bool = Field(False, description="still waiting for a slot in the organisation's run queue (status running)")
+    callback: CallbackOut | None = Field(default=None, description="the completion callback a deployment run asked for")
 
 
 def _run_out(run: Run) -> RunOut:
@@ -344,7 +364,13 @@ async def get_run(run_id: str, session: AsyncSession = Depends(get_session)) -> 
     run = await session.get(Run, run_id)
     if run is None:
         raise NotFound(f"run '{run_id}' not found")
-    return _run_out(run)
+    out = _run_out(run)
+    if (cb := await session.get(RunCallback, run_id)) is not None:
+        out.callback = CallbackOut(
+            url=cb.url, status=cb.status, attempts=cb.attempts, last_status=cb.last_status, last_error=cb.last_error,
+            next_at=cb.next_at if cb.status == "pending" else None, delivered_at=cb.delivered_at,
+        )  # fmt: skip
+    return out
 
 
 @router.get("/runs/{run_id}/trace", status_code=307)

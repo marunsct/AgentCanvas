@@ -35,6 +35,7 @@ audit_log = get_logger("agentcanvas.audit")
 SECURITY_ACTIONS = frozenset({
     "publish", "unpublish", "rotate_key",  # workflows published to an environment, their keys
     "create_deployment_key", "revoke_deployment_key",
+    "rotate_callback_secret",  # the secret that signs a deployment's run callbacks
     "put_secret", "delete_secret",  # project secrets
     "decide", "resume_thread", "api_resume",  # approvals of paused runs (inbox, canvas, public API)
     "set_member", "remove_member",  # members and roles (dev and oidc modes)
