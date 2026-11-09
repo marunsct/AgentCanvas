@@ -152,6 +152,9 @@ organisation's controls: the database, network, backups, access to the servers a
 providers you choose are yours. This page, the [Operations reference](operations.md) and the audit log are the
 evidence AgentCanvas provides for your own assessments (GDPR, SOC 2, ISO 27001).
 
+The terms under which AgentCanvas and the code it exports may be used have not been published yet: the repository
+has no licence file. Ask the maintainers before you rely on any rights to it.
+
 ## Reporting a vulnerability
 
 Report it privately through GitHub's private vulnerability reporting, as the

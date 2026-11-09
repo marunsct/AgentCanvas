@@ -17,9 +17,12 @@ Yes: pick a local model (Ollama, LM Studio, vLLM, llama.cpp) in **Settings › M
 on your machine unless you turn on LangSmith tracing.
 
 **Is the generated code mine? Can I run it without AgentCanvas?**
-Yes. **Export** gives you a plain Python project (LangGraph graph, node library, your workspace code, pinned
-dependencies) with a service that answers the same API as a deployment, deploy files for where you run it, and
-guides; see [Export and deploy](export.md).
+You can run it without AgentCanvas: **Export** gives you a plain project (the workflow's code for its framework,
+your workspace code, pinned dependencies) with a service that answers the same API as a deployment, deploy files
+for where you run it, and guides; see [Export and deploy](export.md). Who may use, change and share it is another
+matter: AgentCanvas has not published a licence yet, neither for itself nor for the code it exports (which includes
+some of AgentCanvas's own code, such as `agentcanvas.sdk`). Until it does, ask the maintainers before you rely on
+any rights to it.
 
 **What happens if the server restarts during a run?**
 Runs are durable. Paused runs (approvals, human input) wait indefinitely; running runs are resumed from their

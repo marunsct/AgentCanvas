@@ -95,3 +95,14 @@ def test_vulnerabilities_have_a_private_channel_and_customers_a_security_page():
         headings = re.findall(r"^#+ (.+)$", (GUIDE / link).read_text(), re.M)
         slugs = {re.sub(r"[^a-z0-9 -]", "", h.lower()).strip().replace(" ", "-") for h in headings}
         assert anchor in slugs, (link, anchor)
+
+
+def test_the_guide_promises_no_rights_while_the_repository_has_no_licence():
+    """The FAQ answered "Is the generated code mine?" with "Yes", but the repository has no licence: nothing grants
+    rights to AgentCanvas or to the code it exports. Until the owner publishes one the guide must say so."""
+    if any((ROOT / name).exists() for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")):
+        return  # then the guide states the licence instead (the owner's change)
+    faq = (GUIDE / "faq.md").read_text()
+    answer = faq.split("**Is the generated code mine?", 1)[1].split("**\n", 1)[1].split("\n\n", 1)[0]
+    assert not answer.startswith("Yes") and "licence" in answer, answer
+    assert "no licence" in (GUIDE / "security.md").read_text()
