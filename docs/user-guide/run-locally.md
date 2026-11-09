@@ -73,7 +73,7 @@ the local admin): don't expose it to other people. For a shared server follow [D
     The from-source steps were run on a clean checkout on 2026-10-06 (`make setup`, `make dev-fake`, `make dev-web`,
     the smoke test in step 6, a publish + API call, the first-run model screen); the screens have changed since (the
     app shell, Settings, the workflow list), so the pictures here are older than the app. The Docker stack is started and
-    checked (first-run setup included) by CI on every change.
+    checked (first-run setup included) by the full local CI, `make ci-full`; the default `make ci` leaves it out.
 
 ### At a glance
 
@@ -238,7 +238,7 @@ docker compose -f infra/docker-compose.yml up -d postgres
 DATABASE_URL=postgresql://agentcanvas:agentcanvas@localhost:5432/agentcanvas make dev-fake   # or dev-api
 ```
 
-Migrations run automatically at startup. `make infra` also starts Redis, which the API does not need today.
+Migrations run automatically at startup.
 
 ### Optional: read scanned documents (OCR)
 

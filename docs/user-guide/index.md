@@ -1,9 +1,11 @@
 # AgentCanvas user guide
 
 AgentCanvas is a visual builder for AI agents and agentic workflows. You draw a workflow on a canvas (models,
-agents, tools, routers, human approvals, memory) and AgentCanvas turns it into a real
-[LangGraph](https://langchain-ai.github.io/langgraph/) / LangChain / Deep Agents Python program that you can run,
-debug, test, evaluate, export and publish behind an API.
+agents, tools, routers, human approvals, memory) and AgentCanvas turns it into a real program for the framework you
+pick: [LangGraph](https://langchain-ai.github.io/langgraph/) / LangChain / Deep Agents, the OpenAI Agents SDK, CrewAI,
+Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex (all Python) or Mastra
+(TypeScript). You can run it, debug, test, evaluate, export and publish it behind an API
+([Choosing a framework](frameworks.md)).
 
 ![Home page](img/home.png)
 
@@ -12,7 +14,7 @@ debug, test, evaluate, export and publish behind an API.
 | | |
 |---|---|
 | **Use any model** | Claude, GPT, Gemini, Mistral, Groq, DeepSeek, Grok, any OpenAI-compatible API, or models on your own computer (Ollama, LM Studio, vLLM, llama.cpp). Choose one on the first-run screen, with its API key. |
-| **Build** | Drag widgets onto a canvas, wire them up, and configure them in the Inspector. Start from one of 36 templates (beginner to advanced) in the [template gallery](templates.md), a guided six-step tutorial, or the [Beginner's guide](beginner-guide.md). Hover or click any dot on a block to see what it does and what can connect to it. Add your own Python scripts, tools and custom widgets in the project workspace. |
+| **Build** | Drag widgets onto a canvas, wire them up, and configure them in the Inspector. Start from one of 37 templates (beginner to advanced) in the [template gallery](templates.md), a guided six-step tutorial, or the [Beginner's guide](beginner-guide.md). Hover or click any dot on a block to see what it does and what can connect to it. Add your own Python scripts, tools and custom widgets in the project workspace. |
 | **Run and debug** | Run a workflow and watch each step light up. Pause for human approvals, set breakpoints, step back through the timeline, edit state and fork, and read a plain-language explanation of what happened. See tokens, cost and latency per step. |
 | **Test and evaluate** | Save runs as test cases, build datasets, score runs with evaluators (exact match, regex, schema, LLM judge, tool trajectory, your own code), compare versions in experiments, and block releases that score worse. |
 | **Ship** | Freeze versions, export a standalone Python project, or publish to an environment behind an API key. Start runs from webhooks, schedules or events, and keep scoring live traffic in production. |
