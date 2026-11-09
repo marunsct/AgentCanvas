@@ -448,13 +448,15 @@ class Runner:
         project_files: bool = False,
         service_connection: bool = False,
         priority: Priority | None = None,
+        queue_key: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
         own uploads on the link it may use); `project_files`: the input was written by a builder (a schedule's), so
         any of the project's files. `service_connection`: the person who starts it may use the organisation's service
         connection (an admin); a deployment's runs always may. `priority`: its place in the organisation's run queue
-        when a concurrent-run limit holds it back (default: low for test runs, else normal)."""
+        when a concurrent-run limit holds it back (default: low for test runs, else normal); `queue_key`: the run a
+        hand-over continues, whose place in that queue it keeps."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -534,6 +536,7 @@ class Runner:
                         labels=labels or None,
                         origin=origin,
                         priority=priority_of(priority, origin),
+                        queue_key=queue_key,
                     )
                 )
                 decided: list[str] = []

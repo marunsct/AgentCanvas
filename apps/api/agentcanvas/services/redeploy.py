@@ -190,12 +190,20 @@ class HandoverJob:
         async with self.db.sessionmaker() as s:
             rows = (
                 await s.execute(
-                    select(Run.id, Run.thread_id, Run.workflow_version_id, Run.priority, Run.queued, Run.pending)
+                    select(
+                        Run.id,
+                        Run.thread_id,
+                        Run.workflow_version_id,
+                        Run.priority,
+                        Run.queued,
+                        Run.pending,
+                        func.coalesce(Run.queue_key, Run.id),
+                    )
                     .where(Run.handover.is_(True), Run.stop_requested.is_(False))
                     .limit(BATCH)
                 )
             ).all()
-        for run_id, thread_id, version_id, priority, queued, pending in rows:
+        for run_id, thread_id, version_id, priority, queued, pending, queue_key in rows:
             if self.runner.draining or not await self._mark(run_id, False):  # another instance claimed it
                 continue
             try:
@@ -214,7 +222,7 @@ class HandoverJob:
                 else:
                     kw["input"] = None  # it continues from its last checkpoint
                 h = await self.runner.start(  # in the queue, it keeps the place its run had
-                    wf, thread_id=thread_id, origin="handover", priority=NAMES.get(priority), **kw
+                    wf, thread_id=thread_id, origin="handover", priority=NAMES.get(priority), queue_key=queue_key, **kw
                 )
             except Conflict:  # someone already continued the conversation
                 continue

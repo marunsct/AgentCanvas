@@ -331,6 +331,9 @@ class Run(Base):
     # a waiting run's start arguments (its input, an answer, debug options): no checkpoint holds them before it takes
     # a slot, so a hand-over starts it again with these; emptied when it takes its slot
     pending: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # its place among runs of its priority (oldest first): the id of the run it continues, for a hand-over; else
+    # empty, and its own id counts
+    queue_key: Mapped[str | None] = mapped_column(Text)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)

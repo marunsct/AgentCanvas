@@ -3,7 +3,8 @@
 With no limit (the default: `AGENTCANVAS_MAX_CONCURRENT_RUNS=0` and nothing set by the organisation) every run starts
 at once, as before. With a limit, a run beyond it waits: its row is marked `queued` and it takes a slot when one is
 free and no waiting run of the organisation comes before it, highest priority first (1 high, 0 normal, -1 low),
-then oldest. The queue lives in the database, so every server sees the same one.
+then oldest (a handed-over run counts from the run it continues: `Run.queue_key`). The queue lives in the database,
+so every server sees the same one.
 
 Each server makes one admission pass per organisation at a time for all its waiting runs (not one per waiting run):
 it reads the busy count and the queue's order once, and gives the free slots at the head of the queue to its own
@@ -193,15 +194,9 @@ class Admission:
                         select(func.count()).select_from(in_org.where(Run.queued.is_(False), self._alive()).subquery())
                     )
                     # this server's own runs count however late their heartbeat is: they are waiting right here
-                    queue = list(
-                        (
-                            await s.scalars(
-                                in_org.where(Run.queued.is_(True), or_(self._alive(), Run.id.in_(list(mine)))).order_by(
-                                    Run.priority.desc(), Run.id
-                                )
-                            )
-                        ).all()
-                    )
+                    waiting = in_org.where(Run.queued.is_(True), or_(self._alive(), Run.id.in_(list(mine))))
+                    order = (Run.priority.desc(), func.coalesce(Run.queue_key, Run.id), Run.id)
+                    queue = list((await s.scalars(waiting.order_by(*order))).all())
                     free = limit - (busy or 0)
                     places = {run_id: i + 1 for i, run_id in enumerate(queue) if run_id in mine}
                     # the free slots go to the head of the queue; a run of this server there takes its slot, and

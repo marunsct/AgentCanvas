@@ -328,3 +328,24 @@ async def test_a_pass_locks_no_row_of_the_organisation(app, api_client):
             assert taken is False  # another server's pass waits for this one
             await other.rollback()
         await held.rollback()
+
+
+async def test_a_handed_over_run_keeps_its_place_in_the_queue(app, api_client, limited):
+    """A run that a stopping server handed over waits ahead of the runs that came after it, as it did before."""
+    runner = app.state.runner
+    first = await _start_slow(app, api_client, limited)
+    await runner.drain(0.05)
+    runner.draining, runner.admission.closed = False, False  # the next server
+    holder = await _start_slow(app, api_client, limited)
+    later = await _start(api_client, limited, 30)
+    assert await _queued(app, later) == {"position": 1, "limit": 1}
+    [resumed] = await app.state.handover.tick()
+    assert await _queued(app, resumed) == {"position": 1, "limit": 1}  # ahead of the later run
+    for _ in range(100):
+        if (await _queued(app, later))["position"] == 2:
+            break
+        await asyncio.sleep(0.02)
+    assert (await _queued(app, later))["position"] == 2
+    assert (await run_row(app, resumed)).queue_key == first
+    for run_id in (holder, later, resumed):
+        await runner.cancel(run_id)

@@ -1,7 +1,8 @@
 """the run queue through a hand-over (2026-11-10)
 
 `pending` keeps a waiting run's start arguments: no checkpoint holds its input before it takes a slot, so a server
-that stops hands it over with them.
+that stops hands it over with them. `queue_key` keeps a handed-over run's place in the queue (the id of the run it
+continues).
 
 Revision ID: 1ec6eb9f62ed
 Revises: b8e2f6a0c4d7
@@ -27,8 +28,10 @@ JSON = sa.JSON().with_variant(JSONB(), "postgresql")
 def upgrade() -> None:
     with op.batch_alter_table("run") as batch:
         batch.add_column(sa.Column("pending", JSON, nullable=True))
+        batch.add_column(sa.Column("queue_key", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
     with op.batch_alter_table("run") as batch:
+        batch.drop_column("queue_key")
         batch.drop_column("pending")
