@@ -20,6 +20,7 @@ from agentcanvas.adapters.langchain.codegen import one_line, ts_doc_line
 from agentcanvas.adapters.openai_agents.codegen import model_settings
 from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.registry import default_registry
 
 MASTRA_VERSION = "1.82.0"
 NODE_VERSION = "22.18"  # the first Node.js that runs TypeScript as it is
@@ -284,7 +285,7 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
                 kw.append(f"minConfidence: {_js(n.config['min_confidence'])}")
         if n.type in ("core.router", "core.decide") and n.config.get("default", "default") != "default":
             kw.append(f"default: {_js(n.config['default'])}")
-        if n.disabled:
+        if default_registry().bypassed(n):
             kw.append("disabled: true")
         marker = f" // @canvas-node {one_line(n.id)} ({n.type})" if n.id not in fns else ""
         steps.append(f"    {_js(n.id)}: {{ {', '.join(kw)} }},{marker}")

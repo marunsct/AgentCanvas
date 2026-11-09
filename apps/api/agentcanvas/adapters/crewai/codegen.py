@@ -18,6 +18,7 @@ from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.registry import default_registry
 
 CREWAI_VERSION = "1.15.39"
 RUNTIME_IMPORT = "from agentcanvas.adapters.crewai import runtime as rt"
@@ -155,7 +156,7 @@ def _method(wf: Workflow, n: Node, fns: dict[str, str], body: str, defined: set[
     else:
         when = ("and_" if n.type == "core.join" else "or_") + f"({', '.join(triggers)})"
     deco = "router" if n.type in PATH_STEPS else "listen"
-    step_args = _py(n.id) + (", disabled=True" if n.disabled else "")
+    step_args = _py(n.id) + (", disabled=True" if default_registry().bypassed(n) else "")
     returns = "str" if n.type in PATH_STEPS else "dict[str, Any]"
     lines = [
         f"    {_marker(n)}",

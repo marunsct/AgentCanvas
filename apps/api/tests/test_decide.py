@@ -156,6 +156,29 @@ async def test_flow_frameworks_decide_as_langgraph_does(framework, reply, minimu
     assert events[-1]["output"]["decided"]["choice"] == ("tech" if "tech" in reply else None)
 
 
+@pytest.mark.parametrize(
+    "framework",
+    ["langchain", *(pytest.param(f, marks=MARKS[f] if f in MARKS else installed(f)) for f in [*FLOWS, "mastra"])],
+)
+async def test_a_bypassed_decide_still_decides_on_every_framework(framework):
+    """Bypassing a path step passes the data through but keeps the step choosing the path, as LangGraph does: a
+    bypassed Decide with AI step still asks its model, instead of ending the run or taking the default path."""
+    from test_flow_frameworks import _run as run_flow
+
+    from agentcanvas.adapters import create_adapter
+
+    doc = decide_wf()
+    doc["nodes"][0]["disabled"] = True
+    wf = Workflow.model_validate({**doc, "framework": framework})
+    adapter = create_adapter(framework)
+    async with adapter.persistence(None):
+        reply = '{"choice": "tech", "confidence": 0.9, "reason": "an outage"}'
+        (events,) = await run_flow(adapter, wf, {"ticket": "the site is down"}, {"model": [reply]})
+    assert events[-1].get("outcome") == "success", events[-3:]
+    assert events[-1]["output"]["team"] == "tech"
+    assert events[-1]["output"]["decided"]["choice"] == "tech"
+
+
 def test_the_generated_flow_reads_like_the_canvas():
     from agentcanvas.adapters.pydantic_ai import codegen
 

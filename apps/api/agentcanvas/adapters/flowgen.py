@@ -19,6 +19,7 @@ from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.registry import default_registry
 
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",
@@ -226,7 +227,7 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
                 kw.append(f"min_confidence={_py(n.config['min_confidence'])}")
         if n.type in ("core.router", "core.decide") and n.config.get("default", "default") != "default":
             kw.append(f"default={_py(n.config['default'])}")
-        if n.disabled:
+        if default_registry().bypassed(n):
             kw.append("disabled=True")
         marker = f"  # @canvas-node {one_line(n.id)} ({n.type})" if n.id not in fns else ""
         steps.append(f"        {_py(n.id)}: rt.Step({', '.join(kw)}),{marker}")

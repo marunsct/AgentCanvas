@@ -19,6 +19,7 @@ from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.registry import default_registry
 
 ADK_VERSION = "2.14.0"
 LITELLM_VERSION = "1.105.7"
@@ -98,7 +99,7 @@ def _marker(n: Node) -> str:
 
 
 def _function(n: Node, fn: str, body: str) -> str:
-    step_args = _py(n.id) + (", disabled=True" if n.disabled else "")
+    step_args = _py(n.id) + (", disabled=True" if default_registry().bypassed(n) else "")
     returns = {"core.router": "str", "core.decide": "tuple[dict[str, Any], str]"}.get(n.type, "dict[str, Any]")
     return "\n".join([
         _marker(n),

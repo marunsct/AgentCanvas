@@ -255,7 +255,8 @@ class EchoAdapter:
                 node = wf.require_node(node_id)
                 yield {"type": "STEP_STARTED", "stepName": node.name, "canvas_node_id": node_id, "task_id": node_id}
                 try:
-                    update = {} if node.disabled else await self._run(wf, node, values, resources, scripted, answers)
+                    skip = default_registry().bypassed(node)
+                    update = {} if skip else await self._run(wf, node, values, resources, scripted, answers)
                 except Interrupted as intr:
                     iid = f"{spec.run_id}:{node_id}"
                     paused = Paused(

@@ -14,11 +14,14 @@ from datetime import date
 from functools import cache
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentcanvas.sampling import SAMPLING, without_sampling  # noqa: F401 - part of the registry's API
+
+if TYPE_CHECKING:
+    from agentcanvas.ir.models import Node
 
 HERE = Path(__file__).parent
 
@@ -153,6 +156,13 @@ class Registry:
 
     def get(self, type_: str) -> NodeManifest | None:
         return self._by_type.get(type_)
+
+    def bypassed(self, node: Node) -> bool:
+        """Whether a run skips `node` and passes the data through: it is bypassed, and it does not pick a path
+        ("Choose a path", "Decide with AI") or fan out (a map). Those still run when bypassed, or the run could not
+        go on past them. LangGraph's plan and every generated framework use this one rule."""
+        m = self.get(node.type)
+        return bool(node.disabled) and node.type != "core.map" and not (m and m.dynamic_outputs == "routes")
 
     def all(self) -> list[NodeManifest]:
         return sorted(self._by_type.values(), key=lambda m: (m.category, m.label))

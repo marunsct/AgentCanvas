@@ -113,6 +113,27 @@ def _routes_case(priority: str, lane: str, ran: str) -> Case:
     )  # fmt: skip
 
 
+def _bypassed_case() -> Case:
+    """A bypassed step is skipped, but a bypassed path step still picks the path: the run goes on past it."""
+    nodes = [
+        _set("n_skip", priority="low"),  # were it run, the path would change
+        _router("n_route", [('state.priority == "high"', "high")]), _set("n_high", lane="urgent"),
+        _set("n_other", lane="normal"),
+    ]  # fmt: skip
+    for n in nodes[:2]:
+        n["disabled"] = True
+    edges = [
+        _flow("START", "n_skip"), _flow("n_skip", "n_route"),
+        _flow("n_route", "n_high", "route:high"), _flow("n_route", "n_other", "route:default"),
+        _flow("n_high", "END"), _flow("n_other", "END"),
+    ]  # fmt: skip
+    return Case(
+        "flow/bypassed", "C-FLOW", "a bypassed step is skipped; a bypassed path step still picks the path",
+        _wf("bypassed", ["priority", "lane"], nodes, edges), {"priority": "high"},
+        {"priority": "high", "lane": "urgent"}, {"n_skip": 1, "n_route": 1, "n_high": 1},
+    )  # fmt: skip
+
+
 def _approval_case(name: str, answer: Any, expect: dict[str, Any], ran: str) -> Case:
     nodes = [
         _set("n_draft", draft="Dear {{ state.customer }}, your refund is on its way."),
@@ -189,6 +210,7 @@ def _cases() -> list[Case]:
         _routes_case("", "normal", "n_other"),
         Case("flow/parallel", "C-FLOW", "two branches at once, then wait for all", parallel, {}, {"both": "LR"},
              {"n_left": 1, "n_right": 1, "n_join": 1, "n_both": 1}),
+        _bypassed_case(),
         Case("flow/loop", "C-FLOW", "a loop that stops after three rounds", loop, {"count": "0"}, {"count": "3"},
              {"n_add": 3}),
         Case("flow/output-fields", "C-FLOW", "the output holds the output and input-output fields only", io,
