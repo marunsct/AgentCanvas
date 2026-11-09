@@ -44,7 +44,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, callbacks, gates, networks
+from agentcanvas.services import annotation, approvers, callbacks, gates, networks
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
@@ -662,6 +662,7 @@ async def api_resume(
     response.headers.update(AI_HEADER)
     await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
+    await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
     callback = await _callback_url(request, session, dep, body.callback_url)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(

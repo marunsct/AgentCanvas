@@ -141,7 +141,25 @@ export function KnowledgeBaseWidget(props: WidgetProps) {
   );
 }
 
+/** A member's email address (who may decide an approval): typed, with the organisation's members suggested. */
+export function MemberEmailWidget(props: WidgetProps) {
+  const { id, value, onChange, disabled, readonly } = props;
+  const members = useQuery({ queryKey: ["members"], queryFn: () => apiFetch<{ email: string }[]>("/org/members") });
+  const emails = (members.data ?? []).map((m) => m.email);
+  const text = typeof value === "string" ? value : "";
+  const known = !text || !members.data || emails.some((e) => e.toLowerCase() === text.trim().toLowerCase());
+  return (
+    <>
+      <input id={id} type="email" list={`${id}_members`} value={text} placeholder="name@example.com"
+        className={known ? "" : "invalid"} disabled={disabled || readonly} onChange={(e) => onChange(e.target.value || undefined)} />
+      <datalist id={`${id}_members`}>{emails.map((e) => <option key={e} value={e} />)}</datalist>
+      {!known && <p className="small muted">Not a member of this organisation: they cannot decide until they join.</p>}
+    </>
+  );
+}
+
 export const WIDGETS = {
   prompt: PromptWidget, template: PromptWidget, channel: ChannelWidget, cel: CelWidget, model: ModelWidget,
   import_path: MonoWidget, regex: MonoWidget, url_template: MonoWidget, knowledge_base: KnowledgeBaseWidget,
+  member_email: MemberEmailWidget,
 };

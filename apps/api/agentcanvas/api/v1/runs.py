@@ -43,7 +43,7 @@ from agentcanvas.runtime.runner import CANCELLED_BY_USER, RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
-from agentcanvas.services import org_settings
+from agentcanvas.services import approvers, org_settings
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.run_search import RunSearchResult, RunSearchService
@@ -202,6 +202,11 @@ class InterruptOut(BaseModel):
     decision: dict[str, Any] | None
     created_at: datetime
     decided_at: datetime | None
+    deciders: str | None = Field(
+        None, description="who may decide it, when its step names them (roles, groups, people); none: any reviewer"
+    )
+    may_decide: bool = Field(True, description="whether you may decide it (who it names, approving your own runs)")
+    why_not: str | None = Field(None, description="why you may not decide it")
 
 
 class Decision(BaseModel):
@@ -724,7 +729,9 @@ async def resume_thread(
     asked = select(InterruptTask).where(InterruptTask.thread_id == t.id, InterruptTask.status == "pending")
     if body.interrupt_id:
         asked = asked.where(InterruptTask.id == body.interrupt_id)
-    await _not_your_own(session, settings, user, t, list((await session.scalars(asked)).all()))
+    tasks = list((await session.scalars(asked)).all())
+    await _not_your_own(session, settings, user, t, tasks)
+    await approvers.check(session, tasks, _decider(user), t.created_by)
     wf, target_kw = await _thread_target(session, settings, t)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     h = await r.start(
@@ -871,8 +878,10 @@ def _intr(
     workflow_name: str | None = None,
     ir: dict | None = None,
     project: Project | None = None,
+    refused: str | None = None,
 ) -> InterruptOut:
     node = next((n for n in (ir or {}).get("nodes", []) if n.get("id") == x.canvas_node_id), None)
+    policy = approvers.Approvers.of(x.approvers)
     return InterruptOut(
         node_label=(node.get("label") or str(node.get("name", "")).replace("_", " ").capitalize() or None)
         if node
@@ -891,6 +900,9 @@ def _intr(
         decision=x.decision,
         created_at=x.created_at,
         decided_at=x.decided_at,
+        deciders=policy.summary(x.assignee_role) if policy.named else None,
+        may_decide=refused is None,
+        why_not=refused,
     )
 
 
@@ -900,10 +912,11 @@ async def inbox(
     workflow_id: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
     q = (
-        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project)
+        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project, Thread.created_by)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
@@ -914,11 +927,23 @@ async def inbox(
     # newest first: a long backlog must not hide what is waiting right now
     rows = (await session.execute(q.order_by(InterruptTask.created_at.desc()).limit(limit))).all()
     # each workflow's document once, for its steps' labels: not once per waiting item (F-2)
-    wids = {wid for _, wid, _, _ in rows}
+    wids = {wid for _, wid, _, _, _ in rows}
     irs = dict(
         (await session.execute(select(WorkflowRow.id, WorkflowRow.draft_ir).where(WorkflowRow.id.in_(wids)))).all()
     )
-    return [_intr(x, wid, name, irs.get(wid), project) for x, wid, name, project in rows]
+    me = await approvers.member(session, _decider(user)) if rows and status == "pending" else None
+    own_ok = (await org_settings.of_org(session, settings, user.org_id)).approve_own_runs if me else True
+
+    def refused(x: InterruptTask, started_by: str | None) -> str | None:
+        if me is None:
+            return None
+        if RANK.get(user.role, -1) < RANK["reviewer"]:
+            return "your role cannot decide"
+        if not own_ok and (x.requested_by or started_by) == user.id:
+            return "your organisation does not let you approve or answer a run you started"
+        return approvers.refusal(approvers.Approvers.of(x.approvers), x.assignee_role, me, x.requested_by or started_by)
+
+    return [_intr(x, wid, name, irs.get(wid), project, refused(x, by)) for x, wid, name, project, by in rows]
 
 
 async def _not_your_own(
@@ -930,6 +955,10 @@ async def _not_your_own(
         return
     if any((x.requested_by or t.created_by) == user.id for x in tasks):
         raise Forbidden("your organisation does not let you approve or answer a run you started: ask another reviewer")
+
+
+def _decider(user: CurrentUser) -> approvers.Decider:
+    return approvers.Decider(user.id, user.role, user.org_id)
 
 
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])
@@ -951,6 +980,7 @@ async def decide(
         raise Conflict(f"inbox item '{interrupt_id}' is already {task.status}")
     t = await _thread(session, task.thread_id)
     await _not_your_own(session, settings, user, t, [task])
+    await approvers.check(session, [task], _decider(user), t.created_by)
     wf, target_kw = await _thread_target(session, settings, t)
     h = await r.start(
         wf,

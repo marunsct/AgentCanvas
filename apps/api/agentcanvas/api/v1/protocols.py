@@ -48,12 +48,21 @@ from agentcanvas.api.v1.deployments import (
 )
 from agentcanvas.api.v1.runs import stop_run
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
-from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
+from agentcanvas.errors import (
+    Conflict,
+    DomainError,
+    Forbidden,
+    InvalidInput,
+    NotFound,
+    TooManyRequests,
+    Unauthorized,
+)
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.services import approvers
 from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.run_results import ResultRepo
 from agentcanvas.settings import Settings
@@ -205,6 +214,7 @@ async def _resume_run(
 ) -> RunHandle:
     """Answer a pause of the deployment's conversation: the run that goes on (no connection held while it works)."""
     await own_thread(session, dep, thread_id)
+    await approvers.check_pending(session, thread_id, iid, approvers.CALLER)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf,
@@ -329,7 +339,7 @@ async def _mcp_call(
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
             return await _answer_call(request, dep, wf, h, str(name), args, caller)
-    except (InvalidInput, NotFound, Conflict) as exc:  # the caller's mistake: tell the model, it can correct it
+    except (InvalidInput, NotFound, Conflict, Forbidden) as exc:  # tell the model: it can correct it, or must wait
         return {"content": [{"type": "text", "text": exc.detail}], "isError": True}
     raise RpcError(-32602, f"unknown tool '{name}'")
 

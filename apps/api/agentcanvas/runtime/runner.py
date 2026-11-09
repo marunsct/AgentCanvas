@@ -37,6 +37,7 @@ from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.services.approvers import node_approvers
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -87,6 +88,7 @@ class RunHandle:
     stop_reason: str | None = None  # why it was stopped (`Run.stop_reason`); none: the person pressed Stop here
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     requested_by: str | None = None  # whose request it serves: its Inbox items name them (self-approval policy)
+    approvers: dict[str, dict[str, Any]] = field(default_factory=dict)  # step -> who may decide its pause (E-6)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
@@ -632,6 +634,7 @@ class Runner:
         handle.caller_run_id = caller_run_id
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         handle.requested_by = requested_by
+        handle.approvers = node_approvers(wf)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
@@ -933,6 +936,7 @@ class Runner:
                     asked = {
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
                         "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
+                        "approvers": h.approvers.get(intr.get("canvas_node_id") or ""), "assignee_role": None,
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:

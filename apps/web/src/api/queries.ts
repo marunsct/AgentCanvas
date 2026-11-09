@@ -202,8 +202,9 @@ export function useWorkflows() {
   });
 }
 
-/** A run waiting for a person (an approval or an answer), in any workflow of the organisation. */
-export type InboxItem = InterruptOut;
+/** A run waiting for a person (an approval or an answer), in any workflow of the organisation. Who may decide it
+ * (E-6) is typed here until the generated types are regenerated. */
+export type InboxItem = InterruptOut & { deciders?: string | null; may_decide?: boolean; why_not?: string | null };
 
 export function useInbox() {
   return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });

@@ -8,10 +8,11 @@ const item = (id: string) => ({
   id, kind: "approval", payload: { value: 1 }, workflow_id: "wf_1", workflow_name: "W", thread_id: "t", created_at: new Date().toISOString(),
 });
 const decisions: string[] = [];
+let listed: Record<string, unknown>[] | null = null;
 vi.mock("../api/client", () => ({
   ApiError: class extends Error {},
   apiFetch: vi.fn(async (path: string) => {
-    if (path === "/inbox") return [item("a"), item("b")];
+    if (path === "/inbox") return listed ?? [item("a"), item("b")];
     const id = /\/inbox\/(\w+)\/decision/.exec(path)?.[1] ?? "";
     decisions.push(id);
     if (id === "b") throw new Error("already decided by someone else");
@@ -38,5 +39,19 @@ describe("Inbox", () => {
     const alert = await within(screen.getByTestId("inbox-item")).findByRole("alert");
     expect(alert.textContent).toContain("already decided by someone else");
     expect((within(screen.getByTestId("inbox-item")).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says who decides an item and keeps the buttons off for someone it does not name", async () => {
+    listed = [{ ...item("c"), deciders: "admin role; group Finance", may_decide: false,
+      why_not: "this step may be decided only by: admin role; group Finance" }];
+    try {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+      render(<QueryClientProvider client={qc}><MemoryRouter><InboxPage /></MemoryRouter></QueryClientProvider>);
+      expect((await screen.findByTestId("inbox-deciders")).textContent).toBe("Decided by: admin role; group Finance");
+      expect(screen.getByTestId("inbox-why-not").textContent).toContain("may be decided only by");
+      expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      listed = null;
+    }
   });
 });

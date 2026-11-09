@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 from agentcanvas.security.imports import is_allowed_import_path
 from agentcanvas.validation.analysis import node_side_effects
-from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule
+from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule, warning
 
 WRITE_EFFECTS = {"external_write", "message_send"}
 # pause before they act (approval first), or remember what they sent so a resumed step does not send it again
@@ -94,4 +94,40 @@ def side_effects_before_interrupt(ctx: ValidationContext) -> Iterator[Diagnostic
                 f"'{n.name}' can pause for a human and also writes externally; the write would repeat on resume",
                 node_id=n.id,
                 hint="move the write into a separate node after the approval",
+            )
+
+
+@rule
+def approvers(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """Who may decide a pause (E-6): a setting that contradicts itself (E037), names who approves tool calls of an
+    agent where no tool needs approval (W027), or that an export of the workflow does not check (I011)."""
+    for n in ctx.wf.nodes:
+        policy = n.config.get("approvers")
+        if not isinstance(policy, dict) or not policy:
+            continue
+        if policy.get("caller") and policy.get("not_initiator"):
+            yield error(
+                "E037",
+                f"'{n.name}': whoever calls the published workflow started its run, so it cannot both answer and be "
+                "kept from deciding as the person who started the run",
+                node_id=n.id,
+                path="config.approvers",
+                hint="untick one of the two",
+            )
+        m = ctx.manifest(n)
+        agent = m is not None and "approve_tools" in m.config_schema.get("properties", {})
+        if agent and not n.config.get("approve_tools"):
+            yield warning(
+                "W027",
+                f"'{n.name}' names who may approve its tool calls, but none of its tools needs approval",
+                node_id=n.id,
+                path="config.approvers",
+                hint="add tools to the tools that need approval, or clear who may approve",
+            )
+        if any(policy.get(k) for k in ("roles", "groups", "people", "not_initiator")):
+            yield info(
+                "I011",
+                f"'{n.name}': AgentCanvas checks who may decide; exported code does not",
+                node_id=n.id,
+                path="config.approvers",
             )

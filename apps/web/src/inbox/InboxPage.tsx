@@ -75,7 +75,12 @@ export function InboxPage() {
                 {item.workflow_id && <> · <Link to={`/workflows/${item.workflow_id}?thread=${item.thread_id}`}>see the run</Link></>}
               </small>
             </header>
-            <DecisionCard intr={item} busy={busy.has(item.id) || !can("reviewer")} onDecide={(value) => void decide(item.id, value)} />
+            {item.deciders && <p className="small muted" data-testid="inbox-deciders">Decided by: {item.deciders}</p>}
+            {item.may_decide === false && item.why_not && (
+              <p className="small muted" data-testid="inbox-why-not">You cannot decide this one: {item.why_not}.</p>
+            )}
+            <DecisionCard intr={item} busy={busy.has(item.id) || !can("reviewer") || item.may_decide === false}
+              onDecide={(value) => void decide(item.id, value)} />
             {errors[item.id] && <p className="error-text" role="alert">Could not decide: {errors[item.id]}</p>}
           </article>
         ))}

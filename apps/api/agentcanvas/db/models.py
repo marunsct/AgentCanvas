@@ -498,6 +498,9 @@ class InterruptTask(Base):
     kind: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]]
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    # who may decide (services/approvers.py): the step's `approvers` setting as it was when the run paused, and the
+    # role the item was escalated to when nobody decided in time
+    approvers: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
     assignee_role: Mapped[str | None] = mapped_column(Text)
     # the person whose run asked (a resumed run keeps the first one): with self-approval off, not the one to decide.
     # A plain id, not a foreign key: it is a record of who asked, kept as it was.

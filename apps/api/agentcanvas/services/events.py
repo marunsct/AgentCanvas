@@ -189,6 +189,7 @@ class EventService:
         if kind == "resume":
             thread_id = str(action["thread_id"])
             from agentcanvas.db.models import Deployment, Thread, WorkflowVersion
+            from agentcanvas.services import approvers
             from agentcanvas.services.projects import PROJECT_OF
             from agentcanvas.services.redeploy import thread_version
 
@@ -207,6 +208,8 @@ class EventService:
                         raise InvalidInput(f"the deployment of thread '{thread_id}' no longer exists")
                     ver = await thread_version(s, thread_id, ver)
                     ir, target = ver.ir, {"deployment_id": dep.id, "version_id": ver.id}
+                # a handler answers like the caller of a published workflow: not a step that names its deciders
+                await approvers.check_pending(s, thread_id, None, approvers.CALLER)
             PROJECT_OF[row.id] = project_id  # the run's lifecycle events reach this project's handlers
             h = await self.runner.start(
                 Workflow.model_validate(ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),

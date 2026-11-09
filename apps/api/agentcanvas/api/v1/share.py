@@ -48,7 +48,7 @@ from agentcanvas.log import get_logger
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, networks
+from agentcanvas.services import annotation, approvers, networks
 from agentcanvas.services.deployments import DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.files import FileService, ref_of
@@ -495,6 +495,7 @@ async def share_resume(
             "this conversation is waiting for approval from the people who run this assistant; it cannot be "
             "approved from a share link"
         )
+    await approvers.check_pending(session, thread_id, pending.get("id"), approvers.CALLER)
     value = answer_value(pending, None, body.text, None)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(

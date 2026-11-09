@@ -39,7 +39,36 @@ and the Run tab shows **Approval needed** with the value under review.
   `AGENTCANVAS_APPROVE_OWN_RUNS=false`). Then the person who started a run cannot
   approve or answer what it asks, in the Run tab, the Inbox or through the API: another reviewer must. An answer
   continues the request of the person who asked, so the approver of one step may approve the next one too. Runs of
-  a published deployment (API keys, share links) are answered by their callers as before.
+  a published deployment (API keys, share links) are answered by their callers as before, unless the step names who
+  decides it (below).
+
+### Who may decide
+
+Each **Ask for approval** and **Ask a person** step, and each **AI Agent** and **Planning Agent** with tools that need
+approval, has a **Who may decide** section in the Inspector (for agents: *Who may approve its tool calls*). Left
+empty, nothing changes: anyone with the reviewer role or above decides it in the Inbox or the Run tab, and on a
+published workflow so does its caller. Fill it in to send the decision to particular people:
+
+- **Roles**: members with one of the ticked roles (reviewer, builder, admin; tick each one you mean).
+- **Groups**: members of these groups, by name, as your identity provider keeps them over SCIM
+  ([Accounts](accounts.md#provisioning-from-your-directory-scim)); the name is matched ignoring case.
+- **People**: members by email address; the field suggests your organisation's members. A person still needs the
+  reviewer role or above to answer the Inbox.
+- **Whoever calls the published workflow may answer too**: by default a step that names roles, groups or people
+  is decided only by them, in AgentCanvas. The deployment's key (`POST /v1/deployments/{id}/threads/{thread}/resume`),
+  an MCP client's `answer`, an A2A reply, a share-link visitor and an event handler's `act.resume` are refused with
+  *decided by the people its workflow names, in the AgentCanvas Inbox*, and the run keeps waiting there. Tick it to
+  let the caller answer as well. This matters for AI clients: without it, an agent calling your workflow over MCP or
+  A2A cannot approve its own action.
+- **Not the person who started the run**: four eyes for this one step, whatever the organisation's setting. The
+  caller of a published workflow started its run, so this also keeps the caller from answering (the two boxes
+  together are an error, E037).
+
+A step's setting is saved with the pause when the run stops there, so editing the workflow later does not change who
+decides a pause that already waits. In the Inbox each item says who decides it (*Decided by: admin role; group
+Finance*) and, when you cannot, why; its buttons are then off. A helper agent's tool approvals follow the setting of its
+Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
+does not (I011).
 
 ## Breakpoints
 
