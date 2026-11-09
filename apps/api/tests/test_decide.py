@@ -11,8 +11,17 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.validation import validate
 
 ROUTE = {"route": "billing", "description": "invoices and payments"}
-FLOWS = ["pydantic_ai", "agno", "microsoft_agent_framework", "strands", "llamaindex", "openai_agents", "crewai"]
-REFUSED = ["google_adk", "mastra"]
+FLOWS = [
+    "pydantic_ai",
+    "agno",
+    "microsoft_agent_framework",
+    "strands",
+    "llamaindex",
+    "openai_agents",
+    "crewai",
+    "google_adk",
+]
+REFUSED = ["mastra"]
 
 
 def decide_wf(**config) -> dict:

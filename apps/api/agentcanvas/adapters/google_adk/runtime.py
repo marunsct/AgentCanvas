@@ -49,7 +49,7 @@ from google.adk.workflow import node as adk_node
 from google.genai import types
 from jsonschema import Draft202012Validator
 
-from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.expr import chosen, decide_prompt, decision, eval_condition, render_template
 
 YES_WORDS = {"yes", "y", "true", "approve", "approved", "ok", "okay"}
 ROLES = {"human": "user", "user": "user", "ai": "assistant", "assistant": "assistant", "system": "system"}
@@ -228,8 +228,11 @@ class _Execution:
                 "task_id": f"{node_id}#{n}", "duration_ms": _ms(started),
             })  # fmt: skip
             raise
-        route = out if isinstance(out, str) else None
-        update = out if isinstance(out, dict) else {}
+        if isinstance(out, tuple):  # a Decide with AI step: the decision it saves, and the path it picks
+            update, route = out
+        else:
+            route = out if isinstance(out, str) else None
+            update = out if isinstance(out, dict) else {}
         merged = {}
         for k, v in update.items():
             merged[k] = self.values[k] = _reduce(self.canvas.channels.get(k, ("replace", None))[0],
@@ -246,7 +249,8 @@ class _Execution:
 
 def step(node_id: str, *, disabled: bool = False) -> Any:
     """Make `async def fn(run)` a node of an ADK workflow that runs as the canvas does: events, field merging, paths,
-    pauses and replay. The function returns the fields it sets (a path step: its route)."""
+    pauses and replay. The function returns the fields it sets (a path step: its route; a Decide with AI step: both,
+    as a pair)."""
 
     def decorate(fn: Callable[..., Awaitable[Any]]) -> Any:
         async def canvas_step(ctx: Context, node_input: Any = None) -> AsyncIterator[Any]:
@@ -487,6 +491,19 @@ class Run:
     def route(self, cases: list[tuple[str, str]], default: str = "default") -> str:
         """The first route whose CEL rule matches the fields (else `default`)."""
         return next((r for when, r in cases if eval_condition(when, self.state)), default)
+
+    def decide_prompt(self, prompt: str, choices: dict[str, str]) -> str:
+        """What a Decide with AI step asks its model: the rendered question, the options and the answer's shape."""
+        return decide_prompt(prompt, choices)
+
+    def decide(
+        self, reply: str, choices: dict[str, str], *, output: str, default: str = "default",
+        min_confidence: float | None = None,
+    ) -> tuple[dict[str, Any], str]:  # fmt: skip
+        """The model's decision, saved in `output`, and the route it picks: its choice, or `default` when it made
+        none or is less sure than `min_confidence`."""
+        made = decision(reply, choices)
+        return {output: made}, chosen(made, default, min_confidence)
 
     # ---- people ----
     def approval(self, *, show: str, output: str) -> dict[str, Any]:

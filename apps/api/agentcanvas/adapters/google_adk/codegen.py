@@ -24,7 +24,7 @@ LITELLM_VERSION = "1.105.7"
 RUNTIME_IMPORT = "from agentcanvas.adapters.google_adk import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",
-    "core.agent", "knowledge.search",
+    "core.agent", "knowledge.search", "core.decide",
 }  # fmt: skip
 RESOURCE_TYPES = {"model.chat", "tool.python", "mw.model_call_limit"}
 MODEL_CALLS = 20  # an agent's model calls in one turn, unless a model call limit block says otherwise
@@ -98,7 +98,7 @@ def _marker(n: Node) -> str:
 
 def _function(n: Node, fn: str, body: str) -> str:
     step_args = _py(n.id) + (", disabled=True" if n.disabled else "")
-    returns = "str" if n.type == "core.router" else "dict[str, Any]"
+    returns = {"core.router": "str", "core.decide": "tuple[dict[str, Any], str]"}.get(n.type, "dict[str, Any]")
     return "\n".join([
         _marker(n),
         f"@rt.step({step_args})",
@@ -109,7 +109,7 @@ def _function(n: Node, fn: str, body: str) -> str:
 
 def _build(wf: Workflow, fns: dict[str, str], waits: dict[str, str]) -> str:
     """`build()`: the ADK workflow's edges, from the canvas's flow edges."""
-    routers = {n.id for n in wf.nodes if n.type == "core.router"}
+    routers = {n.id for n in wf.nodes if n.type in ("core.router", "core.decide")}
 
     def target(node_id: str) -> str | None:
         if node_id not in fns:
@@ -177,6 +177,18 @@ def _step(wf: Workflow, n: Node, names: _Names) -> tuple[str, str, str]:
         return "", f"return run.route({_py(cases)}{tail}", ""
     if n.type == "core.join":
         return "", '"""Goes on once every branch has finished (its JoinNode waits for them)."""\nreturn {}', ""
+    if n.type == "core.decide":
+        prompt, choices = names.take(f"{n.name}_prompt".upper()), names.take(f"{n.name}_choices".upper())
+        options = {case["route"]: case.get("description", "") for case in c.get("cases", [])}
+        kw = [f"output={_py(c['output'])}"]
+        kw += [f"default={_py(c['default'])}"] if c.get("default", "default") != "default" else []
+        kw += [f"min_confidence={_py(c['min_confidence'])}"] if c.get("min_confidence") is not None else []
+        return (
+            f"{prompt} = {_lit(c['prompt'])}\n{choices} = {_py(options)}",
+            f"reply = await run.text({_llm(wf, n)}, run.decide_prompt(rt.render({prompt}, run.state), {choices}))\n"
+            f"return run.decide(reply, {choices}, {', '.join(kw)})",
+            "",
+        )
     if n.type == "core.set":
         items = ", ".join(
             f"{_py(k)}: " + (f"rt.render({_py(v)}, run.state)" if isinstance(v, str) else _py(v))
