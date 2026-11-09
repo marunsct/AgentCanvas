@@ -3,7 +3,7 @@
 import pytest
 
 from agentcanvas.registry import ModelInfo, default_registry, priced
-from agentcanvas.runtime.runner import price
+from agentcanvas.runtime.runner import price, tokens_of, usage_cost
 
 CATALOG = [ModelInfo(id="openai:gpt-5.5", label="GPT-5.5", provider="openai")]
 
@@ -107,8 +107,11 @@ async def test_the_copilot_counts_what_came_from_the_prompt_cache():
 
     usage: dict[str, int] = {}
     await LangChainModels().chat(Res(), "anthropic:claude-sonnet-5-5", [{"role": "user", "content": "hi"}], [], usage)
-    assert usage == {"input_tokens": 15_000, "output_tokens": 200, "cache_read_tokens": 14_000,
-                     "cache_write_tokens": 500}  # fmt: skip
+    assert tokens_of(usage) == {"input_tokens": 15_000, "output_tokens": 200, "cache_read_tokens": 14_000,
+                                "cache_write_tokens": 500}  # fmt: skip
+    assert usage_cost("anthropic:claude-sonnet-5-5", usage) == pytest.approx(
+        price("anthropic:claude-sonnet-5-5", 15_000, 200, cache_read=14_000, cache_write=500)
+    )
 
 
 def test_models_that_refuse_sampling_settings_are_not_sent_them():
@@ -210,6 +213,20 @@ def test_a_long_prompt_is_charged_the_long_context_tier():
     cached = price("anthropic:claude-haiku-5-5", 200_000, 0, cache_read=150_000)
     assert cached == pytest.approx((50_000 * 0.5 + 150_000 * 0.05) / 1e6)  # cache reads scaled like the input
     assert price("anthropic:claude-opus-5-5", 900_000, 0) == pytest.approx(3.6)  # no tier: one price
+
+
+def test_a_judges_calls_are_priced_one_by_one():
+    """Two judge calls of 80K prompt tokens each stay under Claude Haiku 5.5's 100K long-context threshold: they cost
+    twice one call, not the long-context price of 160K."""
+    from agentcanvas.runtime.runner import add_call
+    from agentcanvas.services.online import judge_cost
+
+    model = "anthropic:claude-haiku-5-5"
+    usage: dict[str, int] = {}
+    for _ in range(2):
+        add_call(usage, model, {"input_tokens": 80_000, "output_tokens": 1_000, "cache_read_tokens": 20_000})
+    one = price(model, 80_000, 1_000, cache_read=20_000)
+    assert one is not None and judge_cost({model: usage}) == (162_000, round(2 * one, 6))
 
 
 def test_a_dated_version_of_a_model_refuses_sampling_like_its_catalog_entry():

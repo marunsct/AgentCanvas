@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from agentcanvas.registry import token_counts
+from agentcanvas.runtime.runner import add_call
 
 
 class LangChainModels:
@@ -29,8 +30,7 @@ class LangChainModels:
             [SystemMessage(content=system), HumanMessage(content=prompt)]
         )
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
-            for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
-                usage[k] = usage.get(k, 0) + n
+            add_call(usage, model, token_counts(meta))  # cache reads and writes too: they are priced apart
         return reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
 
     async def chat(
@@ -76,8 +76,7 @@ class LangChainModels:
         llm = resources.model("copilot", {**(config or {}), "model": model})
         reply = await (llm.bind_tools(specs) if specs else llm).ainvoke(converted)
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
-            for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
-                usage[k] = usage.get(k, 0) + n
+            add_call(usage, model, token_counts(meta))  # cache reads and writes too: they are priced apart
         content = reply.content
         if isinstance(content, list):  # content blocks: keep the text ones
             content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
@@ -100,15 +99,20 @@ class LangChainModels:
         kinds = {"system": SystemMessage, "user": HumanMessage, "assistant": AIMessage}
         converted = [kinds[m["role"]](content=str(m.get("content") or "")) for m in messages if m["role"] in kinds]
         llm = resources.model("copilot", {**(config or {}), "model": model})
-        async for chunk in llm.astream(converted):
-            if usage is not None and (meta := getattr(chunk, "usage_metadata", None)):
-                for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
-                    usage[k] = usage.get(k, 0) + n
-            content = chunk.content
-            if isinstance(content, list):  # content blocks: keep the text ones
-                content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
-            if content:
-                yield str(content)
+        call: dict[str, int] = {}  # the chunks' counts add up to the call's, priced once it ends
+        try:
+            async for chunk in llm.astream(converted):
+                if meta := getattr(chunk, "usage_metadata", None):
+                    for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                        call[k] = call.get(k, 0) + n
+                content = chunk.content
+                if isinstance(content, list):  # content blocks: keep the text ones
+                    content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
+                if content:
+                    yield str(content)
+        finally:  # a stopped stream counts what it used too
+            if usage is not None and call:
+                add_call(usage, model, call)
 
     def tool_spec(self, tool: Any) -> dict[str, Any]:
         from langchain_core.utils.function_calling import convert_to_openai_tool

@@ -566,6 +566,27 @@ async def test_each_answer_keeps_what_it_cost_and_the_conversation_sums_them(app
     assert convo["usage"]["input_tokens"] == 2000
 
 
+async def test_each_model_call_is_priced_on_its_own(app, api_client):
+    """A long-context price applies when one request's prompt passes the threshold (Claude Haiku 5.5: 100K), never
+    to the sum of a turn's calls: five calls of 30K tokens each cost five times one call, not the long-context
+    price of 150K."""
+    from agentcanvas.runtime.runner import price
+
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    spend = {"input_tokens": 30000, "output_tokens": 1000, "total_tokens": 31000,
+             "input_token_details": {"cache_read": 25000}}  # fmt: skip
+    look = [{"name": "search_guide", "args": {"query": "secrets"}, "id": f"call_{i}"} for i in range(4)]
+    replies = [AIMessage(content="", tool_calls=[c], usage_metadata=spend) for c in look]  # type: ignore[arg-type]
+    script(app, *replies, AIMessage(content="Done.", usage_metadata=spend))  # type: ignore[arg-type]
+    done = (await ask(api_client, wf, "how are secrets kept?", mode="ask"))[-1]
+    convo = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()
+    [answer] = [m for m in convo["messages"] if m["role"] == "assistant" and m.get("cost_usd") is not None]
+    one = price(answer["model"], 30000, 1000, cache_read=25000)
+    assert answer["model"] == "anthropic:claude-haiku-5-5" and one is not None
+    assert answer["cost_usd"] == pytest.approx(5 * one) and done["cost_usd"] == pytest.approx(5 * one)
+    assert answer["usage"] == {"input_tokens": 150000, "output_tokens": 5000, "cache_read_tokens": 125000}
+
+
 async def test_an_answer_from_the_guide_cites_the_sections_it_read(app, api_client):
     wf = (await new_workflow(api_client, template="ticket_triage"))["id"]  # it has a model the Copilot can use
     script(app, call("search_guide", query="run a model locally with Ollama"), "Use Ollama on your machine.")

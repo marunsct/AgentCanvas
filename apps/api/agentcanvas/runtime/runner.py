@@ -217,6 +217,32 @@ def usage_price(model_id: str | None, usage: dict[str, Any]) -> float | None:
     )  # fmt: skip
 
 
+COST_KEY = "cost_nano_usd"  # in a usage record: what its calls cost, each priced on its own (billionths of a USD)
+
+
+def add_call(usage: dict[str, int], model_id: str | None, counts: dict[str, int]) -> None:
+    """Add one model call's token counts to `usage`, and its price to COST_KEY when the model is priced. A call is
+    priced on its own: a long-context price applies to one request's prompt, never to the sum of several."""
+    for k, n in counts.items():
+        usage[k] = usage.get(k, 0) + n
+    cost = usage_price(model_id, counts)
+    if cost is not None:
+        usage[COST_KEY] = usage.get(COST_KEY, 0) + round(cost * 1e9)
+
+
+def usage_cost(model_id: str | None, usage: dict[str, Any]) -> float | None:
+    """What a usage record cost: the sum of its calls' own prices, else (a record kept before calls were priced one
+    by one) the price of its totals; None when the model has no price."""
+    if COST_KEY in usage:
+        return int(usage[COST_KEY]) / 1e9
+    return usage_price(model_id, usage)
+
+
+def tokens_of(usage: dict[str, Any]) -> dict[str, Any]:
+    """A usage record without its cost: the token counts shown to people."""
+    return {k: v for k, v in usage.items() if k != COST_KEY}
+
+
 @dataclass
 class Spent:
     """What was spent before a run: by its thread's earlier runs, and by all the workflow's other runs today and this

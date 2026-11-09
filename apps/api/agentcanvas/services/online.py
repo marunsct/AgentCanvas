@@ -29,7 +29,7 @@ from agentcanvas.evaluation import Observation, calls_of, score, spec_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
-from agentcanvas.runtime.runner import price
+from agentcanvas.runtime.runner import price, usage_cost
 
 log = get_logger(__name__)
 
@@ -70,11 +70,12 @@ def observation(h: Any, status: str, error: str | None, input: dict[str, Any] | 
 
 
 def judge_cost(usage: dict[str, dict[str, int]]) -> tuple[int, float]:
+    """The judges' tokens and cost: each call priced on its own (a long-context price is per request), cache reads
+    and writes at their own prices."""
     tokens, cost = 0, 0.0
     for model, u in usage.items():
-        t_in, t_out = u.get("input_tokens", 0), u.get("output_tokens", 0)
-        tokens += t_in + t_out
-        cost += price(model, t_in, t_out) or 0.0
+        tokens += u.get("input_tokens", 0) + u.get("output_tokens", 0)
+        cost += usage_cost(model, u) or 0.0
     return tokens, round(cost, 6)
 
 

@@ -173,9 +173,11 @@ async def test_judge_calls_are_counted_in_an_experiment(app, api_client, monkeyp
         return target
 
     monkeypatch.setattr(online, "price", lambda m, i, o: None)  # a judge model the catalog has no price for
+    monkeypatch.setattr(online, "usage_cost", lambda m, u: None)
     unpriced = await experiment()  # said so, not counted as free in silence
     assert unpriced["judge_cost_usd"] == 0 and unpriced["judge_unpriced"] == ["anthropic:claude-haiku-4-5"]
     monkeypatch.setattr(online, "price", lambda m, i, o: (i + 5 * o) / 1e6)
+    monkeypatch.setattr(online, "usage_cost", lambda m, u: (u["input_tokens"] + 5 * u["output_tokens"]) / 1e6)
     priced = await experiment()
     assert priced["judge_cost_usd"] == 0.0045 and priced["judge_unpriced"] == []  # 3 calls of 1000 in, 100 out
     assert priced["cost_usd"] == 0.0  # kept apart from the runs' own cost
