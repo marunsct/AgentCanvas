@@ -37,9 +37,18 @@ def _root(user: CurrentUser) -> tuple[str, ...]:
     return (f"org:{user.org_id}",)
 
 
+def _labels(namespace: str) -> tuple[str, ...]:
+    """The labels of a "a/b/c" namespace. The store refuses a label with a period or a control character (langgraph
+    checkpoint 4.3 raises on them, which was a 500): they are a 422 here."""
+    parts = tuple(p for p in namespace.strip("/").split("/") if p)
+    if any("." in p or any(ord(c) < 32 for c in p) for p in parts):
+        raise InvalidInput("a namespace label cannot contain a period or a control character")
+    return parts
+
+
 def _parse(namespace: str, user: CurrentUser, *, allow_empty: bool = False) -> tuple[str, ...]:
     """The store namespace for `namespace`, inside the caller's organisation."""
-    parts = tuple(p for p in namespace.strip("/").split("/") if p)
+    parts = _labels(namespace)
     if not parts and not allow_empty:
         raise InvalidInput("namespace is required, e.g. memories/user/<user id>")
     # only admins look into other users' memories
@@ -59,7 +68,7 @@ async def namespaces(
     if user.role == "admin":
         found = await _memory(r).memory_namespaces(_parse(prefix, user, allow_empty=True))
     else:  # everyone else sees only the namespaces that are theirs
-        parts = tuple(p for p in prefix.strip("/").split("/") if p)
+        parts = _labels(prefix)
         found = await _memory(r).memory_namespaces(_root(user) + parts, limit=10_000)
         found = sorted(ns for ns in found if user.id in ns[len(_root(user)) :])[:200]
     own = [ns[len(_root(user)) :] for ns in sorted(found)]
