@@ -3613,7 +3613,8 @@
               "composite",
               "pairwise",
               "retrieval",
-              "red_team"
+              "red_team",
+              "classifier"
             ],
             "title": "Kind",
             "type": "string"
@@ -3717,7 +3718,8 @@
               "composite",
               "pairwise",
               "retrieval",
-              "red_team"
+              "red_team",
+              "classifier"
             ],
             "title": "Kind",
             "type": "string"
@@ -8248,6 +8250,20 @@
             "description": "not below the server's; 0 = forever",
             "title": "Audit Retention Days"
           },
+          "max_concurrent_runs": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "runs in flight at once; past it runs wait in a queue by priority",
+            "title": "Max Concurrent Runs"
+          },
           "memory_retention_days": {
             "anyOf": [
               {
@@ -10289,6 +10305,23 @@
               }
             ],
             "title": "Pins"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "normal",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "its place in the organisation's run queue, when a concurrent-run limit holds it back (default: normal)",
+            "title": "Priority"
           },
           "stream": {
             "default": true,

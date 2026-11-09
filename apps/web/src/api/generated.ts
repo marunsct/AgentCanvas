@@ -1726,6 +1726,10 @@ export type AllowLocalMcp = boolean | null;
  */
 export type AuditRetentionDays = number | null;
 /**
+ * runs in flight at once; past it runs wait in a queue by priority
+ */
+export type MaxConcurrentRuns = number | null;
+/**
  * 0 = forever
  */
 export type MemoryRetentionDays = number | null;
@@ -2554,6 +2558,10 @@ export type Pins2 = {
     [k: string]: unknown;
   };
 } | null;
+/**
+ * its place in the organisation's run queue, when a concurrent-run limit holds it back (default: normal)
+ */
+export type Priority = ("high" | "normal" | "low") | null;
 export type Stream2 = boolean;
 export type ThreadId10 = string | null;
 export type Hits = RunHit[];
@@ -6326,6 +6334,7 @@ export interface OnlinePatch {
 export interface OrgLimits {
   allow_local_mcp?: AllowLocalMcp;
   audit_retention_days?: AuditRetentionDays;
+  max_concurrent_runs?: MaxConcurrentRuns;
   memory_retention_days?: MemoryRetentionDays;
   rate_limit_per_deployment?: RateLimitPerDeployment;
   rate_limit_per_project?: RateLimitPerProject;
@@ -6353,6 +6362,7 @@ export interface Effective {
 export interface OrgLimits1 {
   allow_local_mcp?: AllowLocalMcp;
   audit_retention_days?: AuditRetentionDays;
+  max_concurrent_runs?: MaxConcurrentRuns;
   memory_retention_days?: MemoryRetentionDays;
   rate_limit_per_deployment?: RateLimitPerDeployment;
   rate_limit_per_project?: RateLimitPerProject;
@@ -6737,6 +6747,7 @@ export interface RunRequest {
   mocks?: Mocks2;
   mode?: Mode4;
   pins?: Pins2;
+  priority?: Priority;
   stream?: Stream2;
   thread_id?: ThreadId10;
 }

@@ -28,6 +28,7 @@ from agentcanvas.db.repositories import LIGHT_RUN, delete_thread_rows
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
+from agentcanvas.runtime.admission import Priority
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.trajectory import compact
@@ -78,6 +79,11 @@ class RunRequest(DebugOptions):
     context: dict[str, Any] = Field(default_factory=dict)
     durability: Literal["exit", "async", "sync"] | None = None
     stream: bool = True  # false: return 202 {run_id} and let the client attach later
+    priority: Priority | None = Field(
+        None,
+        description="its place in the organisation's run queue, when a concurrent-run limit holds it back "
+        "(default: normal)",
+    )
 
 
 class ResumeRequest(DebugOptions):
@@ -323,6 +329,7 @@ async def start_run(
         durability=body.durability,
         user_id=user.id,
         service_connection=user.role == "admin",  # the organisation's service connection is the admins'
+        priority=body.priority,
         **_debug(wf, body, body.mode),
     )
     return _respond(r, h, body.stream)

@@ -36,7 +36,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Project › **Sandbox** | Time and memory limits for workspace code, and the hosts it may reach, where the server can enforce that ([Workspace › Sandbox](workspace.md#sandbox)) | builders |
 | Project › **Knowledge** | How new knowledge bases split their documents (by heading, paragraph, sentence or fixed windows; passage size; overlap). Existing knowledge bases keep their own ([Knowledge](knowledge.md#chunking-and-embeddings)) | builders |
 | Project › **Observability** | Sending traces to Langfuse, Phoenix or any OpenTelemetry collector | admins |
-| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, the four rate limits, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs | admins |
+| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, the four rate limits, how many runs may be in flight at once, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs | admins |
 | Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. The same report is `GET /v1/org/spending?since=&until=` | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
@@ -55,8 +55,16 @@ runs the server decides how much an organisation may ask of it.
 |---|---|---|
 | Local MCP servers (`AGENTCANVAS_ALLOW_LOCAL_MCP`) | switch them off for itself | switch them on when the server has them off |
 | The four rate limits (`AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT`, `_PER_WEBHOOK`, `_PER_PROJECT`, `_PER_SHARE_CLIENT`) | set a lower limit | set one above the server's (unless the server's is 0, no limit) |
+| Runs at once (`AGENTCANVAS_MAX_CONCURRENT_RUNS`) | set a lower limit | set one above the server's (unless the server's is 0, no limit) |
 | Audit log kept (`AGENTCANVAS_AUDIT_RETENTION_DAYS`) | keep it longer, or forever | keep it shorter than the server does |
 | Long-term memories kept (`AGENTCANVAS_MEMORY_RETENTION_DAYS`) | choose any number of days, or forever | |
+
+**Runs at once and the run queue.** With a limit, a run past it waits in the organisation's queue instead of
+starting, on every server alike: the run panel says "Waiting for a free run slot" and its place in line. The next
+free slot goes to the highest priority, then the oldest run. A run's priority is `high`, `normal` (the default) or
+`low` (experiments and test cases, which can wait); `priority` on `POST /v1/workflows/{id}/runs/stream` sets it, and a
+run handed over to another server keeps its own. A waiting run counts as in flight for **Stop all runs** and can be
+stopped like any other. Runs of a server that stopped answering stop counting after about a minute.
 
 Leave a field empty to use the server's value. The **Applies now** column shows what is in force. If the operator
 later lowers a server limit, an organisation's higher value stops applying at once. A per-environment limit the

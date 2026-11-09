@@ -9,9 +9,9 @@ vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }))
 vi.mock("../api/session", () => ({ can: () => admin.is, useCan: () => admin.is, ME: { role: "admin" } }));
 
 const none = { allow_local_mcp: null, rate_limit_per_deployment: null, rate_limit_per_webhook: null, rate_limit_per_project: null,
-  rate_limit_per_share_client: null, audit_retention_days: null, memory_retention_days: null };
+  rate_limit_per_share_client: null, max_concurrent_runs: null, audit_retention_days: null, memory_retention_days: null };
 const server = { allow_local_mcp: true, rate_limit_per_deployment: 120, rate_limit_per_webhook: 120, rate_limit_per_project: 600,
-  rate_limit_per_share_client: 30, audit_retention_days: 400, memory_retention_days: 0 };
+  rate_limit_per_share_client: 30, max_concurrent_runs: 0, audit_retention_days: 400, memory_retention_days: 0 };
 apiFetch.mockImplementation(async (_path: string, init?: { method?: string; json?: { limits: Record<string, unknown> } }) => {
   const own = { ...none, ...(init?.json?.limits ?? {}) };
   return { limits: { own, server, effective: { ...server, ...Object.fromEntries(Object.entries(own).filter(([, v]) => v !== null)) } } };
@@ -39,6 +39,15 @@ describe("Settings › Organisation › Limits", () => {
     });
     await waitFor(() => expect(screen.getByTestId("applies-rate_limit_per_project").textContent).toBe("50 a minute"));
     expect(screen.getByTestId("applies-allow_local_mcp").textContent).toBe("not allowed");
+  });
+
+  it("sets how many runs may be in flight at once", async () => {
+    renderIt();
+    expect((await screen.findByTestId("applies-max_concurrent_runs")).textContent).toBe("no limit");
+    fireEvent.change(screen.getByLabelText("Runs at once"), { target: { value: "4" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save limits" })); });
+    expect(apiFetch).toHaveBeenCalledWith("/org/settings", { method: "PUT", json: { limits: { max_concurrent_runs: 4 } } });
+    await waitFor(() => expect(screen.getByTestId("applies-max_concurrent_runs").textContent).toBe("4 at once"));
   });
 
   it("does not offer to switch local MCP on when the server forbids it", async () => {

@@ -33,6 +33,7 @@ from agentcanvas.errors import Conflict, Unavailable
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
+from agentcanvas.runtime.admission import NAMES
 from agentcanvas.runtime.runner import STOPPED_BY_ADMIN
 
 log = get_logger(__name__)
@@ -162,12 +163,12 @@ class HandoverJob:
         async with self.db.sessionmaker() as s:
             rows = (
                 await s.execute(
-                    select(Run.id, Run.thread_id, Run.workflow_version_id)
+                    select(Run.id, Run.thread_id, Run.workflow_version_id, Run.priority)
                     .where(Run.handover.is_(True), Run.stop_requested.is_(False))
                     .limit(BATCH)
                 )
             ).all()
-        for run_id, thread_id, version_id in rows:
+        for run_id, thread_id, version_id, priority in rows:
             if self.runner.draining or not await self._mark(run_id, False):  # another instance claimed it
                 continue
             try:
@@ -178,7 +179,9 @@ class HandoverJob:
                     # repeat its side effects, so the run ends with an error the person can act on
                     await self._fail(run_id, thread_id)
                     continue
-                h = await self.runner.start(wf, thread_id=thread_id, input=None, origin="handover", **kw)
+                h = await self.runner.start(  # in the queue, it keeps the place its run had
+                    wf, thread_id=thread_id, input=None, origin="handover", priority=NAMES.get(priority), **kw
+                )
             except Conflict:  # someone already continued the conversation
                 continue
             except Unavailable:  # this instance began draining meanwhile: leave it to the next one

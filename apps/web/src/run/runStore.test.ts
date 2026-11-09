@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMetrics, reduce, useRun } from "./runStore";
+import { QUEUED, formatMetrics, reduce, useRun } from "./runStore";
 
 describe("run reducer", () => {
   it("lights nodes up, captures interrupts and the final output", () => {
@@ -76,5 +76,18 @@ describe("rubric rounds", () => {
     });
     step({ type: "CUSTOM", name: "ac.rubric", canvas_node_id: "agent", value: { phase: "end", iteration: 1, result: "satisfied", criteria: [] } });
     expect(useRun.getState().rubric.map((r) => [r.iteration, r.result, r.gaps])).toEqual([[0, "needs_revision", ["city: name it"]], [1, "satisfied", []]]);
+  });
+});
+
+describe("the run queue (F-5)", () => {
+  it("shows the run's place while it waits, one line kept current, gone once it starts", () => {
+    let st = useRun.getState();
+    const step = (ev: Parameters<typeof reduce>[1]) => { st = { ...st, ...reduce(st, ev) }; };
+    step({ type: "CUSTOM", name: "ac.queued", value: { position: 3, limit: 2 } });
+    expect(st.warnings).toEqual([`${QUEUED} 3 in line (this organisation runs 2 at once)`]);
+    step({ type: "CUSTOM", name: "ac.queued", value: { position: 1, limit: 2 } });
+    expect(st.warnings).toEqual([`${QUEUED} next in line (this organisation runs 2 at once)`]);
+    step({ type: "STEP_STARTED", stepName: "first", canvas_node_id: "n1" });
+    expect(st.warnings).toEqual([]);
   });
 });

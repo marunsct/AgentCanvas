@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     # share links (S23): requests per minute from one client address to one link, on top of the deployment's and
     # project's limits, so one anonymous visitor cannot use up a deployment's whole budget
     rate_limit_per_share_client: int = 30
+    # runs in flight at once in one organisation, across every server; past it a run waits in the organisation's
+    # queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one.
+    max_concurrent_runs: int = Field(default=0, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB
     max_upload_mb: float = Field(default=10, gt=0, le=20)  # the web server accepts 20 MB bodies (infra/nginx.conf)

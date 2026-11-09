@@ -596,6 +596,10 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
 
 ### Added
 - [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
+- **Runs at once and run priority:** with `AGENTCANVAS_MAX_CONCURRENT_RUNS`, or an organisation's lower limit (Settings ›
+  Organisation › General), a run past the limit waits in the organisation's queue, shared by every server, and the run
+  panel shows its place in line. The next slot goes to the highest priority (`priority` high, normal or low on a run;
+  experiments and test cases are low), then the oldest. No limit by default, so nothing waits until one is set.
 - **Decide with AI** block (`core.decide`): a model picks one of the paths you describe and saves
   `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
   It runs on every framework, asked with the same words and read the same way (on CrewAI a `@router` method, on ADK a

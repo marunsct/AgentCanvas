@@ -75,6 +75,7 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_RATE_LIMIT_PER_PROJECT` | `600` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` | `{}` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT` | `30` | share links (S23): requests per minute from one client address to one link, on top of the deployment's and project's limits, so one anonymous visitor cannot use up a deployment's whole budget |
+| `AGENTCANVAS_MAX_CONCURRENT_RUNS` | `0` | runs in flight at once in one organisation, across every server; past it a run waits in the organisation's queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one. |
 | `AGENTCANVAS_RETENTION_INTERVAL_S` | `3600` | how often the retention job looks for expired conversations |
 | `AGENTCANVAS_MAX_UPLOAD_MB` | `10` | G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB the web server accepts 20 MB bodies (infra/nginx.conf) |
 | `AGENTCANVAS_MAX_PROJECT_FILES_MB` | `1024` | all of a project's attached files; 0 = no limit |

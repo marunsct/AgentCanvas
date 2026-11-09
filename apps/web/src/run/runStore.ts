@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { InterruptInfo, RubricRound, RunEvent, Usage } from "./events";
 
+export const QUEUED = "Waiting for a free run slot:";
+
 export type NodeStatus = "idle" | "running" | "ok" | "error" | "interrupted";
 
 export interface NodeMetrics {
@@ -84,6 +86,7 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         breakpoint: false, finalOutput: null, metrics: {}, usage: null, durationMs: null, route: [] };
     case "STEP_STARTED":
       return {
+        warnings: s.warnings.some((w) => w.startsWith(QUEUED)) ? s.warnings.filter((w) => !w.startsWith(QUEUED)) : s.warnings,
         status: { ...s.status, [ev.canvas_node_id]: "running" },
         route: s.route.includes(ev.canvas_node_id) ? s.route : [...s.route, ev.canvas_node_id],
       };
@@ -107,6 +110,11 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         return { interrupts, interrupt: interrupts[0] };
       }
       if (ev.name === "ac.warning" || ev.name === "ac.cost_alert") return { warnings: [...s.warnings, String(ev.value.message ?? "")] };
+      if (ev.name === "ac.queued") { // past the organisation's runs-at-once limit: one line, kept current
+        const place = Number(ev.value.position ?? 1);
+        const line = `${QUEUED} ${place === 1 ? "next in line" : `${place} in line`} (this organisation runs ${String(ev.value.limit)} at once)`;
+        return { warnings: [...s.warnings.filter((w) => !w.startsWith(QUEUED)), line] };
+      }
       if (ev.name === "ac.rubric") {
         const v = ev.value;
         const node = ev.canvas_node_id ?? null;

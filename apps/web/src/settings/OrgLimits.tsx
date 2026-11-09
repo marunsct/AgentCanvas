@@ -16,12 +16,14 @@ const ROWS: { key: string; label: string; env: string; unit?: string; kind: "swi
   { key: "rate_limit_per_webhook", label: "Calls per webhook", env: "AGENTCANVAS_RATE_LIMIT_PER_WEBHOOK", unit: "a minute", kind: "lower" },
   { key: "rate_limit_per_project", label: "Runs per project", env: "AGENTCANVAS_RATE_LIMIT_PER_PROJECT", unit: "a minute", kind: "lower" },
   { key: "rate_limit_per_share_client", label: "Messages per share-link visitor", env: "AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT", unit: "a minute", kind: "lower" },
+  { key: "max_concurrent_runs", label: "Runs at once", env: "AGENTCANVAS_MAX_CONCURRENT_RUNS", unit: "runs at once (more wait in a queue)", kind: "lower" },
   { key: "audit_retention_days", label: "Audit log kept", env: "AGENTCANVAS_AUDIT_RETENTION_DAYS", unit: "days (0: forever)", kind: "longer" },
   { key: "memory_retention_days", label: "Long-term memories kept", env: "AGENTCANVAS_MEMORY_RETENTION_DAYS", unit: "days (0: forever)", kind: "any" },
 ];
 
 const shown = (key: string, v: number | boolean | undefined) =>
-  typeof v === "boolean" ? (v ? "allowed" : "not allowed") : key.endsWith("_days") ? (v === 0 ? "forever" : `${v} days`) : v === 0 ? "no limit" : `${v} a minute`;
+  typeof v === "boolean" ? (v ? "allowed" : "not allowed") : key.endsWith("_days") ? (v === 0 ? "forever" : `${v} days`)
+    : v === 0 ? "no limit" : key === "max_concurrent_runs" ? `${v} at once` : `${v} a minute`;
 
 export function OrgLimits() {
   const qc = useQueryClient();

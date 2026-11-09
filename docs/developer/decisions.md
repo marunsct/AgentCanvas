@@ -10,6 +10,33 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-10
+
+### Run priority comes with a runs-at-once limit; nothing queues by default
+A priority only means something when runs wait, so it ships with admission control: `AGENTCANVAS_MAX_CONCURRENT_RUNS`
+(0, no limit, by default: nothing changes until an operator or an organisation sets one) and an organisation's own
+lower value, like the rate limits. A run past the limit waits in the database, so every server shares one queue; on
+Postgres the organisation's row is locked while a run takes a slot, so two servers cannot both take the last one. The
+next slot goes to the highest priority, then the oldest run. Not built: fairness between projects (one busy project
+can fill the organisation's queue) and per-trigger priorities; each is a field away once someone needs it.
+Experiments and test cases default to low, people's runs and triggers to normal; the deployment API takes no
+priority, so a key holder cannot jump the queue. A waiting run is "running" for its thread, the kill switch and a
+person's stop, so none of them needed changing. *Reverse:* migration `b8e2f6a0c4d7` and `runtime/admission.py`.
+
+### Docs: one place for users, one for contributors
+The owner asked for the documents to be tidied without scattering. The user guide (`docs/user-guide/`) is for
+people building workflows and operating a server; everything for contributors is under `docs/developer/`, whose
+README is the map. Status lives only in `hardening.md`; the October handover, progress log, product plan, sprint plan
+and old reviews moved to `docs/developer/history/` with a note saying where the current information is. The build
+guide's deployment chapter was written for operators, so it became the user guide's *Operations reference*. Older
+entries below still name the old paths (HARDENING.md, PLAN.md, HANDOVER.md) as they were when written.
+
+### Decide with AI reads answers in one place
+The question and the reading of the model's answer live in `agentcanvas/expr.py`, which every runtime and export
+already carries, so the eleven frameworks decide alike; Mastra's TypeScript twin is checked against it on tricky
+answers. The same decision is the *AI classification* evaluator, so a block and an evaluator never disagree about
+what a model meant.
+
 ## 2026-11-09
 
 ### The failure summary groups comments; it does not ask a model
