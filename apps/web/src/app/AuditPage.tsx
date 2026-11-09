@@ -1,6 +1,6 @@
 /** Audit log (M7-T4): who changed what and when, newest first. Admins only. Filter by action, target and dates;
- * open an entry for its details; export what is loaded as CSV. */
-import { useInfiniteQuery } from "@tanstack/react-query";
+ * open an entry for its details; export what is loaded as CSV; check the log's hash chain. */
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { Fragment, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { AuditOut as Entry } from "../api/generated";
@@ -20,6 +20,23 @@ export function toCsv(rows: Entry[]): string {
   const head = ["time", "who", "action", "target", "ip", "detail"];
   return [head.join(","), ...rows.map((e) =>
     [e.created_at, e.actor_email ?? e.actor_id ?? "", e.action, e.target, e.ip ?? "", e.detail].map(cell).join(","))].join("\n") + "\n";
+}
+
+/** GET /org/audit/verify (written here until the generated API types include it). */
+export interface ChainReport {
+  ok: boolean;
+  checked: number;
+  unchained: number;
+  head_hash: string | null;
+  problems: { id: number; kind: "changed" | "missing" | "unchained"; message: string }[];
+}
+
+/** What checking the hash chain found, in a sentence. */
+export function chainSummary(r: ChainReport): string {
+  const older = r.unchained ? `; ${r.unchained} older ${r.unchained === 1 ? "entry was" : "entries were"} written before the chain existed` : "";
+  if (r.ok) return `Intact: ${r.checked} ${r.checked === 1 ? "entry" : "entries"} checked, none changed or missing${older}.`;
+  const n = r.problems.length;
+  return `Not intact: ${n === 50 ? "50 or more" : n} ${n === 1 ? "entry does" : "entries do"} not match the hash chain. Treat this as a security incident.`;
 }
 
 function download(name: string, text: string) {
@@ -53,6 +70,7 @@ export function AuditPage() {
   });
   const rows = useMemo(() => (log.data?.pages ?? []).flatMap((p) => (Array.isArray(p) ? p : [])), [log.data]);
   const seen = useMemo(() => [...new Set(rows.map((e) => e.action))].sort(), [rows]);
+  const check = useMutation({ mutationFn: () => apiFetch<ChainReport>("/org/audit/verify") });
   return (
     <section className="settings-card audit">
       <h2>Audit log</h2>
@@ -65,7 +83,18 @@ export function AuditPage() {
         <label className="row small">to <input type="date" aria-label="to date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
         <button type="button" disabled={rows.length === 0} onClick={() => download(`audit-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows))}
           title="the entries loaded below">Export CSV</button>
+        <button type="button" disabled={check.isPending} onClick={() => check.mutate()}
+          title="recompute every entry's hash: an entry changed or deleted after it was written shows">{check.isPending ? "Checking…" : "Check integrity"}</button>
       </div>
+      {check.isError && <p className="error small" role="alert">Could not check the log: {String((check.error as Error).message)}</p>}
+      {check.data && (
+        <div className={check.data.ok ? "muted small" : "error small"} role="status" data-testid="audit-chain">
+          <p>{chainSummary(check.data)}</p>
+          {check.data.problems.length > 0 && (
+            <ul>{check.data.problems.map((p) => <li key={`${p.id}-${p.kind}`}>Entry {p.id}: {p.message}</li>)}</ul>
+          )}
+        </div>
+      )}
       <QueryStatus q={log} what="the audit log" />
       {log.isSuccess && rows.length === 0 && <p className="muted">Nothing recorded{action || target || from || to ? " for this filter" : " yet"}.</p>}
       {rows.length > 0 && (

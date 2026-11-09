@@ -173,7 +173,8 @@ server instead.
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a
 hash of exactly what was approved; publishing past a failed release gate records the reason given. Rows are kept
 for 400 days by default. The entries are linked by a hash chain, so a changed or deleted entry can be found:
-`GET /v1/org/audit/verify` checks the whole log ([Audit log](security.md#audit-log)).
+**Check integrity** on the page (or `GET /v1/org/audit/verify`) recomputes the whole log and lists any entry that
+does not match ([Audit log](security.md#audit-log)).
 
 ## Policies
 
