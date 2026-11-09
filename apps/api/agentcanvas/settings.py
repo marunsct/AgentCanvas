@@ -171,6 +171,20 @@ class Settings(BaseSettings):
     # false: nobody may approve or answer an Inbox item raised by a run they started (four-eyes approvals). An
     # organisation may switch it off for itself, never on when the server has it off.
     approve_own_runs: bool = True
+    # the mail server approval notifications are sent through: its host (none: e-mail is not offered), port, how the
+    # connection is secured ("starttls", port 587; "tls", port 465; "none", only for a relay on a private network) and
+    # its sign-in. An organisation's admin switches e-mail on under Settings > Organisation > Notifications
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_security: Literal["starttls", "tls", "none"] = "starttls"
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None  # the sender, e.g. "AgentCanvas <approvals@example.com>"; required with a host
+    # how often each server looks for approvals to announce and for notifications to send or retry (seconds)
+    notify_interval_s: float = Field(default=15, gt=0)
+    # notification webhooks (Slack, an organisation's own) may reach private addresses, e.g. an internal relay;
+    # link-local and cloud metadata addresses never
+    notify_allow_private: bool = False
     # how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes
     max_queue_wait_s: float = Field(default=3600, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations

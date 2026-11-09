@@ -58,6 +58,7 @@ from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.files import FileStore
 from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
+from agentcanvas.services.notifier import NotifierJob
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.org_settings import OrgSettingsCache
 from agentcanvas.services.presence import PresenceHub
@@ -303,6 +304,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
 
+            app.state.notifier = NotifierJob(db, app.state.keyring, settings)
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )
@@ -311,6 +313,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.experiments.start()
                 app.state.cron.start()
                 app.state.retention.start()
+                app.state.notifier.start()
                 app.state.crawl.start()
                 app.state.handover.start()
                 app.state.callbacks.start()
@@ -335,6 +338,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.cron.stop()
                 await app.state.retention.stop()
+                await app.state.notifier.stop()
                 await app.state.crawl.stop()
                 await app.state.secrets.stop()
                 if app.state.matura_feed is not None:

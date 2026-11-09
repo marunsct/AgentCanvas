@@ -937,6 +937,7 @@ class Runner:
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
                         "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
                         "approvers": h.approvers.get(intr.get("canvas_node_id") or ""), "assignee_role": None,
+                        "noticed": None,  # announced again when asked again
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:

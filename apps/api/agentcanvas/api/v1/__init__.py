@@ -31,6 +31,7 @@ from agentcanvas.api.v1 import (
     matura,
     memory,
     model_choices,
+    notifications,
     online,
     org,
     playground,
@@ -55,6 +56,7 @@ signed_in = APIRouter(dependencies=[Depends(current_user), Depends(role_policy),
 signed_in.include_router(auth.router)
 signed_in.include_router(catalog.router)
 signed_in.include_router(org.router)
+signed_in.include_router(notifications.router)
 signed_in.include_router(connections.router)
 signed_in.include_router(tokens.router)
 signed_in.include_router(projects.router)

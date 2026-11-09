@@ -44,6 +44,7 @@ LATER = [
     MIGRATIONS / "20261110_c7bf8b0b2ba4_spend_cap_alert.py",
     MIGRATIONS / "20261110_29547c665705_model_spend.py",
     MIGRATIONS / "20261111_77fe2c6e6cec_run_callback.py",
+    MIGRATIONS / "20261110_7ad337b9ba7d_approval_notifications.py",
 ]  # tables added after it, each with its own policy
 
 

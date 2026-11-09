@@ -137,5 +137,17 @@ async def server_settings(request: Request) -> list[ServerSetting]:
         ("Retention", "Long-term memories", _days(s.memory_retention_days), "AGENTCANVAS_MEMORY_RETENTION_DAYS"),
         ("Retention", "Undecided approvals", _days(s.approval_expiry_days), "AGENTCANVAS_APPROVAL_EXPIRY_DAYS"),
         ("Observability", "Prometheus metrics", "on" if s.metrics_enabled else "off", "AGENTCANVAS_METRICS_ENABLED"),
+        (
+            "Notifications",
+            "Mail server for approval e-mails",
+            f"{s.smtp_host}:{s.smtp_port} ({s.smtp_security})" if s.smtp_host and s.smtp_from else "none",
+            "AGENTCANVAS_SMTP_HOST",
+        ),
+        (
+            "Notifications",
+            "Webhooks may reach private addresses",
+            "yes" if s.notify_allow_private else "no",
+            "AGENTCANVAS_NOTIFY_ALLOW_PRIVATE",
+        ),
     ]
     return [ServerSetting(group=g, label=label, value=v, env=e) for g, label, v, e in rows]

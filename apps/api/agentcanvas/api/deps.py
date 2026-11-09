@@ -251,8 +251,8 @@ ROLE_EXCEPTIONS = {
 def required_role(method: str, path: str) -> str:
     """The weakest role allowed `method` on the route template `path` (with or without the /v1 prefix)."""
     path = path.removeprefix("/v1")
-    # the log, spending, everyone's tokens and the SCIM token: admins only
-    if path.startswith(("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/server/")):
+    # the log, spending, everyone's tokens, the SCIM token and where notifications go: admins only
+    if path.startswith(("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/server/")):
         return "admin"
     if path.startswith("/org/"):
         return "viewer" if method == "GET" else "admin"

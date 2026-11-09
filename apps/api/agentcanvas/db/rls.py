@@ -49,6 +49,8 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "personal_token": ("org_id", None),
     "spend_cap_alert": ("org_id", None),
     "scim_group": ("org_id", None),
+    "org_notifier": ("org_id", None),
+    "approval_notice": ("org_id", None),
     "oauth_connection": ("org_id", None),
     "oauth_flow": ("org_id", None),
     "oauth_client": ("org_id", None),

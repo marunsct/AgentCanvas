@@ -41,6 +41,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. What the Copilot and AI judges spent is listed apart, under **Outside runs** (it is not in the runs' total). Conversations deleted since (by hand or by the retention period) still count, by the hour their runs started. The same report is `GET /v1/org/spending?since=&until=`. Above it, **Spending caps**: one row for the organisation and one per project, each with its cap a day and a month (empty: no cap; **Save** on the row), how much of it is used today and this month, and below them the **Alert at** percent and the latest cap alerts (see [Spending caps](#spending-caps)) | admins |
 | Organisation › **Security** | The **allowed networks** the organisation may be used from: sign-ins, API tokens, deployment keys, share links and SCIM ([Allowed networks](accounts.md#allowed-networks)); whether members must sign in with a second factor ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)) | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
+| Organisation › **Notifications** | Who is told that an approval or a question waits in the Inbox ([Notifications](#approval-notifications)): e-mail to the people who may decide, a Slack channel, a signed webhook. **Send a test** tries each one | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
 | You › **Appearance** | Your colour theme, and whether the editor opens in Simple or Full mode (both saved with your account) | you |
 | You › **Keyboard shortcuts** | Every shortcut of the editor and the canvas (Ctrl/⌘+K opens the command palette) | read only |
@@ -87,6 +88,38 @@ Leave a field empty to use the server's value. The **Applies now** column shows 
 later lowers a server limit, an organisation's higher value stops applying at once. A per-environment limit the
 operator set with `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` keeps applying to that environment's deployments. Other
 replicas of the server pick up a change within about 15 seconds.
+
+## Approval notifications
+
+Under **Settings › Organisation › Notifications** an admin chooses who is told that an approval or a question waits
+in the Inbox. Each message names the workflow, its project, the step, who may decide it and when it expires (the
+server's approval expiry), with a link to the item in the Inbox. It never contains what the run asks, which can hold
+personal data. A conversation is announced once, whatever the number of API servers.
+
+- **E-mail** goes to the people who may decide: those the step names ([Who may decide](run-and-debug.md#who-may-decide)),
+  or, for a step that names nobody, the addresses you list (a team mailbox), else every reviewer, builder and admin of
+  the organisation (at most 100). Each person is in Bcc. It needs the server's mail server: the operator sets
+  `AGENTCANVAS_SMTP_HOST`, `AGENTCANVAS_SMTP_FROM` and, when it needs a sign-in, `AGENTCANVAS_SMTP_USERNAME` and
+  `AGENTCANVAS_SMTP_PASSWORD` (`AGENTCANVAS_SMTP_PORT`, 587, and `AGENTCANVAS_SMTP_SECURITY`: `starttls`, `tls` or
+  `none`).
+- **Slack**: paste a Slack [incoming webhook](https://api.slack.com/messaging/webhooks) address
+  (`https://hooks.slack.com/services/…`). Every waiting item is posted to its channel. The address holds Slack's
+  token: it is stored encrypted with the organisation's key and never shown again; paste a new one to replace it.
+- **Webhook**: an `https` address of your own gets a JSON `POST` for every waiting item:
+  `{"type": "approval.waiting", "id", "interrupt_id", "kind", "organisation_id", "project": {"id", "name"},
+  "workflow": {"id", "name"}, "step", "thread_id", "run_id", "deciders", "created_at", "expires_at", "url"}`. It is
+  signed like webhook triggers: `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<X-AgentCanvas-Timestamp>." +
+  body>` with the signing secret shown once when you save the address (send `webhook_secret` to set your own, 24
+  characters or more). `X-AgentCanvas-Delivery` is the same on a retry: use it to ignore a repeat. Private and internal
+  addresses are refused unless the operator sets `AGENTCANVAS_NOTIFY_ALLOW_PRIVATE=true`; link-local and cloud
+  metadata addresses always are. Redirects are not followed.
+
+A notification that fails (a refused address, a server error) is tried again after 30 s, 2 min, 10 min, 30 min and
+2 h, then given up; an item decided meanwhile is not announced any more. Draft runs you start in the editor are not
+announced unless their step names who decides them (you are watching the run), nor are test and evaluation runs. The
+same settings are `GET` and `PUT /v1/org/notifications` (admins; only what you send changes, `null` removes the Slack
+address or the webhook) and `POST /v1/org/notifications/test`.
+
 
 ### Spending caps
 

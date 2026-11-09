@@ -80,6 +80,15 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "Background job {{ $labels.job }} has not finished a round on any pod for a long time"
+      - alert: AgentCanvasApprovalNotificationsFailing
+        # approval notifications given up after every retry: a mail server, a Slack webhook or an organisation's own
+        # webhook that refuses them; the Inbox still has the items, but nobody is told
+        expr: sum by (channel) (increase(agentcanvas_approval_notifications_total{outcome="failed"}[1h])) > 0
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: Approval notifications on {{ $labels.channel }} are failing after every retry
+          runbook: docs/user-guide/operations.md#runbooks
       - alert: AgentCanvasRunQueueSlow
         # runs wait for a slot (AGENTCANVAS_MAX_CONCURRENT_RUNS or an organisation's own limit): too low a limit, a
         # busy project filling it, or runs that hold their slots too long

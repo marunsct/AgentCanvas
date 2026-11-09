@@ -54,4 +54,16 @@ describe("Inbox", () => {
       listed = null;
     }
   });
+
+  it("shows the item a notification links to, or says it is gone", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+    render(<QueryClientProvider client={qc}><MemoryRouter initialEntries={["/inbox?item=b"]}><InboxPage /></MemoryRouter></QueryClientProvider>);
+    await waitFor(() => expect(screen.getAllByTestId("inbox-item")).toHaveLength(2));
+    expect(screen.getAllByTestId("inbox-item").map((el) => el.getAttribute("aria-current"))).toEqual([null, "true"]);
+    expect(screen.queryByTestId("inbox-gone")).toBeNull();
+    cleanup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })}>
+      <MemoryRouter initialEntries={["/inbox?item=zzz"]}><InboxPage /></MemoryRouter></QueryClientProvider>);
+    expect((await screen.findByTestId("inbox-gone")).textContent).toContain("no longer waiting");
+  });
 });

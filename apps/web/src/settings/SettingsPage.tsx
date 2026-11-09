@@ -14,6 +14,7 @@ import { About } from "./About";
 import { ApiTokens } from "./ApiTokens";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { ModelDefaults } from "./ModelDefaults";
+import { NotificationSettings } from "./NotificationSettings";
 import { OrgLimits } from "./OrgLimits";
 import { OrgSecurity } from "./OrgSecurity";
 import { OrgSettings } from "./OrgSettings";
@@ -45,6 +46,7 @@ export const SECTIONS: Section[] = [
   { id: "security", group: "Organisation", label: "Security", render: () => <OrgSecurity /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },
+  { id: "notifications", group: "Organisation", label: "Notifications", read: "admin", render: () => <NotificationSettings /> },
   { id: "spending", group: "Organisation", label: "Spending", read: "admin", render: () => <><SpendingCaps /><SpendingSettings /></> },
   { id: "audit", group: "Organisation", label: "Audit log", read: "admin", render: () => <AuditPage /> },
   { id: "server", group: "Organisation", label: "Server", read: "admin", render: () => <ServerSettings /> },

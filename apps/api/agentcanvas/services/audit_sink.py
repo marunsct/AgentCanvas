@@ -40,6 +40,7 @@ SECURITY_ACTIONS = frozenset({
     "decide", "resume_thread", "api_resume",  # approvals of paused runs (inbox, canvas, public API)
     "set_member", "remove_member",  # members and roles (dev and oidc modes)
     "put_org_settings", "create_policy", "replace_policy", "delete_policy",  # organisation settings and policies
+    "put_notifications",  # where approval notifications (and what they say) go
     "set_gate", "delete_gate",  # release gates
     "put_trace_export", "delete_trace_export",  # where traces (and the data in them) are sent
     "set_project_workspace",  # a project moved between Matura workspaces

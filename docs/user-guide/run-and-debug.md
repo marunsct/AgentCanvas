@@ -32,7 +32,8 @@ and the Run tab shows **Approval needed** with the value under review.
   *the approval expired*, the item leaves the Inbox, and the conversation is then deleted with the others once the
   organisation's retention has passed.
 - The **Inbox** (top bar) lists every pending decision across all workflows you can see, so reviewers don't need
-  to open the editor. Reviewers (and above) can answer.
+  to open the editor. Reviewers (and above) can answer. An admin can have the people who may decide told by e-mail,
+  in a Slack channel or through a webhook, with a link to the item ([Approval notifications](settings.md#approval-notifications)).
 - By default you may approve a run you started yourself. For a four-eyes control (payments, outbound email,
   destructive tools), an admin turns **Approving your own runs** off under **Settings › Organisation › General ›
   Limits and policies** (the operator can turn it off for every organisation with
