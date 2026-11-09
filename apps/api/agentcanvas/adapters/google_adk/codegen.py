@@ -17,6 +17,7 @@ import re
 from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import doc_line, one_line
 from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
+from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
 
 ADK_VERSION = "2.14.0"
@@ -264,9 +265,7 @@ def _agent(wf: Workflow, n: Node, names: _Names) -> tuple[str, str, str]:
 def _canvas(wf: Workflow) -> str:
     channels = [f"        {_py(ch.name)}: ({_py(ch.reducer)}, {_py(ch.default)})," for ch in wf.state.channels]
     steps = [f"        {_py(n.id)}: {_py(n.name)}," for n in wf.nodes]
-    wanted = wf.settings.output_channels
-    if wanted is None:
-        wanted = [ch.name for ch in wf.state.channels if ch.io != "private"]
+    wanted = output_names(wf)
     return "\n".join(
         [
             "CANVAS = rt.Canvas(",

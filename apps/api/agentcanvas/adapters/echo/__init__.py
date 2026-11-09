@@ -25,6 +25,7 @@ from jsonschema import Draft202012Validator
 
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
 from agentcanvas.registry import default_registry
 from agentcanvas.registry.adapters import all_manifests
@@ -377,7 +378,4 @@ class EchoAdapter:
         return {e.source.node for e in wf.flow_edges() if e.target.node == node_id}
 
     def _outputs(self, wf: Workflow, values: dict[str, Any]) -> dict[str, Any]:
-        wanted = wf.settings.output_channels
-        if wanted is None:
-            wanted = [c.name for c in wf.state.channels if c.io != "private"]
-        return {k: values.get(k) for k in wanted if k in values}
+        return {k: values.get(k) for k in output_names(wf) if k in values}

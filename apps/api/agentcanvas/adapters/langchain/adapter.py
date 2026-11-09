@@ -25,6 +25,7 @@ from agentcanvas.adapters.langchain.interpreter import build_from_plan, prepare
 from agentcanvas.adapters.langchain.persistence import MemoryEmbedding, Persistence, copy_thread, open_persistence
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
+from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry.adapters import all_manifests
 from agentcanvas.runtime import masking
@@ -454,9 +455,5 @@ def _registry(resources: Any) -> Any:
 
 
 def _outputs(wf: Workflow, values: dict[str, Any]) -> dict[str, Any]:
-    s = wf.settings
-    if s.output_channels:
-        keep = set(s.output_channels)
-    else:
-        keep = {c.name for c in wf.state.channels if c.io in ("inout", "out")}
+    keep = set(output_names(wf))
     return {k: v for k, v in values.items() if k in keep}

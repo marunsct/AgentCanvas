@@ -18,6 +18,7 @@ from agentcanvas import designs
 from agentcanvas.adapters.flowgen import RESOURCE_TYPES, STEP_TYPES  # noqa: F401 - what a Mastra flow can run
 from agentcanvas.adapters.langchain.codegen import one_line, ts_doc_line
 from agentcanvas.adapters.openai_agents.codegen import model_settings
+from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Workflow
 
 MASTRA_VERSION = "1.82.0"
@@ -301,9 +302,7 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
     start = list(dict.fromkeys(e.target.node for e in wf.flow_edges()
                                if e.source.node == "START" and e.target.node != "END"))  # fmt: skip
     channels = [f"    {_key(ch.name)}: [{_js(ch.reducer)}, {_js(ch.default)}]," for ch in wf.state.channels]
-    wanted = wf.settings.output_channels
-    if wanted is None:
-        wanted = [ch.name for ch in wf.state.channels if ch.io != "private"]
+    wanted = output_names(wf)
     return "\n".join(
         [
             "export const FLOW: rt.Flow = {",

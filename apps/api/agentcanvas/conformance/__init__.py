@@ -43,6 +43,7 @@ class Case:
     mocks: dict[str, list[Any]] = field(default_factory=dict)
     answers: list[Any] = field(default_factory=list)  # one per pause, in order
     expect_pauses: list[tuple[str, str]] = field(default_factory=list)  # (kind, node id) per pause
+    exact_output: bool = False  # the output must hold exactly `expect_output`'s fields, nothing more
 
     def types(self) -> set[str]:
         return {n["type"] for n in self.workflow["nodes"]} | {r["type"] for r in self.workflow.get("resources", [])}
@@ -166,6 +167,13 @@ def _cases() -> list[Case]:
          _flow("n_route", "n_thanks", "route:other"), _flow("n_sorry", "END"), _flow("n_thanks", "END"),
          _wire("r_model", "n_classify")], resources=[MODEL],
     )  # fmt: skip
+    io = _wf(
+        "io", ["question", "answer", "notes", "scratch"],
+        [_set("n_answer", answer="You asked {{ state.question }}", notes="{{ state.notes }}+", scratch="x")],
+        [_flow("START", "n_answer"), _flow("n_answer", "END")],
+    )  # fmt: skip
+    for ch, kind in zip(io["state"]["channels"], ("in", "out", "inout", "private"), strict=True):
+        ch["io"] = kind
     question = _wf(
         "question", ["name", "greeting"],
         [_node("n_ask", "core.human_input", prompt="What is your name?", output="name",
@@ -183,6 +191,9 @@ def _cases() -> list[Case]:
              {"n_left": 1, "n_right": 1, "n_join": 1, "n_both": 1}),
         Case("flow/loop", "C-FLOW", "a loop that stops after three rounds", loop, {"count": "0"}, {"count": "3"},
              {"n_add": 3}),
+        Case("flow/output-fields", "C-FLOW", "the output holds the output and input-output fields only", io,
+             {"question": "why", "notes": "n"}, {"answer": "You asked why", "notes": "n+"}, {"n_answer": 1},
+             exact_output=True),
         Case("agent/model-reply", "C-AGENT", "an AI step's reply lands in its field", reply,
              {"question": "Capital of France?"}, {"answer": "Paris"}, {"n_ask": 1}, mocks={"model": ["Paris"]}),
         Case("agent/model-route", "C-AGENT", "an AI step's reply picks the path", classify,
@@ -235,6 +246,8 @@ def check(case: Case, wf: Workflow, runs: list[list[dict[str, Any]]]) -> list[st
     for key, want in case.expect_output.items():
         if output.get(key) != want:
             problems.append(f"output '{key}' is {output.get(key)!r}, expected {want!r}")
+    if case.exact_output and sorted(output) != sorted(case.expect_output):
+        problems.append(f"the output has fields {sorted(output)}, expected {sorted(case.expect_output)}")
     done = Counter(
         ev["canvas_node_id"] for events in runs for ev in events
         if ev["type"] == "STEP_FINISHED" and ev.get("status") == "ok"
