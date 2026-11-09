@@ -14,7 +14,11 @@ export interface ShareInfo {
   input: { field?: string | null; chat?: boolean };
   attachments?: ShareAttachments | null;
   frame_origins?: string[]; // the sites allowed to frame the page (G-15): the postMessage API answers only these
+  ai_notice?: string; // tells visitors they are chatting with an AI (AI Act Art. 50): always shown
 }
+
+/** What the page says when the server sent no wording of its own (an older server). */
+export const DEFAULT_AI_NOTICE = "You are chatting with an AI assistant. Answers can be wrong.";
 
 /** A message of the visitor's saved conversation (G-15). */
 export interface SavedMessage {

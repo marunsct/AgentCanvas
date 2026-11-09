@@ -96,6 +96,10 @@ Once a workflow is published, people who are not developers can use it from a li
 1. Tick **Anyone with the link can chat with this deployment**. Sharing starts switched off.
 2. Give the page a **Title**, a **Greeting** (the first thing visitors read) and up to six **Suggested questions**
    (one per line; visitors click one to start). Press **Save**.
+   The **AI notice** under the messages tells visitors they are chatting with an AI: by default *You are chatting
+   with an AI assistant. Answers can be wrong.* It is always shown, on the page and in the chat widget. You can reword
+   it (up to 200 characters, for example in your visitors' language) but not remove it; the audit log keeps each
+   wording you save.
 3. **Copy link** and send it to people, or **Open the page** to try it yourself. The page works on phones and
    follows the visitor's light or dark setting. Each message, the greeting and the message box take the direction
    of their own text, so Arabic or Hebrew reads right to left; the page's own buttons and notes are in English.
@@ -119,8 +123,9 @@ preview). The visitor can send a file with or without a message. Files are limit
 <script src="https://your-agentcanvas.example.com/widget.js" data-share="sh_…" async></script>
 ```
 
-A round chat button appears in the bottom-right corner; it opens the same chat in a small panel. Optional
-attributes: `data-label` (the button's name), `data-position="left"` and `data-color` (any CSS colour).
+A round chat button appears in the bottom-right corner; it opens the same chat in a small panel, with the link's AI
+notice under the message box. Optional attributes: `data-label` (the button's name, shown on hover and read by screen
+readers; default *AI assistant*), `data-position="left"` and `data-color` (any CSS colour).
 
 **Talk to the widget from your page.** The widget takes commands and reports what happens with `window.postMessage`,
 so your page can open the chat from its own button, start it with a question, or react to an answer. Every message

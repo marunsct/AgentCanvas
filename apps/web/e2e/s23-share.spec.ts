@@ -86,24 +86,25 @@ test("publish, share as a chat page, chat as a signed-out visitor, embed the wid
     (window as unknown as { heard: string[] }).heard = heard;
     window.addEventListener("message", (e) => { if (e.data?.agentcanvas === 1) heard.push(`${e.data.type}:${e.data.text ?? ""}`); });
   });
-  await site.getByRole("button", { name: "Open Chat" }).click();
-  const frame = site.frameLocator('iframe[title="Chat"]');
+  await site.getByRole("button", { name: "Open AI assistant" }).click();
+  const frame = site.frameLocator('iframe[title="AI assistant"]');
   await expect(frame.getByRole("heading", { name: "Greeting desk" })).toBeVisible();
   await expect(frame.getByTestId("share-page")).toHaveClass(/embed/);
+  await expect(frame.getByTestId("share-ai-notice")).toContainText("AI assistant"); // AI Act Art. 50(1), in the widget too
   await frame.getByLabel("Your message").fill("Lin");
   await frame.getByRole("button", { name: "Send" }).click();
   await expect(frame.getByTestId("share-assistant").last()).toContainText("Hi Lin");
   await expect.poll(() => site.evaluate(() => (window as unknown as { heard: string[] }).heard)).toEqual(
     expect.arrayContaining(["opened:", "ready:", "reply:Hi Lin"]),
   );
-  await site.getByRole("button", { name: "Close Chat" }).click();
-  await expect(site.locator("iframe[title='Chat']")).toBeHidden();
+  await site.getByRole("button", { name: "Close AI assistant" }).click();
+  await expect(site.locator("iframe[title='AI assistant']")).toBeHidden();
   // ...and drives it: prefill opens the chat and puts the text in the message box
   await site.evaluate(() => window.postMessage({ agentcanvas: 1, type: "prefill", text: "Where is my order?" }, location.origin));
-  await expect(site.locator("iframe[title='Chat']")).toBeVisible();
+  await expect(site.locator("iframe[title='AI assistant']")).toBeVisible();
   await expect(frame.getByLabel("Your message")).toHaveValue("Where is my order?");
   await site.evaluate(() => window.postMessage({ agentcanvas: 1, type: "close" }, location.origin));
-  await expect(site.locator("iframe[title='Chat']")).toBeHidden();
+  await expect(site.locator("iframe[title='AI assistant']")).toBeHidden();
 
   // switching sharing off closes the page
   await box.getByTestId("share-enabled").click();

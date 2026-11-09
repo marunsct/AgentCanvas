@@ -2,9 +2,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
-import type { DeploymentOut, ShareOut } from "../api/generated";
-import { embedSnippet } from "../share/share";
+import type { DeploymentOut, ShareOut as GeneratedShareOut } from "../api/generated";
+import { DEFAULT_AI_NOTICE, embedSnippet } from "../share/share";
 import { confirmDialog } from "../ui/dialog";
+
+/** ai_notice: written here until the generated API types include it. */
+type ShareOut = GeneratedShareOut & { ai_notice?: string };
 
 async function copy(text: string, done: (msg: string) => void) {
   try {
@@ -23,6 +26,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
   const [greeting, setGreeting] = useState("");
   const [suggestions, setSuggestions] = useState("");
   const [sites, setSites] = useState("");
+  const [aiNotice, setAiNotice] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const seeded = useRef<string | null>(null); // the deployment the form was filled from
   const seed = (d: ShareOut) => {
@@ -30,6 +34,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
     setGreeting(d.greeting);
     setSuggestions(d.suggestions.join("\n"));
     setSites(d.frame_origins.join("\n"));
+    setAiNotice(d.ai_notice ?? DEFAULT_AI_NOTICE);
   };
   // fill the form once per deployment and after a save of its fields, not on every refetch: the switch and a
   // new link update the query too, and that must not wipe what is being typed
@@ -84,6 +89,15 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
           <label htmlFor={`${id}-sites`}>Sites that may show the chat widget (one per line)</label>
           <textarea id={`${id}-sites`} value={sites} placeholder="https://www.example.com" data-testid="share-sites"
                     onChange={(e) => setSites(e.target.value)} />
+          <label htmlFor={`${id}-ai-notice`}>AI notice</label>
+          <input id={`${id}-ai-notice`} value={aiNotice} maxLength={200} data-testid="share-ai-notice"
+                 aria-describedby={`${id}-ai-notice-help`} aria-invalid={!aiNotice.trim() || undefined}
+                 onChange={(e) => setAiNotice(e.target.value)} />
+          <p id={`${id}-ai-notice-help`} className={aiNotice.trim() ? "muted" : "error-text"}>
+            {aiNotice.trim()
+              ? "Always shown on the chat page and in the widget, so visitors know they are chatting with an AI. Reword it, for example in your visitors' language."
+              : "The AI notice cannot be empty: visitors must be told they are chatting with an AI."}
+          </p>
           <p className="muted">
             {data.frame_origins.length === 0
               ? "No sites listed: any website can put your chat page in a frame. List yours to stop others from doing it."
@@ -107,9 +121,9 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               : "This workflow has no text input, so the chat page cannot send it messages."}
           </p>
           <div className="row gap">
-            <button type="button" className="small" disabled={save.isPending} onClick={() => save.mutate({
+            <button type="button" className="small" disabled={save.isPending || !aiNotice.trim()} onClick={() => save.mutate({
               title, greeting, suggestions: suggestions.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 6),
-              frame_origins: sites.split("\n").map((s) => s.trim()).filter(Boolean),
+              frame_origins: sites.split("\n").map((s) => s.trim()).filter(Boolean), ai_notice: aiNotice.trim(),
             })}>Save</button>
           </div>
           {data.enabled && data.token && (

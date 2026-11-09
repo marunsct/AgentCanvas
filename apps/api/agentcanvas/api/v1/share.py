@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.deployments import FeedbackIn, _continue_on, count_call
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
@@ -52,10 +53,12 @@ from agentcanvas.services.deployments import DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.files import FileService, ref_of
 from agentcanvas.services.share import (
+    DEFAULT_AI_NOTICE,
     AttachShape,
     InputShape,
     ShareService,
     ShareSettingsIn,
+    ai_notice,
     answer_text,
     attach_shape,
     frame_ancestors,
@@ -92,6 +95,7 @@ class ShareOut(BaseModel):
     input: InputShape
     inputs: list[str] = Field(description="what `input_field` may name: the text inputs and the message list")
     frame_origins: list[str] = Field(description="sites allowed to show the chat page in a frame; empty: any site")
+    ai_notice: str = Field(description="what the chat page says to tell visitors they are chatting with an AI")
     updated_at: datetime | None = None
 
 
@@ -105,7 +109,7 @@ async def _share_out(session: AsyncSession, share: DeploymentShare | None, dep: 
         path=f"/s/{share.token}" if share.token else None,
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input_field=share.input_field, input=input_shape(wf, share.input_field), inputs=text_inputs(wf),
-        frame_origins=list(share.frame_origins or []), updated_at=share.updated_at,
+        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share), updated_at=share.updated_at,
     )  # fmt: skip
 
 
@@ -130,12 +134,15 @@ async def get_share(dep_id: str, session: AsyncSession = Depends(get_session)) -
 async def update_share(
     dep_id: str,
     body: ShareSettingsIn,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> ShareOut:
-    """Switch the share link on or off and set the chat page's title, greeting, suggested prompts and the input
-    messages go to."""
+    """Switch the share link on or off and set the chat page's title, greeting, suggested prompts, the input
+    messages go to and the wording of its AI notice (which cannot be removed)."""
     dep = await DeploymentService(session).require(dep_id)
+    if body.ai_notice is not None:
+        note(request, ai_notice=body.ai_notice)  # the audit log keeps what visitors were told
     if body.input_field:
         wf = await _pinned(session, dep)
         if body.input_field not in text_inputs(wf):
@@ -167,6 +174,7 @@ class ShareInfo(BaseModel):
         default_factory=list,
         description="sites allowed to frame the page; the page's postMessage API answers only these (none: any)",
     )
+    ai_notice: str = Field(DEFAULT_AI_NOTICE, description="always shown: tells visitors they are chatting with an AI")
 
 
 MAX_VISITOR_FILES = 30  # files one visitor keeps on one link
@@ -209,7 +217,7 @@ async def share_info(token: str, request: Request, session: AsyncSession = Depen
     return ShareInfo(
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input=input_shape(wf, share.input_field), attachments=attach_shape(wf),
-        frame_origins=list(share.frame_origins or []),
+        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share),
     )  # fmt: skip
 
 

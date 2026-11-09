@@ -936,6 +936,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .share-page.embed .share-header { padding: 10px 0 8px; }
 .share-page.embed .share-header h1 { font-size: 16px; }
 .share-page.embed .share-msg { max-width: 92%; padding: 8px 12px; }
+.share-page.embed .share-foot { margin: -4px 0 6px; font-size: 11px; }
 .share-box textarea { min-height: 60px; }
 .share-box .row { flex-wrap: wrap; }
 .share-box label { display: block; margin: 8px 0 3px; font-weight: 600; }

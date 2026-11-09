@@ -216,6 +216,8 @@ class DeploymentShare(Base):
     suggestions: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     input_field: Mapped[str | None] = mapped_column(Text)  # None: picked from the workflow's inputs
     frame_origins: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)  # [] = any site
+    # what the page says to tell visitors they chat with an AI (AI Act Art. 50(1)); '' = the default wording
+    ai_notice: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     updated_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(

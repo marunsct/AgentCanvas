@@ -34,6 +34,9 @@ STRONG_ANSWER_FIELDS = ("answer", "reply", "response")
 ANSWER_FIELDS = ("output", "result", "summary", "text", "message")
 MAX_SUGGESTIONS = 6
 MAX_TRANSCRIPT = 200  # messages kept per saved conversation; older ones drop off
+# the chat page and widget always show an AI notice (AI Act Art. 50(1)): a link may reword it, never remove it
+DEFAULT_AI_NOTICE = "You are chatting with an AI assistant. Answers can be wrong."
+MAX_AI_NOTICE = 200
 
 
 def new_token() -> str:
@@ -62,6 +65,11 @@ def clean_origin(value: str) -> str:
     return origin
 
 
+def ai_notice(share: DeploymentShare | None) -> str:
+    """What the link's chat page says to tell visitors they are chatting with an AI."""
+    return (share.ai_notice if share is not None else "") or DEFAULT_AI_NOTICE
+
+
 def frame_ancestors(share: DeploymentShare | None) -> str:
     """The CSP `frame-ancestors` value for a link's chat page: its allowed sites, `*` when none are set (the
     default), and only the app itself for a link that is unknown or off."""
@@ -80,6 +88,17 @@ class ShareSettingsIn(BaseModel):
     frame_origins: list[str] | None = Field(
         None, description="sites allowed to show the chat page in a frame (the chat widget); empty: any site"
     )  # fmt: skip
+    ai_notice: str | None = Field(
+        None, max_length=MAX_AI_NOTICE,
+        description="tells visitors they are chatting with an AI (always shown; may be reworded, not removed)",
+    )  # fmt: skip
+
+    @field_validator("ai_notice")
+    @classmethod
+    def _notice(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("the AI notice cannot be empty: visitors must be told they are chatting with an AI")
+        return v.strip() if v is not None else None
 
     @field_validator("frame_origins")
     @classmethod
@@ -245,6 +264,8 @@ class ShareService:
             share.input_field = body.input_field or None
         if body.frame_origins is not None:
             share.frame_origins = body.frame_origins
+        if body.ai_notice is not None:
+            share.ai_notice = "" if body.ai_notice == DEFAULT_AI_NOTICE else body.ai_notice
         share.updated_by = user_id
         await self.s.commit()
         await self.s.refresh(share)

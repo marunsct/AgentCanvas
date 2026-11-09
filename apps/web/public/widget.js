@@ -1,6 +1,6 @@
 /* AgentCanvas chat widget (S23). Add it to any page:
  *   <script src="https://YOUR-AGENTCANVAS/widget.js" data-share="sh_..." async></script>
- * Optional attributes: data-label (the button's name, default "Chat"), data-position ("left" or "right"),
+ * Optional attributes: data-label (the button's name, default "AI assistant"), data-position ("left" or "right"),
  * data-color (the button's colour, a CSS colour).
  * It shows a round chat button; clicking it opens the share link's chat page in a small panel (an iframe).
  *
@@ -21,7 +21,8 @@
     return;
   }
   var origin = new URL(script.src, location.href).origin;
-  var label = script.getAttribute("data-label") || "Chat";
+  // the chat page inside always says it is an AI; the button says so too unless the site names it otherwise
+  var label = script.getAttribute("data-label") || "AI assistant";
   var side = script.getAttribute("data-position") === "left" ? "left" : "right";
   var color = script.getAttribute("data-color") || "#6c47ff";
   var SVG = "http://www.w3.org/2000/svg";
@@ -68,6 +69,7 @@
   var button = document.createElement("button");
   button.type = "button";
   button.setAttribute("aria-label", "Open " + label);
+  button.title = label; // what a sighted visitor sees on hover, as a screen reader hears the name
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", panel.id);
   css(button, {

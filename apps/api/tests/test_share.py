@@ -9,7 +9,7 @@ from test_ratelimit import limits  # noqa: F401 - fixture
 from test_versions import HIGH_CASE, new_triage
 
 from agentcanvas.ir.models import Workflow
-from agentcanvas.services.share import InputShape, answer_text, input_shape, text_inputs
+from agentcanvas.services.share import DEFAULT_AI_NOTICE, InputShape, answer_text, input_shape, text_inputs
 
 ADA = "visitor-ada-0123456789"
 BO = "visitor-bo-0123456789ab"
@@ -58,6 +58,7 @@ async def test_enable_share_and_chat(api_client):
     assert info.json() == {
         "title": "Say hi", "greeting": "Tell me your name.", "suggestions": ["Ada", "Bo"],
         "input": {"field": "who", "chat": False}, "attachments": None, "frame_origins": [],
+        "ai_notice": DEFAULT_AI_NOTICE,
     }  # fmt: skip
     # nothing internal: no workflow, deployment, key or version
     assert all(s not in info.text for s in ("wf_", "dep_", "ac_", "ver_", "n_g", "core.set"))
@@ -361,3 +362,25 @@ async def test_a_link_says_which_sites_may_frame_its_chat_page(api_client):
         "frame_origins"
     ] == []
     assert await ancestors(token) == "*"
+
+
+async def test_the_chat_page_always_tells_visitors_they_are_chatting_with_an_ai(api_client):
+    """EU AI Act Art. 50(1): the notice is on every link by default; a builder may reword it but never remove it, and
+    the audit log keeps the wording visitors were shown."""
+    _, dep, _ = await publish(api_client)
+    share = await share_on(api_client, dep)
+    assert share["ai_notice"] == DEFAULT_AI_NOTICE
+    assert (await api_client.get(f"/v1/share/{share['token']}")).json()["ai_notice"] == DEFAULT_AI_NOTICE
+
+    own = "  Sie chatten mit einem KI-Assistenten.  "
+    assert (await share_on(api_client, dep, ai_notice=own))["ai_notice"] == own.strip()
+    assert (await api_client.get(f"/v1/share/{share['token']}")).json()["ai_notice"] == own.strip()
+    assert (await share_on(api_client, dep, title="Hi"))["ai_notice"] == own.strip()  # left out: kept
+    entries = (await api_client.get("/v1/org/audit", params={"action": "update_share"})).json()
+    assert [e["detail"].get("ai_notice") for e in entries][:2] == [None, own.strip()]  # newest first
+
+    for removed in ["", "   ", "x" * 201]:
+        r = await api_client.put(f"/v1/deployments/{dep}/share", json={"ai_notice": removed})
+        assert r.status_code == 422, removed
+    assert (await api_client.get(f"/v1/deployments/{dep}/share")).json()["ai_notice"] == own.strip()
+    assert (await share_on(api_client, dep, ai_notice=DEFAULT_AI_NOTICE))["ai_notice"] == DEFAULT_AI_NOTICE
