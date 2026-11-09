@@ -17,6 +17,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from agentcanvas.db.models import (
     AnnotationItem,
     AnnotationQueue,
+    ApprovalNotice,
     AppUser,
     AuditLog,
     Dataset,
@@ -553,6 +554,8 @@ async def delete_thread_rows(session: AsyncSession, thread_id: str) -> None:
     local edition) does not enforce the ON DELETE CASCADE the schema declares. What its runs spent is kept first
     (`archive_spend`): budgets and the spending report still count it."""
     await archive_spend(session, thread_id)
+    asked = select(InterruptTask.id).where(InterruptTask.thread_id == thread_id)
+    await session.execute(delete(ApprovalNotice).where(ApprovalNotice.interrupt_id.in_(asked)))
     await session.execute(delete(InterruptTask).where(InterruptTask.thread_id == thread_id))
     await session.execute(delete(RunSearch).where(RunSearch.thread_id == thread_id))
     await session.execute(delete(Run).where(Run.thread_id == thread_id))

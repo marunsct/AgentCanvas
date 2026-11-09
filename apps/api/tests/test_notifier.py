@@ -274,3 +274,15 @@ def test_escalating_after_hours_needs_a_role():
     assert "E004" in {d.code for d in validate(_wf("v", [ask], ["out", "ok"]), default_registry())}
     ask["config"]["approvers"]["escalate_to"] = "admin"
     assert "E004" not in {d.code for d in validate(_wf("v", [ask], ["out", "ok"]), default_registry())}
+
+
+async def test_deleting_a_conversation_deletes_its_notices(app, triage_api):  # noqa: F811
+    """SQLite does not enforce ON DELETE CASCADE: the outbox rows go with the conversation explicitly."""
+    api, wf = triage_api, triage_api.wf_id
+    await _configure(api, slack_url=SLACK)
+    await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"]})
+    await _waiting(api, wf, "th_deleted")
+    assert await app.state.notifier.announce(datetime.now(UTC)) == 1
+    assert (await api.delete("/v1/threads/th_deleted")).status_code == 204
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.scalars(select(ApprovalNotice))).all() == []
