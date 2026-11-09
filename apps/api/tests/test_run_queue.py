@@ -559,3 +559,31 @@ async def test_operators_can_see_the_queue(app, api_client, limited):
     rows = {r["env"]: r["value"] for r in (await api_client.get("/v1/server/settings")).json()}
     assert rows["AGENTCANVAS_MAX_CONCURRENT_RUNS"] == "no limit"  # the server's; the organisation set 1
     assert rows["AGENTCANVAS_MAX_QUEUE_WAIT_S"] == "3600 seconds"
+
+
+async def test_a_run_given_its_slot_as_the_server_drains_is_still_handed_over_with_its_input(app, api_client, limited):
+    """The pass gave the run its slot, and the drain stopped it before it could begin: no checkpoint holds its input,
+    so it goes back to being a waiting run with its input."""
+    from sqlalchemy import update
+
+    runner = app.state.runner
+    blocker = await _start_slow(app, api_client, limited)
+    second, thread_id = await _on_thread(api_client, limited, None, 0.01)
+    assert await _queued(app, second)
+    waiter = runner.admission._waiting["org_default"][second]
+    async with app.state.db.sessionmaker() as s:  # what a pass does when it gives the slot
+        await s.execute(update(Run).where(Run.id == second).values(queued=False, pending=None))
+        await s.commit()
+    waiter.admitted.set_result(None)
+    await runner.drain(0.05)  # stops it before its task resumes
+    row = await run_row(app, second)
+    assert row.handover is True and row.queued is True and row.pending["input"] == {"seconds": 0.01}
+    runner.draining, runner.admission.closed = False, False  # the next server
+    resumed = await app.state.handover.tick()
+    blocker_thread = (await run_row(app, blocker)).thread_id
+    for run_id in resumed:
+        if runner.handles[run_id].thread_id == blocker_thread:
+            await runner.cancel(run_id)
+    [again] = [r for r in resumed if runner.handles[r].thread_id == thread_id]
+    h = await asyncio.wait_for(runner.wait(again), 10)
+    assert h.status == "success" and any(e["type"] == "STEP_STARTED" for e in h.events)

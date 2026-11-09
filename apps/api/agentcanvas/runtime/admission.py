@@ -132,10 +132,9 @@ class Admission:
             return
         if caller is not None and await self._holds_slot(caller, org_id):
             return
+        kept = pending() if pending else None
         async with self.db.sessionmaker() as s:
-            await s.execute(
-                update(Run).where(Run.id == run_id).values(queued=True, pending=pending() if pending else None)
-            )
+            await s.execute(update(Run).where(Run.id == run_id).values(queued=True, pending=kept))
             await s.commit()
         w = _Waiter(run_id, project_id, on_queued)
         self._waiting.setdefault(org_id, {})[run_id] = w
@@ -145,6 +144,10 @@ class Admission:
             async with asyncio.timeout(self.max_wait_s or None):
                 await asyncio.shield(w.admitted)  # a stop cancels the wait, never the pass's future
             outcome = "slot"
+        except asyncio.CancelledError:
+            if w.admitted.done():  # given its slot as it was stopped, it never began: still a waiting run
+                await self._requeue(run_id, kept)
+            raise
         except TimeoutError:
             outcome = "gave_up"
             await self._leave(run_id)
@@ -164,6 +167,14 @@ class Admission:
         async with self.db.sessionmaker() as s:
             found = await s.scalar(self._in_org(org_id).where(Run.id == run_id, Run.queued.is_(False), self._alive()))
         return found is not None
+
+    async def _requeue(self, run_id: str, pending: dict[str, Any] | None) -> None:
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(update(Run).where(Run.id == run_id).values(queued=True, pending=pending))
+                await s.commit()
+        except Exception:
+            log.exception("admission.requeue_failed", run_id=run_id)
 
     async def _leave(self, run_id: str) -> None:
         async with self.db.sessionmaker() as s:
