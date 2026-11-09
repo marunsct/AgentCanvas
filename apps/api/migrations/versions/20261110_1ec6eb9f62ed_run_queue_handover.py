@@ -3,7 +3,7 @@
 `pending` keeps a waiting run's start arguments: no checkpoint holds its input before it takes a slot, so a server
 that stops hands it over with them. `queue_key` keeps a handed-over run's place in the queue (the id of the run it
 continues). `event_depth` keeps how many events led to an event handler's run, which a hand-over continues at the
-same depth.
+same depth. `handover_attempts` counts the hand-overs that failed for a passing reason; it gives up after a few.
 
 Revision ID: 1ec6eb9f62ed
 Revises: b8e2f6a0c4d7
@@ -31,10 +31,12 @@ def upgrade() -> None:
         batch.add_column(sa.Column("pending", JSON, nullable=True))
         batch.add_column(sa.Column("queue_key", sa.Text(), nullable=True))
         batch.add_column(sa.Column("event_depth", sa.SmallInteger(), server_default=sa.text("0"), nullable=False))
+        batch.add_column(sa.Column("handover_attempts", sa.SmallInteger(), server_default=sa.text("0"), nullable=False))
 
 
 def downgrade() -> None:
     with op.batch_alter_table("run") as batch:
+        batch.drop_column("handover_attempts")
         batch.drop_column("event_depth")
         batch.drop_column("queue_key")
         batch.drop_column("pending")

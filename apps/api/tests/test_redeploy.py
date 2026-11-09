@@ -241,3 +241,62 @@ async def test_a_continued_run_keeps_its_origin_and_event_depth(app, api_client)
     h = await app.state.runner.wait(resumed)
     assert h.origin == "event" and h.event_depth == 2 and h.handed_over and h.thread_id == thread_id
     assert (await run_row(app, resumed)).origin == "event"
+
+
+async def test_a_hand_over_that_fails_is_tried_again(app, api_client):
+    """A passing failure (the database did not answer) leaves the run to the next tick, not 'interrupted' for good
+    with a message saying it continues."""
+    thread_id = await _lost(app, api_client)
+    job, target, calls = app.state.handover, app.state.handover.target, []
+
+    async def flaky(s, thread_id, version_id):
+        calls.append(thread_id)
+        if len(calls) == 1:
+            raise ConnectionError("database restarting")
+        return await target(s, thread_id, version_id)
+
+    job.target = flaky
+    assert await job.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.handover is True and lost.handover_attempts == 1
+    [resumed] = await job.tick()
+    assert (await app.state.runner.wait(resumed)).status == "success"
+    assert (await api_client.get(f"/v1/threads/{thread_id}")).json()["status"] == "idle"
+
+
+async def test_a_hand_over_that_cannot_work_ends_the_run_with_the_reason(app, api_client):
+    from agentcanvas.errors import WorkflowHasErrors
+
+    thread_id = await _lost(app, api_client)
+    job = app.state.handover
+
+    async def broken(s, thread_id, version_id):
+        raise WorkflowHasErrors("workflow has 1 error(s); fix them before running")
+
+    job.target = broken
+    assert await job.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.status == "error" and lost.handover is False
+    assert lost.error == (
+        "its server stopped and it could not continue: workflow has 1 error(s); fix them before running; "
+        "start the run again"
+    )
+    assert (await api_client.get(f"/v1/threads/{thread_id}")).json()["status"] == "error"
+
+
+async def test_a_hand_over_that_keeps_failing_ends_after_a_few_tries(app, api_client):
+    from agentcanvas.services.redeploy import HANDOVER_ATTEMPTS
+
+    await _lost(app, api_client)
+    job = app.state.handover
+
+    async def down(s, thread_id, version_id):
+        raise ConnectionError("database restarting")
+
+    job.target = down
+    for _ in range(HANDOVER_ATTEMPTS):
+        assert await job.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.status == "error" and lost.handover is False
+    assert "ConnectionError (see the server log)" in (lost.error or "")
+    assert await job.tick() == []

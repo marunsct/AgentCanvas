@@ -31,7 +31,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas import observability
 from agentcanvas.adapters.spi import supports
 from agentcanvas.db.models import InterruptTask, Run, Thread, WorkflowVersion
-from agentcanvas.errors import Conflict, Unavailable
+from agentcanvas.errors import (
+    Conflict,
+    DomainError,
+    Forbidden,
+    InvalidInput,
+    NotFound,
+    PreconditionRequired,
+    Unauthorized,
+    Unavailable,
+    WorkflowHasErrors,
+)
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
@@ -45,6 +55,9 @@ BATCH = 100
 ORPHANED = "its server stopped unexpectedly; it continues automatically"
 NO_STATE = "its server stopped, and this framework keeps no saved state to continue from; start the run again"
 NO_INPUT = "its server stopped while it waited for a run slot, and its input was not kept; send it again"
+HANDOVER_ATTEMPTS = 5  # a hand-over that fails for a passing reason is tried on this many ticks, then the run ends
+# failures that trying again cannot fix: the workflow, deployment or thread is gone or broken, or a rule refuses it
+LASTING = (NotFound, WorkflowHasErrors, InvalidInput, Forbidden, Unauthorized, PreconditionRequired)
 # (session, thread_id, version_id of the handed-over run) -> (workflow, Runner.start kwargs)
 Target = Callable[[AsyncSession, str, str | None], Awaitable[tuple[Workflow, dict[str, Any]]]]
 
@@ -128,6 +141,25 @@ class HandoverJob:
             await s.execute(update(Thread).where(Thread.id == thread_id).values(status=thread_status))
             await s.commit()
         log.warning("handover.cannot_continue", run_id=run_id, thread_id=thread_id)
+
+    async def _failed(self, run_id: str, thread_id: str, exc: Exception) -> None:
+        """Continuing the run failed: a passing failure leaves it to a later tick (a few times), any other ends it
+        with the reason, so it never says it continues automatically when it will not."""
+        if not isinstance(exc, LASTING):
+            async with self.db.sessionmaker() as s:
+                res = await s.execute(
+                    update(Run)
+                    .where(Run.id == run_id, Run.handover_attempts < HANDOVER_ATTEMPTS - 1)
+                    .values(handover=True, handover_attempts=Run.handover_attempts + 1)
+                )
+                await s.commit()
+            if res.rowcount == 1:  # type: ignore[attr-defined]
+                return
+        # a database or network error's text can hold the run's data: it stays in the server log
+        reason = str(exc) if isinstance(exc, DomainError) else f"{type(exc).__name__} (see the server log)"
+        await self._fail(
+            run_id, thread_id, f"its server stopped and it could not continue: {reason}; start the run again"
+        )
 
     async def _again(self, pending: dict[str, Any], thread_id: str) -> dict[str, Any]:
         """Runner.start arguments that start a waiting run again as it was asked. The Inbox items it answered go
@@ -241,8 +273,9 @@ class HandoverJob:
             except Unavailable:  # this instance began draining meanwhile: leave it to the next one
                 await self._mark(run_id, True)
                 continue
-            except Exception:
+            except Exception as exc:
                 log.exception("handover.failed", run_id=run_id, thread_id=thread_id)
+                await self._failed(run_id, thread_id, exc)
                 continue
             log.info("handover.resumed", run_id=run_id, thread_id=thread_id, new_run_id=h.run_id)
             started.append(h.run_id)
