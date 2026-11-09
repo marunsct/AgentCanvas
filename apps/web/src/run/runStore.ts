@@ -78,6 +78,9 @@ if (typeof document !== "undefined") {
   });
 }
 
+/** The warnings without the "waiting for a free run slot" line, which is current only until the run starts or ends. */
+const unqueued = (w: string[]) => (w.some((x) => x.startsWith(QUEUED)) ? w.filter((x) => !x.startsWith(QUEUED)) : w);
+
 /** Pure reducer (unit-tested): how each canonical event changes the canvas. */
 export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
   switch (ev.type) {
@@ -86,7 +89,7 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
         breakpoint: false, finalOutput: null, metrics: {}, usage: null, durationMs: null, route: [] };
     case "STEP_STARTED":
       return {
-        warnings: s.warnings.some((w) => w.startsWith(QUEUED)) ? s.warnings.filter((w) => !w.startsWith(QUEUED)) : s.warnings,
+        warnings: unqueued(s.warnings),
         status: { ...s.status, [ev.canvas_node_id]: "running" },
         route: s.route.includes(ev.canvas_node_id) ? s.route : [...s.route, ev.canvas_node_id],
       };
@@ -143,10 +146,11 @@ export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {
       }
       return {};
     case "RUN_FINISHED":
-      return { running: false, finalOutput: ev.output ?? null, breakpoint: Boolean(ev.breakpoint), next: ev.next ?? [],
+      // a queued run can end before its first step (stopped while it waited, over budget at admission)
+      return { running: false, warnings: unqueued(s.warnings), finalOutput: ev.output ?? null, breakpoint: Boolean(ev.breakpoint), next: ev.next ?? [],
         runSeq: s.runSeq + 1, usage: ev.usage ?? null, durationMs: ev.duration_ms ?? null, traced: Boolean(ev.traced) };
     case "RUN_ERROR":
-      return { running: false, error: ev.message, runSeq: s.runSeq + 1, usage: ev.usage ?? s.usage };
+      return { running: false, warnings: unqueued(s.warnings), error: ev.message, runSeq: s.runSeq + 1, usage: ev.usage ?? s.usage };
     default:
       return {};
   }
