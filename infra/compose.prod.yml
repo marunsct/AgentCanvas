@@ -20,6 +20,8 @@ x-api: &api
     # the API connects as an ordinary role, so row-level security applies (the owner only runs migrations)
     DATABASE_URL: postgresql://agentcanvas_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}@postgres:5432/agentcanvas
     AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
+    # dev = one company's own server (builders may reach its private network); hosted = shared by organisations
+    # that do not trust each other (public addresses only). See docs/user-guide/deploy.md, "Essential settings".
     AGENTCANVAS_EDITION: ${AGENTCANVAS_EDITION:-dev}
     AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:?set AGENTCANVAS_SECRET_KEY (64+ random characters)}
     LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:?set LANGGRAPH_AES_KEY (16, 24 or 32 characters) - checkpoints are encrypted at rest}

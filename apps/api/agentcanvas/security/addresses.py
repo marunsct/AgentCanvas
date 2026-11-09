@@ -13,6 +13,7 @@ import ipaddress
 IP = ipaddress.IPv4Address | ipaddress.IPv6Address
 NAT64 = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"))
 _COMPATIBLE = ipaddress.ip_network("::/96")
+METADATA = (ipaddress.ip_network("fd00:ec2::254/128"),)  # AWS's IPv6 metadata address (IPv4's is link-local)
 
 
 def parse(address: str) -> IP:
@@ -52,3 +53,11 @@ def is_public(address: str | IP) -> bool:
         if not candidate.is_global or candidate.is_multicast:
             return False
     return True
+
+
+def is_metadata(address: str | IP) -> bool:
+    """Link-local (cloud metadata services: 169.254.169.254), unspecified or a metadata address, also inside an IPv6
+    one: never reachable, even where private addresses are allowed. From a server it hands out the node's cloud
+    credentials."""
+    ip = effective(address)
+    return ip.is_link_local or ip.is_unspecified or any(ip in net for net in METADATA)

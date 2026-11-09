@@ -58,7 +58,8 @@ which shows what will be sent on an approval card; a rejection skips the agent.
   `inprocess`, see [deploy.md](deploy.md)).
 - **Remote agents (A2A)**: when the remote agent asks for more information (`input-required`), the run pauses and
   the question appears in the Inbox; the answer goes back to the same task. Addresses on private networks are
-  refused unless you turn on **Allow private network**. Put keys in **Headers** as secrets. What the remote agent
+  refused unless you turn on **Allow private network**; a link-local or cloud metadata address (`169.254.169.254`)
+  is refused even then, for remote agents, web API tools and app connectors alike. Put keys in **Headers** as secrets. What the remote agent
   said so far is kept in the database, so the answer can reach any server, after a restart too. (An exported project
   keeps it in its own process: if that restarts while a remote agent waits, the step stops with a message instead of
   sending the first message again; start the run again.)

@@ -36,7 +36,7 @@ not receive file fields yet.
 
 | Block | What it does |
 |---|---|
-| **Web API tool** *(add-on, `tool.http`)* | Lets an agent call a web service (an HTTP API). The URL is a template over the tool's inputs, e.g. `https://api.example.com/orders/{{ args.order_id }}`. Private and local addresses are refused unless the tool allows private networks. |
+| **Web API tool** *(add-on, `tool.http`)* | Lets an agent call a web service (an HTTP API). The URL is a template over the tool's inputs, e.g. `https://api.example.com/orders/{{ args.order_id }}`. Private and local addresses are refused unless the tool allows private networks; a link-local or cloud metadata address (`169.254.169.254`) is never reachable. |
 | **App connector (MCP)** *(add-on, `mcp.server`)* | All tools of a [Model Context Protocol](https://modelcontextprotocol.io) server. **Browse tools** lists them and flags which ones change things, so you can pick and gate them. |
 | **Python tool** *(add-on, `tool.python`)* | A LangChain `@tool` function from the workspace's `tools/` folder. |
 | **Memory tools** *(add-on, `tool.memory`)* | Gives an agent `search_memory` and `save_memory` tools for one memory space. |

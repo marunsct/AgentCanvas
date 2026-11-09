@@ -269,7 +269,8 @@ async def test_a2a_connects_to_the_address_it_checked(monkeypatch):
     assert t.url == "https://93.184.216.34:443/a2a?x=1"  # a second DNS answer cannot redirect the request
     assert t.headers == {"Authorization": "k", "Host": "agents.example.com"}
     assert t.extensions == {"sni_hostname": "agents.example.com"}
-    assert (await interop._pinned("http://10.0.0.5/a2a", {}, private_ok=True)).url == "http://10.0.0.5/a2a"
+    # the company's network, with private addresses allowed: pinned too (never the cloud metadata address)
+    assert (await interop._pinned("http://10.0.0.5/a2a", {}, private_ok=True)).url == "http://10.0.0.5:80/a2a"
 
 
 async def test_a_field_called_input_does_not_clash_with_the_agent_input(ws):

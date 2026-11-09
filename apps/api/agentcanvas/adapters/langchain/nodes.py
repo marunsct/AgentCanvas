@@ -673,9 +673,10 @@ class Resources:
             target = self._overrides.get(name)
             if target is None:
                 target = mcp_target(config, self._resolve, public_only=self.public_only)
-                if self.public_only and config.get("transport", "http") != "stdio":
-                    parts = urlsplit(config["url"])  # e.g. never the cloud metadata address
-                    await _public_address(parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80))
+                if config.get("transport", "http") != "stdio" and MCP_CLIENT_FACTORY is None:  # tests set one
+                    parts = urlsplit(config["url"])  # never the cloud metadata address; hosted: public ones only
+                    port = parts.port or (443 if parts.scheme == "https" else 80)
+                    await _reachable_address(parts.hostname or "", port, private_ok=not self.public_only)
             tools = await mcp_tools(target)
             wanted = config.get("tool_filter") or []
             self._mcp[key] = [t for t in tools if not wanted or t.name in wanted]
@@ -871,23 +872,41 @@ def _host_allowed(host: str, allowed: Sequence[str]) -> bool:
     return any(host == d.lower() or host.endswith("." + d.lower()) for d in allowed)
 
 
-async def _public_address(host: str, port: int) -> str:
-    """One address `host` resolves to, refusing hosts that resolve to a private, loopback, link-local (cloud
-    metadata, 169.254.169.254), reserved or multicast address (S7). The caller connects to this very address, so
-    a second DNS answer cannot point the request elsewhere (rebinding)."""
+async def _resolve(host: str, port: int) -> list[str]:
     import asyncio
     import socket
-
-    from agentcanvas.security.addresses import is_public
 
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError as exc:
         raise ToolException(f"cannot resolve '{host}': {exc}") from None
-    addresses = [str(info[4][0]) for info in infos]
+    return [str(info[4][0]) for info in infos]
+
+
+async def _public_address(host: str, port: int) -> str:
+    """One address `host` resolves to, refusing hosts that resolve to a private, loopback, link-local (cloud
+    metadata, 169.254.169.254), reserved or multicast address (S7). The caller connects to this very address, so
+    a second DNS answer cannot point the request elsewhere (rebinding)."""
+    from agentcanvas.security.addresses import is_public
+
+    addresses = await _resolve(host, port)
     for a in addresses:
         if not is_public(a):  # NAT64 and other IPv6 forms of a private IPv4 address too (RT-15)
             raise ToolException(f"'{host}' resolves to a private or internal address ({a}); refused")
+    return addresses[0]
+
+
+async def _reachable_address(host: str, port: int, private_ok: bool) -> str:
+    """`_public_address`, or with `private_ok` (a step that may reach the company's network) any address but a
+    link-local or cloud metadata one: from the server that one hands out the node's cloud credentials."""
+    if not private_ok:
+        return await _public_address(host, port)
+    from agentcanvas.security.addresses import is_metadata
+
+    addresses = await _resolve(host, port)
+    for a in addresses:
+        if is_metadata(a):
+            raise ToolException(f"'{host}' resolves to a link-local or cloud metadata address ({a}); refused")
     return addresses[0]
 
 
@@ -912,9 +931,9 @@ def http_tool(
             raise ToolException(f"'{parts.hostname or url}' is not an allowed domain for {name}")
         headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
         extensions: dict[str, Any] = {}
-        if transport is None and not config.get("allow_private_network"):  # tests inject a transport
+        if transport is None:  # tests inject a transport
             port = parts.port or (443 if parts.scheme == "https" else 80)
-            ip = await _public_address(parts.hostname, port)
+            ip = await _reachable_address(parts.hostname, port, bool(config.get("allow_private_network")))
             headers.setdefault("Host", parts.netloc.rsplit("@", 1)[-1])
             extensions["sni_hostname"] = parts.hostname  # TLS still checks the certificate of the name
             url = parts._replace(netloc=f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}").geturl()

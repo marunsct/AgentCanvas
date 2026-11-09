@@ -25,6 +25,10 @@ secrets:
 
 config:
   env: prod                       # AGENTCANVAS_ENV; staging and prod refuse AUTH_MODE=dev
+  # AGENTCANVAS_EDITION: dev = one company's own server, whose builders may reach its private network (a step with
+  # "allow private network"); hosted = shared by organisations that do not trust each other: every outbound
+  # connection goes to public addresses only, no host code or local servers. Set hosted for any server shared that way.
+  edition: dev
   # oidc = any OpenID Connect provider; matura = sign-in, organisations, members and roles from Matura (set
   # config.oidc.issuer to Matura's realm and audience/clientId to "agentcanvas"; put AGENTCANVAS_MATURA_CLIENT_SECRET
   # and AGENTCANVAS_MATURA_WEBHOOK_SECRET in the Secret, and connect the API as an ordinary database role)
