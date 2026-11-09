@@ -484,3 +484,15 @@ def test_every_pod_runs_without_a_service_account_token_and_on_a_read_only_root(
     assert pod_spec(docs, "-api")["securityContext"]["fsGroupChangePolicy"] == "OnRootMismatch"
     off = render("api.readOnlyRootFilesystem=false")
     assert pod_spec(off, "-api")["containers"][0]["securityContext"]["readOnlyRootFilesystem"] is False
+
+
+def test_the_web_bundle_ships_its_licence_notices_and_each_image_gets_an_sbom():
+    """The minified bundle dropped every licence comment, so React, xyflow and CodeMirror (MIT) and elkjs (EPL-2.0)
+    shipped without the notices their licences require, and no image had a bill of materials for a customer's review."""
+    vite = (ROOT / "apps" / "web" / "vite.config.ts").read_text()
+    assert 'license: { fileName: "third-party-licenses.txt" }' in vite
+    images = (ROOT / "scripts" / "ci-images.sh").read_text()
+    assert "/third-party-licenses.txt" in images  # probed on the running web image
+    assert "--format cyclonedx" in images and ".cdx.json" in images
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "--format cyclonedx" in workflow and "/third-party-licenses.txt" in workflow

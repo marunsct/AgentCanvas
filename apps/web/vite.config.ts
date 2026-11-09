@@ -31,8 +31,12 @@ const securityHeaders: Plugin = {
 
 export default defineConfig({
   plugins: [react(), securityHeaders],
-  // pages are lazy chunks; the only chunk over 500 kB is ELK (~1.4 MB), fetched on the first "Tidy"
-  build: { chunkSizeWarningLimit: 1500 },
+  build: {
+    // pages are lazy chunks; the only chunk over 500 kB is ELK (~1.4 MB), fetched on the first "Tidy"
+    chunkSizeWarningLimit: 1500,
+    // minifying drops the licence comments: every bundled package's licence goes in this file, served beside the app
+    license: { fileName: "third-party-licenses.txt" },
+  },
   server: { proxy: api },
   preview: { proxy: api },
   test: { include: ["src/**/*.test.{ts,tsx}"] },

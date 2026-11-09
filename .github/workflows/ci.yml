@@ -199,6 +199,17 @@ jobs:
               "$TRIVY_IMAGE" image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
               --ignorefile /.trivyignore --exit-code 1 "$image"
           done
+      - name: A bill of materials for each image (CycloneDX)
+        env:
+          TRIVY_IMAGE: aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
+        run: |
+          mkdir -p sbom
+          for image in agentcanvas-api agentcanvas-web; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image --quiet \
+              --format cyclonedx "$image:ci" > "sbom/$image.cdx.json"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with: { name: sbom, path: sbom/ }
       - name: Start the production compose stack
         run: docker compose -f infra/compose.prod.yml up -d --wait --wait-timeout 180
       - name: Check it answers through nginx
@@ -216,6 +227,7 @@ jobs:
           test -z "$(curl -fsSI http://localhost:8080/s/sh_ci | grep -i x-frame-options)"
           curl -fsS http://localhost:8080/s/sh_ci | grep -qi "<!doctype html>"
           curl -fsSI http://localhost:8080/widget.js | grep -qi "content-type: application/javascript"
+          curl -fsS http://localhost:8080/third-party-licenses.txt | grep -q '^## react - '
           curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
           docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001
