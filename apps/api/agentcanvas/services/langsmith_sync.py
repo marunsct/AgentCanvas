@@ -1,11 +1,12 @@
 """LangSmith dataset sync (S13, FR-EVAL-02): push a dataset version to LangSmith, pull one back. Explicit only.
 
-The key is the project's `LANGSMITH_API_KEY` secret, else the server's (`LANGSMITH_API_KEY`); `LANGSMITH_ENDPOINT`
-picks a self-hosted LangSmith. A dataset is linked to one LangSmith dataset the first time it is pushed (created,
-named after the workflow and dataset). A push makes the LangSmith dataset hold exactly that version's examples
-(LangSmith keeps its own history) and tags it `agentcanvas-v<N>`; a pull turns the LangSmith dataset's current
-examples into a new version here. Inputs, reference outputs, splits and metadata travel; an example's run context
-and expected tool calls ride in its metadata (`agentcanvas_context`, `agentcanvas_trajectory`).
+The key is the project's `LANGSMITH_API_KEY` secret, else the server's (`LANGSMITH_API_KEY`), except in the hosted
+edition: there the server's key is the operator's (the LangSmith sandbox reads it too), not a tenant's to push data
+with. `LANGSMITH_ENDPOINT` picks a self-hosted LangSmith. A dataset is linked to one LangSmith dataset the first time
+it is pushed (created, named after the workflow and dataset). A push makes the LangSmith dataset hold exactly that
+version's examples (LangSmith keeps its own history) and tags it `agentcanvas-v<N>`; a pull turns the LangSmith
+dataset's current examples into a new version here. Inputs, reference outputs, splits and metadata travel; an
+example's run context and expected tool calls ride in its metadata (`agentcanvas_context`, `agentcanvas_trajectory`).
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ CONTEXT, TRAJECTORY, ORIGIN = "agentcanvas_context", "agentcanvas_trajectory", "
 INTERNAL = {CONTEXT, TRAJECTORY, ORIGIN, "dataset_split"}
 
 
-def api_key(project_secrets: dict[str, str]) -> str | None:
-    return project_secrets.get(KEY) or os.getenv(KEY) or None
+def api_key(project_secrets: dict[str, str], server_key: bool = True) -> str | None:
+    return project_secrets.get(KEY) or (os.getenv(KEY) if server_key else None) or None
 
 
 def make_client(key: str) -> Any:
@@ -34,10 +35,11 @@ def make_client(key: str) -> Any:
     return langsmith.Client(api_key=key, api_url=os.getenv("LANGSMITH_ENDPOINT") or None)
 
 
-def client_for(project_secrets: dict[str, str]) -> Any:
-    key = api_key(project_secrets)
+def client_for(project_secrets: dict[str, str], server_key: bool = True) -> Any:
+    key = api_key(project_secrets, server_key)
     if key is None:
-        raise InvalidInput(f"LangSmith is not configured: set the project secret {KEY} (or the server's)")
+        either = " (or the server's)" if server_key else ""
+        raise InvalidInput(f"LangSmith is not configured: set the project secret {KEY}{either}")
     return make_client(key)
 
 

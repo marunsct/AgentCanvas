@@ -21,7 +21,8 @@ dataset**, then fill it by:
 Every change creates a new **version**, so an experiment always knows exactly which examples it used. The version
 picker lists the newest 100 versions (`GET /v1/datasets/{id}/versions` pages further with `?before=<number>`). Examples
 can carry a *split* (e.g. `train`, `test`) to evaluate a subset. Datasets can be pushed to or pulled from
-LangSmith when you ask (project secret or server `LANGSMITH_API_KEY`).
+LangSmith when you ask (project secret or server `LANGSMITH_API_KEY`; the hosted service uses the project secret
+only).
 
 ## Evaluators
 

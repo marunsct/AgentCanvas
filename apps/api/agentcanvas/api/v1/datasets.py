@@ -242,7 +242,8 @@ async def _langsmith(request: Request, s: DatasetService, ds_id: str) -> tuple[D
     row = await s.s.get(WorkflowRow, ds.workflow_id)
     project_id = row.project_id if row else ""
     secrets = request.app.state.projects.secrets.get(project_id, {})
-    return ds, langsmith_sync.client_for(secrets), row.name if row else ds.workflow_id
+    server_key = request.app.state.settings.edition != "hosted"  # the operator's key is not a tenant's
+    return ds, langsmith_sync.client_for(secrets, server_key), row.name if row else ds.workflow_id
 
 
 @router.post("/datasets/{ds_id}/langsmith/push", response_model=DatasetOut)

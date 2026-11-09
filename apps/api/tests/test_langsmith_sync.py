@@ -113,3 +113,16 @@ async def test_sync_needs_a_key(api_client, monkeypatch):
     ds = await new_dataset(api_client, wf)
     r = await api_client.post(f"/v1/datasets/{ds['id']}/langsmith/push", json={})
     assert r.status_code == 422 and "LANGSMITH_API_KEY" in r.json()["detail"]
+
+
+async def test_the_hosted_edition_does_not_lend_the_servers_key(app, api_client, monkeypatch):
+    """The operator's LANGSMITH_API_KEY (which the LangSmith sandbox also reads) is not a tenant's: in the hosted
+    edition a project syncs with its own key only, so no tenant pushes data into the operator's LangSmith."""
+    monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_operator")
+    monkeypatch.setattr(langsmith_sync, "make_client", lambda key: pytest.fail("the server's key was used"))
+    monkeypatch.setattr(app.state.settings, "edition", "hosted")
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf)
+    r = await api_client.post(f"/v1/datasets/{ds['id']}/langsmith/push", json={})
+    assert r.status_code == 422 and "project secret" in r.json()["detail"], r.text
+    assert "server" not in r.json()["detail"]
