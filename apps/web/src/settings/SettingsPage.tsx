@@ -18,6 +18,7 @@ import { NotificationSettings } from "./NotificationSettings";
 import { OrgLimits } from "./OrgLimits";
 import { OrgSecurity } from "./OrgSecurity";
 import { OrgSettings } from "./OrgSettings";
+import { MyData, OrgData } from "./OrgData";
 import { StopRuns } from "./StopRuns";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { ProjectSettings } from "./ProjectSettings";
@@ -42,7 +43,7 @@ export const SECTIONS: Section[] = [
   { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
   { id: "knowledge", group: "Project", label: "Knowledge", render: () => <KnowledgeSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
-  { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /><StopRuns /></> },
+  { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /><StopRuns /><OrgData /></> },
   { id: "security", group: "Organisation", label: "Security", render: () => <OrgSecurity /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },
@@ -54,6 +55,7 @@ export const SECTIONS: Section[] = [
   { id: "shortcuts", group: "You", label: "Keyboard shortcuts", render: () => <Shortcuts /> },
   { id: "connections", group: "You", label: "Connections", render: () => <ConnectionsSettings /> },
   { id: "tokens", group: "You", label: "API tokens", render: () => <ApiTokens /> },
+  { id: "your-data", group: "You", label: "Your data", render: () => <MyData /> },
   { id: "about", group: "You", label: "About", render: () => <About /> },
 ];
 
