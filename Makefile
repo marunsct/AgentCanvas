@@ -86,11 +86,15 @@ schema:     ## export IR JSON Schema + node manifests to packages/ir-schema
 migrate:    ## apply database migrations (DATABASE_URL)
 	cd apps/api && uv run alembic upgrade head
 
+# what `make schema` and `pnpm gen` write from a source (tests/test_generated_copies.py compares two of them too)
+GENERATED := packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts \
+  apps/web/src/help/diagnostics.generated.json apps/api/agentcanvas/copilot/knowledge/user-guide
 check:      ## every CI gate except e2e and the docs build (lint, formats, types, contracts, schema/type drift, tests, build)
 	$(MAKE) lint
 	$(MAKE) schema
 	cd apps/web && pnpm gen
-	git diff --exit-code -- packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts
+	git diff --exit-code -- $(GENERATED)
+	@test -z "$$(git status --porcelain -- $(GENERATED))" || { git status --short -- $(GENERATED); echo "generated but not committed"; exit 1; }
 	$(MAKE) test
 	cd apps/web && pnpm build
 
