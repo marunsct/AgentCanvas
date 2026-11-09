@@ -314,3 +314,10 @@ async def test_finished_runs_are_forgotten_by_the_size_of_their_events_not_only_
     assert 1 <= len(kept) < len(handles), (len(kept), [h.size for h in handles])
     assert handles[-1].run_id in runner.handles and handles[0].run_id not in runner.handles
     assert sum(h.size for h in kept) <= 3000 + max(h.size for h in kept)
+
+
+def test_the_api_role_carries_all_tenants_mode_itself():
+    """A connection pooler drops the startup option that set it; the role's own default survives any pooler."""
+    from agentcanvas.db.app_role import statements
+
+    assert "ALTER ROLE {role} SET agentcanvas.all_tenants = 'on'" in statements("agentcanvas_app")

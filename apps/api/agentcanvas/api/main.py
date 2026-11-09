@@ -35,7 +35,7 @@ from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
-from agentcanvas.db.rls import bypasses_policies
+from agentcanvas.db.rls import bypasses_policies, sees_no_rows
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
@@ -144,6 +144,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await db.migrate()
         else:
             await db.check_migrated()  # migrated by someone else: refuse a database they have not reached yet
+        if await sees_no_rows(db.engine):  # otherwise every page is empty and cron, hand-over and retention idle
+            raise RuntimeError(
+                "the API's database connections do not start with agentcanvas.all_tenants=on, so row-level security "
+                "hides every row: a connection pooler dropped the startup option. Run `python -m "
+                "agentcanvas.db.app_role` as the owner (it gives the API's role that default), or connect directly"
+            )
         if settings.seed_dev_data:
             async with db.sessionmaker() as s:
                 await seed_dev(s)

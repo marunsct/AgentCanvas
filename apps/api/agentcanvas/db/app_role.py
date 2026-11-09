@@ -16,7 +16,14 @@ import re
 import sys
 from typing import LiteralString, cast
 
+from agentcanvas.db.rls import ALL_TENANTS
+
 NAME = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+NO_DEFAULT = (
+    f"app_role: only a superuser may give '{{role}}' the default {ALL_TENANTS}=on. Its connections still get it as a "
+    "startup option, which a connection pooler such as PgBouncer refuses or drops: have a superuser run "
+    f"ALTER ROLE {{role}} SET {ALL_TENANTS} = 'on', or see the operations guide's PgBouncer advice"
+)
 
 
 def statements(role: str) -> list[str]:
@@ -31,6 +38,9 @@ def statements(role: str) -> list[str]:
         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {role}",
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {role}",
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO {role}",
+        # every connection starts in all-tenants mode (db/rls.py) even when a pooler such as PgBouncer refuses or
+        # drops the startup option that also asks for it; a Matura request narrows its own transactions
+        f"ALTER ROLE {{role}} SET {ALL_TENANTS} = 'on'",
     ]
 
 
@@ -48,9 +58,14 @@ def ensure(url: str, role: str, password: str) -> None:
             if exists and query.startswith("CREATE ROLE"):
                 query = query.replace("CREATE ROLE {role} LOGIN", "ALTER ROLE {role} WITH LOGIN")
             # the statements are this module's own constants; psycopg fills in only the identifier and the literal
-            conn.execute(
-                sql.SQL(cast(LiteralString, query)).format(role=sql.Identifier(role), pw=sql.Literal(password))
-            )
+            statement = sql.SQL(cast(LiteralString, query)).format(role=sql.Identifier(role), pw=sql.Literal(password))
+            if query.startswith(f"ALTER ROLE {{role}} SET {ALL_TENANTS}"):
+                try:
+                    conn.execute(statement)
+                except psycopg.errors.InsufficientPrivilege:  # only a superuser may (a managed Postgres's owner is not)
+                    print(NO_DEFAULT.format(role=role), file=sys.stderr)
+                continue
+            conn.execute(statement)
 
 
 def main() -> int:

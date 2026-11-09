@@ -504,3 +504,17 @@ def test_the_gates_run_the_python_the_api_image_ships():
     image = re.search(r"^FROM python:(\d+\.\d+)-slim", (ROOT / "infra" / "Dockerfile.api").read_text(), re.M)
     pinned = ROOT / "apps" / "api" / ".python-version"
     assert image and pinned.is_file() and pinned.read_text().strip() == image.group(1)
+
+
+def test_the_pooler_runbook_fits_the_driver_and_the_row_level_security_the_api_uses():
+    """The runbook advised asyncpg settings (the API uses psycopg) and said transaction pooling just works, while
+    PgBouncer refuses the startup option that lets background work see every organisation."""
+    row = next(
+        line
+        for line in (ROOT / "docs" / "user-guide" / "operations.md").read_text().splitlines()
+        if line.startswith("| DB connection exhaustion")
+    )
+    assert "asyncpg" not in row and "statement_cache_size" not in row
+    for needed in ("max_prepared_statements", "ignore_startup_parameters = options", "agentcanvas.all_tenants"):
+        assert needed in row, needed
+    assert "AGENTCANVAS_PERSISTENCE_URL" in row  # its startup holds a session lock, which transaction pooling breaks

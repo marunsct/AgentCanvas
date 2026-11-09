@@ -218,3 +218,97 @@ async def test_a_matura_request_sees_only_its_organisation_even_without_filters(
                 assert r.status_code == 200 and [x["title"] for x in r.json()["results"]] == ["IT"], (mode, r.text)
             r = await client.post(f"{k}/search", json={"query": "lost laptop"}, headers=as_user(BEN, GLOBEX))
             assert r.status_code == 404
+
+
+POOLED_ROLE, BARE_ROLE = "agentcanvas_rls_pooled", "agentcanvas_rls_bare"
+
+
+async def _forget_default(role: str) -> None:
+    engine = create_async_engine(async_url(URL))
+    async with engine.begin() as conn:
+        if (await conn.execute(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": role})).scalar():
+            await conn.execute(text(f"ALTER ROLE {role} RESET {rls.ALL_TENANTS}"))
+    await engine.dispose()
+
+
+def _as(role: str) -> str:
+    return make_url(async_url(URL)).set(username=role, password=role).render_as_string(hide_password=False)
+
+
+@postgres
+async def test_background_work_sees_every_organisation_through_a_pooler_that_drops_startup_options(app):
+    """PgBouncer refuses the libpq `options` startup parameter that put the API's connections in all-tenants mode,
+    and its usual workaround (`ignore_startup_parameters = options`) drops it: every query then saw no rows. The
+    API's role now carries the setting itself, so a connection without the option still sees every organisation."""
+    from agentcanvas.db.app_role import ensure
+
+    async with await _client(app) as client:
+        await _seed(client)
+    await _forget_default(POOLED_ROLE)  # roles outlive the test database: start from a role without the default
+    ensure(URL, POOLED_ROLE, POOLED_ROLE)  # what the migration step runs, as the owner
+    engine = create_async_engine(_as(POOLED_ROLE))  # no startup options: as through PgBouncer
+    try:
+        async with engine.connect() as conn:
+            names = set((await conn.execute(text("SELECT name FROM project"))).scalars())
+            assert {"Acme bots", "Globex bots"} <= names
+            await conn.commit()
+            async with conn.begin():  # a Matura request still narrows its own transactions
+                await conn.execute(
+                    text("SELECT set_config('matura.tenant_id', :o, true), set_config(:a, 'off', true)"),
+                    {"o": ACME, "a": rls.ALL_TENANTS},
+                )
+                assert set((await conn.execute(text("SELECT name FROM project"))).scalars()) == {"Acme bots"}
+            assert {"Acme bots", "Globex bots"} <= set((await conn.execute(text("SELECT name FROM project"))).scalars())
+    finally:
+        await engine.dispose()
+
+
+@postgres
+async def test_the_api_refuses_to_start_when_its_connections_would_see_no_rows(app, monkeypatch, tmp_path):
+    """A role without the all-tenants default, behind a pooler that drops the startup option, saw an empty
+    installation (and cron, hand-over and retention found nothing to do). The API now says so and stops."""
+    from agentcanvas.db import session as db_session
+
+    engine = create_async_engine(async_url(URL))
+    async with engine.begin() as conn:
+        await _grant(conn, BARE_ROLE, login=True)  # an ordinary role, made without the migration step's default
+    await engine.dispose()
+    await _forget_default(BARE_ROLE)
+    monkeypatch.setattr(db_session, "connect_options", lambda url, args=None: dict(args or {}))  # the pooler
+    lost = create_app(
+        app.state.settings.model_copy(
+            update={
+                "database_url": _as(BARE_ROLE), "auto_migrate": False, "seed_dev_data": False,
+                "persistence_url": "memory", "workspaces_dir": str(tmp_path / "ws"),
+            }
+        )
+    )  # fmt: skip
+    with pytest.raises(RuntimeError, match="all_tenants"):
+        async with lost.router.lifespan_context(lost):
+            pass
+
+
+@postgres
+async def test_an_owner_that_is_not_a_superuser_still_creates_the_api_role(app):
+    """Only a superuser may give a role a default for a custom setting. A managed Postgres's owner (RDS, Cloud SQL)
+    is not one: the role is still created, and the step says what it could not do instead of failing the upgrade."""
+    from agentcanvas.db.app_role import ensure
+
+    owner, role = "agentcanvas_rls_owner", "agentcanvas_rls_made"
+    engine = create_async_engine(async_url(URL))
+    async with engine.begin() as conn:
+        for r in (role, owner):
+            await conn.execute(text(f"DROP ROLE IF EXISTS {r}"))
+        await conn.execute(text(f"CREATE ROLE {owner} LOGIN CREATEROLE PASSWORD '{owner}'"))
+        await conn.execute(text(f"GRANT {make_url(URL).username} TO {owner}"))  # owns the tables, not a superuser
+    try:
+        ensure(_as(owner).replace("+psycopg", ""), role, "pw")
+        async with engine.connect() as conn:
+            made = await conn.execute(text("SELECT rolbypassrls FROM pg_roles WHERE rolname = :r"), {"r": role})
+            assert made.scalar() is False
+    finally:
+        async with engine.begin() as conn:
+            for r in (role, owner):
+                await conn.execute(text(f"DROP OWNED BY {r}"))
+                await conn.execute(text(f"DROP ROLE {r}"))
+        await engine.dispose()

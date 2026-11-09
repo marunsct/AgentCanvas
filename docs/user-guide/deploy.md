@@ -196,9 +196,11 @@ neither sees no rows.
   `MIGRATE_DATABASE_URL` (the owner), `APP_DB_USER` and `APP_DB_PASSWORD`. Elsewhere, run migrations as the owner
   (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API. With it off, the
   API refuses to start on a database the migrations have not reached and says which command to run.
-- The API sets `agentcanvas.all_tenants=on` as a connection startup option. Behind PgBouncer in transaction pooling
-  mode, startup options are not passed on: use session pooling, or add the setting to the database role
-  (`ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`).
+- The API asks for `agentcanvas.all_tenants=on` as a connection startup option, and `app_role` also makes it the
+  role's own default when it runs as a superuser (on a managed Postgres, whose owner is not one, it prints a notice
+  instead). PgBouncer refuses or drops startup options, so behind it the role needs that default (a superuser runs
+  `ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`); the API refuses to start when its connections would
+  see no rows. The rest of the PgBouncer setup is in the [runbook](operations.md#runbooks) (DB connection exhaustion).
 - SQLite has no row-level security; there the API's own organisation filters are the only isolation.
 - AgentCanvas supports Matura's **shared** data mode only (one database for every organisation), as its manifest
   declares. A token whose placement mode (`pmode`) is `schema` or `database` is refused with 503.
