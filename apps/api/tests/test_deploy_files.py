@@ -458,3 +458,29 @@ def test_dependency_updates_wait_for_a_new_release_to_age_before_taking_it():
     assert not late, f"no 7-day cooldown: {late}"
     pnpm = yaml.safe_load((ROOT / "apps" / "web" / "pnpm-workspace.yaml").read_text())
     assert pnpm.get("minimumReleaseAge", 0) >= 7 * 24 * 60  # minutes; resolving anew locally (pnpm add, pnpm update)
+
+
+@needs_helm
+def test_every_pod_runs_without_a_service_account_token_and_on_a_read_only_root():
+    """The API, web and migrate pods mounted a Kubernetes API token and could write anywhere in the image, while
+    compose prod ran the API read-only and the chart's sandbox and egress pods already had both: a code-execution
+    bug in the API (it parses imports, PDFs and OCR input) could plant files in the image or call the cluster's API."""
+    docs = render()
+    pods = [(d["metadata"]["name"], d["spec"]["template"]["spec"]) for d in docs if d["kind"] in ("Deployment", "Job")]
+    assert {name.rsplit("-", 1)[-1] for name, _ in pods} >= {"api", "web", "sandbox", "egress"}
+    for name, spec in pods:
+        assert spec.get("automountServiceAccountToken") is False, name
+        assert spec["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}, name
+        for c in spec["containers"]:
+            security = c["securityContext"]
+            assert security.get("readOnlyRootFilesystem") is True, f"{name}/{c['name']}"
+            assert security["capabilities"]["drop"] == ["ALL"] and security["allowPrivilegeEscalation"] is False
+    mounts = {m["mountPath"]: m["name"] for m in pod_spec(docs, "-api")["containers"][0]["volumeMounts"]}
+    assert {"/tmp", "/home/app"} <= set(mounts)  # what compose prod gives it as tmpfs
+    assert {"/tmp", "/etc/nginx/conf.d"} <= {
+        m["mountPath"] for m in pod_spec(docs, "-web")["containers"][0]["volumeMounts"]
+    }
+    # no recursive chown of every workspace's git objects on each API pod start
+    assert pod_spec(docs, "-api")["securityContext"]["fsGroupChangePolicy"] == "OnRootMismatch"
+    off = render("api.readOnlyRootFilesystem=false")
+    assert pod_spec(off, "-api")["containers"][0]["securityContext"]["readOnlyRootFilesystem"] is False

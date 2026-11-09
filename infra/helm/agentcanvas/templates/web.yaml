@@ -23,6 +23,7 @@ spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
+      automountServiceAccountToken: false
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
       {{- include "agentcanvas.spread" (dict "root" . "component" "web") | nindent 6 }}
@@ -49,6 +50,15 @@ spec:
             {{- toYaml .Values.web.resources | nindent 12 }}
           securityContext:
             {{- include "agentcanvas.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
+          volumeMounts:   # nginx's pid and temporary files, and the configuration rendered at start-up
+            - { name: tmp, mountPath: /tmp }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        - name: conf
+          emptyDir: { sizeLimit: 1Mi }
 ---
 apiVersion: v1
 kind: Service

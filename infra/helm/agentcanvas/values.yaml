@@ -68,6 +68,9 @@ api:
     limits: { memory: 2Gi }
   # long enough for open streams to finish (uvicorn waits up to 30 s after SIGTERM)
   terminationGracePeriodSeconds: 60
+  # only /tmp, /home/app and the workspaces are writable (as compose prod's API_READ_ONLY); false if a framework
+  # needs to write elsewhere
+  readOnlyRootFilesystem: true
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
