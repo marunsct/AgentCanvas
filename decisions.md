@@ -25,6 +25,7 @@ client 1.18.1), Google ADK 2.14.0, CrewAI 1.15.39, Strands 1.64.0, Agno 3.1.12, 
 - **CrewAI in the image runs on Python 3.13**: CrewAI declares `<3.14` but had been installed on the image's 3.14,
   which nothing tested (`make crewai` and CI use 3.13).
 - **LangGraph's error-handler fix retired a workaround**: workflows with error routes stream tokens again.
+- **The Copilot keeps the loop engine** (evaluation on LM Studio, see build guide page 14): Deep Agents passed the same share of cases but took 2.7 times as long, used more tokens and ran to its step limit. *Reverse:* merge `pending/copilot-deep-agents-default`.
 - **Upgrades from now on**: Dependabot watches `infra/frameworks/requirements.txt` (one pull request per framework),
   `make framework-bump` moves a pin everywhere, and the procedure is build guide page 16.
 
