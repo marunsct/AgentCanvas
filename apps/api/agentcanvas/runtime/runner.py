@@ -96,6 +96,7 @@ class RunHandle:
     fresh: bool = False  # it started a new conversation (created its thread)
     project_id: str | None = None
     priority: int = 0  # in the run queue: 1 high, 0 normal, -1 low (runtime/admission.py)
+    waiting: bool = False  # in the run queue, waiting for a slot: it has not begun its work
 
 
 def _plain(value: Any) -> Any:
@@ -702,9 +703,11 @@ class Runner:
             if self.admission is not None:  # past the organisation's concurrent-run limit it waits for a slot
 
                 async def queued(place: dict[str, Any]) -> None:
+                    h.waiting = True
                     await self._emit(h, {"type": "CUSTOM", "name": "ac.queued", "value": place})
 
-                await self.admission.wait(h.run_id, spec.org_id, h.project_id, queued)
+                await self.admission.wait(h.run_id, spec.org_id, h.project_id, queued, _pending(h, spec))
+                h.waiting = False
                 started = time.perf_counter()  # its duration (and budget's time limit) count from here
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
@@ -1072,16 +1075,24 @@ class Runner:
         """Stop taking runs, give running ones `grace_s` to finish, then stop the rest at their last checkpoint
         and mark them for hand-over (`Run.handover`); returns the ids of the runs handed over (FR-X-10)."""
         self.draining = True
+        if self.admission is not None:
+            self.admission.close()  # a waiting run would be cut off at the end of the grace period: none starts
         running = [h for h in self.handles.values() if h.task and not h.done.is_set()]
+        # a waiting run has not begun: it is handed over at once, its input kept on its row
+        cut = [h for h in running if h.waiting and self._stoppable(h)]
+        for h in cut:
+            h.drained = True
+            self._stop_task(h)
         if running and grace_s > 0:
             waiters = [asyncio.ensure_future(h.done.wait()) for h in running]
             _, pending = await asyncio.wait(waiters, timeout=grace_s)
             for w in pending:  # runs that did not finish in time: their waiters would otherwise outlive the loop
                 w.cancel()
-        left = [h for h in running if self._stoppable(h)]
+        left = [h for h in running if h not in cut and self._stoppable(h)]
         for h in left:
             h.drained = True
             self._stop_task(h)
+        left = cut + left
         await asyncio.gather(*(h.task for h in left if h.task), return_exceptions=True)
         if left:
             log.info("runner.drained", runs=[h.run_id for h in left])
@@ -1132,6 +1143,21 @@ class Runner:
         async with self.db.sessionmaker() as s:
             q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
             return list((await s.scalars(q)).all())
+
+
+def _pending(h: RunHandle, spec: RunSpec) -> dict[str, Any]:
+    """What a waiting run was started with: no checkpoint holds it before the run takes a slot, so a hand-over
+    starts the run again with it (services/redeploy.py)."""
+    resume = {"value": spec.resume.value, "interrupt_id": spec.resume.interrupt_id} if spec.resume else None
+    return _plain(
+        {
+            "input": spec.input, "resume": resume, "decided": h.decided, "mode": spec.mode,
+            "breakpoints_before": spec.breakpoints_before, "breakpoints_after": spec.breakpoints_after,
+            "durability": spec.durability, "checkpoint_id": spec.checkpoint_id, "pins": spec.pins,
+            "mocks": spec.mocks, "dry_run": spec.dry_run, "user_id": spec.user_id,
+            "service_connection": spec.service_connection, "event_depth": h.event_depth,
+        }
+    )  # fmt: skip
 
 
 def _thread_taken(exc: IntegrityError) -> bool:

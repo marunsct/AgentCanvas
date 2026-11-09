@@ -5,7 +5,8 @@
 checkpoint: the run ends `interrupted` with code `redeploy` and `Run.handover` set.
 
 **Hand-over.** Every instance runs `HandoverJob`: it claims a handed-over run (one conditional UPDATE, so exactly
-one instance wins) and continues its thread from the checkpoint, on the version the run started on.
+one instance wins) and continues its thread from the checkpoint, on the version the run started on. A run that
+was still waiting in the run queue has no checkpoint yet: it starts again with what it was sent (`Run.pending`).
 
 **Lost instances.** An instance killed without draining (OOM, node failure) cannot hand its runs over. Every
 instance refreshes `Run.heartbeat_at` of its running runs on each tick; a run still `running` whose heartbeat is
@@ -29,19 +30,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas import observability
 from agentcanvas.adapters.spi import supports
-from agentcanvas.db.models import Run, Thread, WorkflowVersion
+from agentcanvas.db.models import InterruptTask, Run, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, Unavailable
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.runtime.admission import NAMES
 from agentcanvas.runtime.runner import STOPPED_BY_ADMIN
+from agentcanvas.runtime.types import ResumeSpec
 
 log = get_logger(__name__)
 
 BATCH = 100
 ORPHANED = "its server stopped unexpectedly; it continues automatically"
 NO_STATE = "its server stopped, and this framework keeps no saved state to continue from; start the run again"
+NO_INPUT = "its server stopped while it waited for a run slot, and its input was not kept; send it again"
 # (session, thread_id, version_id of the handed-over run) -> (workflow, Runner.start kwargs)
 Target = Callable[[AsyncSession, str, str | None], Awaitable[tuple[Workflow, dict[str, Any]]]]
 
@@ -118,12 +121,32 @@ class HandoverJob:
             await s.commit()
         return res.rowcount == 1  # type: ignore[attr-defined]
 
-    async def _fail(self, run_id: str, thread_id: str) -> None:
+    async def _fail(self, run_id: str, thread_id: str, error: str = NO_STATE) -> None:
         async with self.db.sessionmaker() as s:
-            await s.execute(update(Run).where(Run.id == run_id).values(status="error", error=NO_STATE))
+            await s.execute(update(Run).where(Run.id == run_id).values(status="error", error=error))
             await s.execute(update(Thread).where(Thread.id == thread_id).values(status="error"))
             await s.commit()
         log.warning("handover.cannot_continue", run_id=run_id, thread_id=thread_id)
+
+    async def _again(self, pending: dict[str, Any], thread_id: str) -> dict[str, Any]:
+        """Runner.start arguments that start a waiting run again as it was asked. The Inbox items it answered go
+        back to waiting for that answer (a server that died did not put them back), so it can answer them again."""
+        resume = pending.get("resume")
+        if resume is not None and pending.get("decided"):
+            async with self.db.sessionmaker() as s:
+                await s.execute(
+                    update(InterruptTask)
+                    .where(InterruptTask.id.in_(pending["decided"]), InterruptTask.thread_id == thread_id)
+                    .where(InterruptTask.status == "decided")
+                    .values(status="pending", decision=None, decided_by=None, decided_at=None)
+                )
+                await s.commit()
+        keep = ("input", "mode", "breakpoints_before", "breakpoints_after", "durability", "checkpoint_id", "pins",
+                "mocks", "dry_run", "user_id", "service_connection", "event_depth")  # fmt: skip
+        out = {k: pending[k] for k in keep if k in pending}
+        out["resume"] = ResumeSpec(value=resume["value"], interrupt_id=resume.get("interrupt_id")) if resume else None
+        out["project_files"] = True  # its files were checked when it was first started
+        return out
 
     async def sweep(self, now: datetime | None = None) -> list[str]:
         """Hand over the runs whose instance stopped without draining; returns their ids."""
@@ -167,24 +190,31 @@ class HandoverJob:
         async with self.db.sessionmaker() as s:
             rows = (
                 await s.execute(
-                    select(Run.id, Run.thread_id, Run.workflow_version_id, Run.priority)
+                    select(Run.id, Run.thread_id, Run.workflow_version_id, Run.priority, Run.queued, Run.pending)
                     .where(Run.handover.is_(True), Run.stop_requested.is_(False))
                     .limit(BATCH)
                 )
             ).all()
-        for run_id, thread_id, version_id, priority in rows:
+        for run_id, thread_id, version_id, priority, queued, pending in rows:
             if self.runner.draining or not await self._mark(run_id, False):  # another instance claimed it
                 continue
             try:
                 async with self.db.sessionmaker() as s:
                     wf, kw = await self.target(s, thread_id, version_id)
-                if not supports(self.runner.adapter_for(wf), "thread_state"):
+                if queued:  # it never took a slot: no checkpoint holds its input, its row does
+                    if pending is None:  # handed over by a server that did not keep it
+                        await self._fail(run_id, thread_id, NO_INPUT)
+                        continue
+                    kw |= await self._again(pending, thread_id)
+                elif not supports(self.runner.adapter_for(wf), "thread_state"):
                     # no saved state to continue from: starting again would rerun the flow with no input and
                     # repeat its side effects, so the run ends with an error the person can act on
                     await self._fail(run_id, thread_id)
                     continue
+                else:
+                    kw["input"] = None  # it continues from its last checkpoint
                 h = await self.runner.start(  # in the queue, it keeps the place its run had
-                    wf, thread_id=thread_id, input=None, origin="handover", priority=NAMES.get(priority), **kw
+                    wf, thread_id=thread_id, origin="handover", priority=NAMES.get(priority), **kw
                 )
             except Conflict:  # someone already continued the conversation
                 continue

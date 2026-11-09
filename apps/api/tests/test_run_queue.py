@@ -8,9 +8,9 @@ import asyncio
 import pytest
 from test_kill_switch import SLOW, _start_slow
 from test_redeploy import run_row
-from test_runs_v1 import make
+from test_runs_v1 import linear, make, script
 
-from agentcanvas.db.models import Run
+from agentcanvas.db.models import InterruptTask, Run
 from agentcanvas.runtime.admission import priority_of
 
 
@@ -145,3 +145,95 @@ async def test_an_organisation_limit_stays_under_the_servers(app, api_client):
 def test_test_runs_wait_behind_people():
     assert priority_of(None, "test") == -1 and priority_of(None, "user") == 0 and priority_of(None, "trigger") == 0
     assert priority_of("high", "test") == 1
+
+
+async def _on_thread(api_client, wf: str, thread_id: str | None, seconds: float) -> tuple[str, str]:
+    body = {"input": {"seconds": seconds}, "stream": False} | ({"thread_id": thread_id} if thread_id else {})
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)
+    assert r.status_code in (200, 202), r.text
+    return r.json()["run_id"], r.json()["thread_id"]
+
+
+async def test_a_waiting_run_keeps_its_message_through_a_server_restart(app, api_client, limited):
+    """A run still waiting for a slot never reached the workflow, so no checkpoint holds its input: the hand-over
+    starts it again with the input it was sent, on a new conversation and on one that already has turns."""
+    runner = app.state.runner
+    done, earlier = await _on_thread(api_client, limited, None, 0.01)
+    assert (await asyncio.wait_for(runner.wait(done), 10)).status == "success"
+    blocker = await _start_slow(app, api_client, limited)
+    fresh, fresh_thread = await _on_thread(api_client, limited, None, 0.01)
+    follow, _ = await _on_thread(api_client, limited, earlier, 0.02)
+    assert await _queued(app, fresh) and await _queued(app, follow)
+
+    await runner.drain(0.05)
+    for run_id in (fresh, follow):
+        row = await run_row(app, run_id)
+        assert row.status == "interrupted" and row.handover is True and row.queued is True
+    runner.draining, runner.admission.closed = False, False  # the next server
+    resumed = await app.state.handover.tick()
+    assert len(resumed) == 3
+    blocker_thread = (await run_row(app, blocker)).thread_id
+    for run_id in resumed:  # the blocker continues its 30 s sleep: stop it so the others get the slot
+        if runner.handles[run_id].thread_id == blocker_thread:
+            await runner.cancel(run_id)
+    by_thread = {runner.handles[r].thread_id: runner.handles[r] for r in resumed}
+    for thread_id, seconds in ((fresh_thread, 0.01), (earlier, 0.02)):
+        h = await asyncio.wait_for(runner.wait(by_thread[thread_id].run_id), 10)
+        assert h.status == "success", h.events[-1]
+        assert any(e["type"] == "STEP_STARTED" for e in h.events)  # it ran its own message
+        state = (await api_client.get(f"/v1/threads/{thread_id}")).json()
+        assert state["values"]["seconds"] == seconds
+
+
+async def test_a_draining_server_starts_no_waiting_run(app, api_client, limited):
+    """During the drain's grace period a freed slot is not given to a waiting run: the run would be cut off at the
+    end of the grace period. It is handed over instead, and the drain does not wait for it."""
+    runner = app.state.runner
+    first, _ = await _on_thread(api_client, limited, None, 0.3)
+    for _ in range(100):
+        if first in runner.active():
+            break
+        await asyncio.sleep(0.02)
+    second, _ = await _on_thread(api_client, limited, None, 0.01)
+    assert await _queued(app, second)
+    began = asyncio.get_running_loop().time()
+    assert await runner.drain(5) == [second]
+    assert asyncio.get_running_loop().time() - began < 3  # the waiting run does not hold the drain up
+    assert runner.handles[first].status == "success"
+    h = runner.handles[second]
+    assert h.status == "interrupted" and not any(e["type"] == "STEP_STARTED" for e in h.events)
+    assert (await run_row(app, second)).handover is True
+    runner.draining, runner.admission.closed = False, False
+
+
+async def test_a_waiting_answer_is_given_again_after_a_hand_over(app, api_client, limited):
+    """An answer to a question that waited for a slot reaches the workflow on the next server, also when its server
+    died without putting the Inbox item back."""
+    from sqlalchemy import update
+
+    runner = app.state.runner
+    ask = {"id": "n_ask", "type": "core.human_input", "name": "ask", "config": {"prompt": "Go?", "output": "answer"}}
+    wf = await make(api_client, linear(ask, script("n_s", "examples.scripts:slow"), channels=("out", "answer")))
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"thread_id": "th_ask", "stream": False})
+    paused = await asyncio.wait_for(runner.wait(r.json()["run_id"]), 10)
+    [item] = next(e for e in paused.events if e["type"] == "RUN_FINISHED")["interrupts"]
+    blocker = await _start_slow(app, api_client, limited)
+    answer = {"value": "yes", "interrupt_id": item["id"], "stream": False}
+    r = await api_client.post("/v1/threads/th_ask/resume", json=answer)
+    assert await _queued(app, r.json()["run_id"])
+    await runner.drain(0.05)
+    async with app.state.db.sessionmaker() as s:  # as a server that died leaves it: answered
+        await s.execute(update(InterruptTask).where(InterruptTask.thread_id == "th_ask").values(status="decided"))
+        await s.commit()
+    runner.draining, runner.admission.closed = False, False  # the next server
+    resumed = await app.state.handover.tick()
+    blocker_thread = (await run_row(app, blocker)).thread_id
+    for run_id in resumed:
+        if runner.handles[run_id].thread_id == blocker_thread:
+            await runner.cancel(run_id)
+    [answer] = [runner.handles[r] for r in resumed if runner.handles[r].thread_id == "th_ask"]
+    h = await asyncio.wait_for(runner.wait(answer.run_id), 10)
+    assert h.status == "success", h.events[-1]
+    assert (await api_client.get("/v1/threads/th_ask")).json()["values"]["answer"] == "yes"
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(InterruptTask, item["id"])).status == "decided"

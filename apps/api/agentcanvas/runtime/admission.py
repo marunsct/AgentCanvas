@@ -40,8 +40,15 @@ class Admission:
     def __init__(self, db: Any, limit_of: LimitOf, *, poll_s: float = 1.0, stale_after_s: float = 60.0):
         self.db, self.limit_of, self.poll_s, self.stale_after_s = db, limit_of, poll_s, stale_after_s
         self._freed = asyncio.Event()  # a run of this server ended: waiting ones look again at once
+        # this server is draining: a waiting run takes no slot here (it would be cut off at the end of the grace
+        # period); the drain hands it over with its start arguments instead
+        self.closed = False
 
     def freed(self) -> None:
+        self._freed.set()
+
+    def close(self) -> None:
+        self.closed = True
         self._freed.set()
 
     def _in_org(self, org_id: str) -> Any:
@@ -64,16 +71,18 @@ class Admission:
         org_id: str | None,
         project_id: str | None,
         on_queued: Callable[[dict[str, Any]], Awaitable[None]],
+        pending: dict[str, Any] | None = None,
     ) -> None:
         """Return when the run may go: at once without a limit, else once it has a slot. `on_queued` is told the
-        run's place in the queue when it has to wait, and again when its place changes."""
+        run's place in the queue when it has to wait, and again when its place changes. `pending`: what the run
+        was started with, kept on its row while it waits (a hand-over starts it again with it)."""
         if org_id is None:
             return
         limit = await self.limit_of(project_id)
         if limit <= 0:
             return
         async with self.db.sessionmaker() as s:
-            await s.execute(update(Run).where(Run.id == run_id).values(queued=True))
+            await s.execute(update(Run).where(Run.id == run_id).values(queued=True, pending=pending))
             await s.commit()
         observability.RUNS_QUEUED.inc()
         try:
@@ -91,6 +100,8 @@ class Admission:
     ) -> None:
         shown: int | None = None
         while True:
+            while self.closed:  # draining: it waits until the drain stops it
+                await asyncio.sleep(3600)
             place = await self._try(run_id, org_id, limit)
             if place is None:
                 return
@@ -105,7 +116,7 @@ class Admission:
             limit = await self.limit_of(project_id) or 0
             if limit <= 0:  # the limit was lifted while it waited
                 async with self.db.sessionmaker() as s:
-                    await s.execute(update(Run).where(Run.id == run_id).values(queued=False))
+                    await s.execute(update(Run).where(Run.id == run_id).values(queued=False, pending=None))
                     await s.commit()
                 return
 
@@ -130,7 +141,7 @@ class Admission:
                 )
             )
             if (busy or 0) + (ahead or 0) < limit:  # the free slots go to the runs ahead first
-                mine.queued = False
+                mine.queued, mine.pending = False, None
                 await s.commit()
                 return None
             await s.commit()
