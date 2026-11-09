@@ -8,6 +8,8 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- The web image's pages send `Strict-Transport-Security` (one year) when the request came over https, directly or from a
+  trusted proxy, and a `Permissions-Policy` that turns off the camera, microphone, location, payment and USB.
 - Pydantic AI 2.66.0 for exports, the bridge and the flow runtime: it fixes crafted JSON or schema resource use, a cloud-metadata gap in its URL-download blocklist, and header leaks in trace spans.
 - Dependencies: pyasn1 0.6.5 and pypdf 6.21.4, which fix denial-of-service bugs (CVE-2026-119194 to 119197, CVE-2026-119203 to 119205) the image scan reported.
 - Removing someone from an organisation now also deletes their API tokens and app connector connections there
@@ -117,6 +119,16 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Importing n8n: workflows started by the old Cron or Interval nodes start with their input instead of a placeholder
+  step; nodes n8n 3.0 removed (LangChain Code, Function, AI Transform, vector store Insert/Load, the document loaders,
+  SerpApi), the AI Agent v1 modes and the OpenAI Assistant are named in the notes with the block to use instead.
+- Importing Langflow 1.13: the Research Translation Loop starter (a step reading one listed after it) imports, a Loop's
+  hand-back no longer makes a workflow with no end, the new model selector is read for models and agents, and
+  components with no counterpart (vector stores, Knowledge, File, Loop, Parser, web search, Memory Base, Chroma DB,
+  Local DB, ALTK) name what to use instead. All 27 Langflow 1.13 starter projects import without errors.
+- Importing Agent Builder code: hosted tools assigned to a name (`web_search_preview = WebSearchTool(...)`) and
+  instructions written as a function now carry over instead of being reported as missing; agents built by a function
+  and instructions kept in a constant import too.
 - The Copilot evaluation checks a template that has blocks of its own (Lead scoring with research) against a registry that knows them; its cases could never pass before.
 - Models on OpenAI-compatible servers (LM Studio, vLLM, llama.cpp, any OpenAI-compatible address) and OpenAI at an address of its own now report their tokens when they stream, so runs, budgets, the spending report and the Copilot count their tokens and cost; they had read zero. Found by the Copilot evaluation on LM Studio.
 - The memory inspector answers 422 for a namespace label with a period or a control character instead of a server error.
@@ -583,6 +595,18 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
+- **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
+  `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
+- Experiments can run each example several times (**runs per example**, `repetitions`, up to 10) and report pass@k,
+  pass^k, the flaky examples and each evaluator's spread; pairwise judges compare each run with the baseline's same run.
+- **Stop all runs** (Settings › Organisation › General, `POST /v1/org/runs/stop`): an admin stops every run in flight in
+  the organisation, or of one deployment or workflow, with a reason kept in the audit log. Runs on other servers stop at
+  their next heartbeat; a stopped run is never handed over to another server.
+- Each deployment has an MCP Server Card (`…/deployments/<id>/mcp/server-card`, SEP-2127): its name, version, address
+  and required header, readable without the key, so registries and MCP clients can find it before connecting.
+- Agent cards and Server Cards are cached: `Cache-Control: public, max-age=300`, an `ETag`, and 304 for an unchanged
+  card (A2A 1.0 section 8.6); the A2A card varies by `A2A-Version`.
 - The OpenAI Agents SDK importer also reads code written with `from agents.classic import ...`, where the SDK's next major release keeps today's API.
 - Framework upgrades: `make framework-versions` lists every agent framework pin with its latest release and changelog, `make framework-bump PKG= VERSION=` moves a pin everywhere it is written, Dependabot watches a generated list of the pins (one pull request per framework), and the build guide has the upgrade procedure.
 - Costs and budgets count GPT-5.6 Sol, Terra and Luna (with their price above 272K prompt tokens) and Gemini 3.8 Flash, at the providers' published prices (Gemini at its price from 2027-01-01; it is half that until then).
@@ -919,6 +943,11 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- With `AGENTCANVAS_AUTO_MIGRATE=false`, the API refuses to start on a database the migrations have not reached (it
+  names the command to run) instead of failing request by request; a newer database (a rollback) starts with a
+  warning.
+- Agno and Strands (exports, the flow runtime and the image) use the OpenAI client 3.46.0 instead of 2.54.0. Its HTTP
+  client is httpx2, which checks certificates against the operating system's store instead of `certifi`'s.
 - Claude Agent SDK 0.2.179 for designed-agent exports (bundled Claude Code CLI updates only).
 - Mastra 1.82.0 (with the AI SDK's OpenAI-compatible client 3.0.87) for Mastra flows and exports; 1.81 fixes resuming a paused agent run on another server instance, which is how AgentCanvas resumes approvals.
 - Agno 3.1.12 and LlamaIndex Workflows 2.26.1 for flows, exports and the agent block (LlamaIndex core 0.14.25 and its OpenAI-like client 0.8.1 are already the latest).
@@ -989,6 +1018,12 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 
 ### Upgrading
 
+- Migration `a7d1e5b9c3f6` adds `experiment.repetitions` (1) and `experiment_result.repetition` (0), and adds the repetition to
+  `experiment_result`'s unique key.
+- Migration `f4a8c2e6b0d3` adds `run.stop_requested` (false for existing runs).
+- Agno and Strands exports and runs now trust the operating system's certificates (openai 3 and httpx2): behind a
+  TLS-inspecting proxy, add its CA to the system store or set `SSL_CERT_FILE`. The images already include the system
+  CA bundle.
 - Migration `d8f2b6c0e4a9` adds `copilot_conversation.model` (empty: the project's model).
 - Migration `c6e0a4b8d2f7` adds `workflow_version.copilot_changes` (an empty list for existing versions); it runs with
   the others at start-up.

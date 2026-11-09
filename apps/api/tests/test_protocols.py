@@ -345,3 +345,61 @@ async def test_a2a_tasks_get_reads_one_run_whatever_the_conversation_holds(app, 
     assert got["status"]["state"] == "completed"
     runs = [s for s in seen if "FROM run" in s and "run.thread_id" in s]
     assert runs and all("LIMIT" in s for s in runs), runs
+
+
+async def test_the_a2a_card_is_cached_by_etag_and_varies_by_version(api_client):
+    """F-2, A2A 1.0 section 8.6: the card says how long it may be kept and gives an ETag; a client asking again with
+    it gets 304. Its shape depends on A2A-Version, so caches must keep one per version."""
+    dep, _ = await _publish(api_client, await make_greeter(api_client))
+    path = f"/v1/deployments/{dep}/a2a/.well-known/agent-card.json"
+    first = await api_client.get(path)
+    assert first.status_code == 200 and first.headers["content-type"].startswith("application/json")
+    assert first.headers["cache-control"] == "public, max-age=300" and "A2A-Version" in first.headers["vary"]
+    etag = first.headers["etag"]
+    again = await api_client.get(path, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.content == b"" and again.headers["etag"] == etag
+    assert (await api_client.get(path, headers={"If-None-Match": f'"other", W/{etag}'})).status_code == 304
+    v1 = await api_client.get(path, headers={"A2A-Version": "1.0", "If-None-Match": etag})
+    assert v1.status_code == 200 and v1.headers["etag"] != etag  # another shape, another tag
+    assert "url" not in v1.json() and v1.json()["supportedInterfaces"]
+
+
+async def test_a2a_requests_sent_as_a2a_json_are_read(api_client):
+    """A2A's REST binding names application/a2a+json; a client that sends it to the JSON-RPC endpoint is answered."""
+    import json
+
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    msg = {"message": {"role": "user", "messageId": "m1", "parts": [{"kind": "data", "data": {"who": "Ada"}}]}}
+    body = json.dumps(rpc("message/send", msg)).encode()
+    headers = {**bearer(key), "Content-Type": "application/a2a+json"}
+    res = await api_client.post(f"/v1/deployments/{dep}/a2a", content=body, headers=headers)
+    task = res.json()["result"]
+    assert task["status"]["state"] == "completed" and task["artifacts"][0]["parts"][0]["data"]["out"] == "Hello Ada"
+
+
+async def test_a_deployment_has_an_mcp_server_card(app, api_client):
+    """F-2, SEP-2127: GET <mcp url>/server-card says who the server is and where to connect, before connecting: public,
+    cached by ETag, readable from any browser origin, and never the key itself."""
+    dep, key = await _publish(api_client, await make_greeter(api_client))
+    path = f"/v1/deployments/{dep}/mcp/server-card"
+    res = await api_client.get(path, headers={"Accept": "application/mcp-server-card+json"})
+    assert res.status_code == 200 and res.headers["content-type"].startswith("application/mcp-server-card+json")
+    assert res.headers["access-control-allow-origin"] == "*" and res.headers["access-control-expose-headers"] == "ETag"
+    assert res.headers["cache-control"] == "public, max-age=300"
+    card = res.json()
+    assert card["$schema"] == "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json"
+    assert card["name"] == "test/greeter" and card["title"] == "Greeter" and card["version"] == "1.0.0"
+    (remote,) = card["remotes"]
+    assert remote["type"] == "streamable-http" and remote["url"] == f"http://test/v1/deployments/{dep}/mcp"
+    assert remote["supportedProtocolVersions"][0] == "2026-07-28"
+    assert remote["headers"][0]["name"] == "Authorization" and remote["headers"][0]["isSecret"] is True
+    assert key not in res.text
+    assert (await api_client.get(path, headers={"If-None-Match": res.headers["etag"]})).status_code == 304
+    assert (await api_client.get("/v1/deployments/dep_nope/mcp/server-card")).status_code == 404
+    # the card's server answers there, with the same version
+    init = await api_client.post(remote["url"].removeprefix("http://test"), json=rpc("initialize"), headers=bearer(key))
+    assert init.json()["result"]["serverInfo"]["version"] == card["version"]
+    app.state.settings = app.state.settings.model_copy(update={"public_url": "https://agents.example.com"})
+    card = (await api_client.get(path)).json()
+    assert card["name"] == "com.example.agents/greeter"
+    assert card["remotes"][0]["url"] == f"https://agents.example.com/api/v1/deployments/{dep}/mcp"

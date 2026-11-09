@@ -361,6 +361,7 @@ CREATE TABLE public.experiment (
     workspace_commit text,
     owner text,
     simulation jsonb,
+    repetitions integer DEFAULT 1 NOT NULL,
     CONSTRAINT experiment_status CHECK ((status = ANY (ARRAY['running'::text, 'done'::text, 'cancelled'::text, 'error'::text])))
 );
 
@@ -388,6 +389,7 @@ CREATE TABLE public.experiment_result (
     tokens_out integer DEFAULT 0 NOT NULL,
     cost_usd double precision DEFAULT 0 NOT NULL,
     latency_ms integer,
+    repetition integer DEFAULT 0 NOT NULL,
     CONSTRAINT experiment_result_status CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'done'::text])))
 );
 
@@ -897,6 +899,7 @@ CREATE TABLE public.run (
     fallbacks integer DEFAULT 0 NOT NULL,
     events jsonb,
     origin text,
+    stop_requested boolean DEFAULT false NOT NULL,
     CONSTRAINT run_mode CHECK ((mode = ANY (ARRAY['normal'::text, 'debug'::text]))),
     CONSTRAINT run_status CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'interrupted'::text, 'error'::text, 'cancelled'::text])))
 );
@@ -1347,7 +1350,7 @@ ALTER TABLE ONLY public.experiment
 --
 
 ALTER TABLE ONLY public.experiment_result
-    ADD CONSTRAINT experiment_result_example UNIQUE (experiment_id, target, example_id);
+    ADD CONSTRAINT experiment_result_example UNIQUE (experiment_id, target, example_id, repetition);
 
 --
 -- Name: experiment_result experiment_result_pkey; Type: CONSTRAINT; Schema: public; Owner: -

@@ -80,6 +80,38 @@ async def remove_member(
     return Response(status_code=204)
 
 
+class StopRunsIn(BaseModel):
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)] = Field(
+        description="why, for the audit log"
+    )
+    deployment_id: str | None = Field(None, description="only the runs of this deployment")
+    workflow_id: str | None = Field(None, description="only the runs of this workflow (drafts and deployments)")
+
+
+class StopRunsOut(BaseModel):
+    stopping: list[str] = Field(description="runs in flight: each stops within one heartbeat (10 s) on its server")
+    cancelled: list[str] = Field(description="runs that were waiting for another server to continue them")
+
+
+@router.post("/runs/stop", response_model=StopRunsOut)
+async def stop_all_runs(
+    body: StopRunsIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> StopRunsOut:
+    """The kill switch (admins): stop every run in flight in the organisation, or of one deployment or workflow.
+    Audited with its reason. It does not refuse new runs; stop a deployment on its page for that."""
+    from agentcanvas.services.kill_switch import stop_runs
+
+    done = await stop_runs(session, request.app.state.runner, user.org_id, deployment_id=body.deployment_id,
+                           workflow_id=body.workflow_id)  # fmt: skip
+    scope = f"deployment_id={body.deployment_id}" if body.deployment_id else (
+        f"wf_id={body.workflow_id}" if body.workflow_id else f"org_id={user.org_id}")  # fmt: skip
+    note(request, target=scope, reason=body.reason, stopping=len(done.running), cancelled=len(done.handed_over))
+    return StopRunsOut(stopping=done.running, cancelled=done.handed_over)
+
+
 class AuditOut(BaseModel):
     id: int
     created_at: datetime

@@ -2242,6 +2242,120 @@
     "docs": null
   },
   {
+    "type": "core.decide",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Decide with AI",
+    "category": "Flow control",
+    "icon": "split",
+    "color": "#0891B2",
+    "description": "An AI model reads the data and picks one of the paths you describe, saying how sure it is and why. Like \u201cChoose a path\u201d, for decisions a rule cannot make: what a ticket is about, whether a reply is polite enough to send.",
+    "inputs": [
+      {
+        "name": "model",
+        "type": "ChatModel",
+        "required": true,
+        "multi": false,
+        "ordered": false,
+        "description": "The AI model that decides. Plug in an \u201cAI model\u201d block."
+      }
+    ],
+    "outputs": [],
+    "dynamic_outputs": "routes",
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "cases",
+        "output"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "title": "What to decide",
+          "format": "prompt",
+          "minLength": 1,
+          "description": "The question and the data it is about, e.g. Which team should handle this ticket? {{ state.ticket }}"
+        },
+        "cases": {
+          "type": "array",
+          "title": "Choices",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "route",
+              "description"
+            ],
+            "properties": {
+              "route": {
+                "type": "string",
+                "title": "Path name",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "description": "A short name in lowercase, e.g. billing. It appears as an output on the block."
+              },
+              "description": {
+                "type": "string",
+                "title": "When to choose it",
+                "minLength": 1,
+                "description": "What the AI reads to choose this path, e.g. questions about invoices and payments."
+              }
+            }
+          },
+          "description": "The paths the AI may choose, each with when to choose it."
+        },
+        "default": {
+          "type": "string",
+          "title": "Path when unsure",
+          "default": "default",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Taken when the AI's answer is not one of the choices, or it is less sure than the minimum below."
+        },
+        "min_confidence": {
+          "type": "number",
+          "title": "Minimum confidence",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Below this (0 to 1), the default path is taken. Leave empty to always follow the AI's choice."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save the decision in",
+          "format": "channel",
+          "description": "The data field that receives {choice, confidence, reason}, for later steps, traces and evaluators."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "prompt"
+    ],
+    "builtin_tools": [],
+    "interrupts": false,
+    "side_effects": [
+      "spend"
+    ],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "core.subgraph",
     "version": "1.0.0",
     "kind": "runtime",

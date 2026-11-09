@@ -42,6 +42,7 @@ nav:
       - Settings and moving around: user-guide/settings.md
       - Organisations, roles and policies: user-guide/accounts.md
       - Deploy and operate: user-guide/deploy.md
+      - Server settings: user-guide/server-settings.md
       - FAQ: user-guide/faq.md
   - Specification:
       - Functional spec: agent-canvas-spec/01-functional-spec.md

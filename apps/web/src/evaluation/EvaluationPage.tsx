@@ -282,6 +282,7 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
   const versions = useQuery({ queryKey: ["versions", wfId], queryFn: () => apiFetch<VersionOut[]>(`/workflows/${wfId}/versions`) });
   const [dataset, setDataset] = useState("");
   const [split, setSplit] = useState("");
+  const [repetitions, setRepetitions] = useState(1);
   const [targets, setTargets] = useState<TargetDraft[]>([NEW_TARGET]);
   const { data: frameworks = [] } = useFrameworks();
   const [open, setOpen] = useState<string | null>(null);
@@ -298,7 +299,7 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
       return apiFetch<ExperimentOut>(`/workflows/${wfId}/experiments`, {
         method: "POST",
         json: {
-          dataset_id: dataset || datasets.data?.[0]?.id, split: split || null, targets: given,
+          dataset_id: dataset || datasets.data?.[0]?.id, split: split || null, targets: given, repetitions,
           simulation: sim.on ? { model: sim.model.trim() || null, persona: sim.persona, goal: sim.goal, max_turns: Number(sim.max_turns) || 5 } : null,
         },
       });
@@ -321,6 +322,11 @@ function Experiments({ wfId, wfFramework, elements }: { wfId: string; wfFramewor
                   {datasets.data?.map((d) => <option key={d.id} value={d.id}>{d.name} (v{d.version}, {d.examples} examples)</option>)}
                 </select>
                 <input aria-label="experiment split" placeholder="split (all)" value={split} onChange={(e) => setSplit(e.target.value)} style={{ width: 110 }} />
+                <label className="row small" title="Run each example several times to see pass@k, pass^k and the examples that pass only sometimes">
+                  runs per example
+                  <input type="number" aria-label="runs per example" min={1} max={10} value={repetitions} style={{ width: 56 }}
+                    onChange={(e) => setRepetitions(Math.min(10, Math.max(1, Number(e.target.value) || 1)))} />
+                </label>
               </>
             )}
             <button type="submit" className="primary" disabled={start.isPending || (rt.on ? rt.categories.length === 0 : !datasets.data?.length)}>
@@ -455,7 +461,7 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
   if (!results.data) return <QueryStatus q={results} what="results" />;
   const rows = grid(results.data, exp.targets.length);
   const pairwise = new Set(exp.pairwise ?? []);
-  const diffRow = diffOf ? rows.find((r) => r.exampleId === diffOf) : undefined;
+  const diffRow = diffOf ? rows.find((r) => r.key === diffOf) : undefined;
   return (
     <div className="results" data-testid="results">
       <h3>{exp.name}</h3>
@@ -468,6 +474,13 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
             {exp.summary.map((s) => (
               <td key={s.target}>
                 <b>{pct(s.pass_rate)}</b> · {s.latency_p50_ms ?? "—"}/{s.latency_p95_ms ?? "—"} ms · ${s.cost_usd.toFixed(4)}
+                {(s.repetitions ?? 1) > 1 && s.pass_at_k != null && (
+                  <div data-testid="repeated">
+                    <span title={`share of examples that passed in at least one of ${s.repetitions} runs`}>pass@{s.repetitions} {pct(s.pass_at_k)}</span>
+                    {" · "}<span title={`share of examples that passed in all ${s.repetitions} runs`}>pass^{s.repetitions} {pct(s.pass_all_k ?? null)}</span>
+                    {Boolean(s.flaky?.length) && <span className="warn-text" title={`passed in some runs and failed in others: ${s.flaky!.join(", ")}`}> · {s.flaky!.length} flaky</span>}
+                  </div>
+                )}
                 {(s.judge_cost_usd ?? 0) > 0 && <span title="what the AI judges cost, apart from the runs"> + judges ${(s.judge_cost_usd ?? 0).toFixed(4)}</span>}
                 {Boolean(s.judge_unpriced?.length) && <span className="warn-text" title="no catalog price: these judge calls are not in the cost"> (unpriced judge: {s.judge_unpriced!.join(", ")})</span>}
                 <div>{s.evaluators.map((e) => pairwise.has(e.evaluator)
@@ -484,8 +497,10 @@ function Results({ wfId, exp }: { wfId: string; exp: ExperimentOut }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.exampleId}>
-              <td><button type="button" className="link small" onClick={() => setDiffOf(diffOf === row.exampleId ? null : row.exampleId)}>#{row.position + 1}</button></td>
+            <tr key={row.key}>
+              <td><button type="button" className="link small" onClick={() => setDiffOf(diffOf === row.key ? null : row.key)}>
+                #{row.position + 1}{(exp.repetitions ?? 1) > 1 && <span className="muted"> · run {row.repetition + 1}</span>}
+              </button></td>
               {row.cells.map((r, t) => (
                 <td key={t} className={passed(r) === false ? "failed" : ""}>
                   {!r || r.status !== "done" ? <span className="muted">{r?.status ?? "—"}</span> : (

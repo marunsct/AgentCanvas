@@ -12,6 +12,56 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### Decide with AI asks for JSON, and starts on LangGraph only
+The decision is a JSON answer the step parses ({choice, confidence, reason}) rather than the provider's structured
+output, so every model and the canvas's scripted replies work the same; a wrong or missing answer takes the default
+path, and an optional minimum confidence does too. It reuses the path step's `cases`/`default` shape, so its outputs
+are path dots everywhere without new canvas code. Only LangGraph runs it for now: the other ten frameworks refuse it
+with P001 (their manifests list no `core.decide`) instead of running something different. Next: the other
+frameworks' code generators, and the same decision as an evaluator kind. *Reverse:* delete
+`registry/nodes/core.decide.json` and the two functions in `adapters/langchain/nodes.py`.
+
+### Repeated runs: the pass rate stays per run, and repeats skip the answer cache
+With k runs per example, the summary's `pass_rate` is still the share of runs that passed, so it compares with earlier
+experiments; pass@k and pass^k are added beside it, and release gates keep reading the pass rate. A model block's answer
+cache would hand every repeat the first answer, so repeated experiments run with it off. Compare treats an example
+as passing only if all its runs passed (the cautious reading). Left for later in F-6: argument matchers for tool calls
+and a written failure summary per experiment. *Reverse:* migration `a7d1e5b9c3f6`.
+
+### The kill switch stops runs in flight; run priority waits for a run queue
+**Stop all runs** marks runs in the database and each server stops its own at its next heartbeat (10 s), because a run
+lives on the server that started it. It does not also refuse new runs: stopping deployments already exists, and a
+switch that blocks everything until someone finds the "off" again is a second outage. Its reason is required and
+audited. **Run priority is not built**: AgentCanvas starts every run at once (there is no queue or concurrency limit),
+so a priority would change nothing until there is admission control. That is its own design (a per-organisation
+concurrency limit, a queue shared by every server, fairness between projects); I would rather do it properly than add
+a field that does nothing. *Reverse:* migration `f4a8c2e6b0d3` and `services/kill_switch.py`.
+
+### Cards are cached for five minutes; the Server Card's name comes from the public host
+A2A 1.0 (section 8.6) and the MCP Server Card rules ask for `Cache-Control` and an `ETag`; the Server Card example
+uses an hour. I chose 300 seconds so a republished or stopped deployment's card is not stale for long. The Server
+Card must have a reverse-DNS name, so it is the public host reversed (`com.example.agents/<tool>`), which changes if
+the address does: set `AGENTCANVAS_PUBLIC_URL`. `application/a2a+json` is the media type of A2A's REST binding, which
+we do not serve; the JSON-RPC endpoint keeps answering `application/json` and already reads requests sent with
+`a2a+json`. *Reverse:* `CARD_MAX_AGE` in `api/v1/protocols.py`.
+
+### The OpenAI client for Agno and Strands moves to 3.46.0
+This replaces "stays at 2.54.0" below. OpenAI's httpx2 migration guide says an injected legacy httpx client still works
+at runtime, and Agno 3.1.12 only passes on an `httpx.AsyncClient` (it ignores any other client), so Agno's scripted test
+model keeps httpx; Strands', which builds its own `AsyncOpenAI`, now uses httpx2. Verified on 3.46.0: the Agno and
+Strands conformance and flow tests (151), both smoke checks, and the tests of all 44 Agno, Strands and mixed exports.
+*Watch:* OpenAI calls the legacy-client path temporary; when Agno accepts httpx2 clients, move its scripted model too.
+*Reverse:* `make framework-bump PKG=openai VERSION=2.54.0` and put `import httpx` back in `STRANDS_MODELS`.
+
+### Importer upkeep checked against real files, not a fresh Agent Builder export
+A fresh Agent Builder export needs your OpenAI account, so I used what is public: Langflow's own 27 starter projects at
+v1.13.0, n8n's 3.0 breaking-changes page, and 34 Agent Builder exports people committed to GitHub (read with `ast`, never
+run; kept only in my scratchpad, not the repository). The fixtures in `tests/importers/` are written or trimmed by hand
+in the same shape. Nodes with no counterpart still become placeholders: the notes now name the block to use instead
+rather than mapping, say, a vector store to a knowledge base automatically (the documents are not in the file).
+*Reverse:* nothing to reverse; if you can export one of your own Agent Builder workflows before 30 November, import
+it once to be sure.
+
 ### Every agent framework on its latest release, with two held back
 Read from each project's own releases and changelog (links in `make framework-versions`): LangGraph 1.2.20,
 LangChain 1.4.9, Deep Agents 0.7.34, MCP SDK 2.3.0, Pydantic AI 2.66.0, Microsoft Agent Framework 1.25.0 (its OpenAI

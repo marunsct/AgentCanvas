@@ -12,19 +12,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_prefix="AGENTCANVAS_")
 
-    env: Literal["dev", "test", "staging", "prod"] = "dev"  # AGENTCANVAS_ENV
+    env: Literal["dev", "test", "staging", "prod"] = "dev"  # staging and prod refuse development defaults
     edition: Literal["dev", "hosted"] = "dev"  # hosted = multi-tenant service (E041 etc.)
     # SQLAlchemy URL of the control DB. postgresql://… (production) or sqlite+aiosqlite:///… (local edition).
     database_url: str = Field(default="sqlite+aiosqlite:///./agentcanvas.db", validation_alias="DATABASE_URL")
     # LangGraph checkpointer/store location; defaults to the control DB ("memory" = ephemeral, tests only)
     persistence_url: str | None = None
-    auto_migrate: bool = True  # run Alembic `upgrade head` at startup
+    auto_migrate: bool = True  # run Alembic `upgrade head` at startup; off: refuse a database not at head
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
-    secret_key: str = "dev-only-change-me"
+    secret_key: str = "dev-only-change-me"  # signs sessions and links; staging and prod refuse the default
     # master key that wraps each organisation's data key (see agentcanvas/security/kms.py): "" derives it from
     # secret_key (development), or file:<path>, aws:<key ARN>, gcp:<key name>; previous keys still unwrap
     kms_key: str = ""
-    kms_previous_keys: list[str] = []
+    kms_previous_keys: list[str] = []  # earlier master keys, still used to unwrap data keys after a rotation
     # Authentication (M7-T1). dev = every request is the seeded development admin (refused in staging/prod);
     # oidc = bearer JWTs from the identity provider, checked against its JWKS.
     # matura = bearer JWTs from Matura (oidc_issuer = its realm, oidc_audience = this app's client id): the token
@@ -35,11 +35,11 @@ class Settings(BaseSettings):
     oidc_client_id: str | None = None  # public SPA client id, handed to the web app by /v1/auth/config
     oidc_jwks_url: str | None = None  # None = from the issuer's discovery document
     oidc_scopes: str = "openid profile email offline_access"  # offline_access: silent token refresh
-    oidc_email_claim: str = "email"
+    oidc_email_claim: str = "email"  # the token claim that holds the person's email
     # treat the email claim as verified when the provider sends no `email_verified` (e.g. a corporate IdP that
     # owns the domain); leave off for providers where users choose their own email
     oidc_trust_email: bool = False
-    oidc_jwks_cache_s: int = 3600
+    oidc_jwks_cache_s: int = 3600  # how long the provider's signing keys are kept before they are fetched again
     oidc_leeway_s: int = 30  # clock skew tolerated on exp/nbf/iat
     # Matura (auth_mode = matura). The API URL, app slug and client secret read the change feed; the webhook
     # secret checks POST /v1/matura/events; the portal is where admins manage members and roles.
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     matura_sync_interval_s: int = 3600  # how often the change feed is read (webhooks bring changes in between)
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
     bootstrap_admin_emails: list[str] = []
-    allow_local_mcp: bool = False
+    allow_local_mcp: bool = False  # app connectors that start a local process (stdio MCP servers); local edition
     workspaces_dir: str = "./workspaces"  # one git repository per project (M5-T1)
     # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith
     # Sandbox (spike SP-2; credentials from LANGSMITH_API_KEY)
@@ -67,7 +67,7 @@ class Settings(BaseSettings):
         None  # "remote": the sandbox service (`agentcanvas.sandbox.service`), e.g. http://sandbox:8090
     )
     sandbox_token: str | None = None  # the bearer token the service expects
-    sandbox_image: str = "python:3.12-slim"
+    sandbox_image: str = "python:3.12-slim"  # "docker": the image workspace code runs in
     # sandbox.json egress allow-lists (docker, remote): sandboxed code reaches the network only through this proxy
     # (`agentcanvas.sandbox.egress`), which admits the hosts of the call's signed list. "remote": its address as the
     # sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container
@@ -82,11 +82,11 @@ class Settings(BaseSettings):
     langsmith_snapshot: str | None = None  # snapshot name/id to boot from; None = LangSmith's default snapshot
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)
-    recursion_limit: int = 50
+    recursion_limit: int = 50  # steps one run may take before it stops (LangGraph's recursion limit)
     # the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (PLAN.md section 2; the loop stays the
     # default until Deep Agents has passed the same suite and the real-model evaluation)
     copilot_engine: Literal["loop", "deepagents"] = "loop"
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5173"]  # browser origins allowed to call the API
     # where people reach the web app, e.g. https://canvas.example.com: OAuth sign-ins to app connectors return to
     # <public_url>/oauth/callback and (https only) authorization servers fetch our client metadata document from
     # <public_url>/api/v1/oauth/client-metadata.json. Unset: the first CORS origin (the development server).
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     # networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so
     # workspace code there cannot call the API from inside
     refuse_clients: list[str] = []
-    log_json: bool = False
+    log_json: bool = False  # one JSON object per log line (for a log collector) instead of readable text
     metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
     # unless the organisation sets its own (M8-T4); 0 keeps them forever

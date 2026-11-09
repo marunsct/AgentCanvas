@@ -2,8 +2,10 @@
 
 The Python is read with `ast` and never run. What carries over:
 
-- every `Agent(...)`: its name, `instructions` (text), `model`, `model_settings` (temperature, max tokens), `tools`
-  and `output_type`, as an AI agent block with its model block;
+- every `Agent(...)` (assigned to a name, or returned by a function that builds it): its name, `instructions` (text,
+  a module-level constant, or the f-string an instructions function returns, as Agent Builder writes them),
+  `model`, `model_settings` (temperature, max tokens), `tools` and `output_type`, as an AI agent block with its
+  model block;
 - `@function_tool` functions, as Python tools: their source goes to the project's workspace
   (`tools/<workflow key>_tools.py`, written as a LangChain `@tool` with its description, without the SDK's run
   context parameter), with the imports, constants, helpers and classes of the file they use, added when the
@@ -12,8 +14,8 @@ The Python is read with `ast` and never run. What carries over:
 - the order of the `Runner.run(agent, ...)` and `agent.run(...)` / `agent.run_sync(...)` calls (an Agent Builder
   export runs its agents one after another), else the agent no other agent hands off to.
 
-Hosted tools (web search, file search, code interpreter), guardrails and branching code are listed in the report with
-what to use instead.
+Hosted tools (web search, file search, code interpreter, hosted MCP; inline or assigned to a name), guardrails and
+branching code are listed in the report with what to use instead.
 """
 
 from __future__ import annotations
@@ -136,8 +138,25 @@ class _Reader:
         self.runs: list[tuple[int, int, str | None, str | None]] = []  # (line, column, owner, first argument)
         self.tool_rids: dict[str, str] = {}
         self.files: dict[str, str] = {}
+        self.hosted: dict[
+            str, ast.Call
+        ] = {}  # variable -> a hosted tool (Agent Builder: `web_search = WebSearchTool(...)`)
+        self.defs: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}  # every module-level function
+        self.texts: dict[str, str] = {}  # module-level string constants (instructions kept in one)
 
     def scan(self) -> None:
+        for stmt in self.tree.body:
+            if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
+                self.defs[stmt.name] = stmt
+            elif isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call) and _name(stmt.value.func) in HOSTED:
+                for t in stmt.targets:
+                    if isinstance(t, ast.Name):
+                        self.hosted[t.id] = stmt.value
+            elif isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant | ast.JoinedStr):
+                text = _const(stmt.value)
+                for t in stmt.targets:
+                    if isinstance(t, ast.Name) and isinstance(text, str):
+                        self.texts[t.id] = text
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and _name(node.value.func) == "Agent":
                 for t in node.targets:
@@ -151,11 +170,20 @@ class _Reader:
             elif isinstance(node, ast.Call) and _name(node.func) in ("run", "run_sync", "run_streamed"):
                 owner = node.func.value if isinstance(node.func, ast.Attribute) else None
                 if owner is not None:
-                    first = _name(node.args[0]) if node.args else None
+                    arg = node.args[0] if node.args else None
+                    first = _name(arg.func) if isinstance(arg, ast.Call) else _name(arg) if arg is not None else None
                     self.runs.append((node.lineno, node.col_offset, _name(owner), first))
             elif isinstance(node, ast.If | ast.Match) and self._inside_workflow(node):
                 self.b.note("The code branches (if/else); the workflow runs its agents in order. Add a Choose a path "
                             "step where the original chose between agents.")  # fmt: skip
+        for (
+            fname,
+            fn,
+        ) in self.defs.items():  # a function that builds and returns one agent: `def build(): return Agent(`
+            made = [n.value for n in ast.walk(fn) if isinstance(n, ast.Return) and isinstance(n.value, ast.Call)
+                    and _name(n.value.func) == "Agent"]  # fmt: skip
+            if len(made) == 1 and fname not in self.agents:
+                self.agents[fname] = made[0]
         if not self.agents:
             raise ImportError_("no Agent(...) found in this code")
         for _, _, owner, first in sorted(self.runs, key=lambda r: (r[0], r[1])):  # in the order the code runs them
@@ -308,11 +336,49 @@ class _Reader:
                     props[stmt.target.id] = {"type": TYPES.get(ann, "string")}
         return {"type": "object", "properties": props, "required": list(props)} if props else None
 
+    def hosted_about(self, var: str) -> str:
+        """What a hosted tool variable was and what to use instead (an MCP server's address when it has one)."""
+        call = self.hosted[var]
+        kind = _name(call.func) or ""
+        about = HOSTED[kind]
+        config = _const(_kw(call, "tool_config"))
+        if kind == "HostedMCPTool" and isinstance(config, dict):
+            where = config.get("server_url") or config.get("connector_id")
+            label = config.get("server_label")
+            if where:
+                about += f" ('{label or var}' at {where})"
+        return about
+
+    def instructions_function(self, node: ast.AST | None, label: str) -> str | None:
+        """The text of instructions written as a function (Agent Builder writes one when they use variables): the
+        string it returns. The workflow's input (`workflow_input_as_text`) is the chat message the agent is given
+        anyway, so it is left out; other variables stay as {name} and are listed in the report."""
+        fn = self.defs.get(_name(node) or "") if isinstance(node, ast.Name) else None
+        if fn is None:
+            return None
+        returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return) and n.value is not None]
+        if len(returns) != 1 or not isinstance(returns[0].value, ast.Constant | ast.JoinedStr):
+            return None
+        text = _const(returns[0].value)
+        if not isinstance(text, str):
+            return None
+        text = re.sub(r"\s*\{workflow_input_as_text\}", "", text).strip()
+        left = sorted(set(re.findall(r"\{([A-Za-z_][A-Za-z0-9_.]*)\}", text)))
+        if left:
+            self.b.note(f"Agent '{label}': its instructions use {', '.join(left)} from the original run context; they "
+                        "are kept as {name} text, so write those parts on the block.")  # fmt: skip
+        return text
+
     # ---- steps ----
     def agent_step(self, var: str) -> None:
         call = self.agents[var]
         label = str(_const(_kw(call, "name")) or var)
         instructions = _const(_kw(call, "instructions"))
+        given = _kw(call, "instructions")
+        if instructions is None and isinstance(given, ast.Name) and given.id in self.texts:
+            instructions = self.texts[given.id]
+        if instructions is None:
+            instructions = self.instructions_function(_kw(call, "instructions"), label)
         if instructions is None and _kw(call, "instructions") is not None:
             self.b.note(f"Agent '{label}': its instructions are computed by code; write them on the block.")
         tools, specialists = [], []
@@ -324,6 +390,8 @@ class _Reader:
                 specialists.append(_name(target.value))
             elif n in HOSTED:
                 self.b.note(f"Agent '{label}' used {HOSTED[n]}.")
+            elif n in self.hosted:
+                self.b.note(f"Agent '{label}' used {self.hosted_about(n)}.")
             elif n and (rid := self.tool(n)):
                 tools.append(rid)
             elif n:

@@ -42,6 +42,9 @@ log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
 
 
+STOPPED_BY_ADMIN = "stopped by an admin (stop all runs)"  # the kill switch (F-5); its reason is in the audit log
+
+
 @dataclass
 class RunHandle:
     run_id: str
@@ -72,6 +75,7 @@ class RunHandle:
     # a stop is a request it reads first (RT-10)
     started: bool = False
     stop_requested: bool = False
+    stop_reason: str | None = None  # why it was stopped, when not by the person (the kill switch's reason)
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
@@ -635,7 +639,7 @@ class Runner:
                 status, error = "interrupted", "paused for a server restart; it continues automatically"
                 code = "redeploy"
             else:
-                status, error, code = "cancelled", "cancelled by user", "cancelled"
+                status, error, code = "cancelled", h.stop_reason or "cancelled by user", "cancelled"
             await emit(
                 {
                     "type": "RUN_ERROR",
@@ -922,10 +926,11 @@ class Runner:
         superseded heartbeat used to cut the save short and leave its thread `running`)."""
         return h.task is not None and not h.done.is_set() and not h.finishing
 
-    async def cancel(self, run_id: str) -> bool:
+    async def cancel(self, run_id: str, reason: str | None = None) -> bool:
         h = self.handles.get(run_id)
         if h is None or not self._stoppable(h):
             return False
+        h.stop_reason = reason or h.stop_reason
         self._stop_task(h)
         return True
 
@@ -970,7 +975,11 @@ class Runner:
                 update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
             )
             gone = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.status != "running"))).all())
+            asked = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.stop_requested.is_(True)))).all())
             await s.commit()
+        for run_id in asked:  # the kill switch, pressed on another instance (F-5)
+            if run_id not in gone:
+                await self.cancel(run_id, STOPPED_BY_ADMIN)
         for run_id in gone:
             h = self.handles.get(run_id)
             if h is not None and self._stoppable(h):

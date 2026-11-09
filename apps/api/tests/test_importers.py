@@ -118,12 +118,101 @@ def test_flowise_agentflow():
     assert any("customFunctionAgentflow" in r and "placeholder" in r for r in report)
 
 
+def test_langflow_1_13_loop_imports_without_its_loop_back():
+    """Langflow 1.13's Research Translation Loop starter: the model reads a parser listed after it in the file (that
+    failed to import), its model is the 1.13 model selector, and the loop body hands items back to the Loop."""
+    _, wf, report, _ = _imported("langflow_loop")
+    nodes = {n.name: n for n in wf.nodes}
+    assert nodes["language_model"].type == "core.llm"
+    assert nodes["language_model"].config["prompt"] == "{{ state.parser_result }}"
+    (model,) = [r for r in wf.resources if r.type == "model.chat"]
+    assert model.config["model"] == "openai:gpt-5.5"
+    assert not [n for n in wf.nodes if n.type == "core.join"]  # no wait for a step that waits for it
+    assert ("language_model", None, "END") in _flows(wf)
+    assert "loop_result" in {c.name for c in wf.state.channels if c.io in ("out", "inout")}  # Chat Output shows it
+    text = "\n".join(report)
+    assert "loop back from 'Language Model' into 'Loop' was left out" in text
+    assert "placeholder to replace with a Repeat for each item step" in text
+    assert "not a step" not in text and "had no model name" not in text
+
+
+def test_langflow_1_13_agent_model_selector():
+    doc = _load("langflow_agent")
+    agent = next(n for n in doc["data"]["nodes"] if n["data"]["type"] == "Agent")
+    template = agent["data"]["node"]["template"]
+    for old in ("agent_llm", "model_name"):
+        template.pop(old, None)
+    template["model"] = {"type": "model", "value": [{"name": "claude-sonnet-5-5", "provider": "Anthropic"}]}
+    doc["data"]["edges"] = [
+        e
+        for e in doc["data"]["edges"]
+        if e["target"] != agent["id"] or e["data"]["targetHandle"].get("fieldName") not in ("agent_llm", "llm", "model")
+    ]
+    _, ir, _, _ = import_document(doc, wf_id="wf_new")
+    models = [r["config"]["model"] for r in ir["resources"] if r["type"] == "model.chat"]
+    assert models == ["anthropic:claude-sonnet-5-5"]
+
+
 def test_n8n_ai_agent():
     _, wf, report, _ = _imported("n8n_ai_agent")
     (agent,) = wf.nodes
     assert agent.config == {"system_prompt": "You are a helpful weather assistant."}
     assert {r.type for r in wf.resources} == {"model.chat", "tool.http"}
     assert any("Wikipedia" in r for r in report) and any("Simple Memory" in r for r in report)
+
+
+def _n8n_v2_export() -> dict:
+    """An n8n 2.x workflow using nodes n8n 3.0 removed: a Cron start, a v1 SQL Agent, LangChain Code, an OpenAI
+    Assistant and a Pinecone Load vector store plugged in as a tool."""
+    lc = "@n8n/n8n-nodes-langchain."
+    nodes = [
+        {"name": "Every hour", "type": "n8n-nodes-base.cron", "parameters": {}},
+        {
+            "name": "Ask the DB",
+            "type": lc + "agent",
+            "typeVersion": 1.5,
+            "parameters": {"agent": "sqlAgent", "text": "How many orders today?"},
+        },
+        {"name": "Reshape", "type": lc + "code", "parameters": {}},
+        {
+            "name": "Helper",
+            "type": lc + "openAiAssistant",
+            "parameters": {"instructions": "You help with refunds.", "text": "={{ $json.output }}"},
+        },
+        {"name": "Docs", "type": lc + "vectorStorePineconeLoad", "parameters": {}},
+        {"name": "Chatty", "type": lc + "agent", "parameters": {"agent": "conversationalAgent"}},
+    ]
+    main = lambda *names: {"main": [[{"node": n, "type": "main", "index": 0} for n in names]]}  # noqa: E731
+    return {"nodes": nodes, "connections": {
+        "Every hour": main("Ask the DB"), "Ask the DB": main("Reshape"), "Reshape": main("Helper"),
+        "Helper": main("Chatty"), "Docs": {"ai_tool": [[{"node": "Helper", "type": "ai_tool", "index": 0}]]},
+    }}  # fmt: skip
+
+
+def test_n8n_nodes_removed_in_3_0_say_what_to_use_instead():
+    _, ir, report, _ = import_document(_n8n_v2_export(), wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    nodes = {n.name: n for n in wf.nodes}
+    assert "every_hour" not in nodes  # a Cron node starts the workflow (it was a placeholder step)
+    assert ("START", None, "ask_the_db") in _flows(wf)
+    assert nodes["helper"].type == "core.agent"
+    assert nodes["helper"].config["system_prompt"] == "You help with refunds."
+    text = "\n".join(report)
+    assert "'Every hour' (cron) started the n8n workflow" in text
+    assert "SQL Agent (removed in n8n 3.0)" in text and "database tool" in text
+    assert "LangChain Code, removed in n8n 3.0" in text and "placeholder to replace with a Run Python code" in text
+    assert "OpenAI Assistant (removed in n8n 3.0)" in text
+    assert "PineconeLoad vector store, removed in n8n 3.0" in text and "Search knowledge step" in text
+    assert "Conversational Agent mode (removed in n8n 3.0)" in text
+
+
+def test_n8n_3_vector_store_is_not_called_removed():
+    doc = _n8n_v2_export()
+    doc["nodes"][4]["type"] = "@n8n/n8n-nodes-langchain.vectorStorePinecone"
+    _, _, report, _ = import_document(doc, wf_id="wf_new")
+    (line,) = [r for r in report if "Pinecone" in r]
+    assert "removed" not in line and "Search knowledge step" in line
 
 
 def test_n8n_branches_do_not_wait_for_each_other():
@@ -418,3 +507,41 @@ def test_agents_sdk_code_written_against_agents_classic_imports_too():
     assert kind == plain_kind == "openai_agents"
     shape = lambda d: sorted((n["type"], n["name"]) for n in d["nodes"])  # noqa: E731
     assert shape(ir) == shape(plain_ir)
+
+
+def test_an_agent_builder_export_keeps_hosted_tools_and_instruction_functions():
+    """How Agent Builder writes code (export: Code > Agents SDK > Python): hosted tools are variables
+    (`web_search_preview = WebSearchTool(...)`), and instructions with variables are a function returning an f-string.
+    Both were reported as missing ("the tool 'web_search_preview' is not defined", "computed by code")."""
+    text = (FILES / "openai_agent_builder_export.py.txt").read_text()
+    kind, ir, report, _ = import_document(text, wf_id="wf_AB1")
+    wf = Workflow.model_validate(ir)
+    assert kind == "openai_agents" and not [d for d in validate(wf) if d.severity == "error"]
+    nodes = {n.name: n for n in wf.nodes}
+    assert ("START", None, "classifier") in _flows(wf) and ("classifier", None, "trend_query") in _flows(wf)
+    prompt = nodes["trend_query"].config["system_prompt"]
+    assert prompt == "Find the latest official figures for the region {state_region}. Cite each source."
+    joined = "\n".join(report)
+    assert "not defined in this file" not in joined and "computed by code" not in joined
+    assert "Agent 'trend query' used web search" in joined
+    assert "hosted MCP server: add it as an App connector (MCP) ('docs' at https://mcp.example.com/mcp)" in joined
+    assert "its instructions use state_region" in joined
+
+
+def test_agents_made_by_a_function_and_instructions_in_a_constant_import():
+    text = '''from agents import Agent, Runner
+
+PROMPT = """You plan carousels."""
+
+
+def build_planner() -> Agent:
+    return Agent(name="Planner", instructions=PROMPT, model="gpt-5-mini")
+
+
+async def main(text: str):
+    return await Runner.run(build_planner(), text)
+'''
+    _, ir, report, _ = import_document(text, wf_id="wf_AB2")
+    (node,) = ir["nodes"]
+    assert node["name"] == "planner" and node["config"]["system_prompt"] == "You plan carousels."
+    assert not [r for r in report if "computed by code" in r or "left out" in r]

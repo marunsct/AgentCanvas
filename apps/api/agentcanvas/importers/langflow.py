@@ -38,6 +38,48 @@ MEMORY = {"Memory", "MessageHistory", "ChatMemory", "StoreMessage"}
 HTTP_TOOLS = {"APIRequest"}
 TOOL_FIELDS = {"tools"}
 MODEL_FIELDS = {"agent_llm", "llm", "model", "language_model"}
+KNOWLEDGE = "a knowledge base (the Knowledge page) and a Search knowledge step"
+WEB = "an app connector (MCP) for web search, or an HTTP tool for one site"
+# components with no counterpart here: what to use instead (Langflow 1.13 made Chroma DB and Local DB legacy and
+# removed ALTK: https://docs.langflow.org/release-notes)
+INSTEAD = {
+    "Knowledge": "a Search knowledge step on a knowledge base (the Knowledge page)",
+    "KnowledgeRetrieval": "a Search knowledge step on a knowledge base (the Knowledge page)",
+    "KnowledgeIngestion": "uploading the documents to a knowledge base (the Knowledge page)",
+    "File": f"{KNOWLEDGE}, or a Run Python code step that reads the file from the Workspace",
+    "SplitText": "a knowledge base (it splits documents itself)",
+    "Chroma": f"{KNOWLEDGE} (Chroma DB is legacy in Langflow 1.13)",
+    "LocalDB": f"{KNOWLEDGE} (Local DB is legacy in Langflow 1.13)",
+    "ALTK": "an agent (Langflow 1.13 removed ALTK for its Agent)",
+    "LoopComponent": "a Repeat for each item step",
+    "BatchRunComponent": "a Repeat for each item step around an Ask AI step",
+    "ParserComponent": "a Set values step with a {{ state.<field> }} template",
+    "parser": "a Set values step with a {{ state.<field> }} template",
+    "StructuredOutput": "an Ask AI step that answers in the fields you need",
+    "MemoryBase": "Memory tools on the agent",
+    "UnifiedWebSearch": WEB, "WebSearch": WEB, "URLComponent": WEB, "URL": WEB,
+    "CalculatorComponent": "a Python tool", "PythonREPLComponent": "a Python tool",
+    "SQLComponent": "an app connector (MCP) for the database",
+}  # fmt: skip
+VECTOR_STORES = {"AstraDB", "Pinecone", "Qdrant", "PGVector", "Weaviate", "Milvus", "MongoDBAtlasVector", "Redis",
+                 "Elasticsearch", "OpenSearch", "Supabase", "Cassandra", "Couchbase", "Upstash", "Vectara"}  # fmt: skip
+
+
+def instead(kind: str) -> str | None:
+    """What to use here for a Langflow component that has no counterpart (None when there is no suggestion)."""
+    if kind in INSTEAD:
+        return INSTEAD[kind]
+    if kind in VECTOR_STORES or kind.endswith(("VectorStore", "VectorStoreComponent")):
+        return KNOWLEDGE
+    return None
+
+
+def picked(value: Any) -> tuple[str, str] | None:
+    """(provider, model name) from a Langflow 1.13 model selector: a list of the picked options (or one)."""
+    first = value[0] if isinstance(value, list) and value else value
+    if isinstance(first, dict) and first.get("name"):
+        return str(first.get("provider") or "openai"), str(first["name"])
+    return None
 
 
 def _handle(raw: Any) -> dict[str, Any]:
@@ -77,6 +119,7 @@ class _Flow:
                                str(th.get("fieldName") or "")))  # fmt: skip
         self._expr: dict[str, str | None] = {}
         self.step_of: dict[str, str] = {}  # node id -> step key
+        self.building: set[str] = set()  # steps being made (a loop of steps reads nothing from the one it is in)
 
     # ---- reading components ----
     def kind(self, nid: str) -> str:
@@ -110,6 +153,11 @@ class _Flow:
         k = self.kind(nid)
         provider = MODEL_PROVIDERS.get(k) or str(self.value(nid, "provider") or "openai")
         name = self.value(nid, "model_name") or self.value(nid, "model")
+        chosen = picked(self.value(nid, "model"))  # Langflow 1.13: one "model" selector with its provider
+        if chosen:
+            provider, name = (MODEL_PROVIDERS.get(k) or chosen[0]), chosen[1]
+        elif not isinstance(name, str):
+            name = None
         base = self.value(nid, "base_url") or self.value(nid, "openai_api_base") or None
         return self.b.model(model_id(provider, name, self.b), temperature=self.value(nid, "temperature"),
                             max_tokens=self.value(nid, "max_tokens"), base_url=base)  # fmt: skip
@@ -146,8 +194,11 @@ class _Flow:
         elif k in AGENTS:
             found = AGENT_REPLY
         elif nid in self.step_of:
-            st = self.b.steps[self.step_of[nid]]
-            if st.type == "core.llm":
+            self.build(nid)
+            st = self.b.steps.get(self.step_of[nid])
+            if st is None:  # a loop of steps: the one being made reads nothing from itself
+                pass
+            elif st.type == "core.llm":
                 found = "{{ state." + st.config["output"] + " }}"
             elif st.type == "core.set":
                 found = "{{ state." + next(iter(st.config["values"])) + " }}"
@@ -175,6 +226,15 @@ class _Flow:
 
         return brace_template(self.value(nid, "template") or "", var)
 
+    def build(self, nid: str) -> None:
+        """Make the step for `nid` now, when it is not made yet: a step may read one that comes later in the file."""
+        if self.step_of[nid] not in self.b.steps and nid not in self.building:
+            self.building.add(nid)
+            try:
+                _step(self, nid)
+            finally:
+                self.building.discard(nid)
+
     # ---- order ----
     def earlier(self, nid: str, seen: set[str] | None = None) -> list[tuple[str, str | None]]:
         """The steps `nid` waits for, looking through prompts and inputs: (step key or START, route)."""
@@ -182,6 +242,10 @@ class _Flow:
         out: list[tuple[str, str | None]] = []
         for src, output, field in self.into(nid):
             if src in seen or field in TOOL_FIELDS or (field in MODEL_FIELDS and self.is_model(src)):
+                continue
+            if self.kind(nid) == "LoopComponent" and field != "data":  # the loop body handing an item back
+                self.b.note(f"The loop back from '{self.label(src)}' into '{self.label(nid)}' was left out; a "
+                            "Repeat for each item step runs steps once per item.")  # fmt: skip
                 continue
             seen.add(src)
             if src in self.step_of:
@@ -203,7 +267,7 @@ def read(doc: dict[str, Any], *, wf_id: str, name: str | None = None) -> Builder
     for nid in steps:  # keys first, so steps can refer to each other in any order
         f.step_of[nid] = nid
     for nid in steps:
-        _step(f, nid)
+        f.build(nid)
     for nid in steps:
         for key, route in f.earlier(nid):
             b.after(nid, key, route)
@@ -216,6 +280,8 @@ def read(doc: dict[str, Any], *, wf_id: str, name: str | None = None) -> Builder
                     b.output(st.config["output"])
                 elif st is not None and st.type == "core.agent":
                     b.output("messages")
+                elif st is not None and st.type == "core.set":  # a placeholder: its field, once it is replaced
+                    b.output(next(iter(st.config["values"])))
                 elif src in f.nodes and f.kind(src) in ROUTERS:
                     continue
                 else:
@@ -230,8 +296,11 @@ def _step(f: _Flow, nid: str) -> None:
     pos = f.pos(nid)
     if k in AGENTS:
         wired = [s for s, o, fld in f.into(nid) if fld in MODEL_FIELDS and f.is_model(s)]
+        chosen = picked(f.value(nid, "model"))
         if wired:
             model = f.model_block(wired[0])
+        elif chosen:
+            model = b.model(model_id(chosen[0], chosen[1], b), temperature=f.value(nid, "temperature"))
         else:
             provider = str(f.value(nid, "agent_llm") or "openai")
             model = b.model(model_id(provider, f.value(nid, "model_name"), b),
@@ -268,7 +337,7 @@ def _step(f: _Flow, nid: str) -> None:
         b.step(nid, "core.llm", label, {"prompt": prompt, "output": out}, label=label, model=f.model_block(nid),
                position=pos)  # fmt: skip
     else:
-        b.placeholder(nid, label, f"the Langflow component '{k}'", position=pos, label=label)
+        b.placeholder(nid, label, f"the Langflow component '{k}'", position=pos, label=label, instead=instead(k))
 
 
 def _field_of(text: str) -> str | None:
@@ -288,5 +357,8 @@ def _tool(f: _Flow, nid: str) -> str | None:
                               description=str(f.value(nid, "tool_description") or ""))  # fmt: skip
         if found:
             return found
-    f.b.note(f"Tool '{label}' ({k}) was not imported; add a tool block for it on the canvas.")
+    use = instead(k)
+    f.b.note(
+        f"Tool '{label}' ({k}) was not imported; {'use ' + use if use else 'add a tool block for it on the canvas'}."
+    )
     return None

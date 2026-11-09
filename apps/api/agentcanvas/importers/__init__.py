@@ -132,12 +132,14 @@ class Builder:
         return st
 
     def placeholder(self, key: str, name: str, what: str, *, position: dict[str, float] | None = None,
-                    label: str | None = None) -> _Step:  # fmt: skip
-        """A stand-in step for something AgentCanvas cannot run (a Set values step that writes a TODO)."""
+                    label: str | None = None, instead: str | None = None) -> _Step:  # fmt: skip
+        """A stand-in step for something AgentCanvas cannot run (a Set values step that writes a TODO); `instead`
+        names what to replace it with, when that is known."""
         out = self.channel(f"{name}_result")
         st = self.step(key, "core.set", name, {"values": {out: f"TODO: replace this step ({what})"}}, label=label,
                        position=position)  # fmt: skip
-        self.note(f"Step '{st.name}': {what} has no counterpart in AgentCanvas; it is a placeholder to replace.")
+        with_ = f" with {instead}" if instead else ""
+        self.note(f"Step '{st.name}': {what} has no counterpart in AgentCanvas; it is a placeholder to replace{with_}.")
         return st
 
     def after(self, key: str, earlier: str, route: str | None = None) -> None:
@@ -298,7 +300,7 @@ def model_id(provider: str, name: Any, report: Builder | None = None) -> str:
     if not model:
         model = DEFAULT_MODELS.get(pid, "model")
         if report is not None:
-            report.note(f"A {provider} model had no model name; it uses {pid}:{model}. Pick the one you want.")
+            report.note(f"A model from {provider} had no model name; it uses {pid}:{model}. Pick the one you want.")
     return f"{pid}:{model}"
 
 

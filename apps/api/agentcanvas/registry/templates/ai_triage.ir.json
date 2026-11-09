@@ -1,0 +1,209 @@
+{
+ "ir_version": "1.1",
+ "id": "tpl_ai_triage",
+ "name": "AI triage with a confidence check",
+ "description": "An AI decides whether a message is a question or a complaint, says how sure it is and why, and sends anything it is unsure about to a person.",
+ "state": {
+  "channels": [
+   {
+    "name": "request",
+    "description": "The incoming message",
+    "io": "in"
+   },
+   {
+    "name": "decision",
+    "description": "{choice, confidence, reason} from the AI",
+    "type": {
+     "type": "object"
+    }
+   },
+   {
+    "name": "reply",
+    "io": "out"
+   }
+  ]
+ },
+ "resources": [
+  {
+   "id": "r_fast",
+   "type": "model.chat",
+   "name": "fast_model",
+   "config": {
+    "model": "anthropic:claude-haiku-5-5"
+   }
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n_decide",
+   "type": "core.decide",
+   "name": "triage",
+   "label": "Question or complaint?",
+   "config": {
+    "prompt": "A customer wrote:\n\n{{ state.request }}",
+    "cases": [
+     {
+      "route": "question",
+      "description": "asks how something works, where an order is, or what to do next"
+     },
+     {
+      "route": "complaint",
+      "description": "is unhappy: something broke, arrived late or was charged wrongly"
+     }
+    ],
+    "default": "unsure",
+    "min_confidence": 0.6,
+    "output": "decision"
+   }
+  },
+  {
+   "id": "n_answer",
+   "type": "core.llm",
+   "name": "answer",
+   "label": "Answer the question",
+   "config": {
+    "prompt": "Answer briefly and kindly: {{ state.request }}",
+    "output": "reply"
+   }
+  },
+  {
+   "id": "n_apology",
+   "type": "core.set",
+   "name": "apologise",
+   "label": "Apologise",
+   "config": {
+    "values": {
+     "reply": "Sorry to hear that. A person will follow up on: {{ state.request }}"
+    }
+   }
+  },
+  {
+   "id": "n_person",
+   "type": "core.set",
+   "name": "hand_to_person",
+   "label": "Hand to a person",
+   "config": {
+    "values": {
+     "reply": "Thanks, a person will read your message ({{ state.decision.reason }})."
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "kind": "flow",
+   "source": {
+    "node": "START"
+   },
+   "target": {
+    "node": "n_decide"
+   }
+  },
+  {
+   "id": "e2",
+   "kind": "flow",
+   "source": {
+    "node": "n_decide",
+    "port": "route:question"
+   },
+   "target": {
+    "node": "n_answer"
+   }
+  },
+  {
+   "id": "e3",
+   "kind": "flow",
+   "source": {
+    "node": "n_decide",
+    "port": "route:complaint"
+   },
+   "target": {
+    "node": "n_apology"
+   }
+  },
+  {
+   "id": "e4",
+   "kind": "flow",
+   "source": {
+    "node": "n_decide",
+    "port": "route:unsure"
+   },
+   "target": {
+    "node": "n_person"
+   }
+  },
+  {
+   "id": "e5",
+   "kind": "flow",
+   "source": {
+    "node": "n_answer"
+   },
+   "target": {
+    "node": "END"
+   }
+  },
+  {
+   "id": "e6",
+   "kind": "flow",
+   "source": {
+    "node": "n_apology"
+   },
+   "target": {
+    "node": "END"
+   }
+  },
+  {
+   "id": "e7",
+   "kind": "flow",
+   "source": {
+    "node": "n_person"
+   },
+   "target": {
+    "node": "END"
+   }
+  },
+  {
+   "id": "w1",
+   "kind": "wiring",
+   "source": {
+    "node": "r_fast"
+   },
+   "target": {
+    "node": "n_decide",
+    "port": "model"
+   }
+  },
+  {
+   "id": "w2",
+   "kind": "wiring",
+   "source": {
+    "node": "r_fast"
+   },
+   "target": {
+    "node": "n_answer",
+    "port": "model"
+   }
+  }
+ ],
+ "settings": {
+  "output_channels": [
+   "decision",
+   "reply"
+  ]
+ },
+ "metadata": {
+  "gallery": {
+   "category": "Getting started",
+   "tags": [
+    "routing",
+    "classification",
+    "decide"
+   ],
+   "difficulty": "intermediate",
+   "sample_input": {
+    "request": "I was charged twice for my order"
+   }
+  }
+ }
+}

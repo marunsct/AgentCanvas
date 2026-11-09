@@ -185,7 +185,9 @@ async def test_another_instance_takes_over_an_experiment(app, api_client):
     assert await other.tick() == []  # its heartbeat is fresh
     taken = await other.tick(datetime.now(UTC) + timedelta(minutes=2))
     assert taken == [exp["id"]]
-    assert await ExperimentJob(app.state.db, app.state.runner).tick(datetime.now(UTC) + timedelta(minutes=2)) == []
+    # a third instance does not take it again: at the real time, as the taken-over experiment's own start rewrites
+    # its heartbeat with the real clock (a simulated "two minutes later" made it stale again when that ran first)
+    assert await ExperimentJob(app.state.db, app.state.runner).tick() == []
     await asyncio.wait_for(other.tasks[exp["id"]], 30)
     done = (await api_client.get(f"/v1/experiments/{exp['id']}")).json()
     assert done["status"] == "done" and done["summary"][0]["completed"] == 3

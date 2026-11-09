@@ -3849,6 +3849,18 @@
             "title": "Scored",
             "type": "integer"
           },
+          "spread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "repeated runs: the mean, over examples, of the standard deviation of this score across an example's runs (0: every run scored the same)",
+            "title": "Spread"
+          },
           "unscored": {
             "default": 0,
             "description": "completed examples this evaluator gave no score (it failed, or the example lacks a reference): not in the mean, and a release gate fails on them",
@@ -4185,6 +4197,14 @@
             ],
             "title": "Name"
           },
+          "repetitions": {
+            "default": 1,
+            "description": "runs per example and target: more than one reports pass@k, pass^k and flaky examples",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "type": "integer"
+          },
           "simulation": {
             "anyOf": [
               {
@@ -4288,6 +4308,11 @@
             },
             "title": "Pairwise",
             "type": "array"
+          },
+          "repetitions": {
+            "default": 1,
+            "title": "Repetitions",
+            "type": "integer"
           },
           "simulation": {
             "anyOf": [
@@ -4402,6 +4427,12 @@
           },
           "position": {
             "title": "Position",
+            "type": "integer"
+          },
+          "repetition": {
+            "default": 0,
+            "description": "which run of the example (0 to repetitions - 1)",
+            "title": "Repetition",
             "type": "integer"
           },
           "run_id": {
@@ -12161,6 +12192,72 @@
         "title": "StopOut",
         "type": "object"
       },
+      "StopRunsIn": {
+        "properties": {
+          "deployment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only the runs of this deployment",
+            "title": "Deployment Id"
+          },
+          "reason": {
+            "description": "why, for the audit log",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only the runs of this workflow (drafts and deployments)",
+            "title": "Workflow Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "StopRunsIn",
+        "type": "object"
+      },
+      "StopRunsOut": {
+        "properties": {
+          "cancelled": {
+            "description": "runs that were waiting for another server to continue them",
+            "items": {
+              "type": "string"
+            },
+            "title": "Cancelled",
+            "type": "array"
+          },
+          "stopping": {
+            "description": "runs in flight: each stops within one heartbeat (10 s) on its server",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stopping",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stopping",
+          "cancelled"
+        ],
+        "title": "StopRunsOut",
+        "type": "object"
+      },
       "SubgraphRequest": {
         "properties": {
           "name": {
@@ -12307,6 +12404,7 @@
       "TargetSummary": {
         "properties": {
           "completed": {
+            "description": "runs that finished",
             "title": "Completed",
             "type": "integer"
           },
@@ -12327,8 +12425,17 @@
             "type": "array"
           },
           "examples": {
+            "description": "examples of the dataset (each runs `repetitions` times)",
             "title": "Examples",
             "type": "integer"
+          },
+          "flaky": {
+            "description": "repeated runs: examples that passed in some runs and failed in others (at most 100)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Flaky",
+            "type": "array"
           },
           "judge_cost_usd": {
             "default": 0.0,
@@ -12370,6 +12477,30 @@
             ],
             "title": "Latency P95 Ms"
           },
+          "pass_all_k": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "repeated runs (pass^k): share of examples where every one of the k runs passed",
+            "title": "Pass All K"
+          },
+          "pass_at_k": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "repeated runs: share of examples where at least one run passed every evaluator",
+            "title": "Pass At K"
+          },
           "pass_rate": {
             "anyOf": [
               {
@@ -12381,6 +12512,17 @@
             ],
             "description": "share of completed examples that passed every evaluator",
             "title": "Pass Rate"
+          },
+          "repetitions": {
+            "default": 1,
+            "title": "Repetitions",
+            "type": "integer"
+          },
+          "runs": {
+            "default": 0,
+            "description": "runs in all: examples x repetitions",
+            "title": "Runs",
+            "type": "integer"
           },
           "target": {
             "title": "Target",
@@ -17160,7 +17302,7 @@
     },
     "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json": {
       "get": {
-        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key.",
+        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key. Cached as A2A 1.0 section 8.6 asks; its shape depends\non `A2A-Version`, so caches keep one per version.",
         "operationId": "a2a_card_v1_deployments__dep_id__a2a__well_known_agent_card_json_get",
         "parameters": [
           {
@@ -17177,11 +17319,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response A2A Card V1 Deployments  Dep Id  A2A  Well Known Agent Card Json Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -17205,7 +17343,7 @@
     },
     "/v1/deployments/{dep_id}/a2a/.well-known/agent.json": {
       "get": {
-        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key.",
+        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key. Cached as A2A 1.0 section 8.6 asks; its shape depends\non `A2A-Version`, so caches keep one per version.",
         "operationId": "a2a_card_v1_deployments__dep_id__a2a__well_known_agent_json_get",
         "parameters": [
           {
@@ -17222,11 +17360,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response A2A Card V1 Deployments  Dep Id  A2A  Well Known Agent Json Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -17408,6 +17542,47 @@
           }
         },
         "summary": "Mcp Endpoint",
+        "tags": [
+          "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/mcp/server-card": {
+      "get": {
+        "description": "The deployment's MCP Server Card, at the place the MCP Server Card extension reserves for it\n(`<streamable-http-url>/server-card`). Public, like the A2A card: discovery happens before authentication.",
+        "operationId": "mcp_server_card_v1_deployments__dep_id__mcp_server_card_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp Server Card",
         "tags": [
           "agent protocols"
         ]
@@ -22309,6 +22484,73 @@
           }
         ],
         "summary": "Replace Policy",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/runs/stop": {
+      "post": {
+        "description": "The kill switch (admins): stop every run in flight in the organisation, or of one deployment or workflow.\nAudited with its reason. It does not refuse new runs; stop a deployment on its page for that.",
+        "operationId": "stop_all_runs_v1_org_runs_stop_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRunsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopRunsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stop All Runs",
         "tags": [
           "organisation"
         ]

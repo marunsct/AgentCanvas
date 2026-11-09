@@ -234,6 +234,11 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         elif n.type == "core.router":
             routes[n.name] = ac.router_fn(cases=cfg.get("cases", []), default=cfg.get("default", "default"))
             fn = ac.passthrough
+        elif n.type == "core.decide":
+            fn = ac.decide_node(model=wired("model")[0], prompt=cfg["prompt"], cases=cfg.get("cases", []),
+                                output=cfg["output"])  # fmt: skip
+            routes[n.name] = ac.decide_fn(output=cfg["output"], default=cfg.get("default", "default"),
+                                          min_confidence=cfg.get("min_confidence"))  # fmt: skip
         elif n.type == "core.map":
             worker, empty = plan.map_edges[n.name]
             routes[n.name] = ac.map_fn(
