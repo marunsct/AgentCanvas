@@ -1077,7 +1077,7 @@ def export_files(
         "]",
         "",
         "[dependency-groups]",
-        f'dev = ["{_pin("pytest")}", "{_pin("pyyaml")}"]',
+        'dev = ["pytest>=8", "pyyaml>=6"]',  # as every export: not the server's copies, which the image may lack
         "",
         "[tool.uv]",
         "package = false",
