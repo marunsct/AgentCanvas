@@ -379,6 +379,9 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
         if not base_url:
             raise ValueError(f"model '{model}' needs a base URL: the server's OpenAI-compatible address, e.g. …/v1")
         params["base_url"] = base_url
+        # a streamed answer reports its tokens only when asked (OpenAI's stream_options.include_usage); LangChain asks
+        # by itself only for OpenAI's own address, so runs and the Copilot on these servers counted no tokens or cost
+        params.setdefault("stream_usage", True)
         if "api_key" not in params:  # the server's key when one is set; else a placeholder the OpenAI client insists on
             var = OPTIONAL_KEYS.get(provider)
             stored = own and var and (secrets.get(var) or os.environ.get(var))
@@ -394,6 +397,8 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
         )
     if key and "api_key" not in params and key in secrets:
         params["api_key"] = secrets[key]
+    if provider in ("openai", "azure_openai"):  # the same, for OpenAI at an address of its own (and Azure)
+        params.setdefault("stream_usage", True)
     return model, params
 
 

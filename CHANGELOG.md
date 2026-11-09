@@ -117,6 +117,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Models on OpenAI-compatible servers (LM Studio, vLLM, llama.cpp, any OpenAI-compatible address) and OpenAI at an address of its own now report their tokens when they stream, so runs, budgets, the spending report and the Copilot count their tokens and cost; they had read zero. Found by the Copilot evaluation on LM Studio.
 - The memory inspector answers 422 for a namespace label with a period or a control character instead of a server error.
 - Workflows with error routes stream tokens again: LangGraph 1.2.20 runs error handlers in every stream mode, so the "token streaming is off" warning and its workaround are gone.
 - Accessibility (WCAG 2.5.3, Label in Name, found by axe-core 4.14): each block in the palette is now a button named by its visible label, with its description read separately, and the Workspace page's sandbox.json button is named by its visible text.
