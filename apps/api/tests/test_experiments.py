@@ -283,3 +283,8 @@ def test_failures_group_alike_reasons():
         "judge (2): scored below its threshold."
     )
     assert failure_text([], 0, 5) == ""
+    # the database returns results in any order (Postgres does): the summary must not depend on it
+    for order in (done[::-1], done[2:] + done[:2]):
+        assert [(g.reason, g.examples, g.sample) for g in failures(order, specs)] == [
+            (g.reason, g.examples, g.sample) for g in groups
+        ]

@@ -264,7 +264,8 @@ def failures(done: Sequence[Any], specs: list[dict[str, Any]]) -> list[FailureGr
         if example not in g.examples and len(g.examples) < FAILURE_EXAMPLES:
             g.examples.append(example)
 
-    for r in done:
+    # in example order, whatever order the database returned them in: the same examples and sample every time
+    for r in sorted(done, key=lambda r: (r.example_id, getattr(r, "repetition", 0) or 0)):
         if r.run_status != "success":
             add(None, _reason(getattr(r, "error", None) or r.run_status), r.example_id)
             continue
