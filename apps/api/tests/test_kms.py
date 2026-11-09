@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 from sqlalchemy import select
 
 from agentcanvas.db.models import OrgDataKey, Secret
-from agentcanvas.security.kms import AwsKmsKey, Keyring, LocalKey, master_key
+from agentcanvas.security.kms import AwsKmsKey, GcpKmsKey, Keyring, LocalKey, master_key
 from agentcanvas.services.secrets import SecretService, _fernet, migrate_legacy
 
 P = "/v1/projects/prj_default"
@@ -107,6 +110,64 @@ def test_cloud_master_keys():
         master_key("vault:x", "dev")
     with pytest.raises(ValueError, match="32 characters"):
         LocalKey("short")
+
+
+def _stub_gcp(monkeypatch, kms: types.ModuleType | None) -> None:
+    """`from google.cloud import kms` sees only this module (None: the package is not installed)."""
+    cloud = types.ModuleType("google.cloud")
+    cloud.__path__ = []  # a namespace package with nothing in it
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud)
+    if kms is None:
+        monkeypatch.delitem(sys.modules, "google.cloud.kms", raising=False)
+    else:
+        cloud.kms = kms  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "google.cloud.kms", kms)
+
+
+def test_cloud_master_keys_build_their_clients_from_the_installed_packages(monkeypatch):
+    made: list[str] = []
+    boto3 = types.ModuleType("boto3")
+    boto3.client = lambda service: made.append(service) or "aws-client"  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "boto3", boto3)
+    kms = types.ModuleType("google.cloud.kms")
+    kms.KeyManagementServiceClient = lambda: "gcp-client"  # type: ignore[attr-defined]
+    _stub_gcp(monkeypatch, kms)
+
+    aws = master_key("aws:arn:aws:kms:eu-west-1:1:key/k", "dev")
+    gcp = master_key("gcp:projects/p/locations/l/keyRings/r/cryptoKeys/k", "dev")
+    assert isinstance(aws, AwsKmsKey) and aws._kms == "aws-client" and made == ["kms"]
+    assert isinstance(gcp, GcpKmsKey) and gcp._kms == "gcp-client"
+
+
+def test_a_cloud_master_key_without_its_client_stops_startup_naming_the_setting_and_the_extra(monkeypatch):
+    """The image had neither client, so a server set up as the deploy guide says crashed on a bare import error."""
+    from agentcanvas.settings import Settings
+
+    monkeypatch.setitem(sys.modules, "boto3", None)  # not installed
+    _stub_gcp(monkeypatch, None)
+    with pytest.raises(RuntimeError, match=r"AGENTCANVAS_KMS_KEY names a aws: .*boto3.*uv sync --extra kms-aws"):
+        master_key("aws:arn:aws:kms:eu-west-1:1:key/k", "dev")
+    with pytest.raises(RuntimeError, match=r"AGENTCANVAS_KMS_KEY .*google-cloud-kms.*--extra kms-gcp"):
+        Keyring.from_settings(Settings(kms_key="gcp:projects/p/locations/l/keyRings/r/cryptoKeys/k"))
+    with pytest.raises(RuntimeError, match=r"AGENTCANVAS_KMS_PREVIOUS_KEYS .*--extra kms-aws"):
+        Keyring.from_settings(Settings(kms_previous_keys=["aws:arn:aws:kms:eu-west-1:1:key/old"]))
+
+
+def test_the_api_image_installs_both_cloud_kms_clients_from_the_lock():
+    import tomllib
+    from pathlib import Path
+
+    api = Path(__file__).resolve().parents[1]
+    extras = tomllib.loads((api / "pyproject.toml").read_text())["project"]["optional-dependencies"]
+    assert any(d.startswith("boto3") for d in extras["kms-aws"])
+    assert any(d.startswith("google-cloud-kms") for d in extras["kms-gcp"])
+    lock = {p["name"]: p for p in tomllib.loads((api / "uv.lock").read_text())["package"]}
+    assert {"boto3", "google-cloud-kms"} <= set(lock)
+    assert set(lock["agentcanvas"]["optional-dependencies"]) == {"kms-aws", "kms-gcp"}
+    dockerfile = (api.parents[1] / "infra" / "Dockerfile.api").read_text()
+    assert 'ARG KMS="aws gcp"' in dockerfile
+    assert dockerfile.count("$(for k in $KMS; do printf -- '--extra kms-%s ' \"$k\"; done)") == 2  # both uv syncs
+    assert "--all-extras" in (api.parents[1] / "scripts" / "audit-deps.sh").read_text()  # what ships is audited
 
 
 def test_staging_and_production_warn_when_the_master_key_is_derived_from_the_secret_key():

@@ -43,6 +43,12 @@ for example `--build-arg FRAMEWORKS="crewai google_adk" --build-arg WITH_MASTRA=
 missing can still be designed and exported, but its runs stop with *… is not installed on this server*, and the
 workflow's **Framework** setting marks it *not set up*. The ids are in [Choosing a framework](frameworks.md).
 
+**Cloud KMS clients.** The API image includes the AWS KMS (`boto3`) and Google Cloud KMS (`google-cloud-kms`) clients,
+so a master key in `AGENTCANVAS_KMS_KEY=aws:…` or `gcp:…` works with every image. A server that keeps its master key
+in a file can leave them out (about 60 MB) with `--build-arg KMS=""`, or keep one with `--build-arg KMS=aws`. A server
+whose master key needs a client it does not have stops at startup with a message naming the setting and what to
+install. Installed from source, add the one you use: `uv sync --extra kms-aws` or `uv sync --extra kms-gcp`.
+
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
 at least `API_REPLICAS × 50 + 10` (the 10 for migrations, `psql` and backups). The compose file starts Postgres with
@@ -116,7 +122,7 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_ENV` | `prod` (default in compose prod and Helm), `staging` or `dev` |
 | `AGENTCANVAS_EDITION` (Helm: `config.edition`) | `dev` (the default): one company's own server. Builders may let a step reach its private network (**Allow private network** on a web API tool or a remote agent, app connectors at internal addresses), from the API's own network; never a link-local or cloud metadata address. `hosted`: a server shared by organisations that do not trust each other. Every outbound connection (models, tools, remote agents, app connectors, knowledge, trace export) goes to public addresses only, whatever a step allows: the editor flags steps that run code in the server process (E041) or allow private networks (E043). Set `hosted` for any server whose organisations must be kept from your internal network. |
 | `LANGGRAPH_AES_KEY` | 16, 24 or 32 characters (32 for AES-256: `openssl rand -hex 16`): encrypts conversation checkpoints at rest |
-| `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>` |
+| `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>`. The API needs `kms:Encrypt` and `kms:Decrypt` on an AWS key (credentials from the environment: an instance or pod role), or the Cloud KMS CryptoKey Encrypter/Decrypter role on a Google key (Application Default Credentials, such as Workload Identity) |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `AZURE_OPENAI_API_KEY` | Model provider keys for the whole server; a project secret of the same name takes precedence ([Models and API keys](models.md)) |
 | `AGENTCANVAS_LOCAL_MODELS_HOST` | Host that local model servers (Ollama, LM Studio, vLLM, llama.cpp) are reached on when their address isn't set, e.g. `host.docker.internal` or a GPU machine's name |
 | `AGENTCANVAS_MODEL_PRICES` | Prices for models whose list price the catalog does not carry (it prices the Claude and OpenAI models), so costs, cost budgets and alerts count them: JSON, USD per million tokens, e.g. `{"openai:gpt-5.5": [5, 30]}`, or `[in, out, cache read, cache write]` to price prompt caching too (without them, cached input is charged as ordinary input). A model not in the catalog or a malformed value stops the server from starting |

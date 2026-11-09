@@ -85,6 +85,7 @@ check "the egress proxy refuses unsigned calls" sh_ "docker compose -p ac-ci-pro
 check "the sandbox holds none of the API's secrets" sh_ "test -z \"\$(docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox env | grep -E 'DATABASE_URL|SECRET_KEY|AES_KEY|API_KEY')\""
 check "the sandbox has no route out but the proxy" sh_ "! docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T sandbox python -c \"import socket; socket.create_connection(('1.1.1.1', 443), 3)\""
 check "the API's database role is an ordinary one (row-level security applies)" sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T postgres psql -U agentcanvas -tAc \"SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'agentcanvas_app'\" | grep -qx f"
+check "the API image holds the cloud KMS clients" sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T api python -c 'import boto3; from google.cloud import kms'"
 check "metrics are not served through nginx"   sh_ "test \"\$(curl -s -o /dev/null -w '%{http_code}' $B/api/metrics)\" = 404"
 check "metrics exist inside the API"           sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T api python -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/metrics').read().decode())\" | grep -q agentcanvas_runs_active"
 echo "production stack: all probes passed"

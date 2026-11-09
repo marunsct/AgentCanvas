@@ -14,12 +14,17 @@ FROM python AS build
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
+# the cloud KMS clients for a master key in AGENTCANVAS_KMS_KEY=aws:/gcp: (about 60 MB for both). Both by default, so
+# the image starts with either; a build that keeps its master key in a file can leave them out: --build-arg KMS=""
+ARG KMS="aws gcp"
 # 1) dependencies only (cached until the lockfile changes)
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project \
+    $(for k in $KMS; do printf -- '--extra kms-%s ' "$k"; done)
 # 2) the application
 COPY . .
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev \
+    $(for k in $KMS; do printf -- '--extra kms-%s ' "$k"; done)
 # 3)-7) optional frameworks, each in a Python environment of its own so its workflows run here: name them in
 #   FRAMEWORKS (space- or comma-separated ids, or "all"), e.g. --build-arg FRAMEWORKS="crewai google_adk" (the Docker
 #   app: `make docker-up`, all by default), or with the older WITH_<ID>=true arguments. Without them those workflows can
