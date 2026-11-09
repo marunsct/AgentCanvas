@@ -383,12 +383,16 @@ class LangChainAdapter:
             values=jsonable(snap.values or {}),
             next=[names.get(n) or n for n in snap.next],
             interrupts=interrupts,
-            checkpoint_id=(snap.config or {}).get("configurable", {}).get("checkpoint_id"),
+            # no saved checkpoint (an unknown id echoes back in the config): say so rather than an empty state
+            checkpoint_id=(snap.config or {}).get("configurable", {}).get("checkpoint_id") if snap.created_at else None,
             step=(snap.metadata or {}).get("step"),
         )
 
-    async def get_state(self, wf: Workflow, thread_id: str, resources: ac.Resources) -> ThreadState:
-        return await self._state(await self._read_graph(wf, resources), self._config(wf, thread_id), node_index(wf))
+    async def get_state(
+        self, wf: Workflow, thread_id: str, resources: ac.Resources, checkpoint_id: str | None = None
+    ) -> ThreadState:
+        cfg = self._config(wf, thread_id, checkpoint_id)
+        return await self._state(await self._read_graph(wf, resources), cfg, node_index(wf))
 
     async def history(
         self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100, include_values: bool = False

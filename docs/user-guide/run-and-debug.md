@@ -44,8 +44,10 @@ click one to open it in the **Timeline**. The project's conversations of every w
 
 ## Timeline: time travel and fork
 
-The **Timeline** tab in the bottom dock lists every checkpoint of the run's thread. Select one to see the state
-at that moment, including **lineage** (which step or input last wrote each channel). Edit the state and click
+The **Timeline** tab in the bottom dock lists every checkpoint of the run's thread, numbered by step (the most recent
+200; older ones are kept but not listed). Select one to see the state at that moment, including **lineage** (which
+step or input last wrote each channel); the state is loaded when you select the checkpoint
+(`GET /v1/threads/{id}/checkpoints/{checkpoint_id}`). Edit the state and click
 **⑂ Fork from here** to re-run from that point with the change, without touching the original run. This is the
 quickest way to try "what if the classifier had said *high*?".
 

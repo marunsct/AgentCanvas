@@ -19,8 +19,15 @@ export interface Checkpoint {
   next: string[];
   writes: Record<string, unknown> | null;
   created_at: string | null;
-  values?: Record<string, unknown>;
 }
+
+/** The state saved at one checkpoint: read only for the tick picked, since each holds the whole conversation. */
+interface CheckpointState {
+  checkpoint_id: string;
+  values: Record<string, unknown>;
+}
+
+const HISTORY_LIMIT = 200;
 
 export function Timeline() {
   const wf = useEditor((s) => s.wf);
@@ -30,7 +37,7 @@ export function Timeline() {
   const setHighlight = useRun((s) => s.setHighlight);
   const history = useQuery({
     queryKey: ["history", threadId, runSeq],
-    queryFn: () => apiFetch<Checkpoint[]>(`/threads/${threadId}/history?include_values=true&limit=200`),
+    queryFn: () => apiFetch<Checkpoint[]>(`/threads/${threadId}/history?limit=${HISTORY_LIMIT}`),
     enabled: Boolean(threadId),
     // a run ending (runSeq) refetches: keep the ticks, and the checkpoint being edited, on screen meanwhile
     placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === threadId ? keepPreviousData(prev) : undefined),
@@ -43,8 +50,14 @@ export function Timeline() {
   const [view, setView] = useState<"checkpoints" | "trajectory">("checkpoints");
   // keyed on the checkpoint, not the object: a refetch hands back a new one and used to wipe what was being typed
   const cpId = cp?.checkpoint_id;
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- cpId stands for cp
-  useEffect(() => setDraft(cp ? JSON.stringify(cp.values ?? {}, null, 2) : ""), [cpId]);
+  const state = useQuery({
+    queryKey: ["checkpoint", threadId, cpId],
+    queryFn: () => apiFetch<CheckpointState>(`/threads/${threadId}/checkpoints/${cpId}`),
+    enabled: Boolean(threadId && cpId),
+    staleTime: Infinity, // a checkpoint never changes once saved
+  });
+  const values = state.data?.values;
+  useEffect(() => setDraft(values ? JSON.stringify(values, null, 2) : ""), [cpId, values]);
   useEffect(() => () => setHighlight([]), [setHighlight]);
 
   if (!threadId) return <p className="muted pad">Run the workflow to see its timeline.</p>;
@@ -58,8 +71,8 @@ export function Timeline() {
     parsed = null;
   }
   const changed = (): Record<string, unknown> | undefined => {
-    if (!parsed || !cp?.values) return undefined;
-    const out = Object.fromEntries(Object.entries(parsed).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(cp.values?.[k])));
+    if (!parsed || !values) return undefined;
+    const out = Object.fromEntries(Object.entries(parsed).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(values[k])));
     return Object.keys(out).length ? out : undefined;
   };
 
@@ -86,12 +99,13 @@ export function Timeline() {
     <div className="timeline" data-testid="timeline">
       <div className="row gap"><ThreadScores threadId={threadId} runSeq={runSeq} /><span className="spacer" />{views}</div>
       <div className="ticks" role="listbox" aria-label="checkpoints">
+        {history.data?.length === HISTORY_LIMIT && <small className="muted" title="Older checkpoints are kept but not listed here">Showing the last {HISTORY_LIMIT} checkpoints</small>}
         {ticks.map((t, i) => (
           <button type="button" role="option" key={t.checkpoint_id} aria-selected={t.checkpoint_id === selected}
             className={`tick${t.checkpoint_id === selected ? " active" : ""}`}
             title={`${t.source ?? ""} · ${t.created_at ?? ""}`}
             onClick={() => { setSelected(t.checkpoint_id); setHighlight(t.next); }}>
-            <b>{i}</b>
+            <b>{t.step ?? i}</b>
             <span>{t.next.length ? `→ ${t.next.map(name).join(", ")}` : "end"}</span>
           </button>
         ))}
@@ -114,7 +128,9 @@ export function Timeline() {
               Fork to new thread
             </button>
           </div>
+          {state.isError && <QueryStatus q={state} what="this checkpoint's state" />}
           <textarea className={`mono${draft && !parsed ? " invalid" : ""}`} rows={5} value={draft}
+            placeholder={state.isPending ? "Loading…" : undefined}
             onChange={(e) => setDraft(e.target.value)} aria-label="checkpoint state" />
           <Lineage ticks={ticks} index={index} name={name} onPick={(id) => setHighlight([id])} />
         </div>

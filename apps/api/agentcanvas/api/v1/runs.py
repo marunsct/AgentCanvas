@@ -547,6 +547,25 @@ async def thread_history(
     return hide_secrets(out, _secrets(res))
 
 
+@router.get("/threads/{thread_id}/checkpoints/{checkpoint_id}")
+async def thread_checkpoint(
+    thread_id: str,
+    checkpoint_id: str,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    r: Runner = Depends(runner),
+) -> dict[str, Any]:
+    """The state saved at one checkpoint: the Timeline lists checkpoints without it and reads the one picked."""
+    t = await _thread(session, thread_id)
+    wf, _ = await _thread_target(session, settings, t, runnable=False)
+    res = r.resources(thread_id, wf)
+    state = await _travel(r, wf).get_state(wf, thread_id, res, checkpoint_id)
+    if state.checkpoint_id != checkpoint_id:
+        raise NotFound(f"checkpoint '{checkpoint_id}' not found in thread '{thread_id}'")
+    out = {"checkpoint_id": state.checkpoint_id, "step": state.step, "next": state.next, "values": state.values}
+    return hide_secrets(out, _secrets(res))
+
+
 @router.get("/threads/{thread_id}/explain")
 async def explain_thread(
     thread_id: str,
