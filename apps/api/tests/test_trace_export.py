@@ -124,3 +124,58 @@ def test_new_credentials_replace_the_old_pipeline():
     ex.forget("prj_a")
     assert ex._providers == {}
     ex.shutdown()
+
+
+def test_pipelines_of_idle_projects_are_shut_down_and_their_number_is_capped():
+    """Every project that exported traces kept its pipeline (a background thread and a queue) until the server
+    stopped: the number of threads grew with the projects ever seen."""
+    import threading
+
+    from agentcanvas.services.trace_export import Exporter
+
+    now = [0.0]
+    ex = Exporter(max_pipelines=2, idle_s=900, clock=lambda: now[0])
+    stopped: dict[str, threading.Event] = {}
+
+    def pipeline(project_id: str):
+        provider = ex._provider(project_id, f"https://{project_id}.example/v1/traces", {})
+        if project_id not in stopped:
+            stopped[project_id] = threading.Event()
+            provider.shutdown = stopped[project_id].set  # type: ignore[method-assign]
+        return provider
+
+    a = pipeline("prj_a")
+    pipeline("prj_b")
+    now[0] = 10
+    assert pipeline("prj_a") is a  # used again: now the most recent
+    pipeline("prj_c")  # one too many: the least recently used goes
+    assert sorted(ex._providers) == ["prj_a", "prj_c"] and stopped["prj_b"].wait(5)
+
+    now[0] = 10 + 901  # prj_a and prj_c sat idle for more than 15 minutes
+    pipeline("prj_d")
+    assert sorted(ex._providers) == ["prj_d"]
+    assert stopped["prj_a"].wait(5) and stopped["prj_c"].wait(5) and not stopped["prj_d"].is_set()
+    ex.shutdown()
+    assert stopped["prj_d"].is_set()
+
+
+async def test_the_hook_forgets_the_settings_of_projects_it_has_not_seen_for_a_while():
+    from agentcanvas.services.trace_export import TraceExportHook
+
+    class Db:
+        def sessionmaker(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, _model, _id):
+            return None
+
+    hook = TraceExportHook(Db(), projects=None, ttl_s=0)
+    for i in range(300):
+        await hook.config(f"prj_{i}")
+    assert len(hook._config) <= 256
