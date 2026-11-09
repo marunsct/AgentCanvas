@@ -100,6 +100,30 @@ async def test_unverified_bootstrap_email_is_not_trusted(client):
     assert r.status_code == 403
 
 
+async def test_a_first_sign_in_without_a_verified_email_does_not_lose_the_admin_bootstrap(app, client):
+    """Entra ID sends no `email_verified`: the operator's first sign-in is refused, saying why. Once they set
+    AGENTCANVAS_OIDC_TRUST_EMAIL, the same person becomes admin; before, the user row from the first try meant the
+    bootstrap never ran again and only SQL could recover the installation."""
+    first = await client.get("/v1/me", headers=bearer(token(email_verified=None)))
+    assert first.status_code == 403 and "AGENTCANVAS_OIDC_TRUST_EMAIL" in first.json()["detail"], first.text
+    app.state.authenticator = Authenticator(
+        app.state.settings.model_copy(update={"oidc_trust_email": True}), jwks={"keys": [SIGNING_JWK]}
+    )
+    r = await client.get("/v1/me", headers=bearer(token(email_verified=None)))
+    assert r.status_code == 200 and r.json()["role"] == "admin", r.text
+
+
+async def test_a_removed_bootstrap_admin_stays_removed(client):
+    me = (await client.get("/v1/me", headers=bearer(token()))).json()
+    bob = bearer(token(sub="bob-sub", email="bob@example.com"))
+    assert (await client.put("/v1/org/members", json={"email": "bob@example.com", "role": "admin"},
+                             headers=bearer(token()))).status_code == 200  # fmt: skip
+    assert (await client.get("/v1/me", headers=bob)).status_code == 200
+    assert (await client.delete(f"/v1/org/members/{me['id']}", headers=bob)).status_code == 204
+    r = await client.get("/v1/me", headers=bearer(token()))
+    assert r.status_code == 403 and "TRUST_EMAIL" not in r.json()["detail"]  # verified: no hint
+
+
 async def test_org_header_must_name_a_membership(client):
     r = await client.get("/v1/me", headers={**bearer(token()), "X-Org-Id": "org_other"})
     assert r.status_code == 403

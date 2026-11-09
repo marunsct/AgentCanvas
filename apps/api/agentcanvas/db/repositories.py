@@ -67,7 +67,8 @@ class UserRepo:
     async def provision(
         self, subject: str, email: str, name: str | None, email_verified: bool = False
     ) -> tuple[AppUser, bool]:
-        """The user of an OIDC subject and whether this sign-in created it; email and name follow the latest token.
+        """The user of an OIDC subject and whether this sign-in is its first with a verified email (it created the
+        user, or the user had none stored: only verified emails are). Email and name follow the latest token.
 
         Provider subjects are stored as `oidc:<sub>`, apart from the seeded `dev` user and `pending:<email>`
         invitations, so no token can take over either. A verified email claims the invitation an admin made for
@@ -92,10 +93,11 @@ class UserRepo:
                 await self.s.rollback()
                 user = await self.by_subject(oidc_subject(subject))
                 assert user is not None
+        first_verified = created or (not user.email and bool(email) and email_verified)
         if (email and user.email != email) or (name and user.display_name != name):
             user.email, user.display_name = email or user.email, name or user.display_name
             await self.s.commit()
-        return user, created
+        return user, first_verified
 
     async def _merge_invitation(self, pending: AppUser, user: AppUser) -> None:
         """Move an invitation's memberships to the user who claimed it (existing memberships win), then drop it.

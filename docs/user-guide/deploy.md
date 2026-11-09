@@ -144,6 +144,12 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 The API checks every token against the provider's keys. `AGENTCANVAS_AUTH_MODE=dev` (no sign-in) is refused in
 `staging` and `prod`.
 
+The first admins, and everyone you invite, are matched by a **verified** email in the access token (the
+`AGENTCANVAS_OIDC_EMAIL_CLAIM` claim, `email` by default, with `email_verified: true`). A provider that never sends
+`email_verified` (Entra ID) needs `AGENTCANVAS_OIDC_TRUST_EMAIL=true`. Without it the sign-in is refused with a
+message that says so, and the server logs `oidc.email_unverified`; set it, and the next sign-in of a bootstrap
+email still makes that person admin.
+
 To give roles by group (see [Roles from groups](accounts.md#roles-from-groups)), add
 the groups to the **access token** the SPA sends, as a claim in your provider (a "groups" mapper in Keycloak, a
 groups claim in Okta or Entra ID). The API reads the claim from that token only.

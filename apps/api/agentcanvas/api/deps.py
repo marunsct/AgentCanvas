@@ -16,9 +16,12 @@ from agentcanvas.db import rls
 from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
+from agentcanvas.log import get_logger
 from agentcanvas.security.auth import Authenticator
 from agentcanvas.services import matura, sso_groups, tokens
 from agentcanvas.settings import Settings
+
+log = get_logger(__name__)
 
 
 def get_settings_dep(request: Request) -> Settings:
@@ -101,15 +104,17 @@ async def current_user(
     repo = UserRepo(session)
     # only a verified email is stored: invitations and the admin bootstrap match people by it
     email = identity.email if identity.email_verified else ""
-    user, created = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
+    user, first = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
     uid, user_email = user.id, user.email  # read before anything below commits or rolls back
     await sso_groups.apply(  # the provider's groups decide roles (G-13)
         session, uid, identity.claims, add_members=settings.sso_groups_add_members,
         sink=getattr(request.app.state, "audit_sink", None),
     )  # fmt: skip
     memberships = await repo.memberships(uid)
-    if (  # bootstrap happens once, at the first sign-in: removing a bootstrap admin later sticks
-        created
+    # bootstrap happens once, at the first sign-in with a verified email (a first try without one, e.g. Entra ID
+    # before AGENTCANVAS_OIDC_TRUST_EMAIL, must not lose it): removing a bootstrap admin later sticks
+    if (
+        first
         and not memberships
         and identity.email_verified
         and identity.email.lower() in {e.lower() for e in settings.bootstrap_admin_emails}
@@ -120,6 +125,15 @@ async def current_user(
         await repo.answer(uid, invited[0][0].id, accept=True)
         memberships = await repo.memberships(uid)
     if not memberships:
+        if not identity.email_verified:  # invitations and the admin bootstrap match people by a verified email
+            log.warning("oidc.email_unverified", email_claim=settings.oidc_email_claim, has_email=bool(identity.email))
+            raise Forbidden(
+                "you are not a member of any organisation, and your sign-in carries no verified email to match an "
+                f"invitation by ('{settings.oidc_email_claim}' claim"
+                + (" without email_verified" if identity.email else " missing")
+                + "): ask the operator to check the provider's token, or to set AGENTCANVAS_OIDC_TRUST_EMAIL=true "
+                "if it never sends email_verified (Entra ID)"
+            )
         raise Forbidden("you are not a member of any organisation; ask an admin to invite you")
     default = next(iter(memberships))  # the organisation used last
     org_id = org or default
