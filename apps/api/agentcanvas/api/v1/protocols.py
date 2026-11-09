@@ -5,7 +5,8 @@ deployment API, with the same rate limits:
 
 - **MCP** (`POST /v1/deployments/{id}/mcp`, Streamable HTTP, stateless JSON responses): one tool that runs the
   workflow, plus `answer` when it can pause for a person. Claude Desktop, Cursor, ChatGPT and agent frameworks
-  connect to it like to any remote MCP server.
+  connect to it like to any remote MCP server. A 2026-07-28 client that shows forms is asked to answer a pause
+  itself (input_required, api/v1/mcp_input.py); one that takes the Tasks extension gets a task for a long run.
 - **A2A** (`POST /v1/deployments/{id}/a2a`, JSON-RPC; card at `.../a2a/.well-known/agent-card.json`):
   `message/send` runs the workflow (a pause becomes `input-required`, answered by sending to the same task),
   `tasks/get` reads a task (from any server: services/run_results.py), `tasks/cancel` stops a working one.
@@ -51,6 +52,7 @@ from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, To
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
+from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.run_results import ResultRepo
@@ -82,6 +84,9 @@ V1_STATES = {
 CANCEL_WAIT_S = 5.0  # how long CancelTask waits for a run stopped on this server to save its outcome
 PAUSES_ANSWERED = " It can pause for a person: then call `answer`."
 PAUSES_ASKED = " It can pause for a person: your client then asks you, and the run goes on with your answer."
+TASK_AFTER_S = 30.0  # a client that takes tasks gets one for a run still working after this long (or queued)
+POLL_MS = 3000  # how often a task's client is asked to poll
+MISSING_CAPABILITY = -32021
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
 
@@ -185,6 +190,20 @@ async def _resume(
     iid: str | None,
     labels: dict[str, str] | None = None,
 ) -> ApiResult:
+    return await _result(await _resume_run(request, session, dep, wf, thread_id, value, iid, labels))
+
+
+async def _resume_run(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    thread_id: str,
+    value: Any,
+    iid: str | None,
+    labels: dict[str, str] | None = None,
+) -> RunHandle:
+    """Answer a pause of the deployment's conversation: the run that goes on (no connection held while it works)."""
     await own_thread(session, dep, thread_id)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
@@ -197,7 +216,7 @@ async def _resume(
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )
     await session.close()
-    return await _result(h)
+    return h
 
 
 # ---------------------------------------------------------------------------------------------- MCP ----
@@ -206,6 +225,7 @@ class Caller:
     """What a 2026-07-28 client declared on the request (F-1)."""
 
     ask: bool = False  # it takes form elicitation: a pause asks the person through the client (input_required)
+    tasks: bool = False  # it takes the Tasks extension: a long or queued run answers with a task to poll
 
 
 LEGACY = Caller()
@@ -291,7 +311,7 @@ async def _mcp_call(
         if params.get("requestState") is not None or params.get("inputResponses") is not None:
             if not caller.ask or name not in (tool_name(wf), "answer"):
                 raise RpcError(-32602, "requestState and inputResponses answer a pause this server asked about")
-            return await _answer_asked(request, session, dep, wf, str(name), args, params)
+            return await _answer_asked(request, session, dep, wf, str(name), args, params, caller)
         if name == tool_name(wf):
             fields = {k: v for k, v in args.items() if k not in ("thread_id", "context")}
             try:
@@ -302,16 +322,42 @@ async def _mcp_call(
                 raise RpcError(-32602, f"invalid arguments: {exc.errors()[0]['msg']}") from None
             h = await _start(request, session, dep.id, body, auth, caller=(dep, wf))
             await session.close()
-            return _call_result(request, dep, wf, await _result(h), str(name), args, caller)
+            return await _answer_call(request, dep, wf, h, str(name), args, caller)
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
-            res = await _resume(request, session, dep, wf, thread_id, value, iid)
-            return _call_result(request, dep, wf, res, str(name), args, caller)
+            h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
+            return await _answer_call(request, dep, wf, h, str(name), args, caller)
     except (InvalidInput, NotFound, Conflict) as exc:  # the caller's mistake: tell the model, it can correct it
         return {"content": [{"type": "text", "text": exc.detail}], "isError": True}
     raise RpcError(-32602, f"unknown tool '{name}'")
+
+
+async def _answer_call(
+    request: Request, dep: Deployment, wf: Workflow, h: RunHandle, tool: str, args: dict[str, Any], caller: Caller
+) -> dict[str, Any]:
+    """A started run's answer to the tool call: a task to poll for a client that takes them, once the run waits in
+    the run queue or outlasts `TASK_AFTER_S`; otherwise the run's result (after up to the 5-minute wait)."""
+    if caller.tasks and not await _settles(h):
+        now = datetime.now(UTC).isoformat()
+        message = "waiting for a run slot" if h.waiting else "running"
+        return {"resultType": "task", "taskId": h.run_id, "status": "working", "statusMessage": message,
+                "createdAt": now, "lastUpdatedAt": now, "ttlMs": None, "pollIntervalMs": POLL_MS}  # fmt: skip
+    return _call_result(request, dep, wf, await _result(h), tool, args, caller)
+
+
+async def _settles(h: RunHandle) -> bool:
+    """Whether the run ends within `TASK_AFTER_S` without waiting in the run queue."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + TASK_AFTER_S
+    while not h.done.is_set():
+        left = deadline - loop.time()
+        if h.waiting or left <= 0:
+            return False
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(h.done.wait(), min(left, 0.25))
+    return True
 
 
 def _call_result(
@@ -353,6 +399,7 @@ async def _answer_asked(
     tool: str,
     args: dict[str, Any],
     params: dict[str, Any],
+    caller: Caller,
 ) -> dict[str, Any]:
     """The retry of a call that paused: verify the state it echoes, then resume the run with the person's answer.
     The pause must still be open (answered once); an answer that does not fit asks again."""
@@ -372,7 +419,7 @@ async def _answer_asked(
         found = await ResultRepo(session, request.app.state.runner).of(latest or "", dep.id)
         if found is None:
             raise RpcError(-32602, "the paused run is gone (its conversation was deleted)")
-        return _call_result(request, dep, wf, api_result(found), tool, args, Caller(ask=True))
+        return _call_result(request, dep, wf, api_result(found), tool, args, caller)
     interrupt = {"id": row.id, "kind": row.kind, "payload": row.payload}
     responses = params.get("inputResponses")
     response = responses.get(row.id) if isinstance(responses, dict) else None
@@ -389,8 +436,8 @@ async def _answer_asked(
             "isError": True,
         }  # fmt: skip
     note(request, interrupt_id=row.id, payload_sha256=payload_hash(value))
-    res = await _resume(request, session, dep, wf, state.thread_id, value, row.id)
-    return _call_result(request, dep, wf, res, tool, args, Caller(ask=True))
+    h = await _resume_run(request, session, dep, wf, state.thread_id, value, row.id)
+    return await _answer_call(request, dep, wf, h, tool, args, caller)
 
 
 def _mcp_transport_refusal(request: Request, settings: Settings) -> JSONResponse | None:
@@ -437,6 +484,8 @@ def _modern_refusal(request: Request, msg: dict[str, Any], version: str) -> JSON
     expected = {"mcp-protocol-version": version, "mcp-method": msg["method"]}
     if msg["method"] in ("tools/call", "prompts/get", "resources/read"):
         expected["mcp-name"] = str(params.get("name") if msg["method"] != "resources/read" else params.get("uri"))
+    elif msg["method"] in ("tasks/get", "tasks/update", "tasks/cancel"):  # the Tasks extension routes on the task
+        expected["mcp-name"] = str(params.get("taskId"))
     for header, value in expected.items():
         sent = request.headers.get(header)
         if (_header_value(sent) if header == "mcp-name" else sent) != value:
@@ -573,7 +622,8 @@ async def _mcp_modern(
     try:
         if method == "server/discover":
             result: dict[str, Any] = {
-                "supportedVersions": list(MCP_VERSIONS), "capabilities": {"tools": {"listChanged": False}},
+                "supportedVersions": list(MCP_VERSIONS),
+                "capabilities": {"tools": {"listChanged": False}, "extensions": {mcp_input.TASKS: {}}},
                 "instructions": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
                 **cached,
             }  # fmt: skip
@@ -581,6 +631,8 @@ async def _mcp_modern(
             result = {"tools": _mcp_tools(wf, contract(wf), _modern_caller(params)), **cached}
         elif method == "tools/call":
             result = await _mcp_call(request, session, dep, wf, params, auth, _modern_caller(params))
+        elif method in ("tasks/get", "tasks/update", "tasks/cancel"):
+            result = await _mcp_task(request, session, dep, wf, method, params, _modern_caller(params))
         elif method in ("resources/list", "prompts/list", "resources/templates/list"):
             result = {method.split("/")[0] if method != "resources/templates/list" else "resourceTemplates": [],
                       **cached}  # fmt: skip
@@ -592,8 +644,81 @@ async def _mcp_modern(
     return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
 
 
+async def _still_open(session: AsyncSession, interrupts: list[dict[str, Any]]) -> bool:
+    ids = [str(i.get("id")) for i in interrupts]
+    q = select(InterruptTask.id).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
+    return bool(ids) and await session.scalar(q.limit(1)) is not None
+
+
 def _modern_caller(params: dict[str, Any]) -> Caller:
-    return Caller(ask=mcp_input.elicits(params))
+    return Caller(ask=mcp_input.elicits(params), tasks=mcp_input.tasks(params))
+
+
+async def _mcp_task(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    method: str,
+    params: dict[str, Any],
+    caller: Caller,
+) -> dict[str, Any]:
+    """The Tasks extension (`io.modelcontextprotocol/tasks`): a task is the run its tool call started (task id =
+    run id) and the runs that answered its pauses (labelled with it). Only the deployment's own runs are tasks: any
+    other id is the same "not found", so a task id is never a credential on its own."""
+    if not caller.tasks:
+        raise RpcError(MISSING_CAPABILITY, "Missing required client capability",
+                       {"requiredCapabilities": {"extensions": {mcp_input.TASKS: {}}}})  # fmt: skip
+    task_id = params.get("taskId")
+    q = select(Run.id, Run.thread_id, Run.started_at).join(Thread, Thread.id == Run.thread_id)
+    task = (await session.execute(q.where(Run.id == str(task_id), Thread.deployment_id == dep.id))).first()
+    if not isinstance(task_id, str) or task is None:
+        raise RpcError(-32602, "Failed to retrieve task: Task not found")
+    of_task = or_(Run.id == task_id, Run.labels["mcp_task"].as_string() == task_id)
+    latest = (
+        await session.execute(
+            select(Run.id, Run.started_at, Run.ended_at, Run.queued)
+            .where(Run.thread_id == task.thread_id, of_task)
+            .order_by(Run.started_at.desc(), Run.id.desc())
+            .limit(1)
+        )
+    ).one()
+    results = ResultRepo(session, request.app.state.runner)
+    found = await results.of(latest.id, dep.id)
+    if found is not None and found.status == "interrupted" and not await _still_open(session, found.interrupts):
+        # answered outside the task (the app's Inbox): the conversation's newest run says where it is now
+        newest = select(Run.id).where(Run.thread_id == task.thread_id).order_by(Run.started_at.desc(), Run.id.desc())
+        found = await results.of(await session.scalar(newest.limit(1)) or latest.id, dep.id)
+    res = api_result(found) if found else ApiResult(run_id=latest.id, thread_id=task.thread_id, status="error")
+    if method == "tasks/cancel":  # an acknowledgement: a run that works stops, wherever it runs
+        if res.status == "running":
+            await stop_run(session, request.app.state.runner, res.run_id)
+        return {}
+    asked = res.interrupts[0] if res.status == "interrupted" and res.interrupts and caller.ask else None
+    key = f"{res.run_id}:{asked['id']}" if asked else None  # unique over the task: each pause is a new run's
+    if method == "tasks/update":
+        responses = params.get("inputResponses")
+        if asked is not None and isinstance(responses, dict) and key in responses:
+            outcome, value = mcp_input.answer(asked, responses[key], lambda ok, why: answer_value(asked, ok, why, None))
+            if outcome == "resume":
+                note(request, interrupt_id=asked["id"], payload_sha256=payload_hash(value))
+                with contextlib.suppress(Conflict):  # answered meanwhile (the app's Inbox, another update)
+                    await _resume_run(request, session, dep, wf, res.thread_id, value, str(asked["id"]),
+                                      labels={"mcp_task": task_id})  # fmt: skip
+        return {}
+    changed = latest.ended_at or latest.started_at
+    out: dict[str, Any] = {"taskId": task_id, "createdAt": task.started_at.isoformat(),
+                           "lastUpdatedAt": changed.isoformat(), "ttlMs": None, "pollIntervalMs": POLL_MS}  # fmt: skip
+    if res.status == "running":
+        return {**out, "status": "working", "statusMessage": "waiting for a run slot" if latest.queued else "running"}
+    if asked is not None:
+        return {**out, "status": "input_required", "statusMessage": "waiting for a person",
+                "inputRequests": {key: mcp_input.form(asked, wf.name)}}  # fmt: skip
+    if res.status == "cancelled":
+        return {**out, "status": "cancelled", "statusMessage": res.error or "cancelled"}
+    # done (a failed run is a tool result with isError, not a protocol failure); a pause the client cannot show a
+    # form for completes with the result the tool call itself gives (it says to call `answer`)
+    return {**out, "status": "completed", "result": _tool_result(res, _result_url(request, dep, res))}
 
 
 @router.get("/deployments/{dep_id}/mcp")

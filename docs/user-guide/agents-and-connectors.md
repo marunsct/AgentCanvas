@@ -133,7 +133,16 @@ When a run pauses for an approval or a question, who answers depends on the clie
 
 To continue a conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 
-A tool call waits up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
+**Long runs.** Clients that support the MCP **Tasks** extension (they declare `io.modelcontextprotocol/tasks`;
+`server/discover` lists it) get a task instead of waiting: when the run still works after 30 seconds, or waits
+for a slot in the run queue, the tool call answers with a `taskId` (the run's id). The client then polls
+`tasks/get` (every 3 seconds is asked for), which gives `working`, `completed` with the tool's result, or
+`cancelled`; `tasks/cancel` stops the run on whichever server runs it. A task whose run pauses for a person shows
+`input_required` with the form (for clients that show forms; the answer goes back with `tasks/update`), else it
+completes with the paused result, like a call without tasks. Tasks are polled with the deployment key and only
+the deployment's own runs are found, so a task id alone grants nothing. Any server answers.
+
+Other clients wait up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
 of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key, see
 [Publish](publish.md#long-runs-start-now-read-the-result-later)).
 
