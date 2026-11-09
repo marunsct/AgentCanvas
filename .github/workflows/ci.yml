@@ -118,8 +118,8 @@ jobs:
     defaults: { run: { working-directory: apps/web } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
-        with: { version: 10 }
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1 (pnpm's version: package.json packageManager)
+        with: { package_json_file: apps/web/package.json }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: pnpm install --frozen-lockfile
@@ -141,8 +141,8 @@ jobs:
           cache-dependency-glob: |
             apps/api/uv.lock
             apps/api/framework-locks/*.txt
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
-        with: { version: 10 }
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1 (pnpm's version: package.json packageManager)
+        with: { package_json_file: apps/web/package.json }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22 }
       - name: The API, every framework environment, Mastra and the web app (pip-audit, npm and pnpm audit)
@@ -339,8 +339,8 @@ jobs:
           cache-dependency-glob: |
             apps/api/uv.lock
             Makefile
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
-        with: { version: 10 }
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1 (pnpm's version: package.json packageManager)
+        with: { package_json_file: apps/web/package.json }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: cd apps/api && uv sync --frozen

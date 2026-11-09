@@ -91,7 +91,7 @@ the local admin): don't expose it to other people. For a shared server follow [D
 | Git | any recent | clone the repo; project workspaces are git repositories | `git --version` |
 | [uv](https://docs.astral.sh/uv/) | 0.8 or newer | Python packages; it also downloads Python 3.12 if you don't have it | `uv --version` |
 | Node.js | 22 | the web app | `node -v` |
-| pnpm | 10 | web packages | `pnpm -v` |
+| pnpm | 10.34 (`packageManager` in `apps/web/package.json`; `corepack enable` fetches exactly that one) | web packages | `pnpm -v` in `apps/web` |
 | make | any | the shortcuts below (optional: every target is a plain command you can type) | `make -v` |
 | Docker Desktop | recent | **optional**: only for Postgres (step 8) | `docker version` |
 
@@ -102,7 +102,7 @@ Install commands:
     ```bash
     brew install git node@22 make
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    corepack enable && corepack prepare pnpm@10 --activate
+    corepack enable
     ```
 
 === "Linux"
@@ -110,7 +110,7 @@ Install commands:
     ```bash
     # Node 22 from your package manager or https://nodejs.org, then:
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    corepack enable && corepack prepare pnpm@10 --activate
+    corepack enable
     ```
 
 === "Windows"
@@ -118,7 +118,7 @@ Install commands:
     Use **WSL 2** (Ubuntu) and follow the Linux steps inside it: the Makefile and scripts assume a Unix shell.
     If you prefer native PowerShell, install uv with
     `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`, Node 22 from nodejs.org,
-    then `corepack enable; corepack prepare pnpm@10 --activate`, and type the commands shown under each `make`
+    then `corepack enable`, and type the commands shown under each `make`
     target instead of `make`.
 
 Open a new terminal after installing so the tools are on your `PATH`.
@@ -292,7 +292,7 @@ from **Settings › Members**.
 |---|---|
 | `make: command not found` (Windows) | Use WSL 2, or type the command each `make` target runs (shown above). |
 | `uv: command not found` after installing | Open a new terminal, or add `~/.local/bin` to `PATH`. |
-| `pnpm: command not found` | `corepack enable && corepack prepare pnpm@10 --activate`, or `npm i -g pnpm@10`. |
+| `pnpm: command not found` | `corepack enable`, or `npm i -g pnpm@10`. |
 | `address already in use` on 8000 or 5173 | Another process holds the port: stop it (`lsof -i :8000` on macOS/Linux) or stop an old server. |
 | The web app shows an error on every page | The API is not running or not on port 8000. Check `curl localhost:8000/healthz`. |
 | A run fails with an authentication error from the provider | The key is missing or wrong: enter it again in **Settings › Models**, or check the project secret named after the provider in **Settings › Secrets**. |

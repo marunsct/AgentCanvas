@@ -3,6 +3,7 @@ helm is installed) and the compose files read as YAML. Static checks only: nothi
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -431,3 +432,14 @@ def test_the_web_image_installs_with_the_web_apps_pnpm_settings():
     assert "apps/web/pnpm-workspace.yaml" in copy
     settings = yaml.safe_load((ROOT / "apps" / "web" / "pnpm-workspace.yaml").read_text())
     assert settings["overrides"]["fast-uri@>=3.0.0 <3.1.9"] == "3.1.9"
+
+
+def test_the_web_image_ci_and_developers_run_the_pnpm_package_json_names():
+    """The web image took whatever pnpm 10.x was newest on the day of the build (`corepack prepare pnpm@10`), CI took
+    `version: 10`, and nothing checked what was downloaded: the same commit could install differently a week later."""
+    manager = json.loads((ROOT / "apps" / "web" / "package.json").read_text()).get("packageManager", "")
+    assert re.fullmatch(r"pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}", manager), manager
+    web = (ROOT / "infra" / "Dockerfile.web").read_text()
+    assert "corepack install" in web and "pnpm@" not in web and "PNPM_VERSION" not in web
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "version: 10" not in workflow and workflow.count("package_json_file: apps/web/package.json") == 3

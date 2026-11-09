@@ -37,7 +37,7 @@ brew install --cask docker          # then open Docker Desktop once
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
-sudo corepack enable && corepack prepare pnpm@10 --activate
+sudo corepack enable   # pnpm then runs at the version apps/web/package.json names (packageManager)
 # Docker Engine: follow docs.docker.com/engine/install for your distro, then:
 sudo usermod -aG docker $USER && newgrp docker
 ```
