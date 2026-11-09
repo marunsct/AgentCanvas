@@ -68,6 +68,7 @@ def upgrade() -> None:
     )
     op.create_index("approval_notice_due_idx", "approval_notice", ["status", "next_at"])
     op.create_index("approval_notice_interrupt_idx", "approval_notice", ["interrupt_id"])
+    op.create_index("approval_notice_org_idx", "approval_notice", ["org_id"])
     with op.batch_alter_table("interrupt_task") as batch:
         batch.add_column(sa.Column("noticed", sa.Text(), nullable=True))
     if op.get_bind().dialect.name == "postgresql":

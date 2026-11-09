@@ -534,6 +534,7 @@ class ApprovalNotice(Base):
         CheckConstraint("status IN ('pending','sent','failed','dropped')", name="approval_notice_status"),
         Index("approval_notice_due_idx", "status", "next_at"),
         Index("approval_notice_interrupt_idx", "interrupt_id"),
+        Index("approval_notice_org_idx", "org_id"),  # deleting an organisation
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
