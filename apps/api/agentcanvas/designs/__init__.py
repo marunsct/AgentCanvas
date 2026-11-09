@@ -64,7 +64,7 @@ AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
             "microsoft_agent_framework", "Microsoft Agent Framework",
             ("agent-framework-core==1.25.0", "agent-framework-openai==1.18.1"), "agent_framework", "openai",
         ),
-        AgentFramework("claude_agent_sdk", "Claude Agent SDK", ("claude-agent-sdk==0.2.174",), "claude_agent_sdk",
+        AgentFramework("claude_agent_sdk", "Claude Agent SDK", ("claude-agent-sdk==0.2.179",), "claude_agent_sdk",
                        "anthropic"),
     ]
 }  # fmt: skip

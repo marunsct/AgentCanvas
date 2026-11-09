@@ -46,7 +46,7 @@ FRAMEWORKS: dict[str, Framework] = {
         "Microsoft Agent Framework", "agent-framework-core==1.25.0", "agent_framework", "agent.run(input)"
     ),
     "claude_agent_sdk": Framework(
-        "Claude Agent SDK", "claude-agent-sdk==0.2.174", "claude_agent_sdk", "query(prompt, options)"
+        "Claude Agent SDK", "claude-agent-sdk==0.2.179", "claude_agent_sdk", "query(prompt, options)"
     ),
     "callable": Framework("Python function", "", "", "async def run(input: dict, ctx) -> str | dict"),
 }

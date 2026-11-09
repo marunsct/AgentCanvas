@@ -77,7 +77,7 @@ s_frameworks() {   # real agents from each framework, wrapped and drawn on the c
     "pydantic_ai|pydantic-ai-slim[openai]==2.66.0" "agno|agno==3.1.12 openai==2.54.0" "strands|strands-agents[openai]==1.64.0 openai==2.54.0" \
     "llamaindex|llama-index-workflows==2.26.1 llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1" \
     "microsoft_agent_framework|agent-framework-core==1.25.0 agent-framework-openai==1.18.1" \
-    "claude_agent_sdk|claude-agent-sdk==0.2.174" "agentspec|pyagentspec==26.3.1" \
+    "claude_agent_sdk|claude-agent-sdk==0.2.179" "agentspec|pyagentspec==26.3.1" \
     "bridge_langgraph|pyagentspec[langgraph]==26.3.1 jinja2" "bridge_wayflow|wayflowcore==26.3.1 jinja2" \
     "bridge_openai_agents|pyagentspec==26.3.1 openai-agents==0.24.0"; do
     check=${spec%%|*}; with=${spec#*|}

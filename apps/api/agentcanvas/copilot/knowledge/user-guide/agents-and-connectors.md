@@ -39,7 +39,7 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 | Strands Agents | `strands-agents==1.64.0` | an `Agent` |
 | LlamaIndex Workflows | `llama-index-workflows==2.26.1` | a `Workflow` (it gets `input=` and the other fields) |
 | Microsoft Agent Framework | `agent-framework-core==1.25.0` | an agent (`client.as_agent(...)`) |
-| Claude Agent SDK | `claude-agent-sdk==0.2.174` | a `ClaudeAgentOptions` |
+| Claude Agent SDK | `claude-agent-sdk==0.2.179` | a `ClaudeAgentOptions` |
 | Python function | none | `async def run(input, ctx)`: return text, or a dict to set several fields |
 
 - The agent's own package (and its model provider's, such as `openai`) must be installed on the server, and an
